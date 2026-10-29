@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Mapping
 
 from .contracts import PermissionMode
+from .sandbox_python_hook import hook_directory, python_hook_enabled
 from .permissions import FileSystemAccess, PermissionSnapshot, permission_snapshot
 from .windows_sandbox_prep import (
     LOOM_SANDBOX_TOOLS_CAPABILITY,
@@ -513,6 +514,11 @@ class SandboxManager:
             # rewrite a DACL this user cannot edit. Undeclared, the kernel's
             # AppContainer check grants it through the capability.
             readonly_paths = [path for path in readonly_paths if not sandbox_can_read(path)]
+        # Python's 0o700 directories (every tempfile.mkdtemp) are otherwise
+        # unwritable for the AppContainer that created them; see sandbox_python_hook.
+        python_hook = hook_directory() if python_hook_enabled() else None
+        if python_hook is not None:
+            readonly_paths.append(str(python_hook))
         if mode is SandboxMode.READ_ONLY:
             readonly_paths.insert(0, str(workspace))
             readwrite_paths: list[str] = []
@@ -526,6 +532,9 @@ class SandboxManager:
                     readonly_paths.append(str(protected))
 
         child_env = self._windows_mxc_environment(environment)
+        if python_hook is not None:
+            key = next((name for name in child_env if name.upper() == "PYTHONPATH"), "PYTHONPATH")
+            child_env[key] = os.pathsep.join(filter(None, (str(python_hook), child_env.get(key, ""))))
         config: dict[str, object] = {
             "version": _MXC_SCHEMA_VERSION,
             "containerId": f"loom-{uuid.uuid4().hex[:12]}",

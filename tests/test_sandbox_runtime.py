@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -428,3 +429,39 @@ def test_exec_grants_the_sessions_run_artifacts_not_only_this_turns(tmp_path):
     # A review continued over episodes runs probes an earlier turn wrote.
     assert _scratch_root(context) == tmp_path / "session" / "run-artifacts"
     assert _scratch_root(SimpleNamespace(services={})) is None
+
+
+def test_mxc_python_gets_the_mkdtemp_hook_and_keeps_its_own_pythonpath(tmp_path, monkeypatch):
+    # Measured on the real backend: without the hook every tempfile.mkdtemp in a
+    # sandboxed Python is unwritable to the process that created it.
+    from app.agent_runtime.sandbox_python_hook import hook_directory
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    hook = hook_directory()
+    config = _decode_mxc_config(_fake_windows_mxc_manager().prepare(
+        argv=("python", "-m", "unittest"), cwd=workspace, workspace=workspace,
+        permission_mode=PermissionMode.WORKSPACE, environment={"PYTHONPATH": r"C:\project\src"}).argv)
+    env = dict(item.split("=", 1) for item in config["process"]["env"])
+    assert env["PYTHONPATH"].split(os.pathsep) == [str(hook), r"C:\project\src"]
+    assert str(hook) in config["filesystem"]["readonlyPaths"]
+    assert (hook / "sitecustomize.py").is_file()
+    monkeypatch.setenv("LOOM_WINDOWS_SANDBOX_PYTHON_HOOK", "off")
+    config = _decode_mxc_config(_fake_windows_mxc_manager().prepare(
+        argv=("python", "-V"), cwd=workspace, workspace=workspace, permission_mode=PermissionMode.WORKSPACE,
+        environment={}).argv)
+    assert not any(item.startswith("PYTHONPATH=") for item in config["process"]["env"])
+
+
+def test_python_hook_patches_mkdir_and_still_runs_the_projects_sitecustomize(tmp_path):
+    from app.agent_runtime.sandbox_python_hook import hook_directory
+    hook = hook_directory(tmp_path / "hooks")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "sitecustomize.py").write_text("import builtins\nbuiltins.PROJECT_SITE = True\n", encoding="utf-8")
+    probe = "import builtins, os; print(getattr(builtins, 'PROJECT_SITE', False), getattr(os.mkdir, '_loom_sandbox', False))"
+    result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=60,
+                            env={**os.environ, "PYTHONPATH": os.pathsep.join([str(hook), str(project)])})
+    expected_patch = os.name == "nt"
+    assert result.stdout.split() == ["True", str(expected_patch)], result.stderr
+    assert hook_directory(tmp_path / "hooks") == hook  # content-addressed, idempotent
