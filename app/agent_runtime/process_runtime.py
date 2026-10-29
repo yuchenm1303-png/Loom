@@ -60,8 +60,10 @@ def validate_argv(raw_argv: object) -> tuple[str, ...]:
     argv = tuple(str(value) for value in raw_argv)
     if len(argv) > 256:
         raise ValueError("argv contains too many entries")
-    if any(not value for value in argv):
-        raise ValueError("argv entries must not be empty")
+    if not argv[0]:
+        raise ValueError("argv[0] must name a program")
+    # An empty argument is ordinary input (`tally.py ""`); only the program
+    # itself must be named. list2cmdline quotes it, so it survives Windows.
     if any("\x00" in value for value in argv):
         raise ValueError("argv entries must not contain NUL")
     if any(len(value) > 16_000 for value in argv):

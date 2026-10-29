@@ -187,16 +187,19 @@ def test_runtime_limits_are_known_terminal_outcomes_with_usage_settled_once(tmp_
     service, runtime, platform, _, source = build(tmp_path, [response], tools=(tool,))
     try:
         runtime.limits = AgentLimits(**{limit: 1})
-        run = create(service, source)
+        run = create(service, source, maxEpisodes=1)
         control(service, run, "start")
         for _ in range(4):
             cycle(service)
             run = service.project_store.get(run["id"])
-            if run["state"] == "needs_review":
+            if run["control"] == "budget_limited":
                 break
-        assert run["activeEpisode"] is None
+        # A per-episode bound is a known, settled episode end: it continues the
+        # task, so here the run stops only at its one-episode budget.
+        assert run["activeEpisode"] is None and run["state"] == "running"
         assert run["tokensUsed"] == 11 and run["episodesUsed"] == 1
-        assert "limit" in run["reason"].lower() and "unknown" not in run["reason"].lower()
+        assert "unknown" not in run["reason"].lower() and run["episodeLimitStreak"] == 1
+        assert "episode_limit_reached" in [item["kind"] for item in service.project_store.events(run["id"], limit=200)]
         for _ in range(2):
             cycle(service)
         assert service.project_store.get(run["id"])["tokensUsed"] == 11

@@ -11,6 +11,11 @@ from .review import criteria, StaleCandidate
 from . import parallel
 from .budget import ProjectBudget
 
+# Per-episode runtime bounds. Reaching one ends an episode, not the task: the next
+# episode continues in the same session, within the run's episode/token budget.
+EPISODE_LIMITS = {"model step limit reached", "tool call limit reached"}
+MAX_LIMIT_STREAK = 8
+
 
 def object_reply(text):
     text = str(text).strip()
@@ -307,6 +312,18 @@ class ProjectRunner:
                                       "inspect the workspace for its partial work.\n" + current.get("handoff", ""))[:12000]
                 self.store.save(db, current, "budget_limited")
                 return
+            if state == "limit_reached" and result.get("error") in EPISODE_LIMITS:
+                streak = current.get("episodeLimitStreak", 0) + 1
+                current["episodeLimitStreak"] = streak
+                if streak >= MAX_LIMIT_STREAK:
+                    current.update(state="needs_review", control="paused",
+                                   reason=f"{streak} consecutive episodes ended at their step/tool limit without a result")
+                else:
+                    current["handoff"] = (f"The previous episode ended at its per-episode bound ({result['error']}); "
+                                          "continue from the workspace and session state.\n" + current.get("handoff", ""))[:12000]
+                self.store.save(db, current, "episode_limit_reached")
+                return
+            current["episodeLimitStreak"] = 0
             try:
                 if state != "completed":
                     raise ValueError(result.get("error") or f"Episode ended with {state}")

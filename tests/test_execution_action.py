@@ -219,3 +219,12 @@ def test_exec_action_rejects_workspace_escape_and_wrong_tool(tmp_path):
             step,
             ToolCall(call_id="other-1", name="other", arguments={"argv": ["x"]}),
         )
+
+
+def test_exec_argv_allows_empty_arguments_but_not_an_empty_program():
+    import pytest
+    from app.agent_runtime.process_runtime import validate_argv
+    # `tally.py ""` is a real input a check must be able to send.
+    assert validate_argv(["python", "tally.py", ""]) == ("python", "tally.py", "")
+    with pytest.raises(ValueError, match=r"argv\[0\]"):
+        validate_argv(["", "x"])

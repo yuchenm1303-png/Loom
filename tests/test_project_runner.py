@@ -391,3 +391,50 @@ def test_next_task_preserves_prior_candidate_commit(tmp_path):
         assert git(workspace, "rev-parse", "HEAD") == run["baseCommit"]
     finally:
         runtime.close()
+
+
+def test_per_episode_step_limit_continues_in_the_next_episode(tmp_path):
+    from app.agent_runtime.contracts import AgentLimits
+    def step(context, arguments):
+        context.resolve_workspace_path("app.txt").write_text("part one")
+        return ToolResult(ok=True, content="saved part one")
+    tool = AgentTool(name="save_part", description="Save part of the work", input_schema={"type": "object", "properties": {}},
+                     effect=ToolEffect.MUTATING, handler=step)
+    service, runtime, platform, _, source = build(tmp_path, [reply(PLAN),
+        ModelResponse(tool_calls=(ToolCall(call_id="c1", name="save_part", arguments={}),), usage=ModelUsage(5, 0, 5)),
+        reply({"action": "candidate", "summary": "Finished after the bound"})], tools=(tool,))
+    runtime.limits = AgentLimits(max_model_steps=1)
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(4):
+            cycle(service)
+        final = service.project_store.get(run["id"])
+        # The bound ended episode 2, not the project: episode 3 resumed the same session.
+        assert final["state"] == "ready_for_review", final["reason"]
+        assert final["episodesUsed"] == 3 and final["plan"][0]["state"] == "candidate"
+        assert final["episodeLimitStreak"] == 0
+        assert "per-episode bound" in str(platform.requests[-1].messages)
+        events = [item["kind"] for item in service.project_store.events(run["id"], limit=200)]
+        assert "episode_limit_reached" in events
+    finally:
+        runtime.close()
+
+
+def test_repeated_episode_limits_stop_for_review(tmp_path, monkeypatch):
+    from app.project_runner import runner as runner_module
+    monkeypatch.setattr(runner_module, "MAX_LIMIT_STREAK", 2)
+    from app.agent_runtime.contracts import AgentLimits
+    tool = AgentTool(name="noop_step", description="Do nothing useful", input_schema={"type": "object", "properties": {}},
+                     effect=ToolEffect.READ_ONLY, handler=lambda context, arguments: ToolResult(ok=True, content="nothing"))
+    looping = ModelResponse(tool_calls=(ToolCall(call_id="c", name="noop_step", arguments={}),), usage=ModelUsage(5, 0, 5))
+    service, runtime, platform, _, source = build(tmp_path, [reply(PLAN), looping, looping, looping], tools=(tool,))
+    runtime.limits = AgentLimits(max_model_steps=1)
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(4):
+            cycle(service)
+        final = service.project_store.get(run["id"])
+        assert final["state"] == "needs_review" and "consecutive episodes" in final["reason"]
+        assert final["episodesUsed"] == 3
+    finally:
+        runtime.close()

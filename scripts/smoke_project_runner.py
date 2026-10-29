@@ -219,7 +219,7 @@ def main(argv=None):
         else:
             os.environ["LOOM_API_KEY"] = old_key
         secret = None
-    runtime.limits = AgentLimits(max_model_steps=8, max_tool_calls=16, model_retries=0, transport_retries=0, max_recovery_seconds=30)
+    runtime.limits = AgentLimits(max_model_steps=8, max_tool_calls=16, model_retries=2, transport_retries=2, max_recovery_seconds=90)
     budget_guard = RequestBudgetGuard(runtime, args.token_budget)
     runtime.subscribe(budget_guard.observe)
     service = QualificationService(runtime=runtime, store=store, model=model, default_workspace=workspace)
