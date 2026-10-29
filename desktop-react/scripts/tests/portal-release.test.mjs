@@ -283,3 +283,17 @@ test("release notes use a legible centered liquid mount without enlarging the li
     else globalThis.DOMRect = NativeRect;
   }
 });
+
+
+test("release notes get a restrained one-shot magnetic spring without moving adjacent labels", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const cursor = readFileSync(new URL("../../src/components/PortalLiquidCursor.tsx", import.meta.url), "utf8");
+  assert.equal((portal.match(/data-magnetic-bounce="true"/g) ?? []).length, 3,
+    "Only the three compact release-notes links use the subtle entrance bounce");
+  assert.ok(cursor.includes('element.dataset.magneticBounce === "true" ? 4.5'),
+    "Compact release links keep pointer-follow motion below other controls");
+  assert.ok(cursor.includes('magnetic.y.velocity = Math.min(magnetic.y.velocity, -110)'),
+    "Entering a release link injects one damped vertical spring impulse");
+  assert.ok(cursor.includes('owner !== previousOwner'),
+    "The impulse must be linked to a mount change rather than every frame");
+});
