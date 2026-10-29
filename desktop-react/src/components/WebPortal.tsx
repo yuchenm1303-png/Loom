@@ -767,10 +767,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       >
         <section className={editorial ? "loom-module-grid editorial-panel" : "loom-module-grid"}>
           {editorial ? <header className="editorial-panel-top">
-            <div className="editorial-modal-brand" aria-label="Smirel Loom">
+            <div className="editorial-modal-brand" aria-label="Smirel">
               <img src={SMIREL_LOGO} alt="Smirel" />
-              <span className="editorial-modal-brand-divider" aria-hidden="true" />
-              <span>Loom</span>
             </div>
             <button type="button" className="editorial-panel-close" aria-label={zh ? "关闭" : "Close"} onClick={dismissDrawer}>×</button>
             <h2 id="editorial-dialog-title">
