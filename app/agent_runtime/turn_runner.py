@@ -128,7 +128,7 @@ class TurnRunner:
                     session.final_text = ("工具恢复没有取得新进展，已停止重复调用；已有工作已保留。"
                         if session.communication_language == "zh" else
                         "Tool recovery made no progress; repeated calls stopped and existing work is preserved.")
-                    return rt._limit(session, f"tool recovery made no progress: {blocked_operation}")
+                    return rt._limit(session, session.final_text)
                 if rt.limits.max_model_steps > 0 and session.model_steps >= rt.limits.max_model_steps:
                     return rt._limit(session, "model step limit reached")
 
