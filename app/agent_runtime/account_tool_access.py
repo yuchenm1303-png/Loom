@@ -21,8 +21,15 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 _TARGET_CAPABILITIES = frozenset({"computerUse", "browserUse"})
-_CACHE_TTL_SECONDS = 30.0
+_CACHE_TTL_SECONDS = 120.0
 _ERROR_TTL_SECONDS = 5.0
+# A brief outage of the account service (this machine reaches it through a
+# slow proxy) keeps the answer the service last confirmed for this identity,
+# instead of failing every browser step. Never longer, never for a new identity,
+# and a confirmed revocation is kept just the same.
+_OUTAGE_GRACE_SECONDS = 900.0
+_OUTAGE_RECHECK_SECONDS = 60.0
+_LAST_CONFIRMED: tuple[str, dict[str, bool], float] | None = None
 _GUARD = threading.RLock()
 _CACHE_KEY = ""
 _CACHE_EXPIRES_AT = 0.0
@@ -91,6 +98,7 @@ def set_account_tool_access_credential(value: str | None) -> None:
     """Replace the runtime credential after sign-in/sign-out without a restart."""
 
     global _CREDENTIAL_OVERRIDE, _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS, _GENERATION, _DIAGNOSTIC, _FETCH_LOCK
+    global _LAST_CONFIRMED
     credential = None if value is None else str(value).strip()
     with _GUARD:
         if credential == _CREDENTIAL_OVERRIDE:
@@ -104,6 +112,7 @@ def set_account_tool_access_credential(value: str | None) -> None:
         _CACHE_EXPIRES_AT = 0.0
         _CACHE_ACCESS = {"computerUse": False, "browserUse": False}
         _DIAGNOSTIC = {"status": "not_checked"}
+        _LAST_CONFIRMED = None
 
 
 def _credential() -> str:
@@ -147,7 +156,7 @@ def _fetch_access(*, force_refresh: bool = False) -> dict[str, bool]:
 
 
 def _fetch_access_locked(*, force_refresh: bool = False, expected_generation: int | None = None) -> dict[str, bool]:
-    global _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS, _DIAGNOSTIC
+    global _CACHE_KEY, _CACHE_EXPIRES_AT, _CACHE_ACCESS, _DIAGNOSTIC, _LAST_CONFIRMED
 
     with _GUARD:
         if expected_generation is not None and expected_generation != _GENERATION:
@@ -227,11 +236,29 @@ def _fetch_access_locked(*, force_refresh: bool = False, expected_generation: in
         if generation != _GENERATION:
             # Never publish results for a signed-out or different account.
             return _denied()
+        ttl = _CACHE_TTL_SECONDS if diagnostic["status"] == "confirmed" else _ERROR_TTL_SECONDS
+        if diagnostic["status"] == "confirmed":
+            _LAST_CONFIRMED = (key, dict(access), time.monotonic())
+        elif (_outage(diagnostic) and _LAST_CONFIRMED is not None and _LAST_CONFIRMED[0] == key
+              and time.monotonic() - _LAST_CONFIRMED[2] < _OUTAGE_GRACE_SECONDS):
+            access = dict(_LAST_CONFIRMED[1])
+            diagnostic = {**diagnostic, "access_from": "recent_confirmation",
+                          "confirmed_seconds_ago": round(time.monotonic() - _LAST_CONFIRMED[2])}
+            # Each retry may wait the full request timeout; do not pay it every step.
+            ttl = _OUTAGE_RECHECK_SECONDS
         _CACHE_KEY = key
         _CACHE_ACCESS = dict(access)
         _DIAGNOSTIC = {**diagnostic, "endpoint": endpoint, "credential_generation": generation}
-        _CACHE_EXPIRES_AT = time.monotonic() + (_CACHE_TTL_SECONDS if diagnostic["status"] == "confirmed" else _ERROR_TTL_SECONDS)
+        _CACHE_EXPIRES_AT = time.monotonic() + ttl
     return access
+
+
+def _outage(diagnostic: Mapping[str, object]) -> bool:
+    """The service could not answer, as opposed to answering no (401, revoked, bad config)."""
+    if diagnostic.get("status") != "service_unavailable":
+        return False
+    status = diagnostic.get("http_status")
+    return status is None or (isinstance(status, int) and status >= 500)
 
 
 def account_tool_access_status() -> dict[str, object]:

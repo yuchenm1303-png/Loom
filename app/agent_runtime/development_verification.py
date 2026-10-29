@@ -407,10 +407,12 @@ class DevelopmentVerification:
             return
         name = call.name
         action = name in {"browser_click", "browser_click_at", "browser_type", "browser_press", "browser_hover",
-                          "browser_drag", "browser_scroll", "browser_select", "browser_send_text", "browser_run_check", "exec"}
+                          "browser_drag", "browser_scroll", "browser_select", "browser_send_text", "browser_run_check", "exec",
+                          "browser_measure_motion"}
         action = action or (name == "computer_action" and call.arguments.get("action", {}).get("type") not in
                             {"screenshot", "done", "call_user"})
-        visual = name in {"browser_screenshot", "browser_capture_sequence", "view_images", "browser_run_check", "computer_action"}
+        visual = name in {"browser_screenshot", "browser_capture_sequence", "view_images", "browser_run_check", "computer_action",
+                          "browser_look"}
         if not action and not visual:
             return
         state = self.latest(session)

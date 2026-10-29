@@ -1339,6 +1339,8 @@ function createWindow(): void {
   trustRendererDocument(window, document.url);
   installRendererContentSecurity(window, document);
   void loadRenderer(window, document);
+  // AI tasks open their own tabs in Loom Browser without the panel open first.
+  startEmbeddedBrowserAgentClient(window);
   window.on("closed", () => {
     embeddedBrowserAgentClient?.stop();
     embeddedBrowserAgentClient = null;
@@ -1665,15 +1667,27 @@ ipcMain.handle("loom:embedded-browser", async (event, command: EmbeddedBrowserCo
   if (!command || typeof command !== "object" || typeof command.action !== "string") {
     throw new Error("Invalid browser command.");
   }
-  // No Chromium tab/process is created until the user first opens Browser.
-  if (!embeddedBrowserManager) {
-    embeddedBrowserManager = new EmbeddedBrowserManager(mainWindow,
-      () => fs.readFile(path.join(browserExtensionSource(), "browser-hud.js"), "utf8"));
-    embeddedBrowserAgentClient = new EmbeddedBrowserAgentClient(embeddedBrowserManager, embeddedBrowserToken());
-    embeddedBrowserAgentClient.start();
-  }
-  return embeddedBrowserManager.command(command);
+  return ensureEmbeddedBrowserManager(mainWindow).command(command);
 });
+
+// No Chromium tab/process is created until the user opens Browser or an AI
+// task first uses it; the agent client below only long-polls the local Host.
+function ensureEmbeddedBrowserManager(window: BrowserWindow): EmbeddedBrowserManager {
+  if (!embeddedBrowserManager) {
+    embeddedBrowserManager = new EmbeddedBrowserManager(window,
+      () => fs.readFile(path.join(browserExtensionSource(), "browser-hud.js"), "utf8"));
+  }
+  return embeddedBrowserManager;
+}
+
+function startEmbeddedBrowserAgentClient(window: BrowserWindow): void {
+  if (embeddedBrowserAgentClient) return;
+  embeddedBrowserAgentClient = new EmbeddedBrowserAgentClient(
+    () => embeddedBrowserManager,
+    () => ensureEmbeddedBrowserManager(window),
+    embeddedBrowserToken());
+  embeddedBrowserAgentClient.start();
+}
 ipcMain.handle("loom:set-native-theme", fromLoomRenderer((_event, source: "system" | "light" | "dark") => {
   const next = source === "light" || source === "dark" ? source : "system";
   nativeTheme.themeSource = next;

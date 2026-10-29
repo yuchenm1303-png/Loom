@@ -86,6 +86,11 @@ const api = {
     ipcRenderer.on("loom:embedded-browser-state", handler);
     return () => ipcRenderer.removeListener("loom:embedded-browser-state", handler);
   },
+  onEmbeddedBrowserReveal: (listener: (target: { tabId: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, target: { tabId: string }) => listener(target);
+    ipcRenderer.on("loom:embedded-browser-reveal", handler);
+    return () => ipcRenderer.removeListener("loom:embedded-browser-reveal", handler);
+  },
   onEmbeddedBrowserFind: (listener: () => void) => {
     const handler = () => listener();
     ipcRenderer.on("loom:embedded-browser-find", handler);

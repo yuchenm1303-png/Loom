@@ -325,6 +325,10 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 "Settings > Browser. Remove connect/cdp_url, or ask the user to enable "
                 "model-selected browser connections."
             )
+        if not connect and not requested_cdp:
+            default_connection = getattr(runtime, "browser_default_connection", None)
+            if callable(default_connection):
+                connect = default_connection(str(arguments.get("url") or ""))
         factory, external, label = runtime.browser_session_connection(
             connect, cdp_url=requested_cdp
         )
@@ -1425,8 +1429,9 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                                 "to choose. launch starts Loom's own browser; attach drives an "
                                 "already-running local browser named by cdp_url; current_tab drives "
                                 "the tab the user is looking at through the Loom bridge extension; embedded "
-                                "uses only tabs explicitly authorized inside Loom Desktop Browser. "
-                                "Omit to use the configured default."
+                                "opens a tab of this task's own in Loom Browser, the panel inside Loom Desktop "
+                                "(or uses a tab the user allowed AI on). Omit to use the configured default; "
+                                "a localhost URL then opens in Loom Browser."
                             ),
                         },
                         "cdp_url": {
@@ -1985,6 +1990,9 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
     tools.append(browser_capture_sequence_tool(runtime))
     from .browser_verification import browser_run_check_tool
     tools.append(browser_run_check_tool(runtime))
+    from .browser_iterate import browser_look_tool, browser_measure_motion_tool
+    tools.append(browser_look_tool(runtime))
+    tools.append(browser_measure_motion_tool(runtime))
     return tuple(replace(tool, handler=lifecycle_handler(tool.handler)) for tool in tools)
 
 

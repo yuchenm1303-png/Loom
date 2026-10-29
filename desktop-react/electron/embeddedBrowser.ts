@@ -20,6 +20,8 @@ export interface EmbeddedBrowserTab {
   canGoForward: boolean;
   error?: string;
   aiAllowed?: boolean;
+  /** Opened by an AI task: its own cookie partition, never restored. */
+  agentOwned?: boolean;
   zoomPercent?: number;
   findResult?: { matches: number; activeMatchOrdinal: number };
 }
@@ -42,8 +44,12 @@ export type EmbeddedBrowserCommand =
 interface InternalTab {
   view: WebContentsView;
   state: EmbeddedBrowserTab;
+  partition: string;
 }
 const PARTITION = "persist:loom-embedded-browser";
+// Tabs an AI task opens for itself. In memory only, so they never see the
+// sign-ins of the user's own tabs and leave nothing behind on exit.
+const AGENT_PARTITION = "loom-embedded-agent";
 const MAX_TABS = 16;
 const STATE_FILE = "embedded-browser-tabs.json";
 
@@ -66,6 +72,8 @@ export class EmbeddedBrowserManager {
   private readonly aiAllowed = new Set<string>();
   private readonly aiLeases = new Map<string,string>();
   private readonly aiSignatures = new Map<string,string>();
+  // The user revoked an AI tab: stop opening new ones until they allow AI again.
+  private agentTabsBlocked = false;
   private readonly statePath: string;
   private activeId: string | null = null;
   private viewport: { x: number; y: number; width: number; height: number } | null = null;
@@ -76,11 +84,13 @@ export class EmbeddedBrowserManager {
   constructor(private readonly window: BrowserWindow, loadHudSource?: () => string | Promise<string>) {
     this.hud = new EmbeddedBrowserHud(loadHudSource);
     this.statePath = path.join(app.getPath("userData"), STATE_FILE);
-    const browserSession = session.fromPartition(PARTITION);
-    // Site content must never request native OS privileges without a dedicated
-    // audited user prompt. Ordinary browsing, cookies, and downloads still work.
-    browserSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
-    browserSession.setPermissionCheckHandler(() => false);
+    for (const partition of [PARTITION, AGENT_PARTITION]) {
+      const browserSession = session.fromPartition(partition);
+      // Site content must never request native OS privileges without a dedicated
+      // audited user prompt. Ordinary browsing, cookies, and downloads still work.
+      browserSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+      browserSession.setPermissionCheckHandler(() => false);
+    }
     const restored = this.readRestoredTabs();
     for (const url of restored.urls) this.addTab(url, false);
     if (!this.order.length) this.addTab("", false);
@@ -102,7 +112,8 @@ export class EmbeddedBrowserManager {
   private saveTabs(): void {
     if (this.disposed) return;
     // URLs, not cookies/passwords. Electron persists site cookies in its isolated partition.
-    const urls = this.order.map(id => this.tabs.get(id)?.state.url || "").filter(validNavigation);
+    const urls = this.order.filter(id => !this.tabs.get(id)?.state.agentOwned)
+      .map(id => this.tabs.get(id)?.state.url || "").filter(validNavigation);
     try {
       const folder = path.dirname(this.statePath);
       fs.mkdirSync(folder, { recursive: true });
@@ -112,12 +123,14 @@ export class EmbeddedBrowserManager {
     } catch { /* Browsing remains available if persistence is unwritable. */ }
   }
 
-  private addTab(url: string, activate = true, existingView?: WebContentsView, skipLoad = false): void {
+  private addTab(url: string, activate = true, existingView?: WebContentsView, skipLoad = false,
+    partition = PARTITION): string {
     if (this.tabs.size >= MAX_TABS) throw new Error("Maximum of 16 browser tabs.");
     const id = crypto.randomUUID();
+    const agentOwned = partition === AGENT_PARTITION;
     const view = existingView ?? new WebContentsView({
       webPreferences: {
-        partition: PARTITION,
+        partition,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -125,10 +138,14 @@ export class EmbeddedBrowserManager {
       },
     });
     view.setBackgroundColor("#101114");
+    // A task keeps working in its tab while the user looks at another one;
+    // a throttled (then frozen) background page would never answer it.
+    if (agentOwned) view.webContents.setBackgroundThrottling(false);
     const state: EmbeddedBrowserTab = {
       id, url: url || "", title: tabLabel(url), loading: false, canGoBack: false, canGoForward: false,
+      ...(agentOwned ? { agentOwned: true } : {}),
     };
-    this.tabs.set(id, { view, state });
+    this.tabs.set(id, { view, state, partition });
     this.order.push(id);
     const update = () => {
       if (!this.tabs.has(id)) return;
@@ -173,7 +190,7 @@ export class EmbeddedBrowserManager {
         action: "allow",
         overrideBrowserWindowOptions: {
           webPreferences: {
-            partition: PARTITION,
+            partition,
             sandbox: true,
             contextIsolation: true,
             nodeIntegration: false,
@@ -188,9 +205,17 @@ export class EmbeddedBrowserManager {
           const popup = existing
             ? new WebContentsView({ webContents: existing })
             : new WebContentsView({ webPreferences: {
-              partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
+              partition, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
             } });
-          this.addTab(details.url === "about:blank" ? "" : details.url, details.disposition !== "background-tab", popup, true);
+          const popupId = this.addTab(details.url === "about:blank" ? "" : details.url,
+            details.disposition !== "background-tab", popup, true, partition);
+          // A popup of an AI tab stays with that task; one of the user's tabs
+          // still needs the user's own consent.
+          if (agentOwned) {
+            this.aiAllowed.add(popupId);
+            const owner = this.aiLeases.get(id);
+            if (owner) this.aiLeases.set(popupId, owner);
+          }
           if (!existing && validNavigation(details.url)) {
             void popup.webContents.loadURL(details.url).catch(() => {});
           }
@@ -220,6 +245,48 @@ export class EmbeddedBrowserManager {
     });
     this.saveTabs();
     this.publish();
+    return id;
+  }
+
+  /** The tab an AI task works in: its own lease, else a new AI tab, revealed to the user. */
+  private agentTab(owner: string): string {
+    for (const id of this.order) {
+      if (this.aiAllowed.has(id) && this.aiLeases.get(id) === owner) return id;
+    }
+    if (this.agentTabsBlocked) {
+      throw new Error("The user turned AI off in Loom Browser. Ask them to allow AI for a tab before using it again.");
+    }
+    const id = this.addTab("", true, undefined, false, AGENT_PARTITION);
+    this.aiAllowed.add(id);
+    this.aiLeases.set(id, owner);
+    if (!this.window.isDestroyed() && !this.window.webContents.isDestroyed()) {
+      this.window.webContents.send("loom:embedded-browser-reveal", { tabId: id });
+    }
+    return id;
+  }
+
+  /**
+   * Put an AI tab on screen so it can be captured: select it and, when the
+   * panel is closed, ask the renderer to show it again. A tab the user owns
+   * is never pulled in front of what they are looking at.
+   */
+  private async agentBringToFront(entry: InternalTab): Promise<void> {
+    if (!entry.state.agentOwned) {
+      throw new Error("This tab is not on screen (the user is looking at another tab or closed Loom Browser); ask them to show it.");
+    }
+    this.activeId = entry.state.id;
+    this.syncView();
+    if (!this.viewport && !this.window.isDestroyed() && !this.window.webContents.isDestroyed()) {
+      this.window.webContents.send("loom:embedded-browser-reveal", { tabId: entry.state.id });
+    }
+    this.publish();
+    const deadline = Date.now() + 3000;
+    while (this.attached !== entry.view && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    if (this.attached !== entry.view) throw new Error("Loom Browser is not showing; the screenshot needs it open.");
+    // Let the compositor produce a frame for the newly attached view.
+    await new Promise(resolve => setTimeout(resolve, 150));
   }
 
   private closeTab(id: string): void {
@@ -305,8 +372,9 @@ export class EmbeddedBrowserManager {
       case "devtools": active?.view.webContents.openDevTools({ mode: "detach" }); break;
       case "allow-ai":
         if (!this.tabs.has(command.tabId)) throw new Error("Missing browser tab.");
-        if (command.enabled) this.aiAllowed.add(command.tabId);
+        if (command.enabled) { this.aiAllowed.add(command.tabId); this.agentTabsBlocked = false; }
         else {
+          if (this.tabs.get(command.tabId)!.state.agentOwned) this.agentTabsBlocked = true;
           this.aiAllowed.delete(command.tabId); this.aiLeases.delete(command.tabId); this.aiSignatures.delete(command.tabId);
           await this.hud.hide(this.tabs.get(command.tabId)!.view.webContents, true);
         }
@@ -451,7 +519,14 @@ export class EmbeddedBrowserManager {
       }
       return { released: 1 };
     }
-    const tabId = String(args.tab_id || this.activeId || "");
+    let tabId = String(args.tab_id || "");
+    if (!tabId) {
+      // No tab named: the active tab when the user allowed AI on it for this
+      // task, otherwise this task's own AI tab (opened on first use).
+      const active = this.activeId || "";
+      const lease = this.aiLeases.get(active);
+      tabId = this.aiAllowed.has(active) && (!lease || lease === owner) ? active : this.agentTab(owner);
+    }
     let entry = this.tabs.get(tabId);
     if (!entry || !this.aiAllowed.has(tabId)) {
       throw new Error("Enable AI for this tab inside Loom Browser first.");
@@ -465,9 +540,15 @@ export class EmbeddedBrowserManager {
       case "navigate": {
         const url = normalizeBrowserAddress(String(args.url || ""));
         if (args.new_tab === true) {
-          // Consent is per tab, not per origin or per AI task. Only the human
-          // may authorize a newly created tab from the browser toolbar.
-          throw new Error("Open the new tab in Loom Browser and explicitly allow AI for it.");
+          // Consent is per tab. A task may open more tabs of its own (own
+          // partition), never one in the user's signed-in partition.
+          if (this.agentTabsBlocked) throw new Error("The user turned AI off in Loom Browser.");
+          tabId = this.addTab("", true, undefined, false, AGENT_PARTITION);
+          this.aiAllowed.add(tabId);
+          this.aiLeases.set(tabId, owner);
+          entry = this.tabs.get(tabId)!;
+          await entry.view.webContents.loadURL(url);
+          break;
         }
         await wc.loadURL(url);
         break;
@@ -540,7 +621,12 @@ export class EmbeddedBrowserManager {
         break;
       }
       case "screenshot": {
-        const image = await this.hud.capture(wc, () => wc.capturePage());
+        // Only a tab on screen can be captured; capturePage on a detached view never returns.
+        if (this.attached !== entry.view) await this.agentBringToFront(entry);
+        const image = await Promise.race([
+          this.hud.capture(wc, () => wc.capturePage()),
+          new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("Screenshot timed out.")), 10_000)),
+        ]);
         if (image.isEmpty()) throw new Error("No browser image is available.");
         let png = image.toPNG();
         if (png.byteLength > 6_000_000) png = image.resize({ width: Math.min(1600, image.getSize().width) }).toPNG();
@@ -556,14 +642,14 @@ export class EmbeddedBrowserManager {
         return { ok:true, value:result ?? null };
       }
       case "cookies": {
-        const cookies = await session.fromPartition(PARTITION).cookies.get({ url:entry.state.url });
+        const cookies = await session.fromPartition(entry.partition).cookies.get({ url:entry.state.url });
         return { cookies: cookies.map(cookie => ({
           name: cookie.name, value: cookie.value, domain:cookie.domain, path:cookie.path,
           secure:cookie.secure, httpOnly:cookie.httpOnly, sameSite:cookie.sameSite, expires:cookie.expirationDate,
         })) };
       }
       case "clear_cookies": {
-        const store = session.fromPartition(PARTITION).cookies;
+        const store = session.fromPartition(entry.partition).cookies;
         const cookies = await store.get({ url:entry.state.url });
         for (const cookie of cookies) await store.remove(entry.state.url, cookie.name);
         return { cleared:cookies.length };

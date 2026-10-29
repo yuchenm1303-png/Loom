@@ -726,7 +726,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
 };
 
 // The desktop's embedded browser is a native view; the fixture keeps the tab strip in memory so the browser panel renders and answers.
-type BrowserTab = { id: string; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; aiAllowed?: boolean };
+type BrowserTab = { id: string; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; aiAllowed?: boolean; agentOwned?: boolean };
 type BrowserState = { tabs: BrowserTab[]; activeId: string | null };
 const browserListeners = new Set<(state: BrowserState) => void>();
 let browserTabSerial = 2;
@@ -757,6 +757,17 @@ function embeddedBrowser(command: Record<string, unknown>): BrowserState {
   browserState = { tabs, activeId };
   if (command.action !== "snapshot" && command.action !== "bounds") browserListeners.forEach((listener) => listener(browserState));
   return browserState;
+}
+const browserRevealListeners = new Set<(target: { tabId: string }) => void>();
+// Acts like an AI task opening its own Loom Browser tab: Electron adds the tab, then asks the panel to show.
+(window as unknown as { __loomAgentBrowserTab(): string }).__loomAgentBrowserTab = () => {
+  browserTabSerial += 1;
+  const id = `tab-${browserTabSerial}`;
+  browserState = { tabs: [...browserState.tabs, { id, url: "", title: "", loading: false, canGoBack: false,
+    canGoForward: false, aiAllowed: true, agentOwned: true }], activeId: id };
+  browserListeners.forEach((listener) => listener(browserState));
+  browserRevealListeners.forEach((listener) => listener({ tabId: id }));
+  return id;
 }
 
 // The account service. Without ?account the user is simply signed in (the dock's account tool, the profile page).
@@ -837,6 +848,7 @@ const accountBridge: Record<string, unknown> = {
 const bridge: Record<string, unknown> = {
   embeddedBrowser: async (command: Record<string, unknown>) => embeddedBrowser(command),
   onEmbeddedBrowserChange: (listener: (state: BrowserState) => void) => { browserListeners.add(listener); return () => browserListeners.delete(listener); },
+  onEmbeddedBrowserReveal: (listener: (target: { tabId: string }) => void) => { browserRevealListeners.add(listener); return () => browserRevealListeners.delete(listener); },
   connect: async () => ({ protocolVersion: 1, serverInfo: { name: "live-fixture", version: "0" }, capabilities: {},
     runtime: { model: profile.name, defaultWorkspace: workspace, defaultPermissionMode: "full-access",
       permissionModes: ["read-only", "approval", "workspace", "full-access"] } }),

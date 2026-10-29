@@ -68,6 +68,8 @@ export interface LoomBridge {
   onEmbeddedBrowserChange?(listener: (state: import("../components/BrowserWorkspace").EmbeddedBrowserState) => void): () => void;
   onEmbeddedBrowserFind?(listener: () => void): () => void;
   onEmbeddedBrowserFocusAddress?(listener: () => void): () => void;
+  /** An AI task opened its own tab in Loom Browser; show the browser panel. */
+  onEmbeddedBrowserReveal?(listener: (target: { tabId: string }) => void): () => void;
   /** Open a folder or reveal a file in the native file manager. */
   revealPath(targetPath: string): Promise<boolean>;
   /** Copy an image source to the native OS clipboard. */

@@ -29,10 +29,21 @@ def test_native_control_requires_human_tab_grant_and_no_debug_port():
     assert "embeddedBrowserToken()" in main
 
 
+def test_tabs_a_task_opens_are_its_own_and_never_the_users():
+    # Behaviour is exercised in real Electron by scripts/tests/embedded-browser-agent-electron.mjs.
+    source = MANAGER.read_text(encoding="utf-8")
+    assert 'const AGENT_PARTITION = "loom-embedded-agent";' in source  # in memory: no "persist:" prefix
+    assert 'this.addTab("", true, undefined, false, AGENT_PARTITION)' in source
+    assert "!this.tabs.get(id)?.state.agentOwned" in source  # never restored
+    assert "if (!entry.state.agentOwned) {" in source  # a user's tab is not pulled in front
+    main = MAIN.read_text(encoding="utf-8")
+    assert "startEmbeddedBrowserAgentClient(window);" in main
+
+
 def test_bridge_is_isolated_and_authenticated():
     source = BRIDGE.read_text(encoding="utf-8")
     assert 'http://127.0.0.1:39223' in source
     assert '"X-Loom-Token": this.token' in source
-    assert "this.manager.agentCommand(action, args)" in source
+    assert "this.manager().agentCommand(action, args)" in source
     assert "this.abort.abort()" in source
     assert "No CDP debug port is enabled" in source

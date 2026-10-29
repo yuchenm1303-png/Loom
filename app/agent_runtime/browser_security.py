@@ -23,6 +23,11 @@ _UNICODE_DOTS = str.maketrans({"\u3002": ".", "\uff0e": ".", "\uff61": "."})
 # private-network switch governs. Every other prohibited rule is an endpoint
 # that hands out credentials and is never reachable.
 _LOCAL_RULES = frozenset({*LOCAL_HOST_NAMES, "*.localhost"})
+# Local addresses are the user's own dev servers more often than not; say how
+# to allow them instead of leaving the model to try another browser.
+_PRIVATE_NETWORK_HINT = (". Loom's browser opens local and private addresses only when the user turns on "
+                         "Settings > Browser > Allow private network addresses; ask them, and do not switch "
+                         "to another browser to get around it.")
 _DEFAULT_PROHIBITED = tuple(sorted(_LOCAL_RULES | INFRASTRUCTURE_HOST_NAMES))
 
 
@@ -188,6 +193,7 @@ class BrowserSecurityPolicy:
             if not local_only or not self.allow_private_networks:
                 raise BrowserURLPolicyError(
                     f"browser navigation to prohibited host is blocked: {host}"
+                    + (_PRIVATE_NETWORK_HINT if local_only else "")
                 )
 
         if allowed_domains:
@@ -217,7 +223,8 @@ class BrowserSecurityPolicy:
                 f"browser navigation to the cloud metadata service is blocked: {address}"
             )
         if not self.allow_private_networks and not address.is_global:
-            raise BrowserURLPolicyError(f"browser navigation to non-public IP is blocked: {address}")
+            raise BrowserURLPolicyError(f"browser navigation to non-public IP is blocked: {address}"
+                                        + _PRIVATE_NETWORK_HINT)
 
 
 __all__ = ["BrowserSecurityPolicy", "DNSResolver"]

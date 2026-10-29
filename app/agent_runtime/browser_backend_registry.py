@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import Any
+from urllib.parse import urlsplit
 import os
 import time
 import hashlib
@@ -136,9 +137,31 @@ class BrowserBackendRegistryMixin:
         self._loom_embedded_bridge = bridge
         return bridge
 
+    @staticmethod
+    def _embedded_browser_present() -> bool:
+        # Loom Desktop hands its Host this token and polls the embedded bridge,
+        # so its presence means a task can open its own Loom Browser tab.
+        return bool(os.environ.get("LOOM_BROWSER_EMBEDDED_TOKEN"))
+
+    def browser_default_connection(self, url: str) -> str:
+        """The browser a browser_open without connect uses for this URL.
+
+        A local dev server is the user's own project: show it in Loom Browser,
+        beside the conversation, in a tab of the task's own. Everything else
+        keeps the configured default.
+        """
+        if not self._embedded_browser_present():
+            return ""
+        host = (urlsplit(str(url or "").strip()).hostname or "").casefold()
+        return "embedded" if host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".localhost") else ""
+
     def _backend_model_selectable(self, backend: str) -> bool:
         selected = str(getattr(self, "_browser_requested_backend", ISOLATED_BROWSER))
         if backend == ISOLATED_BROWSER:
+            return True
+        if backend == EMBEDDED_BROWSER and self._embedded_browser_present():
+            # A task drives only tabs it opened (own cookie partition) or ones
+            # the user allowed, which is no wider than the isolated browser.
             return True
         if backend == selected:
             return True
@@ -157,7 +180,8 @@ class BrowserBackendRegistryMixin:
         selected = str(getattr(self, "_browser_requested_backend", ISOLATED_BROWSER))
         cdp_configured = bool(str(getattr(self, "_browser_cdp_url", "") or "").strip())
         embedded = getattr(self, "_loom_embedded_bridge", None)
-        embedded_connected = bool(embedded is not None and embedded.connected)
+        # Loom Desktop connects on first use, so being inside it is enough.
+        embedded_connected = bool(embedded is not None and embedded.connected) or self._embedded_browser_present()
         return (
             {
                 "id": CURRENT_BROWSER,
@@ -203,7 +227,7 @@ class BrowserBackendRegistryMixin:
                 "model_selectable": self._backend_model_selectable(EMBEDDED_BROWSER),
                 "external_browser": True,
                 "requires_extension": False,
-                "reason": "" if embedded_connected else "Open Loom Desktop Browser and enable AI for the current tab.",
+                "reason": "" if embedded_connected else "Only available inside Loom Desktop.",
             },
         )
 
@@ -227,9 +251,10 @@ class BrowserBackendRegistryMixin:
             )
         elif selected == EMBEDDED_BROWSER:
             description = (
-                "Control the user's explicitly authorized tab inside Loom Desktop's embedded browser. "
-                "Open the Browser workspace and enable AI for the tab first. Reuse the same visible page, "
-                "login cookies and tabs; never substitute another browser if permission is off."
+                "Drive Loom Browser, the browser panel inside Loom Desktop beside the conversation. Uses the tab "
+                "the user allowed AI on, otherwise opens a tab of this task's own (separate cookies, none of the "
+                "user's sign-ins) and shows the panel. If the user turns AI off for a tab, stop and ask; never "
+                "substitute another browser."
             )
         elif selected == DEVELOPER_CDP:
             description = (
@@ -242,6 +267,12 @@ class BrowserBackendRegistryMixin:
                 "Open a separate visible browser owned by Loom by default. This isolated backend does not claim to be the "
                 "user's already-running Edge/Chrome. Switching to an external signed-in browser requires the user's "
                 "model-selected browser connection permission."
+            )
+        if selected != EMBEDDED_BROWSER and self._embedded_browser_present():
+            description += (
+                " Inside Loom Desktop, connect=embedded opens a tab of this task's own in Loom Browser, the panel "
+                "beside the conversation the user is watching (separate cookies, none of the user's sign-ins). "
+                "A localhost/127.0.0.1 URL without connect opens there: use it to preview and check UI you build."
             )
         if tool.description == description:
             return

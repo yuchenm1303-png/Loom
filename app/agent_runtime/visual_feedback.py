@@ -72,7 +72,7 @@ class VisualFeedback:
 
     def adopt(self, session, call, result):
         # Only Loom-owned image tools may turn a result into a model attachment.
-        if call.name not in {"view_images", "browser_capture_sequence", "browser_run_check"}:
+        if call.name not in {"view_images", "browser_capture_sequence", "browser_run_check", "browser_look"}:
             return
         if not result.ok and call.name != "browser_run_check":
             return

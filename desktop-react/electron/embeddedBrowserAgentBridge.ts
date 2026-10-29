@@ -18,7 +18,9 @@ export class EmbeddedBrowserAgentClient {
   private readonly abort = new AbortController();
 
   constructor(
-    private readonly manager: EmbeddedBrowserManager,
+    // Registration only reports a manager that exists; a command creates one.
+    private readonly peekManager: () => EmbeddedBrowserManager | null,
+    private readonly manager: () => EmbeddedBrowserManager,
     private readonly token: string,
   ) {}
 
@@ -50,8 +52,8 @@ export class EmbeddedBrowserAgentClient {
   }
 
   private async register(): Promise<void> {
-    const snapshot = this.manager.snapshot();
-    const active = snapshot.tabs.find(tab => tab.id === snapshot.activeId);
+    const snapshot = this.peekManager()?.snapshot();
+    const active = snapshot?.tabs.find(tab => tab.id === snapshot.activeId);
     await this.request("/register", {
       client_id: this.clientId,
       version: VERSION,
@@ -82,7 +84,7 @@ export class EmbeddedBrowserAgentClient {
           ? command.args as Record<string, unknown> : {};
         if (!id || !action) continue;
         try {
-          const result = await this.manager.agentCommand(action, args);
+          const result = await this.manager().agentCommand(action, args);
           await this.request("/result", { id, ok:true, result });
         } catch (cause) {
           const error = cause instanceof Error ? cause.message : String(cause);

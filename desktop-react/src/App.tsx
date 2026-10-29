@@ -1007,7 +1007,26 @@ export default function App() {
       }, rightOpenIntent);
     };
     window.addEventListener("loom:browser-activity-open", openBrowserActivity);
-    return () => window.removeEventListener("loom:browser-activity-open", openBrowserActivity);
+    // An AI task opened its own tab (already the active one): show it.
+    const disposeReveal = window.loom?.onEmbeddedBrowserReveal?.(() => {
+      if (!browserAvailable) return;
+      runLayoutTransition(() => {
+        setReviewOpen(false);
+        setAgentsOpen(false);
+        setArtifactPreview(null);
+        setSelectedProjectId("");
+        setFilesProjectId("");
+        setBackgroundTasksOpen(false);
+        setTaskPlanOpen(false);
+        setInspectorOpen(false);
+        setBrowserActivityTarget(null);
+        setBrowserOpen(true);
+      }, rightOpenIntent);
+    });
+    return () => {
+      window.removeEventListener("loom:browser-activity-open", openBrowserActivity);
+      disposeReveal?.();
+    };
   }, [browserAvailable, runLayoutTransition, rightOpenIntent]);
 
   useEffect(() => {

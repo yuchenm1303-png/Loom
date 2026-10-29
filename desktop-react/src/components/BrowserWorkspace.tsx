@@ -15,6 +15,7 @@ export interface EmbeddedBrowserTab {
   canGoForward: boolean;
   error?: string;
   aiAllowed?: boolean;
+  agentOwned?: boolean;
   zoomPercent?: number;
   findResult?: { matches: number; activeMatchOrdinal: number };
 }
