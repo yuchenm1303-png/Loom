@@ -456,6 +456,11 @@
   font-size: 16px;
   line-height: 1.5;
 }
+/* Inline text boxes ignore individual CSS translations. Keep the release
+   link in the same line flow but make its magnetic spring actually paint. */
+.loom-editorial .editorial-release a[data-magnetic-bounce="true"] {
+  display: inline-block;
+}
 .loom-editorial .editorial-version { font-variant-numeric: lining-nums tabular-nums; }
 
 /* The one picture: a task, start to finish, set in type and opened by a hairline, like every block below it. The hairline
