@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import uuid
 
 from .store import encoded
@@ -18,6 +19,22 @@ MAX_LIMIT_STREAK = 8
 # A review verdict whose evidence the runner rejects goes back to the reviewer
 # with the reason this many times before the run stops for inspection.
 MAX_REVIEW_REJECTIONS = 2
+# A provider or network outage ends an episode, not the project: the task waits
+# (30 s doubling to 30 min) and continues. Permanent refusals still stop the run.
+MAX_TRANSIENT_STREAK = 10
+TRANSIENT_MARKERS = ("apiconnectionerror", "connection error", "apitimeouterror", "timed out", "timeout",
+                     "remotedisconnected", "connection reset", "connection aborted", "stream_stall",
+                     "stopped producing output", "temporarily", "overloaded", " 429", " 500", " 502", " 503", " 504",
+                     "status 429", "status 500", "status 502", "status 503", "status 504")
+PERMANENT_MARKERS = (" 401", " 402", " 403", "status 401", "status 402", "status 403", "insufficient balance",
+                     "api_key", "invalid api key", "quota", "额度", "unauthorized", "forbidden")
+
+
+def transient_failure(error):
+    text = f" {str(error or '').lower()} "
+    if not text.strip().startswith("aitransporterror") and "modelrequesttimeout" not in text:
+        return False  # only provider transport failures; a tool or logic error is the work's own
+    return any(marker in text for marker in TRANSIENT_MARKERS) and not any(marker in text for marker in PERMANENT_MARKERS)
 
 
 def object_reply(text):
@@ -192,6 +209,8 @@ class ProjectRunner:
                         return
 
     def _dispatch(self, run):
+        if run.get("retryAfter", 0) > time.time():
+            return  # waiting out a provider/network outage
         budget_owner = parallel.owner(self.store, run) or run
         if (budget_owner["episodesUsed"] >= budget_owner["maxEpisodes"]
                 or self.budget.report(run)["chargedTokens"] >= budget_owner["tokenBudget"]):
@@ -346,6 +365,20 @@ class ProjectRunner:
                 self.store.save(db, current, "episode_limit_reached")
                 return
             current["episodeLimitStreak"] = 0
+            if state == "failed" and transient_failure(result.get("error")):
+                streak = current.get("transientFailureStreak", 0) + 1
+                current["transientFailureStreak"] = streak
+                if streak > MAX_TRANSIENT_STREAK:
+                    current.update(state="needs_review", control="paused",
+                                   reason=f"{streak} consecutive episodes failed on the provider or network: {result['error'][:500]}")
+                else:
+                    current["retryAfter"] = time.time() + min(1800, 30 * 2 ** (streak - 1))
+                    current["handoff"] = ("The previous episode was interrupted by a provider or network failure; "
+                                          "continue from the workspace and session state.\n" + current.get("handoff", ""))[:12000]
+                self.store.save(db, current, "transient_failure_retry")
+                return
+            if state == "completed":
+                current["transientFailureStreak"] = 0
             if result.get("reviewRejected") and current.get("reviewEvidenceRejections", 0) < MAX_REVIEW_REJECTIONS:
                 # A malformed or under-evidenced verdict is the reviewer's protocol
                 # error, not a verdict on the project: return the reason and let it

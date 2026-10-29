@@ -469,3 +469,76 @@ def test_continued_episode_starts_from_a_compacted_handoff_without_a_model_call(
         assert final["tokensUsed"] == 15
     finally:
         runtime.close()
+
+
+@pytest.mark.parametrize("error,transient", [
+    ("AITransportError: AI request failed via provider 'p': APIConnectionError: Connection error.", True),
+    ("AITransportError: AI request failed via provider 'p': APITimeoutError: Request timed out.", True),
+    ("AITransportError: provider returned status 503: overloaded", True),
+    ("AITransportError: Error 402 Insufficient Balance", False),
+    ("AITransportError: provider returned status 401: invalid api key", False),
+    ("RuntimeError: model repeatedly returned malformed responses: timed out parsing", False),
+    ("Worker must report action and nonempty summary", False),
+])
+def test_transient_failure_classification(error, transient):
+    from app.project_runner.runner import transient_failure
+    assert transient_failure(error) is transient
+
+
+def _failing_once(platform, error):
+    original, calls = platform.execute_chat, []
+    def execute(profile, request):
+        calls.append(request)
+        if len(calls) == 2:  # the worker's first request; the planner's went through
+            platform.requests.append(request)
+            raise error
+        return original(profile, request)
+    platform.execute_chat = execute
+
+
+def test_provider_outage_ends_the_episode_not_the_project(tmp_path):
+    from app.ai.errors import AITransportError
+    from app.agent_runtime.contracts import AgentLimits
+    service, runtime, platform, _, source = build(tmp_path, [reply(PLAN), reply({"action": "candidate", "summary": "Done after the outage"})])
+    runtime.limits = AgentLimits(transport_retries=0)
+    _failing_once(platform, AITransportError("AI request failed via provider 'p': APIConnectionError: Connection error.", retryable=False))
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(3):  # plan, failed worker episode, its settlement
+            cycle(service)
+        waiting = service.project_store.get(run["id"])
+        # Real ledger run: one connection error stopped a whole two-worker project.
+        assert waiting["state"] == "running" and waiting["control"] == "active", waiting["reason"]
+        assert waiting["transientFailureStreak"] == 1 and waiting["retryAfter"] > __import__("time").time()
+        assert waiting["plan"][0]["state"] == "pending" and "network failure" in waiting["handoff"]
+        count = len(platform.requests)
+        cycle(service)
+        assert len(platform.requests) == count  # nothing is dispatched while backing off
+        with service.project_store.transaction() as db:
+            current = service.project_store._read(db, run["id"])
+            current["retryAfter"] = 0
+            service.project_store.save(db, current, "test_backoff_elapsed")
+        cycle(service)
+        cycle(service)
+        final = service.project_store.get(run["id"])
+        assert final["state"] == "ready_for_review" and final["transientFailureStreak"] == 0, final["reason"]
+        assert final["sessions"]["worker-0"] and final["episodesUsed"] == 3
+    finally:
+        runtime.close()
+
+
+def test_permanent_provider_refusal_still_stops_the_project(tmp_path):
+    from app.ai.errors import AITransportError
+    from app.agent_runtime.contracts import AgentLimits
+    service, runtime, platform, _, source = build(tmp_path, [reply(PLAN)])
+    runtime.limits = AgentLimits(transport_retries=0)
+    _failing_once(platform, AITransportError("Error 402 Insufficient Balance", retryable=False, status_code=402))
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(3):
+            cycle(service)
+        final = service.project_store.get(run["id"])
+        assert final["state"] == "needs_review" and "402" in final["reason"]
+        assert not final.get("retryAfter")
+    finally:
+        runtime.close()
