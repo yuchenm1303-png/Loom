@@ -453,4 +453,31 @@ html[data-loom-reduced-motion="true"] .loom-tool-progress > span,
 html[data-loom-reduced-motion="true"] .loom-tool-tip { transition: none !important; }
 html[data-loom-reduced-motion="true"] .loom-tool-count::after,
 html[data-loom-reduced-motion="true"] .loom-tool-tip-body { animation: none !important; }
-.loom-tool-count.dock-numeric { width: auto; min-width: 13px; height: 13px; padding: 0 3px; display: grid; place-items: center; font-size: 8px; font-weight: 600; line-height: 1; border-radius: 6px; color: var(--dock-ink-lit); background: var(--dock-surface); border: 1px solid var(--loom-workspace-line, #ffffff30); box-shadow: none; }
+/* A count is read, not just noticed: a solid accent pill with the number in the ink that stands on the accent, set off
+   the tool's top right corner so it covers as little of the glyph as it can, and cut out of the tile by the notch ring
+   (the colour the tool sits on), so it reads on the dock, on a lit tool and on an open one. */
+.loom-tool-count.dock-numeric {
+  --dock-on-accent: #17131f;
+  top: -3px;
+  right: -4px;
+  box-sizing: border-box;
+  width: auto;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: var(--dock-accent);
+  color: var(--dock-on-accent);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  box-shadow: 0 0 0 2px var(--dock-notch, var(--dock-surface));
+}
+html[data-loom-theme="light"] .loom-tool-count.dock-numeric { --dock-on-accent: #fff; }
+/* The ping follows the pill's shape. */
+.loom-tool-count.dock-numeric::after { border-radius: inherit; }
