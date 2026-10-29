@@ -184,6 +184,8 @@ def test_live_driver_preserves_balance_failure_and_cleans_up_without_leaking_sec
     monkeypatch.setattr(qualification, "ModelConfigStore", Config)
     monkeypatch.setattr(qualification, "_build_runtime", runtime_factory)
     monkeypatch.setattr(qualification, "probe_workspace_sandbox", lambda workspace: {"backend": "offline-test", "enforced": True})
+    monkeypatch.setattr(qualification, "SandboxManager", lambda: object())
+    monkeypatch.setattr(qualification.sandbox_compat, "run_suite", lambda manager, root: [])
     monkeypatch.setenv("LOOM_API_KEY", "outer-env-sentinel")
     monkeypatch.setenv("PYTHONPATH", "outer-pythonpath-sentinel")
     root = tmp_path / "qualification"
@@ -303,3 +305,24 @@ def test_qualification_budget_stops_following_requests_and_deduplicates_usage():
     guard.observe(event(E.MODEL_REQUESTED, "next"))
     assert guard.tokens == 30
     assert len(cancelled) == 3
+
+
+def test_sandbox_compatibility_failure_stops_before_credentials_or_model_calls(tmp_path, monkeypatch):
+    def forbidden():
+        pytest.fail("Should not read credentials when ordinary sandbox operations fail")
+    broken = [{"name": "tempfile.mkdtemp in the workspace", "expect": "ok", "passed": False, "outcome": "failed (1)", "detail": ""},
+              {"name": "git repository", "expect": "ok", "passed": None, "outcome": "needs host preparation", "detail": ""}]
+    monkeypatch.setattr(qualification, "probe_workspace_sandbox", lambda workspace: {"backend": "offline-test", "enforced": True})
+    monkeypatch.setattr(qualification, "SandboxManager", lambda: object())
+    monkeypatch.setattr(qualification.sandbox_compat, "run_suite", lambda manager, root: broken)
+    monkeypatch.setattr(qualification, "ModelConfigStore", forbidden)
+    with pytest.raises(SystemExit) as error:
+        qualification.main(["--root", str(tmp_path / "new"), "--stored-model", "unused"])
+    assert error.value.code == 2
+    assert json.loads((tmp_path / "new" / "sandbox-compat.json").read_text(encoding="utf-8")) == broken
+
+
+def test_sandbox_compatibility_warnings_alone_do_not_stop_the_run():
+    from app.agent_runtime import sandbox_compat
+    results = [{"name": "a", "passed": True}, {"name": "git repository", "passed": None}]
+    assert sandbox_compat.failures(results) == [] and sandbox_compat.warnings(results) == [results[1]]

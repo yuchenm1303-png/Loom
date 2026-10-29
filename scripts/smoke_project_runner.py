@@ -23,6 +23,7 @@ from app.app_server import LoomAppServerService
 from app.project_runner.service import ProjectServiceMixin
 from app.project_runner.review import git
 from app.agent_runtime.sandbox import SandboxManager
+from app.agent_runtime import sandbox_compat
 
 
 class QualificationService(ProjectServiceMixin, LoomAppServerService):
@@ -260,11 +261,19 @@ def main(argv=None):
         sandbox = probe_workspace_sandbox(root / "workspace")
     except ValueError as exc:
         parser.error(str(exc))
+    root.mkdir(parents=True)
+    # Ordinary development operations, and the sandbox's boundaries, before any
+    # model call: each gap real runs found this way cost hundreds of thousands of tokens.
+    compat = sandbox_compat.run_suite(SandboxManager(), root / "sandbox-compat")
+    sandbox["compatibility"] = {"failures": [item["name"] for item in sandbox_compat.failures(compat)],
+                                "warnings": [item["name"] for item in sandbox_compat.warnings(compat)]}
+    (root / "sandbox-compat.json").write_text(json.dumps(compat, ensure_ascii=False, indent=2), encoding="utf-8")
+    if sandbox["compatibility"]["failures"]:
+        parser.error("Sandbox compatibility failed before any model call: " + ", ".join(sandbox["compatibility"]["failures"]))
     models = ModelConfigStore()
     entry = models.get(args.stored_model)
     # Resolve exactly the selected configured credential; never print or copy it.
     secret = models.secret_for(entry)
-    root.mkdir(parents=True)
     workspace = root / "workspace"
     workspace.mkdir()
     objective_text, check, title = SCENARIOS[args.scenario]
