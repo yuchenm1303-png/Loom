@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { readingMount, paddedMount, mountOwner } from "./portalLiquidMount";
 import { rasterizePortal } from "./portalLiquidCapture";
-import { blendAnchor, magnetAmplitude, stepSpring, type SpringValue } from "./portalLiquidMotion";
+import { blendAnchor, constrainAdjacentMagneticOffsets, magnetAmplitude, stepSpring, type SpringValue } from "./portalLiquidMotion";
 import { createReferenceLensRenderer, liquidVertexShader, liquidFragmentShader } from "./portalLiquidOptics";
 import { useReducedMotion } from "../motion/useReducedMotion";
 
@@ -242,6 +242,8 @@ export function PortalLiquidCursor() {
     // would force a layout per element per frame.
     const updateMagneticTargets = (dt: number) => {
       let settled = true;
+      // Measure first, then integrate all springs, then write. The original
+      // DOM rect is recovered by subtracting our previously applied translation.
       const measured: Array<{ element: HTMLElement; state: MagneticState; baseLeft: number; baseTop: number; width: number; height: number }> = [];
       for (const element of magneticTargets) {
         const state = magneticStates.get(element);
@@ -257,9 +259,8 @@ export function PortalLiquidCursor() {
         });
       }
 
-      for (const item of measured) {
-        const { element, state } = item;
-        const { baseLeft, baseTop, width, height } = item;
+      const planned = measured.map(item => {
+        const { element, state, baseLeft, baseTop, width, height } = item;
         const baseRight = baseLeft + width;
         const baseBottom = baseTop + height;
         const hoverArea = element.classList.contains("loom-portal-brand") ? 22 : 18;
@@ -289,17 +290,37 @@ export function PortalLiquidCursor() {
           state.y.target = 0;
         }
 
-        // Slightly under-damped on purpose: the target follows the pointer and
-        // gives one restrained elastic swing when it is released.
+        // Both OAuth buttons keep their own elastic spring. We limit only
+        // how far their inner borders can approach during the handoff.
         stepSpring(state.x, dt, 250, 21);
         stepSpring(state.y, dt, 250, 21);
+        return {
+          ...item,
+          nextX: Math.round(state.x.value * 2) / 2,
+          nextY: Math.round(state.y.value * 2) / 2,
+        };
+      });
 
-        const nextX = Math.round(state.x.value * 2) / 2;
-        const nextY = Math.round(state.y.value * 2) / 2;
+      // Two neighboring OAuth buttons share a 10px gap. Previously their
+      // simultaneous magnetic motion could overlap by 6px, and the refracting
+      // lens amplified their touching borders into a false white seam.
+      const oauth = planned.filter(item => item.element.matches(".loom-oauth-grid > .loom-oauth-button"));
+      for (let index = 0; index < oauth.length - 1; index++) {
+        const left = oauth[index];
+        const right = oauth[index + 1];
+        if (left.element.parentElement !== right.element.parentElement) continue;
+        const originalGap = right.baseLeft - (left.baseLeft + left.width);
+        const limited = constrainAdjacentMagneticOffsets(left.nextX, right.nextX, originalGap);
+        left.nextX = limited.leftX;
+        right.nextX = limited.rightX;
+      }
+
+      for (const { element, state, nextX, nextY } of planned) {
         if (Math.abs(nextX - state.appliedX) >= 0.49 || Math.abs(nextY - state.appliedY) >= 0.49) {
           state.appliedX = nextX;
           state.appliedY = nextY;
-          if (Math.abs(nextX) < 0.125 && Math.abs(nextY) < 0.125 && state.x.target === 0 && state.y.target === 0) {
+          if (Math.abs(nextX) < 0.125 && Math.abs(nextY) < 0.125 &&
+              state.x.target === 0 && state.y.target === 0) {
             element.style.removeProperty("translate");
             state.appliedX = 0;
             state.appliedY = 0;
@@ -309,7 +330,6 @@ export function PortalLiquidCursor() {
           rasterDirty = true;
           snapDirty = true;
         }
-
         if (
           Math.abs(state.x.target - state.x.value) >= 0.08 ||
           Math.abs(state.y.target - state.y.value) >= 0.08 ||
