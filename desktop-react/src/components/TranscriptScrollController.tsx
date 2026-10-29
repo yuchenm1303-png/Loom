@@ -31,6 +31,10 @@ const USER_RETURN_INTENT_MS = 420;
 // An input whose target is unclear (a key, a gesture over an output pane) only counts as heading up or down
 // if the transcript itself moves that way right after it.
 const USER_INPUT_INTENT_MS = 320;
+// While the wheel moves the transcript, rows slide under a pointer that is not moving: each one would take and drop
+// hover (its transitions, the tooltip, the cursor tone) for nobody. The content takes the pointer back this long after
+// the last tick. On an opened long process that churn was about half of the main thread during a scroll.
+const WHEEL_HOVER_REST_MS = 160;
 // A step opened during the run is judged over its own motion (the longest detail fold is 260ms): if following the
 // live edge would carry its header out of view, the reader is reading it; the header keeps this margin below the top.
 const DISCLOSURE_MOTION_MS = RETAIN.panel;
@@ -609,7 +613,23 @@ function TranscriptScrollControllerState({
     // Which way a wheel or touch gesture heads, and whether it is the transcript's business at all.
     const onWheel = (event: WheelEvent) => {
       if (isPanelResizeActive() || event.ctrlKey || !event.deltaY) return; // ctrl+wheel zooms the page
+      // Not over an output pane: under the shield its next tick would land on the transcript.
+      if (!nestedScrollerUnder(event.target, scroller) && canScrollVertically(scroller)) restHover();
       steer(event.target, event.deltaY < 0);
+    };
+
+    let hoverRestTimer = 0;
+    const restHover = () => {
+      if (!scroller.hasAttribute("data-wheeling")) scroller.setAttribute("data-wheeling", "");
+      window.clearTimeout(hoverRestTimer);
+      hoverRestTimer = window.setTimeout(() => scroller.removeAttribute("data-wheeling"), WHEEL_HOVER_REST_MS);
+    };
+    // A hand that moves is on its way to something: give the content the pointer back at once.
+    const onPointerMove = (event: PointerEvent) => {
+      if (!event.movementX && !event.movementY) return;
+      if (!scroller.hasAttribute("data-wheeling")) return;
+      window.clearTimeout(hoverRestTimer);
+      scroller.removeAttribute("data-wheeling");
     };
 
     const steer = (target: EventTarget | null, up: boolean) => {
@@ -768,6 +788,7 @@ function TranscriptScrollControllerState({
     scroller.addEventListener("touchend", onTouchEnd, { passive: true });
     scroller.addEventListener("touchcancel", onTouchEnd, { passive: true });
     scroller.addEventListener("pointerdown", onPointerDown, { passive: true });
+    scroller.addEventListener("pointermove", onPointerMove, { passive: true });
     scroller.addEventListener("loom:scrollbar-drag-start", onCustomScrollbarStart);
     scroller.addEventListener("loom:scrollbar-drag-end", onCustomScrollbarEnd);
     window.addEventListener("pointerup", finishScrollbarPointer, { passive: true });
@@ -804,6 +825,7 @@ function TranscriptScrollControllerState({
       scroller.removeEventListener("touchend", onTouchEnd);
       scroller.removeEventListener("touchcancel", onTouchEnd);
       scroller.removeEventListener("pointerdown", onPointerDown);
+      scroller.removeEventListener("pointermove", onPointerMove);
       scroller.removeEventListener("loom:scrollbar-drag-start", onCustomScrollbarStart);
       scroller.removeEventListener("loom:scrollbar-drag-end", onCustomScrollbarEnd);
       window.removeEventListener("pointerup", finishScrollbarPointer);
@@ -811,6 +833,8 @@ function TranscriptScrollControllerState({
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener(PANEL_LAYOUT_COMMIT_EVENT, onPanelLayoutCommit);
       window.removeEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
+      window.clearTimeout(hoverRestTimer);
+      scroller.removeAttribute("data-wheeling");
       observer?.disconnect();
       cancelScheduledScroll();
     };

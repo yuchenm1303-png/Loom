@@ -19,6 +19,30 @@
   overflow-anchor: none;
 }
 
+/* Rows passing under a still pointer during a wheel scroll do not take hover (TranscriptScrollController): a pane over
+   the viewport takes the pointer instead. Not `pointer-events: none` on the transcript: that property is inherited, so
+   each switch restyled every element of the conversation. Inside the scroller, so the next tick still scrolls it. */
+.transcript-wheel-shield {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.transcript-wheel-shield::before {
+  content: "";
+  display: none;
+  position: absolute;
+  inset: 0 0 auto;
+  height: 100vh;
+}
+
+.conversation-stage > .transcript-scroll[data-wheeling] > .transcript-wheel-shield::before {
+  display: block;
+  pointer-events: auto;
+}
+
 .transcript-jump-latest {
   position: absolute;
   /* Conversation affordance: stay above messages, but below transient UI layers. */

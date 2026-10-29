@@ -1815,6 +1815,7 @@ export const Transcript = memo(function Transcript({ threadId, items, running, c
   return (
     <TurnPhaseContext.Provider value={running ? runtimePhase : undefined}><TranscriptHistoryContext.Provider value={historyRef.current.ids}><div ref={scrollRef} className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
       <div className="chat-ambient" aria-hidden="true" />
+      <div className="transcript-wheel-shield" aria-hidden="true" />
       <main className={`transcript ${!items.length ? "is-empty" : ""}`} aria-live="polite" data-older-pending={firstMountedBlock > 0 ? "true" : undefined}>
         {!items.length ? (
           <EmptyState
