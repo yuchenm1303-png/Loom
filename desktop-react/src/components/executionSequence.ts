@@ -1,4 +1,4 @@
-import type { TranscriptItem } from "../types/loom";
+import type { ProgressFeedbackMode, TranscriptItem } from "../types/loom";
 
 export type TranscriptBlock =
   | { kind: "item"; item: TranscriptItem }
@@ -72,11 +72,13 @@ const isFailedStep = (item: TranscriptItem): boolean =>
  * - the sentence that answers a failed step: the model's reading of what went wrong and what it
  *   will do instead, which is what the reader wants to know when the log turns red;
  * - any sentence long enough to carry real content.
+ * The reader's progress feedback level moves that last line: `detailed` shows every sentence, `quiet` drops
+ * the length rule and keeps only the reply, plan reports and reactions to failures.
  * `released` names sentences that were already drawn because they waited out their hold; they stay.
  * Position, step status and length only, never the wording. Each verdict depends only on what came
  * before the sentence and on its own length, so it never changes once the sentence is drawn.
  */
-export function reportIds(items: TranscriptItem[], released: ReadonlySet<string> = NO_IDS): ReadonlySet<string> {
+export function reportIds(items: TranscriptItem[], released: ReadonlySet<string> = NO_IDS, mode: ProgressFeedbackMode = "balanced"): ReadonlySet<string> {
   const initial = initialUpdateIds(items);
   const plan = planUpdateNoteIds(items);
   const ids = new Set<string>();
@@ -88,7 +90,8 @@ export function reportIds(items: TranscriptItem[], released: ReadonlySet<string>
     else if (item.type === "assistant_message" && item.phase === "commentary") {
       const text = String(item.text ?? "").trim();
       if (!text) continue;
-      if (initial.has(item.id) || plan.has(item.id) || released.has(item.id) || failed || text.length >= SUBSTANTIAL_TEXT_CHARS) ids.add(item.id);
+      const substantial = mode === "detailed" || (mode === "balanced" && text.length >= SUBSTANTIAL_TEXT_CHARS);
+      if (initial.has(item.id) || plan.has(item.id) || released.has(item.id) || failed || substantial) ids.add(item.id);
       failed = false;
     }
   }
@@ -145,7 +148,7 @@ function withoutWords(item: TranscriptItem): TranscriptItem {
  * Reasoning is the model thinking, not words about to be taken back: it stays on screen while its sentence
  * waits. Returns what to draw and the id of the held sentence.
  */
-export function settleLiveText(items: TranscriptItem[], released: ReadonlySet<string> = NO_IDS): { items: TranscriptItem[]; held: string } {
+export function settleLiveText(items: TranscriptItem[], released: ReadonlySet<string> = NO_IDS, mode: ProgressFeedbackMode = "balanced"): { items: TranscriptItem[]; held: string } {
   let lastWork = -1;
   items.forEach((item, index) => { if (isActivityItem(item)) lastWork = index; });
   let changed = false;
@@ -165,7 +168,7 @@ export function settleLiveText(items: TranscriptItem[], released: ReadonlySet<st
       continue;
     }
     const probe = asCommentary(item);
-    if (!reportIds(base.map((other) => (other === item ? probe : other)), released).has(item.id)) {
+    if (!reportIds(base.map((other) => (other === item ? probe : other)), released, mode).has(item.id)) {
       held = item.id;
       changed = true;
       if (showsReasoning(item)) settled.push(withoutWords(item));

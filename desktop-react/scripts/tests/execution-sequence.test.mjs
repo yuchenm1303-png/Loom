@@ -76,7 +76,7 @@ test("process commentary excludes decisions, failed prose, other phases and non-
 const tool = (id, extra = {}) => item(id, "tool_call", { toolName: "exec", ...extra });
 const failedTool = (id, extra = {}) => tool(id, { status: "failed", ...extra });
 const user = (id, extra = {}) => item(id, "user_message", extra);
-const reports = (items, released) => [...reportIds(items, released)];
+const reports = (items, released, mode) => [...reportIds(items, released, mode)];
 
 test("the reply, a plan report and a long sentence are messages; other narration stays in the log", () => {
   const input = [user("u"), message("reply"), tool("t1", { stepId: "s1" }), message("chat", { stepId: "s2" }), tool("t2", { stepId: "s2" }),
@@ -84,6 +84,20 @@ test("the reply, a plan report and a long sentence are messages; other narration
     message("long", { text: "字".repeat(SUBSTANTIAL_TEXT_CHARS), stepId: "s4" }), tool("t4", { stepId: "s4" }),
     message("short", { text: "字".repeat(SUBSTANTIAL_TEXT_CHARS - 1), stepId: "s5" }), tool("t5", { stepId: "s5" })];
   assert.deepEqual(reports(input), ["reply", "report", "long"]);
+});
+
+test("the progress feedback level moves the line: detailed shows every sentence, quiet drops the length rule", () => {
+  const input = [user("u"), message("reply"), tool("t1"), message("chat"), tool("t2"),
+    message("long", { text: "字".repeat(SUBSTANTIAL_TEXT_CHARS) }), tool("t3"), failedTool("t4"), message("reaction"),
+    message("report", { stepId: "p" }), tool("plan", { toolName: "update_plan", stepId: "p" }), message("blank", { text: " " })];
+  assert.deepEqual(reports(input), ["reply", "long", "reaction", "report"], "balanced is the default");
+  assert.deepEqual(reports(input, undefined, "balanced"), ["reply", "long", "reaction", "report"]);
+  assert.deepEqual(reports(input, undefined, "detailed"), ["reply", "chat", "long", "reaction", "report"], "every sentence, never a blank one");
+  assert.deepEqual(reports(input, undefined, "quiet"), ["reply", "reaction", "report"]);
+  assert.deepEqual(reports(input, new Set(["chat"]), "quiet"), ["reply", "chat", "reaction", "report"], "a drawn sentence stays one");
+  const worked = [user("u"), message("intro"), tool("t1")];
+  assert.equal(settleLiveText([...worked, streaming("s", "好")], undefined, "detailed").held, "", "detailed draws narration from its first word");
+  assert.equal(settleLiveText([...worked, streaming("s", "字".repeat(SUBSTANTIAL_TEXT_CHARS))], undefined, "quiet").held, "s", "quiet holds long narration too");
 });
 
 test("a run that goes well says little; the sentence after a failed step is the model's reaction to it, and a message", () => {

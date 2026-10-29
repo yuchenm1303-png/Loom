@@ -53,6 +53,7 @@ import {
 import { useI18n } from "../i18n";
 import { isLoomWebRuntime } from "../webBridge";
 import { applyThemePreference, type LoomThemePreference } from "../theme";
+import { applyProgressFeedback } from "../progressFeedback";
 import { applyPetVisibility, DEFAULT_PET_ENABLED, DESKTOP_SETTINGS_STORAGE_KEY } from "../petPreferences";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { usePaintedOnce } from "../motion/usePaintedOnce";
@@ -699,6 +700,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           privacy: { ...DEFAULT_PRIVACY, ...(result.settings.privacy ?? {}), ...(local.privacy ?? {}) },
         } as DesktopSettings;
         setSettings(next);
+        applyProgressFeedback(next.agent?.progressFeedback);
         setCdpDraft(next.browser?.cdpUrl ?? DEFAULT_BROWSER.cdpUrl);
         applyAppearance(next);
       })
@@ -793,6 +795,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
       });
       if (result.settings?.agent?.progressFeedback !== mode) throw new Error("Host did not confirm this preference");
       setSettings(current => ({ ...current, agent: result.settings!.agent }));
+      applyProgressFeedback(mode);
       setNotice({ tone: "success", text: language === "zh-CN" ? "进度反馈已保存，从下一次模型请求生效。" : "Progress feedback saved for the next model request." });
     } catch (error) {
       setNotice({ tone: "error", text: (language === "zh-CN" ? "进度反馈未保存：" : "Progress feedback was not saved: ") + String((error as Error)?.message || error) });

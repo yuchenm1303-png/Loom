@@ -30,9 +30,9 @@ export function ProgressFeedbackControl({ mode, saving, onChange, compact = fals
     <p className="progress-feedback-status" role="status" aria-live="polite">
       {saving ? (zh ? "正在保存到 Host…" : "Saving to Host…") : !mode
         ? (zh ? "连接 Host 并读取设置后可调整。" : "Connect to Host and load settings to adjust this preference.")
-        : compact ? `${choices.find(choice => choice.value === mode)?.description ?? ""} ${zh ? "下次请求生效。" : "Applies from the next request."}`
-        : (zh ? "对所有对话生效，从下一次模型请求开始采用。各档均会及时报告阻塞和需要你决定的事项；不改变最终答复的详略。"
-          : "Applies to all conversations from the next model request. Every level reports blockers and required decisions promptly; final-answer detail is unchanged.")}
+        : compact ? `${choices.find(choice => choice.value === mode)?.description ?? ""} ${zh ? "过程说明的显示立即生效，模型从下次请求起采用。" : "The work log follows it now; the model from the next request."}`
+        : (zh ? "对所有对话生效：工作记录里显示多少过程说明立即改变，模型从下一次请求开始采用。各档均会及时报告阻塞和需要你决定的事项；不改变最终答复的详略。"
+          : "Applies to all conversations: how much narration the work log shows changes at once, and the model adopts it from the next request. Every level reports blockers and required decisions promptly; final-answer detail is unchanged.")}
     </p>
   </div>;
 }

@@ -43,6 +43,7 @@ import { useEarlierProcessHandoff } from "./useEarlierProcessHandoff";
 import { LIVE_STATUS_GRACE_MS, LIVE_TEXT_HOLD_MS, TURN_FOLD_MS, TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { ApprovalDecision, TranscriptItem } from "../types/loom";
 import { TaskBranchCard, parseTaskBranchProposal } from "./TaskBranchCard";
+import { useProgressFeedback } from "../progressFeedback";
 import { groupExecutionSequence, isActivityItem, isProcessCommentary, reportIds, settleLiveText } from "./executionSequence";
 import {
   activitySegments,
@@ -1252,10 +1253,11 @@ function liveEdgeState(items: TranscriptItem[]): { quiet: boolean; started: bool
 function useSettledLiveText(items: TranscriptItem[], active: boolean): { items: TranscriptItem[]; released: ReadonlySet<string> } {
   const history = useContext(TranscriptHistoryContext);
   const [released, setReleased] = useState<ReadonlySet<string>>(NO_MESSAGE_IDS);
+  const feedback = useProgressFeedback();
   const settled = useMemo(() => {
-    const next = active ? settleLiveText(items, released) : { items, held: "" };
+    const next = active ? settleLiveText(items, released, feedback) : { items, held: "" };
     return next.held && history.has(next.held) ? { items, held: "" } : next;
-  }, [active, items, released, history]);
+  }, [active, items, released, history, feedback]);
   const { held } = settled;
   useEffect(() => {
     if (!held) return;
@@ -1339,7 +1341,8 @@ function TurnProcess({
     .map((item) => item.id))), [items]);
   // Commentary that is a message to the reader: the reply to them, the model's own plan reports, long
   // sentences, and one now and then so a long run is never silent. The rest is log detail, hidden unless asked for.
-  const messageIds = useMemo(() => reportIds(items, released), [items, released]);
+  const feedback = useProgressFeedback();
+  const messageIds = useMemo(() => reportIds(items, released, feedback), [items, released, feedback]);
   const decisionIds = useMemo(() => decisionMessageIds(items), [items]);
   const [showNotes, setShowNotes] = useState(false);
   const isQuietNote = useCallback(
