@@ -1,13 +1,27 @@
 /* Thinking glyph ------------------------------------------------------------
-   The live "thinking" mark (ThinkingGlyph): a single bead with a soft pulse of
-   light. Nothing orbits, nothing spins. It owns its tg- classes, so no older
-   thinking-* rule can restyle it, and it keeps to one motion: the pulse. The
-   row's shimmer is the second, and it starts as the pulse leaves the bead. */
+   The live "working" mark (ThinkingGlyph): Loom's mark as drawn, never redrawn,
+   with light that follows its own shape. It owns its tg- classes, so no older
+   thinking-* rule can restyle it.
+
+   Positions are the mark's own, measured on the 512px original and scaled to
+   the 22px box: the sphere's centre at (255, 262) r 103 -> (11, 11.3) r 4.4;
+   the arrowhead's centre at (400, 135) -> (17.2, 5.8).
+
+   - The run of light: a conic wedge turning round the sphere's centre,
+     anticlockwise, the way the ribbon runs from its loop under the sphere up to
+     the arrowhead. Its box (.tg-shine) is masked by the mark itself less the
+     sphere, so the light only ever lies on the ribbon and the arrowhead.
+   - The arrowhead flares as the light reaches it, at the end of each cycle.
+   - The sphere's glow swells and dissolves behind the mark (the pulse the row's
+     shimmer follows).
+   Transform and opacity only, on HTML boxes; the mask, the mark and the wedge's
+   drawing are static, so the compositor turns the wedge without repainting. */
 
 .tg {
-  --tg-bead: #b7acff;
-  --tg-glow: rgba(150, 134, 250, .55);
-  --tg-pulse: rgba(160, 146, 252, .38);
+  --tg-light: rgba(236, 250, 255, .92);
+  --tg-light-2: rgba(170, 220, 255, .42);
+  --tg-pulse: rgba(110, 150, 255, .4);
+  --tg-flare: rgba(220, 240, 255, .9);
 
   position: relative;
   width: 22px;
@@ -17,41 +31,116 @@
 }
 
 html[data-loom-theme="light"] .tg {
-  --tg-bead: #6a5bd8;
-  --tg-glow: rgba(106, 91, 216, .4);
-  --tg-pulse: rgba(106, 91, 216, .26);
+  --tg-light: rgba(255, 255, 255, .85);
+  --tg-light-2: rgba(225, 242, 255, .38);
+  --tg-pulse: rgba(80, 110, 235, .26);
+  --tg-flare: rgba(255, 255, 255, .85);
 }
 
-.tg-bead,
+.tg-mark,
+.tg-shine {
+  position: absolute;
+  inset: 0;
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.tg-mark {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* The ribbon's cut-out: the mark's own alpha, less a disc over the sphere. */
+.tg-shine {
+  overflow: hidden;
+  -webkit-mask:
+    url("../assets/loom-mark-64.png") center / 100% 100% no-repeat,
+    radial-gradient(circle 4.6px at 11px 11.3px, #000 96%, transparent 100%);
+  -webkit-mask-composite: xor;
+  mask:
+    url("../assets/loom-mark-64.png") center / 100% 100% no-repeat exclude,
+    radial-gradient(circle 4.6px at 11px 11.3px, #000 96%, transparent 100%);
+  /* Light adds to the ribbon's own colour, so a bright stretch of glass reads as
+     brighter still instead of being painted over. */
+  mix-blend-mode: plus-lighter;
+}
+
+/* The wedge: a square centred on the sphere, large enough to cover the box at
+   any angle. Its bright edge is the head (0deg, the top); the tail fades behind
+   it. It starts on the arrowhead (49deg clockwise from the top) and runs one turn
+   anticlockwise back to it. */
+.tg-sweep {
+  position: absolute;
+  left: -5px;
+  top: -4.7px;
+  width: 32px;
+  height: 32px;
+  display: block;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--tg-light) 0deg,
+    var(--tg-light-2) 34deg,
+    transparent 130deg,
+    transparent 360deg
+  );
+  transform: rotate(409deg);
+  animation: tg-sweep var(--thinking-cycle, var(--loom-period-shimmer)) linear infinite;
+}
+
+/* The arrowhead's flare: a soft light on its centre, inside the cut-out, so only
+   the arrowhead's own pixels light up. */
+.tg-flare {
+  position: absolute;
+  left: 17.2px;
+  top: 5.8px;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  display: block;
+  border-radius: 50%;
+  background: radial-gradient(circle closest-side, var(--tg-flare) 0%, transparent 100%);
+  opacity: 0;
+  animation: tg-flare var(--thinking-cycle, var(--loom-period-shimmer)) ease-out infinite;
+}
+
+/* The sphere's glow, behind the mark: swells out and dissolves before it
+   reaches the edge of the box. */
 .tg-pulse {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  border-radius: 50%;
-}
-
-/* The bead: flat colour and a soft glow, no outline. The glow is static; only
-   the pulse behind the bead and the bead's own breath move. */
-.tg-bead {
-  width: 6px;
-  height: 6px;
-  margin: -3px 0 0 -3px;
-  background: var(--tg-bead);
-  box-shadow: 0 0 8px 1px var(--tg-glow);
-  animation: tg-bead var(--thinking-cycle, var(--loom-period-shimmer)) ease-in-out infinite;
-}
-
-/* The pulse is a soft disc that swells out of the bead and dissolves before it
-   reaches the edge of the glyph box. Transform and opacity only, on a mark with
-   no text in it. */
-.tg-pulse {
+  left: 11px;
+  top: 11.3px;
   width: 22px;
   height: 22px;
   margin: -11px 0 0 -11px;
+  display: block;
+  border-radius: 50%;
   background: radial-gradient(circle closest-side, var(--tg-pulse) 0%, transparent 100%);
   opacity: 0;
   transform: scale(.3);
   animation: tg-pulse var(--thinking-cycle, var(--loom-period-shimmer)) cubic-bezier(.2, .6, .3, 1) infinite;
+}
+
+@keyframes tg-sweep {
+  from {
+    transform: rotate(409deg);
+  }
+  to {
+    transform: rotate(49deg);
+  }
+}
+
+/* Lit as the head arrives (the cycle's end), gone shortly after it leaves. */
+@keyframes tg-flare {
+  0% {
+    opacity: 1;
+  }
+  22%, 88% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 @keyframes tg-pulse {
@@ -68,25 +157,25 @@ html[data-loom-theme="light"] .tg {
   }
 }
 
-/* The bead takes a small breath as it gives the pulse off, then settles. */
-@keyframes tg-bead {
-  0%, 36%, 100% {
-    transform: scale(1);
-  }
-  9% {
-    transform: scale(1.16);
-  }
-}
-
-/* Reduced motion keeps the bead and its halo, without the pulse. */
+/* Reduced motion keeps the mark as it is, without the light. */
 @media (prefers-reduced-motion: reduce) {
-  .tg-bead,
+  .tg-sweep,
+  .tg-flare,
   .tg-pulse {
     animation: none;
   }
+
+  .tg-shine {
+    display: none;
+  }
 }
 
-:root[data-loom-reduced-motion="true"] .tg-bead,
+:root[data-loom-reduced-motion="true"] .tg-sweep,
+:root[data-loom-reduced-motion="true"] .tg-flare,
 :root[data-loom-reduced-motion="true"] .tg-pulse {
   animation: none;
+}
+
+:root[data-loom-reduced-motion="true"] .tg-shine {
+  display: none;
 }

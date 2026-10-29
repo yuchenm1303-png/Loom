@@ -168,7 +168,8 @@
 }
 
 .live-reasoning.is-done .live-reasoning-bead .tg-pulse,
-.live-reasoning.is-done .live-reasoning-bead .tg-bead {
+.live-reasoning.is-done .live-reasoning-bead .tg-sweep,
+.live-reasoning.is-done .live-reasoning-bead .tg-flare {
   animation-play-state: paused;
 }
 

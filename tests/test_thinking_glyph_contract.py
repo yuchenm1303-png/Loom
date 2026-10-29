@@ -65,15 +65,21 @@ def test_retired_glyph_layers_are_gone() -> None:
         assert colour not in row, colour
 
 
-def test_glyph_is_one_bead_and_a_pulse_that_own_their_classes() -> None:
+def test_glyph_is_the_loom_mark_lit_along_its_own_shape() -> None:
     glyph = read(COMPONENTS / "ThinkingGlyph.tsx")
+    css = read(COMPONENTS / "thinking-glyph.css")
 
     assert 'import "./thinking-glyph.css";' in glyph
     assert 'aria-hidden="true"' in glyph
-    # No drawing any more: two empty elements and nothing to keep in sync.
-    assert glyph.count('<i className="tg-') == 2
-    assert '<i className="tg-pulse" />' in glyph and '<i className="tg-bead" />' in glyph
+    # Loom's own mark, never redrawn: the bundled picture, and nothing drawn beside it.
+    assert 'import mark from "../assets/loom-mark-64.png";' in glyph
+    assert '<img className="tg-mark" src={mark}' in glyph
     assert "<svg" not in glyph and "useId" not in glyph
+    # The light (the turning wedge and the arrowhead's flare) is cut to the mark's own pixels, less the sphere.
+    assert '<span className="tg-shine"><i className="tg-sweep" /><i className="tg-flare" /></span>' in glyph
+    shine = block(css, "/* The ribbon's cut-out", "\n}")
+    assert shine.count('url("../assets/loom-mark-64.png")') == 2
+    assert "exclude" in shine and "-webkit-mask-composite: xor;" in shine
 
     for path in SRC.rglob("*.css"):
         if path.name in {"thinking-glyph.css", "inline-thinking.css", "workspace-panels.css"}:
@@ -85,13 +91,17 @@ def test_glyph_moves_only_by_transform_and_opacity() -> None:
     css = read(COMPONENTS / "thinking-glyph.css")
 
     pulse = keyframes(css, "tg-pulse")
-    bead = keyframes(css, "tg-bead")
+    sweep = keyframes(css, "tg-sweep")
+    flare = keyframes(css, "tg-flare")
     assert set(re.findall(r"([a-z-]+)\s*:", re.sub(r"@keyframes[^{]+", "", pulse))) <= {"opacity", "transform"}
-    assert set(re.findall(r"([a-z-]+)\s*:", re.sub(r"@keyframes[^{]+", "", bead))) <= {"transform"}
-    # One pulse, one breath, both once per cycle, neither a loop that never rests.
-    assert css.count("infinite") == 2
-    # The glow and halo are static; they are never animated.
-    assert "box-shadow" not in pulse + bead
+    assert set(re.findall(r"([a-z-]+)\s*:", re.sub(r"@keyframes[^{]+", "", sweep))) <= {"transform"}
+    assert set(re.findall(r"([a-z-]+)\s*:", re.sub(r"@keyframes[^{]+", "", flare))) <= {"opacity"}
+    # One run of light, one flare, one pulse per cycle.
+    assert css.count("infinite") == 3
+    # The light runs anticlockwise, one whole turn, from the arrowhead back to it.
+    assert "transform: rotate(409deg);" in sweep and "transform: rotate(49deg);" in sweep
+    # The mask, the glow and the mark itself are static; they are never animated.
+    assert "box-shadow" not in pulse + sweep + flare and "mask" not in pulse + sweep + flare
 
 
 def test_label_is_lit_by_one_monochrome_band() -> None:
@@ -139,8 +149,8 @@ def test_row_and_glyph_share_one_cadence() -> None:
     # One tempo for everything that says "thinking": the scale's shimmer period (motion-tokens.css).
     assert "--thinking-cycle: var(--loom-period-shimmer);" in block(row, ".inline-thinking,\n.live-reasoning {", "}")
     assert "thinking-text-shimmer var(--thinking-cycle, var(--loom-period-shimmer))" in row
-    assert "tg-pulse var(--thinking-cycle, var(--loom-period-shimmer))" in glyph
-    assert "tg-bead var(--thinking-cycle, var(--loom-period-shimmer))" in glyph
+    for name in ("tg-pulse", "tg-sweep", "tg-flare"):
+        assert f"{name} var(--thinking-cycle, var(--loom-period-shimmer))" in glyph
     # The open reasoning panel's rail breathes with the same cycle.
     assert "animation: reasoning-rail-sweep var(--thinking-cycle, var(--loom-period-shimmer))" in row
 
@@ -149,10 +159,13 @@ def test_glyph_and_label_hold_still_under_reduced_motion() -> None:
     glyph = read(COMPONENTS / "thinking-glyph.css")
     row = read(COMPONENTS / "inline-thinking.css")
 
+    # The mark stays, still and unlit.
     media = block(glyph, "@media (prefers-reduced-motion: reduce)", "\n}\n")
-    assert ".tg-bead" in media and ".tg-pulse" in media and "animation: none;" in media
-    setting = block(glyph, ':root[data-loom-reduced-motion="true"] .tg-bead', "}")
-    assert ".tg-pulse" in setting and "animation: none;" in setting
+    assert all(part in media for part in (".tg-sweep", ".tg-flare", ".tg-pulse")) and "animation: none;" in media
+    assert ".tg-shine {\n    display: none;" in media
+    setting = block(glyph, ':root[data-loom-reduced-motion="true"] .tg-sweep', "}")
+    assert ".tg-flare" in setting and ".tg-pulse" in setting and "animation: none;" in setting
+    assert ':root[data-loom-reduced-motion="true"] .tg-shine {\n  display: none;' in glyph
 
     # The label's band parks off the text, so the label is its plain base colour.
     media = block(row, "@media (prefers-reduced-motion: reduce)", "\n}\n")
@@ -174,9 +187,10 @@ def test_unseen_glyph_does_not_keep_animating() -> None:
     assert "animation-play-state: paused;" in exiting
     # A header that has settled into its disclosure keeps a folded, paused bead.
     settled = block(row, ".live-reasoning.is-done .live-reasoning-bead .tg-pulse,", "}")
-    assert ".live-reasoning.is-done .live-reasoning-bead .tg-bead" in settled
+    assert ".live-reasoning.is-done .live-reasoning-bead .tg-sweep" in settled
+    assert ".live-reasoning.is-done .live-reasoning-bead .tg-flare" in settled
     assert "animation-play-state: paused;" in settled
     guard = block(panels, "Unified panel-transition performance guard", "}")
-    for part in (".tg-pulse", ".tg-bead", ".thinking-shimmer"):
+    for part in (".tg-pulse", ".tg-sweep", ".tg-flare", ".thinking-shimmer"):
         assert f"body.loom-panel-motion .workspace-panels {part}" in guard
     assert "animation-play-state: paused !important;" in guard
