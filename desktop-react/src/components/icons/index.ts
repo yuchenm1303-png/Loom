@@ -5,6 +5,8 @@
  */
 export type { IconComponent, IconProps, LucideIcon } from "./base";
 
+export { Google } from "./brand";
+
 export {
   Activity,
   Archive,

@@ -244,17 +244,17 @@
   background: var(--dialog-field);
 }
 .loom-editorial .editorial-panel .loom-oauth-button svg { flex-shrink: 0; }
+/* The Google mark is drawn, not a letter painted with a clipped gradient. The
+   portal lens redraws the page onto a canvas before it refracts it, and a
+   canvas cannot clip a gradient to glyphs: the letter was missing from the
+   picture as soon as the lens mounted on the button. */
 .loom-editorial .editorial-panel .loom-google-mark {
-  width: 19px;
-  height: 19px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
   border: 0;
   border-radius: 0;
-  background: linear-gradient(115deg,#4285f4 0 34%,#34a853 34% 52%,#fbbc05 52% 74%,#ea4335 74% 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  font-size: 18px;
-  font-weight: 650;
+  background: none;
   box-shadow: none;
 }
 .loom-editorial .editorial-panel .loom-auth-divider {
@@ -286,6 +286,9 @@
   font-weight: 400;
 }
 .loom-editorial .editorial-panel .loom-field-heading { gap: 10px; }
+/* The field's title names the input, so it is a label: clicking it focuses the
+   password field, and the reset link beside it is a button of its own. */
+.loom-editorial .editorial-panel .loom-field-name { cursor: pointer; }
 .loom-editorial .editorial-panel .loom-input-shell {
   box-sizing: border-box;
   min-height: 45px;

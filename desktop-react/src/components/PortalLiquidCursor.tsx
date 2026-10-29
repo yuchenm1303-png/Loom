@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { readingMount, paddedMount } from "./portalLiquidMount";
+import { readingMount, paddedMount, mountOwner } from "./portalLiquidMount";
 import { rasterizePortal } from "./portalLiquidCapture";
 import { blendAnchor, magnetAmplitude, stepSpring, type SpringValue } from "./portalLiquidMotion";
 import { createReferenceLensRenderer, liquidVertexShader, liquidFragmentShader } from "./portalLiquidOptics";
@@ -324,9 +324,29 @@ export function PortalLiquidCursor() {
 
     refreshMagneticTargets();
 
-    const mountRect = (element: HTMLElement) => element.dataset.liquidLens === "read"
-      ? readingMount(element, pointerX, pointerY)
-      : element.getBoundingClientRect();
+    // A field is several elements at once: the title that names it, the shell
+    // that draws the box, the input that takes the keystrokes. All of them can
+    // sit under one pointer, and the lens has to frame a single box. It frames
+    // the control, every time, so a field answers with one lens instead of one
+    // per element it happens to be built from.
+    const mountOwners = new Map<HTMLElement, HTMLElement>();
+    const ownerOf = (element: HTMLElement): HTMLElement => {
+      const cached = mountOwners.get(element);
+      if (cached?.isConnected) return cached;
+      const owner = mountOwner(element);
+      mountOwners.set(element, owner);
+      return owner;
+    };
+
+    // Where the pointer is measured, and where the lens is drawn. They are not
+    // the same box: the pointer can be on a field's title, but the lens has to
+    // frame the field's input.
+    const hitRect = (element: HTMLElement) => element.getBoundingClientRect();
+    const mountRect = (element: HTMLElement): DOMRect | null => {
+      const owner = ownerOf(element);
+      if (owner.dataset.liquidLens === "read") return readingMount(element, pointerX, pointerY);
+      return owner.getBoundingClientRect();
+    };
     const canMount = (element: HTMLElement) => {
       if (element.matches(":disabled, [aria-disabled='true'], input[type='hidden']") ||
           element.closest("[inert], [aria-hidden='true']")) return false;
@@ -339,7 +359,11 @@ export function PortalLiquidCursor() {
 
     const findSnapTarget = () => {
       if (activeTarget?.isConnected && canMount(activeTarget)) {
-        const rect = mountRect(activeTarget);
+        // A reading stop follows the line under the pointer. A control keeps its
+        // own box, so the pointer can rest on a field's title without the lens
+        // letting go of the field.
+        const owner = ownerOf(activeTarget);
+        const rect = owner.dataset.liquidLens === "read" ? mountRect(activeTarget) : hitRect(activeTarget);
         const style = getComputedStyle(activeTarget);
         if (rect && rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.pointerEvents !== "none" &&
             rectDistance(rect, pointerX, pointerY) <= RELEASE_DISTANCE) return activeTarget;
@@ -368,7 +392,12 @@ export function PortalLiquidCursor() {
       snapDirty = false;
       const previousTarget = activeTarget;
       const target = findSnapTarget();
-      if (target !== previousTarget) {
+      // The frame is what matters here: a field's title and its input are two
+      // elements but one lens, and the lens must not restart when the pointer
+      // crosses from one to the other.
+      const previousOwner = previousTarget ? ownerOf(previousTarget) : null;
+      const owner = target ? ownerOf(target) : null;
+      if (owner !== previousOwner) {
         rasterDirty = true;
         roiLockedTarget = null;
         if (target) {
@@ -379,7 +408,7 @@ export function PortalLiquidCursor() {
             pinY.velocity = 0;
           }
           const rect = mountRect(target)!;
-          const frame = paddedMount(target, rect);
+          const frame = paddedMount(ownerOf(target), rect);
           const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), frame.width);
           const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), frame.height);
           // Allocate the entire capture surface once on snap entry. Growing
@@ -403,7 +432,7 @@ export function PortalLiquidCursor() {
       }
       if (target) {
         const rect = mountRect(target)!;
-        const frame = paddedMount(target, rect);
+        const frame = paddedMount(ownerOf(target), rect);
         pinX.target = rect.left + rect.width / 2;
         pinY.target = rect.top + rect.height / 2;
         width.target = Math.min(Math.max(38, window.innerWidth - 20), frame.width);
@@ -463,8 +492,11 @@ export function PortalLiquidCursor() {
       const maxTop = Math.max(0, window.innerHeight - roiHeight);
 
       if (target) {
-        const state = magneticStates.get(target);
-        const rect = target.getBoundingClientRect();
+        // The capture follows the framed control, not the element the pointer
+        // happened to be over: a field's title and its input are one lens.
+        const owner = ownerOf(target);
+        const state = magneticStates.get(owner);
+        const rect = owner.getBoundingClientRect();
         // Lock the capture window to the target's non-magnetic base position.
         // The button can still wobble inside this texture without dragging the ROI.
         const baseCenterX = rect.left + rect.width / 2 - (state?.appliedX ?? 0);
@@ -474,11 +506,11 @@ export function PortalLiquidCursor() {
         // moves the target, and a window locked to the old place samples the
         // page from somewhere else: the control under the lens is then drawn
         // displaced and smeared.
-        if (roiLockedTarget !== target || !Number.isFinite(roiLeft) || !Number.isFinite(roiTop) ||
+        if (roiLockedTarget !== owner || !Number.isFinite(roiLeft) || !Number.isFinite(roiTop) ||
             Math.abs(baseCenterX - roiLockedBaseX) >= 1 || Math.abs(baseCenterY - roiLockedBaseY) >= 1) {
           roiLeft = Math.round(Math.max(minLeft, Math.min(maxLeft, baseCenterX - roiWidth / 2)));
           roiTop = Math.round(Math.max(minTop, Math.min(maxTop, baseCenterY - roiHeight / 2)));
-          roiLockedTarget = target;
+          roiLockedTarget = owner;
           roiLockedBaseX = baseCenterX;
           roiLockedBaseY = baseCenterY;
           rasterDirty = true;
@@ -677,9 +709,12 @@ export function PortalLiquidCursor() {
       if (rectDistance(candidate.getBoundingClientRect(), event.clientX, event.clientY) > RELEASE_DISTANCE) return;
 
       const actionSelector = CLICKABLE_SELECTOR;
-      const action = candidate.matches(actionSelector)
-        ? candidate
-        : candidate.querySelector<HTMLElement>(actionSelector);
+      // The lens framed the control, so the click belongs to the control: a
+      // field's title and its input are one thing to click.
+      const owner = ownerOf(candidate);
+      const action = owner.matches(actionSelector)
+        ? owner
+        : owner.querySelector<HTMLElement>(actionSelector);
       if (!action || action.matches(":disabled, [aria-disabled='true']") ||
           action.closest("[inert], [aria-hidden='true']")) return;
       const source = event.target;
@@ -752,6 +787,8 @@ export function PortalLiquidCursor() {
 
     const observer = new MutationObserver((mutations) => {
       refreshMagneticTargets();
+      // A field can gain or lose its control; the resolved owners are then stale.
+      mountOwners.clear();
       if (mutations.some(mutation => mutation.attributeName?.includes("theme"))) {
         refractionMotionUntil = Math.max(refractionMotionUntil, performance.now() + 360);
       }

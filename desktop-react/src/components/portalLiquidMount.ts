@@ -1,4 +1,44 @@
 // Mount geometry only. Keep optical source and strength in portalLiquidOptics.
+
+// The controls a field is built from. A field is never one element: a label
+// names it, a shell draws the box, an input takes the keystrokes.
+const FIELD_CONTROL_SELECTOR = "input:not([type='hidden']), textarea, select";
+
+type MountElement = {
+  dataset: { liquidLens?: string; liquidSnapPad?: string };
+  tagName?: string;
+  /** Only a label has one: the control it names. */
+  control?: unknown;
+  querySelectorAll(selectors: string): ArrayLike<unknown>;
+};
+
+function isFieldControl(node: unknown): boolean {
+  const tag = (node as { tagName?: string } | null | undefined)?.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+/**
+ * The element a mount point stands for.
+ *
+ * The lens frames one box, and a field offers several: the title that names
+ * it, the shell that draws it, the input that takes the keystrokes. Left to
+ * itself the lens picked whichever of them the pointer was nearest, so the
+ * same field answered with a small lens over its text and a wide one over
+ * its title. The field is the control, so every part of it resolves to that
+ * control and the field shows one lens.
+ */
+export function mountOwner<T extends MountElement>(element: T): T {
+  // A reading stop is a piece of prose; it frames itself.
+  if (element.dataset.liquidLens === "read") return element;
+  const wrapped = Array.from(element.querySelectorAll(FIELD_CONTROL_SELECTOR)) as T[];
+  if (wrapped.length === 1) return wrapped[0];
+  // A label that names a control it does not wrap (a title with an id) still
+  // points at that control.
+  const labelled = element.control;
+  if (isFieldControl(labelled)) return labelled as T;
+  return element;
+}
+
 export function readingMount(element: HTMLElement, x: number, y: number): DOMRect | null {
   const lines: DOMRect[] = [];
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
