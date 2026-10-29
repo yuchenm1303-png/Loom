@@ -870,7 +870,17 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   <label><span>{zh ? "邮箱验证码" : "Email verification code"}</span><input className="loom-code-input" name="verificationCode" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" placeholder="000000" value={verificationCode} onInput={(event) => setVerificationCode(event.currentTarget.value.replace(/\D/g, "").slice(0, 6))} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))} required /></label>
                   <button className="loom-form-submit" type="submit" disabled={account.busy || verificationCode.length !== 6}><span>{account.busy ? (zh ? "验证中…" : "Verifying…") : (zh ? "验证并创建账户" : "Verify & create account")}</span><span aria-hidden="true">→</span></button>
                 </form>
-                <div className="loom-auth-row"><button className="loom-account-switch" type="button" disabled={account.busy || resendWait > 0} onClick={() => void resendVerification()}>{resendWait > 0 ? (zh ? `${resendWait} 秒后可重发` : `Resend in ${resendWait}s`) : (zh ? "重新发送验证码" : "Resend code")}</button><button className="loom-account-switch" type="button" onClick={() => resetAuthFlow("register")}>{zh ? "返回" : "Back"}</button></div>
+                {/* Two quiet stops under the submit button. Each is padded to its
+                    words rather than to the old 30px button box, so the lens
+                    capsule stays clear of the submit button. A running countdown
+                    is status text, not a dead button: it only becomes a link (and
+                    a lens stop) once resending is actually possible. */}
+                <div className="loom-auth-row">
+                  {resendWait > 0
+                    ? <span className="loom-auth-wait" role="status">{zh ? `${resendWait} 秒后可重发` : `Resend in ${resendWait}s`}</span>
+                    : <button className="loom-account-switch" type="button" data-liquid-snap-pad="6" disabled={account.busy} onClick={() => void resendVerification()}>{zh ? "重新发送验证码" : "Resend code"}</button>}
+                  <button className="loom-account-switch" type="button" data-liquid-snap-pad="6" onClick={() => resetAuthFlow("register")}>{zh ? "返回" : "Back"}</button>
+                </div>
               </> : authStep === "forgot" ? <>
                 <p className="loom-control-copy">{zh ? "输入你的邮箱。若账户存在，我们会发送一次性验证码。" : "Enter your email. If the account exists, we'll send a one-time recovery code."}</p>
                 <form className="loom-account-form" onSubmit={submitForgot}>

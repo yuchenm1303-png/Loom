@@ -373,12 +373,49 @@
   background: transparent;
 }
 .loom-editorial .editorial-panel .loom-auth-v2 .loom-account-switch:hover { color: var(--dialog-text); }
+/* The verification step ends in two quiet links. They used to keep the 30px
+   button box, so their glyphs started 1px under the submit button and the
+   lens capsule over "Resend" reached back up across the button's label. The
+   row now owns its own line: a real gap above, links that hug their text, and
+   a resend that reads as inert while its countdown runs. */
 .loom-editorial .editorial-panel .loom-auth-row {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
+  gap: 16px;
+  margin-top: 14px;
 }
-.loom-editorial .editorial-panel .loom-auth-row .loom-account-switch { margin: 0; }
+.loom-editorial .editorial-panel .loom-auth-row .loom-account-switch {
+  display: inline-flex;
+  align-items: baseline;
+  width: auto;
+  max-width: 100%;
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  padding: 3px 0;
+  color: var(--dialog-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color var(--loom-dur-fast) ease;
+}
+.loom-editorial .editorial-panel .loom-auth-row .loom-account-switch:disabled {
+  color: var(--dialog-quiet);
+  opacity: .85;
+  text-decoration: none;
+  cursor: default;
+}
+/* A running countdown is information, not a dead control: it sits on the same
+   baseline as the link it replaces and never draws an affordance. */
+.loom-editorial .editorial-panel .loom-auth-row .loom-auth-wait {
+  color: var(--dialog-quiet);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 3px 0;
+  font-variant-numeric: tabular-nums;
+}
 .loom-editorial .editorial-panel .loom-password-strength,
 .loom-editorial .editorial-panel .loom-code-input {
   color: var(--dialog-muted);
