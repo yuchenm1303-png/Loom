@@ -319,11 +319,18 @@
 [data-icon="layers"] .li-bottom,
 [data-icon="model"] .li-bottom { transform: translate(0, calc(var(--ic-on) * 1.8px)); }
 
-[data-icon="file-diff"] .li-plus { transform: translate(0, calc(var(--ic-on) * -1.6px)); }
-[data-icon="file-diff"] .li-minus { transform: translate(0, calc(var(--ic-on) * 1.6px)); }
+/* A change under review: the addition rises and grows, the removal drops and shortens, so the two lines are seen
+   to pull apart rather than both just shift. (A plus turned a quarter reads as an x halfway, so it does not turn.) */
+[data-icon="file-diff"] .li-plus { transform-origin: 12px 10px; transform: translate(0, calc(var(--ic-on) * -1.3px)) scale(calc(1 + var(--ic-on) * .2)); }
+[data-icon="file-diff"] .li-minus { transform-origin: 12px 17px; transform: translate(0, calc(var(--ic-on) * 1.3px)) scaleX(calc(1 - var(--ic-on) * .34)); }
 
+/* Sub-agents branch out: the new node drops away down its stem, then the two branches spread and rise a beat
+   later, the arm between them widening so every joint stays joined (6 units each side -> 7.3). */
 [data-icon="fork"] .li-node { transform: translate(0, calc(var(--ic-on) * 1.6px)); }
 [data-icon="fork"] .li-stem { transform-origin: 12px 12px; transform: scaleY(calc(1 + var(--ic-on) * .53)); }
+[data-icon="fork"] .li-tip-l { transform: translate(calc(var(--ic-on) * -1.3px), calc(var(--ic-on) * -.6px)); transition-delay: calc(var(--ic-on) * 50ms); }
+[data-icon="fork"] .li-tip-r { transform: translate(calc(var(--ic-on) * 1.3px), calc(var(--ic-on) * -.6px)); transition-delay: calc(var(--ic-on) * 50ms); }
+[data-icon="fork"] .li-arm { transform-origin: 12px 12px; transform: translate(0, calc(var(--ic-on) * -.6px)) scaleX(calc(1 + var(--ic-on) * 1.3 / 6)); transition-delay: calc(var(--ic-on) * 50ms); }
 
 [data-icon="link"] .li-half-l { transform: translate(calc(var(--ic-on) * 1.4px), 0); }
 [data-icon="link"] .li-half-r { transform: translate(calc(var(--ic-on) * -1.4px), 0); }
@@ -342,10 +349,17 @@
 [data-icon="eye"] .li-pupil { transform: translate(calc(var(--ic-on) * 2.2px), 0); }
 
 /* Two bubbles: one says something, the other answers a beat later. */
-[data-icon="messages"] .li-front { transform: translate(0, calc(var(--ic-on) * -1.4px)); }
-[data-icon="messages"] .li-back { transform: translate(0, calc(var(--ic-on) * 1.2px)); transition-delay: calc(var(--ic-on) * 60ms); }
+[data-icon="messages"] .li-front { transform-origin: 4px 15px; transform: translate(0, calc(var(--ic-on) * -1.2px)) rotate(calc(var(--ic-on) * -6deg)); }
+[data-icon="messages"] .li-back { transform-origin: 20px 20px; transform: translate(0, calc(var(--ic-on) * 1px)) rotate(calc(var(--ic-on) * 5deg)); transition-delay: calc(var(--ic-on) * 70ms); }
 
+/* The person straightens up: the head lifts and the shoulders square a beat later. */
+/* A picture used as a glyph (the account avatar) comes forward a little, and gives when pressed like any glyph. */
+img.loom-icon {
+  transition: opacity var(--loom-dur-fast) ease, scale var(--ic-dur) var(--ic-curve);
+  scale: calc(1 + var(--ic-on) * .08);
+}
 [data-icon="user-round"] .li-head { transform: translate(0, calc(var(--ic-on) * -1.3px)); }
+[data-icon="user-round"] .li-body { transform-origin: 12px 21px; transform: scale(calc(1 + var(--ic-on) * .07), calc(1 - var(--ic-on) * .06)); transition-delay: calc(var(--ic-on) * 40ms); }
 
 [data-icon="bot"] .li-antenna { transform: translate(0, calc(var(--ic-on) * -1.6px)); }
 [data-icon="bot"] .li-eyes { transform-origin: 12px 14px; animation: var(--ic-k-blink) 480ms ease both; }

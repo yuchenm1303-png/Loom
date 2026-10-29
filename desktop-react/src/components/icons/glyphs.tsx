@@ -318,9 +318,9 @@ export const FileDiff = createIcon("file-diff", "FileDiff", <>
 </>);
 
 export const GitFork = createIcon("fork", "GitFork", <>
-  <circle cx="6" cy="6" r="3" />
-  <circle cx="18" cy="6" r="3" />
-  <path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9" />
+  <circle className="li li-tip-l" cx="6" cy="6" r="3" />
+  <circle className="li li-tip-r" cx="18" cy="6" r="3" />
+  <path className="li li-arm" d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9" />
   <path className="li li-stem" d="M12 12v3" />
   <circle className="li li-node" cx="12" cy="18" r="3" />
 </>);
@@ -365,7 +365,7 @@ export const MessagesSquare = createIcon("messages", "MessagesSquare", <>
 
 export const UserRound = createIcon("user-round", "UserRound", <>
   <circle className="li li-head" cx="12" cy="8" r="5" />
-  <path d="M20 21a8 8 0 0 0-16 0" />
+  <path className="li li-body" d="M20 21a8 8 0 0 0-16 0" />
 </>);
 
 export const Activity = createIcon("activity", "Activity",

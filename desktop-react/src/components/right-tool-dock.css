@@ -233,11 +233,10 @@ html[data-loom-theme="light"] .loom-tool-rail {
   object-fit: cover;
   opacity: .92;
   box-shadow: 0 0 0 1px var(--loom-workspace-line, rgba(224, 230, 242, .12));
-  /* It is this tool's glyph (it carries .loom-icon), so it rides the glyph dials: comes forward a little on the
-     pointer, and gives when pressed (icon-motion.css). */
-  transition: opacity var(--loom-dur-fast) ease, scale var(--ic-dur) var(--ic-curve);
+  /* It is this tool's glyph (img.loom-icon): icon-motion.css brings it forward on the pointer or
+     focus and lets it give when pressed. */
 }
-.loom-tool-button:hover > .loom-tool-avatar { opacity: 1; scale: 1.08; }
+.loom-tool-button:hover > .loom-tool-avatar { opacity: 1; }
 
 /* Carried: lifted off the dock, the others make room (their shift is a transition of its own). */
 .loom-tool-position.is-lifted { z-index: 4; }
