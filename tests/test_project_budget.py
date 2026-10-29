@@ -243,3 +243,17 @@ def test_concurrent_admissions_cannot_both_take_the_last_room(tmp_path):
     for thread in threads:
         thread.join()
     assert results.count(True) == 1  # 45 known + 45 reserved; a second reserve would exceed 100
+
+
+def test_tool_contract_error_with_a_carried_response_is_known_usage_not_unknown(tmp_path):
+    from app.ai.errors import AIToolContractError
+    store, run, budget = ledger(tmp_path, budget=1000)
+    item = episode(store, run)
+    carried = AIToolContractError("schema-invalid call", response=ModelResponse(text="", usage=ModelUsage(21, 0, 21)))
+    with pytest.raises(AIToolContractError):
+        BudgetedModelExecutor(Inner(carried), budget).execute(None, "p", request(), None)
+    budget.observe(usage_event("s1", item["turnId"], 21))  # the runtime commits the carried response
+    position = budget.report(run)
+    # Charged once as known; a real 2026-10-29 run was refused its last request
+    # because two such responses were also assumed as unknown usage.
+    assert position["knownTokens"] == 21 and position["unknownRequests"] == 0 and position["chargedTokens"] == 21

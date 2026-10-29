@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any, Mapping
 
 from .contracts import AgentEventKind, ToolEffect
@@ -29,6 +30,13 @@ def _store(context: ToolContext) -> ProcessStore:
     if not isinstance(store, ProcessStore):
         raise RuntimeError("process runtime service is unavailable")
     return store
+
+
+def _scratch_root(context: ToolContext) -> Path | None:
+    # The session's run-artifacts folder, not only this turn's: work that spans
+    # turns (a project review continued over episodes) runs probes written earlier.
+    scratch = context.services.get("run_scratch_dir")
+    return Path(scratch).parent if scratch else None
 
 
 def _validate_env(raw: object) -> Mapping[str, object] | None:
@@ -199,7 +207,7 @@ def _exec_handler(
         pty=use_pty,
         rows=rows,
         cols=cols,
-        scratch=context.services.get("run_scratch_dir"),
+        scratch=_scratch_root(context),
     )
     _emit_started(context, managed, relative_cwd=relative_cwd, background=not should_wait)
     if not should_wait:

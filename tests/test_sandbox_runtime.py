@@ -418,3 +418,13 @@ def test_turn_scratch_directory_is_reachable_from_sandboxed_commands(tmp_path):
     missing = _decode_mxc_config(mxc.prepare(argv=("python", "probe.py"), cwd=workspace, workspace=workspace,
                                              permission_mode=PermissionMode.WORKSPACE, scratch=tmp_path / "absent").argv)
     assert all("absent" not in path for path in missing["filesystem"]["readwritePaths"])
+
+
+def test_exec_grants_the_sessions_run_artifacts_not_only_this_turns(tmp_path):
+    from types import SimpleNamespace
+    from app.agent_runtime.process_tools import _scratch_root
+    turn = tmp_path / "session" / "run-artifacts" / "turn-2"
+    context = SimpleNamespace(services={"run_scratch_dir": turn})
+    # A review continued over episodes runs probes an earlier turn wrote.
+    assert _scratch_root(context) == tmp_path / "session" / "run-artifacts"
+    assert _scratch_root(SimpleNamespace(services={})) is None

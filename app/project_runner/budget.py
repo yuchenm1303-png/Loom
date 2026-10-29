@@ -262,8 +262,12 @@ class BudgetedModelExecutor:
             refused = exc.status_code is not None and 400 <= exc.status_code < 500 and exc.status_code != 408
             self._finish(ticket, "rejected" if refused else "unknown")
             raise
-        except BaseException:
-            self._finish(ticket, "unknown")
+        except BaseException as exc:
+            # A tool-contract error carries the complete response, which the
+            # runtime commits (and reports usage for) like any other.
+            carried = getattr(getattr(exc, "response", None), "usage", None)
+            tokens = getattr(carried, "total_tokens", 0) or 0
+            self._finish(ticket, "returned" if tokens else "unknown", tokens)
             raise
         usage = getattr(response, "usage", None)
         self._finish(ticket, "returned", getattr(usage, "total_tokens", 0) or 0)
