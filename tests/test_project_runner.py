@@ -276,10 +276,13 @@ def test_missing_dispatch_receipt_is_never_replayed(tmp_path):
     try:
         run = create(service, source)
         control(service, run, "start")
-        for _ in range(4):
+        # No turn ever started, so no tool ran: each lost dispatch is continued as a new
+        # episode (nothing is replayed), and repeated losses stop the run for inspection.
+        from app.project_runner.runner import MAX_INTERRUPTIONS
+        for _ in range(MAX_INTERRUPTIONS + 4):
             cycle(service)
         final = service.project_store.get(run["id"])
-        assert final["state"] == "needs_review" and final["episodesUsed"] == 1
+        assert final["state"] == "needs_review" and final["episodesUsed"] == MAX_INTERRUPTIONS + 1
         with pytest.raises(ValueError, match="reconciliation"):
             control(service, final, "resume")
         assert not platform.requests
