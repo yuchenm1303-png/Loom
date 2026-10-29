@@ -288,3 +288,20 @@ def test_unclaimed_supporting_file_outside_the_declared_scope_is_accepted(tmp_pa
             parallel.allowed(service.project_store, child, workspace)  # another task declares it
     finally:
         runtime.close()
+
+
+def test_invalid_parallel_plan_goes_back_to_the_planner_and_stays_in_planning(tmp_path):
+    # Real ledger run 6: the planner made task-2 depend on itself; the project stopped.
+    from test_project_runner import build, create, control, cycle, reply
+    bad = {"tasks": [{**PLAN["tasks"][0]}, {**PLAN["tasks"][1], "dependsOn": ["task-1", "task-2"]}]}
+    service, runtime, platform, _, source = build(tmp_path, [reply(bad), reply(bad)])
+    try:
+        run = control(service, create(service, source, maxWorkers=2, reviewPolicy="independent"), "start")
+        cycle(service)
+        cycle(service)
+        current = service.project_store.get(run["id"])
+        assert current["state"] == "running" and current["phase"] == "planning" and current["plan"] == []
+        assert current["replyRejections"] == 1 and "task-2 dependsOn" in current["replyNote"]
+        assert "task-2 dependsOn" in str(platform.requests[1].messages)  # the planner is told what to fix
+    finally:
+        runtime.close()

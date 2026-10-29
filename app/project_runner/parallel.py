@@ -6,30 +6,32 @@ import uuid
 
 from .review import candidate, git, snapshot
 from .store import encoded
+from .errors import ReplyFormatError
 
 
 def configure(plan, raw):
     for index, (task, supplied) in enumerate(zip(plan, raw)):
         dependencies = supplied.get("dependsOn", [plan[index-1]["id"]] if index else [])
+        # Plan-shape errors go back to the planner with the task and value named.
         if not isinstance(dependencies, list) or any(not isinstance(item, str) or item not in {p["id"] for p in plan[:index]} for item in dependencies) or len(set(dependencies)) != len(dependencies):
-            raise ValueError("Dependencies must be unique earlier task IDs")
+            raise ReplyFormatError(f"{task['id']} dependsOn must list unique earlier task IDs only, got {dependencies!r}")
         scopes = supplied.get("fileScopes", ["*"])
         if not isinstance(scopes, list) or not 1 <= len(scopes) <= 32:
-            raise ValueError("Tasks require 1..32 relative file scopes")
+            raise ReplyFormatError(f"{task['id']} needs 1..32 relative fileScopes, got {scopes!r}")
         normalized = []
         for scope in scopes:
             if scope == "*" and "fileScopes" not in supplied:
                 normalized.append(scope)
                 continue
             if not isinstance(scope, str) or not scope.strip() or len(scope) > 300 or "\\" in scope or ":" in scope or "*" in scope:
-                raise ValueError("File scopes must be concrete relative paths")
+                raise ReplyFormatError(f"{task['id']} fileScopes must be concrete relative paths, got {scope!r}")
             path = PurePosixPath(scope)
             if path.is_absolute() or any(part.casefold() in {"..", ".git"} for part in path.parts) or str(path) == ".":
-                raise ValueError("File scopes must remain within the workspace")
+                raise ReplyFormatError(f"{task['id']} fileScopes must stay inside the workspace, got {scope!r}")
             normalized.append(str(path))
         resources = supplied.get("sharedResources", ["project_environment"])
         if not isinstance(resources, list) or len(resources) > 16 or any(not isinstance(item, str) or not item.strip() or len(item) > 100 for item in resources):
-            raise ValueError("Invalid shared resources")
+            raise ReplyFormatError(f"{task['id']} sharedResources must be up to 16 short names, got {resources!r}")
         task.update(dependsOn=dependencies, fileScopes=normalized, sharedResources=sorted({item.strip().casefold() for item in resources}))
     return plan
 

@@ -11,6 +11,7 @@ from .store import encoded
 from .review import criteria, StaleCandidate
 from . import parallel
 from .budget import ProjectBudget
+from .errors import ReplyFormatError
 
 # How an episode ended decides what the runner does next, from the fields the
 # runtime records (limit kind, provider_failure, retryable, status). The string
@@ -78,10 +79,6 @@ def episode_outcome(state, result, refused):
     if result.get("scopeRejected"):
         return "scope"
     return None
-
-
-class ReplyFormatError(ValueError):
-    """A final reply the runner cannot read; returned to the model, not a verdict on the work."""
 
 
 def object_reply(text):
@@ -424,11 +421,14 @@ class ProjectRunner:
                     raise ValueError(result.get("error") or f"Episode ended with {state}")
                 reply = object_reply(result["text"])
                 if episode["phase"] == "planning":
-                    current["plan"] = validate_plan(reply)
-                    current["phase"] = "working"
+                    # Validate the whole plan before touching the run: a rejected plan
+                    # goes back to the planner and must leave the run in planning.
+                    plan = validate_plan(reply)
                     if current.get("maxWorkers", 1) > 1:
-                        parallel.configure(current["plan"], reply["tasks"])
-                        current.update(phase="parallel", parallelStatus="active", teamChildren=[])
+                        parallel.configure(plan, reply["tasks"])
+                        current.update(plan=plan, phase="parallel", parallelStatus="active", teamChildren=[])
+                    else:
+                        current.update(plan=plan, phase="working")
                 elif episode["phase"] == "verifying":
                     self._review_result(db, current, episode, facts)
                 else:
