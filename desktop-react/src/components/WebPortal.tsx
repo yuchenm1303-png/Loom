@@ -365,7 +365,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     setTurnstileToken("");
     setTurnstileRefresh((value) => value + 1);
   };
-  const turnstileWidget = turnstileRequired ? (
+  // Do not initialize Cloudflare inside the hidden editorial modal: iframe
+  // challenges need visible dimensions at render time.
+  const turnstileWidget = turnstileRequired && (!editorial || drawerOpen) ? (
     <TurnstileChallenge
       siteKey={turnstileSiteKey}
       theme={editorial && lightEditorial ? "light" : "dark"}
