@@ -27,7 +27,7 @@ try {
   const targetY = await demo.evaluate(node => {
     const stage = node.querySelector(".computer-demo-stage").getBoundingClientRect();
     const input = node.querySelector("input").getBoundingClientRect();
-    return input.y - stage.y + input.height / 2;
+    return (input.y - stage.y + input.height / 2) / (stage.width / 1280);
   });
   const cursorY = await native.locator("#cursor").evaluate(node => node.getBoundingClientRect().y + 10);
   assert.ok(Math.abs(cursorY - targetY) < 2, "original HUD pointer tracks the input geometry");
@@ -63,6 +63,13 @@ try {
   const bounds = await small.boundingBox();
   assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 391);
   assert.equal(await small.evaluate(node => node.scrollWidth <= node.clientWidth), true, "mobile demo fits without overflow");
+  const geometry = await small.evaluate(node => {
+    const viewport = node.querySelector(".computer-demo-viewport").getBoundingClientRect();
+    const desktop = node.querySelector(".computer-demo-desktop").getBoundingClientRect();
+    return { ratio: viewport.width / viewport.height, fits: Math.abs(viewport.width - desktop.width) < 1 && Math.abs(viewport.height - desktop.height) < 1 };
+  });
+  assert.ok(Math.abs(geometry.ratio - 1.6) < .01, "the complete desktop keeps its 16:10 ratio");
+  assert.equal(geometry.fits, true, "calendar, browser and HUD share one scale");
   assert.equal(await mobile.locator(".computer-use-hud.hud-live").count(), 0, "preview does not start the real desktop HUD");
   if (process.env.LOOM_DEMO_SCREENSHOTS) await small.screenshot({ path: `${process.env.LOOM_DEMO_SCREENSHOTS}/computer-demo-mobile.png` });
   assert.deepEqual(errors, []);

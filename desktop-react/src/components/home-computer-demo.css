@@ -7,39 +7,81 @@
 .computer-demo-explanation > span { font-size: 14px; color: var(--ed-ink-faint); }
 .computer-demo-explanation strong { font-size: 20px; font-weight: 400; }
 .computer-demo-explanation p { font-size: 16px; color: var(--ed-ink-muted); line-height: 1.5; margin: 8px 0 0; }
-.computer-demo-window { grid-column: 6 / -1; min-width: 0; border: 1px solid var(--ed-rule); border-radius: 14px; background: var(--ed-paper); overflow: hidden; font: 12px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--ed-ink); }
+.computer-demo-window { grid-column: 5 / -1; min-width: 0; border: 1px solid var(--ed-rule); border-radius: 14px; background: var(--ed-paper); overflow: hidden; font: 12px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--ed-ink); }
 .computer-demo-window button { font: inherit; color: inherit; background: transparent; cursor: pointer; border: 0; border-radius: 6px; }
 .computer-demo-window button:hover { background: color-mix(in srgb, var(--ed-ink) 7%, transparent); }
 .computer-demo-window button:focus-visible { outline: 2px solid var(--ed-accent); outline-offset: 2px; }
-.computer-demo-browser { display: flex; gap: 16px; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--ed-rule); color: var(--ed-ink-faint); font-size: 10px; }
-.computer-demo-browser > span:first-child { display: flex; gap: 5px; }
-.computer-demo-browser i { width: 6px; height: 6px; border: 1px solid var(--ed-ink-faint); border-radius: 50%; }
-.computer-demo-browser > div { display: flex; align-items: center; gap: 8px; }
-.computer-demo-stage { position: relative; height: 390px; overflow: hidden; background: var(--ed-paper-soft); }
+
+/* One 1280 × 800 desktop, uniformly scaled together with the unmodified native HUD. */
+.computer-demo-viewport { position: relative; aspect-ratio: 1280 / 800; overflow: hidden; }
+.computer-demo-desktop { position: absolute; width: 1280px; height: 800px; transform: scale(var(--desktop-scale)); transform-origin: top left; }
+.computer-demo-browser { height: 76px; box-sizing: border-box; background: var(--ed-paper); border-bottom: 1px solid var(--ed-rule); }
+.computer-demo-browser-tab { height: 34px; display: flex; align-items: center; gap: 18px; padding: 0 18px; color: var(--ed-ink-faint); }
+.computer-demo-window-dots { display: flex; gap: 7px; margin-right: 12px; }
+.computer-demo-window-dots i { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--ed-ink-faint); }
+.computer-demo-browser-tab > span:nth-child(2) { display: flex; align-items: center; gap: 10px; width: 206px; padding: 7px 12px; border-radius: 8px 8px 0 0; color: var(--ed-ink-muted); background: var(--ed-paper-soft); font-size: 11px; }
+.computer-demo-browser-tab > span:nth-child(2) > svg:last-child { margin-left: auto; }
+.computer-demo-address { height: 41px; display: flex; align-items: center; gap: 17px; padding: 0 18px; color: var(--ed-ink-faint); }
+.computer-demo-address > span:first-of-type { display: flex; align-items: center; gap: 10px; height: 27px; border-radius: 20px; background: var(--ed-paper-soft); flex: 1; padding: 0 15px; font-size: 11px; }
+.computer-demo-browser-avatar { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--ed-rule); color: var(--ed-ink-muted); font-size: 10px; }
+.computer-demo-stage { position: relative; width: 1280px; height: 724px; display: grid; grid-template-columns: 222px minmax(0, 1fr); overflow: hidden; background: var(--ed-paper-soft); }
 .computer-demo-native-hud { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; z-index: 2; background: transparent; color-scheme: dark; }
-.computer-demo-calendar-head { display: flex; gap: 12px; align-items: center; padding: 69px 18px 18px; }
-.computer-demo-calendar-head strong { font-weight: 600; font-size: 15px; }
-.computer-demo-calendar-head > span { color: var(--ed-ink-faint); font-size: 10px; }
-.computer-demo-calendar-head button { display: flex; align-items: center; gap: 5px; margin-left: auto; padding: 7px 9px; border: 1px solid var(--ed-rule); font-size: 10px; }
-.computer-demo-week { display: grid; grid-template-columns: 43px repeat(5, minmax(0, 1fr)); border-block: 1px solid var(--ed-rule-soft); padding: 8px 0; }
-.computer-demo-week > span { text-align: center; color: var(--ed-ink-faint); font-size: 8px; }
-.computer-demo-week b { display: block; font-size: 15px; font-weight: 400; }
-.computer-demo-week .is-today { color: var(--ed-ink); }
-.computer-demo-calendar { display: grid; grid-template-columns: 43px repeat(5, minmax(0, 1fr)); height: 240px; }
-.computer-demo-hours { display: grid; grid-template-rows: repeat(4, 1fr); color: var(--ed-ink-faint); font-size: 8px; padding: 8px 5px; }
-.computer-demo-day { position: relative; border-left: 1px solid var(--ed-rule-soft); background: repeating-linear-gradient(to bottom, transparent 0 59px, var(--ed-rule-soft) 59px 60px); }
-.computer-demo-existing, .computer-demo-event { display: grid; gap: 3px; padding: 7px; font-size: 9px; border-left: 2px solid var(--ed-ink-faint); background: color-mix(in srgb, var(--ed-ink) 5%, transparent); border-radius: 4px; margin: 10px 3px; }
-.computer-demo-event { margin-top: 65px; border-color: #9aafa0; }
-.computer-demo-event strong { font-weight: 500; overflow-wrap: anywhere; }
-.computer-demo-event > svg { color: #9aafa0; }
-.computer-demo-event-form { position: absolute; top: 123px; right: 20px; width: 49%; padding: 15px; box-sizing: border-box; border: 1px solid var(--ed-rule); border-radius: 12px; background: var(--ed-paper); box-shadow: 0 12px 28px #00000018; z-index: 1; }
-.computer-demo-event-form > div:first-child { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; margin-bottom: 12px; }
-.computer-demo-event-form > div:first-child > span { color: var(--ed-ink-faint); font-size: 10px; }
-.computer-demo-event-form label { display: grid; gap: 5px; color: var(--ed-ink-faint); font-size: 9px; }
-.computer-demo-event-form input { min-width: 0; width: 100%; box-sizing: border-box; border: 1px solid var(--ed-rule); background: var(--ed-paper-soft); color: var(--ed-ink); border-radius: 5px; padding: 8px; font: 11px/1.5 "Segoe UI", sans-serif; }
-.computer-demo-form-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
-.computer-demo-form-row label > span { color: var(--ed-ink-muted); font-size: 10px; }
-.computer-demo-event-form > button { width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px; padding: 8px 4px; background: color-mix(in srgb, var(--ed-ink) 8%, transparent); font-size: 10px; }
+.computer-demo-calendar-sidebar { display: flex; flex-direction: column; padding: 23px 19px 18px; border-right: 1px solid var(--ed-rule-soft); background: var(--ed-paper); }
+.computer-demo-app-name { display: flex; align-items: center; gap: 11px; color: var(--ed-ink); font-size: 20px; }
+.computer-demo-app-name strong { font-weight: 500; }
+.computer-demo-window .computer-demo-create { display: flex; align-items: center; gap: 11px; width: fit-content; padding: 12px 18px; margin: 29px 0; border: 1px solid var(--ed-rule); border-radius: 11px; background: var(--ed-paper-soft); font-size: 13px; color: var(--ed-ink); }
+.computer-demo-mini-month { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; font-size: 11px; color: var(--ed-ink-muted); }
+.computer-demo-mini-month > strong { font-weight: 500; }
+.computer-demo-mini-month > div { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 16px; width: 100%; }
+.computer-demo-mini-month > div > span { display: grid; place-items: center; height: 22px; font-size: 10px; }
+.computer-demo-mini-month .is-outside { color: var(--ed-ink-faint); opacity: .45; }
+.computer-demo-mini-month .is-selected { border-radius: 50%; background: var(--ed-ink); color: var(--ed-paper); }
+.computer-demo-calendar-list { display: grid; gap: 17px; margin-top: 34px; font-size: 12px; color: var(--ed-ink-muted); }
+.computer-demo-calendar-list > strong { font-weight: 500; margin-bottom: 3px; }
+.computer-demo-calendar-list > span { display: flex; align-items: center; gap: 10px; }
+.computer-demo-calendar-list i, .computer-demo-calendar-dot { display: block; width: 9px; height: 9px; border-radius: 3px; background: #849a8d; }
+.computer-demo-calendar-list > span:nth-last-child(2) i { background: #9d9481; }
+.computer-demo-calendar-list > span:last-child i { background: #8e969e; }
+.computer-demo-calendar-account { display: flex; gap: 10px; align-items: center; margin-top: auto; color: var(--ed-ink-muted); font-size: 12px; }
+.computer-demo-calendar-account > span:first-child { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--ed-rule-soft); }
+.computer-demo-calendar-account small { display: block; color: var(--ed-ink-faint); font-size: 10px; margin-top: 2px; }
+.computer-demo-calendar-main { min-width: 0; }
+.computer-demo-calendar-head { height: 88px; display: flex; gap: 24px; align-items: center; padding: 0 30px; }
+.computer-demo-calendar-head > strong { font-weight: 500; font-size: 21px; }
+.computer-demo-today { padding: 6px 14px; border: 1px solid var(--ed-rule); border-radius: 7px; font-size: 11px; color: var(--ed-ink-muted); }
+.computer-demo-date-arrows, .computer-demo-calendar-tools, .computer-demo-calendar-tools > span { display: flex; align-items: center; gap: 20px; color: var(--ed-ink-faint); }
+.computer-demo-calendar-tools { margin-left: auto; }
+.computer-demo-calendar-tools > span { border: 1px solid var(--ed-rule); border-radius: 7px; padding: 7px 12px; font-size: 12px; gap: 15px; color: var(--ed-ink-muted); }
+.computer-demo-week { display: grid; grid-template-columns: 58px repeat(5, minmax(0, 1fr)); height: 79px; border-bottom: 1px solid var(--ed-rule-soft); align-items: center; }
+.computer-demo-week > span { text-align: center; color: var(--ed-ink-faint); font-size: 10px; }
+.computer-demo-week > span:first-child { align-self: end; padding-bottom: 10px; font-size: 9px; }
+.computer-demo-week b { display: grid; place-items: center; width: 32px; height: 32px; margin: 5px auto 0; font-size: 23px; font-weight: 400; }
+.computer-demo-week .is-today b { color: var(--ed-paper-soft); background: var(--ed-ink-muted); border-radius: 50%; }
+.computer-demo-all-day { height: 32px; display: flex; align-items: center; border-bottom: 1px solid var(--ed-rule-soft); font-size: 10px; color: var(--ed-ink-faint); }
+.computer-demo-all-day > span:first-child { width: 58px; text-align: center; font-size: 9px; }
+.computer-demo-all-day > span:last-child { background: color-mix(in srgb, var(--ed-ink) 5%, transparent); border-radius: 3px; padding: 3px 12px; margin-left: 8px; }
+.computer-demo-calendar { display: grid; grid-template-columns: 58px repeat(5, minmax(0, 1fr)); height: 525px; }
+.computer-demo-hours { display: grid; grid-template-rows: repeat(7, 75px); color: var(--ed-ink-faint); font-size: 10px; text-align: center; }
+.computer-demo-hours > span { padding-top: 7px; }
+.computer-demo-day { position: relative; border-left: 1px solid var(--ed-rule-soft); background: repeating-linear-gradient(to bottom, transparent 0 74px, var(--ed-rule-soft) 74px 75px); }
+.computer-demo-existing, .computer-demo-event { position: absolute; left: 6px; right: 6px; top: 76px; display: grid; gap: 5px; padding: 10px; font-size: 11px; border-left: 3px solid #9e998d; background: color-mix(in srgb, #9e998d 12%, var(--ed-paper-soft)); border-radius: 5px; min-height: 42px; }
+.computer-demo-existing strong, .computer-demo-event strong { font-weight: 500; }
+.computer-demo-existing > span, .computer-demo-event > span { font-size: 10px; color: var(--ed-ink-muted); }
+.computer-demo-existing.is-later { top: 226px; border-color: #8b969f; background: color-mix(in srgb, #8b969f 10%, var(--ed-paper-soft)); }
+.computer-demo-event { top: 151px; border-color: #849a8d; background: color-mix(in srgb, #849a8d 16%, var(--ed-paper-soft)); }
+.computer-demo-event small { font-size: 9px; color: var(--ed-ink-faint); }
+.computer-demo-event-form { position: absolute; top: 163px; right: 38px; width: 390px; box-sizing: border-box; border: 1px solid var(--ed-rule); border-radius: 12px; background: var(--ed-paper); box-shadow: 0 12px 32px #00000026; z-index: 1; padding: 20px 23px 0; }
+.computer-demo-form-title { display: flex; align-items: center; gap: 9px; color: var(--ed-ink-muted); font-size: 12px; margin-bottom: 22px; }
+.computer-demo-form-title strong { font-weight: 500; }
+.computer-demo-form-title > svg:last-child { margin-left: auto; color: var(--ed-ink-faint); }
+.computer-demo-title-label { display: grid; gap: 8px; color: var(--ed-ink-faint); font-size: 10px; }
+.computer-demo-title-label input { width: 100%; min-width: 0; box-sizing: border-box; border: 0; border-bottom: 1px solid var(--ed-rule); border-radius: 0; color: var(--ed-ink); background: transparent; font: 20px/1.5 "Segoe UI", sans-serif; padding: 5px 0 10px; outline: none; }
+.computer-demo-form-detail { display: flex; gap: 12px; align-items: center; color: var(--ed-ink-faint); margin: 21px 0; font-size: 12px; }
+.computer-demo-form-detail strong { display: block; color: var(--ed-ink-muted); font-size: 12px; font-weight: 400; }
+.computer-demo-form-detail > div > span { display: block; font-size: 11px; margin-top: 5px; }
+.computer-demo-event-form footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--ed-rule-soft); padding: 15px 0; margin-top: 23px; }
+.computer-demo-event-form footer > span { color: var(--ed-ink-faint); font-size: 10px; }
+.computer-demo-event-form footer button { display: flex; gap: 14px; align-items: center; padding: 9px 14px; background: var(--ed-ink-muted); color: var(--ed-paper); font-size: 12px; }
 .computer-demo-controls, .computer-demo-controls > div { display: flex; align-items: center; gap: 4px; }
 .computer-demo-controls { padding: 10px; justify-content: space-between; border-top: 1px solid var(--ed-rule); }
 .computer-demo-controls > div:first-child { flex: 1; }
@@ -51,6 +93,6 @@
 .computer-demo-loop i { width: 5px; height: 5px; border-radius: 50%; background: var(--ed-accent); }
 .computer-demo-footnote { margin: 0; padding: 0 14px 11px; color: var(--ed-ink-faint); font-size: 9px; }
 
-@media (max-width: 1000px) { .computer-demo-copy { grid-column: 1 / span 4; } .computer-demo-window { grid-column: 5 / -1; } .computer-demo-event-form { right: 12px; padding: 12px; } }
-@media (max-width: 760px) { .computer-demo-copy, .computer-demo-window { grid-column: 1 / -1; } }
-@media (max-width: 480px) { .computer-demo-browser { gap: 8px; padding: 10px; font-size: 8px; } .computer-demo-browser > span:first-child { display: none; } .computer-demo-calendar-head { padding-inline: 12px; gap: 7px; } .computer-demo-calendar-head > span { display: none; } .computer-demo-stage { height: 440px; } .computer-demo-event-form { top: 130px; width: 61%; right: 12px; } .computer-demo-controls { flex-wrap: wrap; } .computer-demo-controls > div:first-child { flex-basis: 100%; } .computer-demo-controls > div:last-child { margin-left: auto; } }
+@media (max-width: 1000px) { .computer-demo-copy { grid-column: 1 / span 4; } .computer-demo-window { grid-column: 5 / -1; } }
+@media (max-width: 760px) { .computer-demo-copy, .computer-demo-window { grid-column: 1 / -1; } .computer-demo-copy { padding-top: 0; } }
+@media (max-width: 480px) { .computer-demo-controls { flex-wrap: wrap; } .computer-demo-controls > div:first-child { flex-basis: 100%; } .computer-demo-controls > div:last-child { margin-left: auto; } }
