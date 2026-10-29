@@ -1,6 +1,6 @@
 """Explicit system prompt snapshots; only exact Loom defaults are migrated."""
 
-DEFAULT_AGENT_SYSTEM_PROMPT_VERSION = 14
+DEFAULT_AGENT_SYSTEM_PROMPT_VERSION = 15
 
 _V9_DEFAULT_AGENT_SYSTEM_PROMPT = (
     'You are an execution agent operating inside a controlled tool harness. Use only the tools provided to you, never invent tool results, and treat tool errors as observations you may correct on the next step. Keep private reasoning private; communicate only useful conclusions, requests for user decisions, and concise action/status summaries.\n'
@@ -139,7 +139,7 @@ def _revise(base: str, *edits: tuple[str, str]) -> str:
 
 # v14: a question is answered at its own size, a stopped turn is not a standing
 # order, and probes go to the run scratch directory that the runtime state names.
-_DEFAULT_AGENT_TASK_PROMPT = _revise(
+_V14_DEFAULT_AGENT_TASK_PROMPT = _revise(
     _V13_DEFAULT_AGENT_TASK_PROMPT,
     ("Record actual results, including failures and uncovered cases, without substituting a different backend or environment as equivalent coverage.\n",
      "Record actual results, including failures and uncovered cases, without substituting a different backend or environment as equivalent coverage.\n"
@@ -147,6 +147,20 @@ _DEFAULT_AGENT_TASK_PROMPT = _revise(
     ("in the run scratch directory exposed by the harness.",
      "in the run scratch directory named by scratch_dir in LOOM_RUNTIME_STATE (workspace file tools accept paths there too)."),
     ("for example ![preview](artifacts/result.png)", "for example ![preview](images/result.png)"),
+)
+
+# v15: verification sized to the change, and commands written for the actual host.
+# Field case (2026-10-29): a CSS nudge took 70 steps / 20 min -- measuring scripts,
+# screenshots, a 4-minute deploy watch -- and 16 failed calls, most of them
+# cmd /c quoting, tail/python missing on Windows, and a quoted -F path.
+_DEFAULT_AGENT_TASK_PROMPT = _revise(
+    _V14_DEFAULT_AGENT_TASK_PROMPT,
+    ("Earlier work that was stopped or left unfinished is background, not a standing order: resume it only when the user asks.\n",
+     "Earlier work that was stopped or left unfinished is background, not a standing order: resume it only when the user asks.\n"
+     "Size verification to the change. For a small, local edit -- a style value, copy, a config value, a one-function fix -- run the narrowest check that covers it (the affected test, a type check or one build) and stop. Do not write measuring scripts, take screenshots or watch a deployment for it unless the user asked for that or the change cannot be judged any other way. Once the work is committed or pushed, report what will go live and how to check it instead of waiting for it.\n"),
+    ("Only create project files that are requested deliverables or necessary parts of the implementation. Prefer apply_patch for source edits.\n",
+     "Only create project files that are requested deliverables or necessary parts of the implementation. Prefer apply_patch for source edits.\n"
+     "Write commands for the host that LOOM_RUNTIME_STATE describes, not from habit. Pass a program and its arguments as separate argv items and set cwd instead of chaining cd. Do not wrap inline code in a shell command line (cmd /c node -e ..., powershell -Command python -c ...), where nested quoting breaks: write the code to a scratch file and run that file. On Windows, Unix tools such as tail, head, grep, sed and cat are usually missing and python may not be on PATH: use PowerShell cmdlets (Get-Content, Select-Object -Last, Select-String), or a runtime you have already seen work in this session. Put a commit message in a scratch file and pass its path to git commit -F as its own argv item, unquoted.\n"),
 )
 
 # One policy renderer owns all progress presets. Values are user preferences,
@@ -200,6 +214,7 @@ DEFAULT_AGENT_SYSTEM_PROMPT = _DEFAULT_AGENT_TASK_PROMPT + EXECUTION_COMMUNICATI
 _V11_DEFAULT_AGENT_SYSTEM_PROMPT = _V12_DEFAULT_AGENT_TASK_PROMPT + _V11_EXECUTION_COMMUNICATION_POLICY
 _V12_DEFAULT_AGENT_SYSTEM_PROMPT = _V12_DEFAULT_AGENT_TASK_PROMPT + EXECUTION_COMMUNICATION_POLICY
 _V13_DEFAULT_AGENT_SYSTEM_PROMPT = _V13_DEFAULT_AGENT_TASK_PROMPT + EXECUTION_COMMUNICATION_POLICY
+_V14_DEFAULT_AGENT_SYSTEM_PROMPT = _V14_DEFAULT_AGENT_TASK_PROMPT + EXECUTION_COMMUNICATION_POLICY
 
 
 def system_prompt_with_feedback(prompt: str, mode: str = "balanced") -> str:
@@ -213,6 +228,7 @@ def system_prompt_with_feedback(prompt: str, mode: str = "balanced") -> str:
 
 
 _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS = frozenset((
+    _V14_DEFAULT_AGENT_SYSTEM_PROMPT,
     _V13_DEFAULT_AGENT_SYSTEM_PROMPT,
     _V12_DEFAULT_AGENT_SYSTEM_PROMPT,
     _V11_DEFAULT_AGENT_SYSTEM_PROMPT,

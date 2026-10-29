@@ -19,6 +19,7 @@ from app.agent_runtime.system_prompts import (
     _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS,
     _V9_DEFAULT_AGENT_SYSTEM_PROMPT,
     _V13_DEFAULT_AGENT_SYSTEM_PROMPT,
+    _V14_DEFAULT_AGENT_SYSTEM_PROMPT,
     is_loom_default_prompt,
 )
 from test_development_feedback import make_runtime
@@ -76,6 +77,21 @@ def test_v14_keeps_a_question_its_own_size_and_v13_still_migrates() -> None:
     assert "artifacts/result.png" not in DEFAULT_AGENT_SYSTEM_PROMPT
     assert _V13_DEFAULT_AGENT_SYSTEM_PROMPT in _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS
     assert is_loom_default_prompt(_V13_DEFAULT_AGENT_SYSTEM_PROMPT)
+
+
+def test_v15_sizes_verification_and_writes_commands_for_the_host(tmp_path) -> None:
+    # Field case (2026-10-29): a CSS nudge became 70 steps of measuring, screenshots and a
+    # deploy watch, with failed calls from cmd /c quoting and Unix tools missing on Windows.
+    assert "Size verification to the change." in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "instead of waiting for it" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "Write commands for the host that LOOM_RUNTIME_STATE describes" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "tail, head, grep, sed and cat are usually missing" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "Size verification" not in _V14_DEFAULT_AGENT_SYSTEM_PROMPT
+    assert _V14_DEFAULT_AGENT_SYSTEM_PROMPT in _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS
+    # A session frozen on v14 moves to v15 on load.
+    store, runtime = _stored(tmp_path, _V14_DEFAULT_AGENT_SYSTEM_PROMPT, version=14)
+    assert runtime.get_session(_SESSION_ID).system_prompt == DEFAULT_AGENT_SYSTEM_PROMPT
+    assert store.load(_SESSION_ID).system_prompt_version == DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 15
 
 
 class _Scripted:
