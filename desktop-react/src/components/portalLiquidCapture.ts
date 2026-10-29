@@ -32,6 +32,34 @@ function visibleColor(value: string) {
   return value !== "transparent" && value !== "rgba(0, 0, 0, 0)" && value !== "rgba(0,0,0,0)";
 }
 
+// The lens samples the page, so it has to respect the same stacking order the
+// page paints in: the sticky header sits above the sections that scroll under
+// it (z-index 5 against auto), and painting the sections last drew the page
+// through the bar whenever the pointer was near the top.
+function stackingKey(el: HTMLElement) {
+  const style = getComputedStyle(el);
+  if (style.position === "static") return 0;
+  const value = style.zIndex;
+  if (!value || value === "auto") return 0;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+// Document order, except where an explicit z-index says otherwise. Stable, so
+// everything with the same stacking key keeps painting in DOM order.
+function paintOrder(el: HTMLElement): ChildNode[] {
+  const children = Array.from(el.childNodes);
+  if (children.length < 2) return children;
+  const keyed = children.map((child, index) => ({
+    child,
+    index,
+    key: child instanceof HTMLElement ? stackingKey(child) : 0,
+  }));
+  if (keyed.every((item) => item.key === 0)) return children;
+  keyed.sort((a, b) => a.key - b.key || a.index - b.index);
+  return keyed.map((item) => item.child);
+}
+
 function safeImageForCanvas(img: HTMLImageElement) {
   if (!img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0) return false;
   try {
@@ -452,7 +480,7 @@ export function rasterizePortal(
       roundedRect(ctx, localX, localY, rect.width, rect.height, radius);
       ctx.clip();
     }
-    for (const child of Array.from(el.childNodes)) {
+    for (const child of paintOrder(el)) {
       if (child.nodeType === Node.TEXT_NODE) {
         drawTextNode(ctx, child as Text, style, roiLeft, roiTop, roiWidth, roiHeight, opacity);
       } else if (child instanceof HTMLElement) {

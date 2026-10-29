@@ -87,12 +87,34 @@ try {
       const pixel = (x, y) => Array.from(ctx.getImageData(x, y, 1, 1).data);
       const result = { texts, imageMargin: pixel(150, 10), imageCentre: pixel(150, 50), border: pixel(50, 121) };
       sample.remove();
+
+      // A sticky bar over the page that scrolls beneath it: the bar is painted
+      // first in the DOM and held on top only by its z-index, which is how the
+      // editorial header sits over the sections. The lens must not sample the
+      // page through it.
+      const stage = document.createElement("div");
+      stage.style.cssText = "position:fixed;left:0;top:0;width:200px;height:60px;background:white;";
+      stage.innerHTML =
+        '<div style="position:sticky;top:0;height:30px;background:rgb(250,250,250);z-index:5">BAR</div>' +
+        '<div style="position:absolute;left:0;top:0;width:200px;height:30px;background:rgb(0,0,255)">BEHIND</div>';
+      document.body.append(stage);
+      const stageCanvas = document.createElement("canvas");
+      const stageScratch = document.createElement("canvas");
+      stageCanvas.width = stageScratch.width = 200;
+      stageCanvas.height = stageScratch.height = 60;
+      const stageCtx = stageCanvas.getContext("2d");
+      rasterizePortal(stage, stageCanvas, stageScratch, null, 0, 0, 200, 60, 1);
+      result.stickyBar = Array.from(stageCtx.getImageData(100, 10, 1, 1).data);
+      result.behindBar = Array.from(stageCtx.getImageData(100, 45, 1, 1).data);
+      stage.remove();
       return result;
     });
     assert.deepEqual(captureCheck.texts, ["检", "查", "项", "目"], "wrapped CJK words must paint each character once");
     assert.deepEqual(captureCheck.imageMargin, [255, 255, 255, 255], "contain keeps letterboxed margins");
     assert.deepEqual(captureCheck.imageCentre, [0, 0, 255, 255]);
     assert.deepEqual(captureCheck.border, [255, 0, 0, 255], "a bottom-only border survives sampling");
+    assert.deepEqual(captureCheck.stickyBar, [250, 250, 250, 255], "a sticky bar paints above the page that scrolls under it");
+    assert.deepEqual(captureCheck.behindBar, [255, 255, 255, 255], "the page below the bar is still sampled");
     const probe = () => page.evaluate(() => window.lensProbe);
     const settle = async () => {
       await page.evaluate(() => {

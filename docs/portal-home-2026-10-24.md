@@ -178,6 +178,19 @@ all five controls have the same 36px box and one baseline, no horizontal overflo
 - **Measured before written.** With every control in the set, the loop now reads all base rects first and writes the
   translates afterwards; interleaving them forced one layout per element per frame. Spring stays 250 / 21.
 
+## The lens paints in stacking order (2026-10-28, fourth pass)
+
+- **The page showed through the header.** Near the top of the page the capsule sits inside the 72px bar, but the
+  rasterizer painted the DOM in document order and ignored z-index. The sticky header is painted before the sections
+  it covers, so inside the texture those sections landed above the bar: "VERSION" and "v0.1.138 · Stable" appeared
+  doubled over the nav, which read as the lens cutting through the header.
+- **Fix.** `portalLiquidCapture.ts` orders each parent's children by explicit z-index (positioned elements only,
+  stable by DOM order), so the header (z-index 5) now paints after the body (auto). With the download panel parked
+  55px above the fold, the capsule on "Download" shows only the nav row; the section stays under the bar.
+- **Checked.** A fixture with a sticky bar over an absolutely positioned block samples the bar (`[250,250,250]`)
+  rather than the block, while the area below the bar still samples the block.
+
+## Files
 
 - `desktop-react/src/components/WebPortal.tsx`: the editorial markup and the state (theme, More, thread, type-ready, stuck, reveal, language, narrow menu, account entry).
 - `desktop-react/src/components/portalHomeCopy.ts`: all the words, including the download block and the footer links.
