@@ -149,6 +149,41 @@ def test_scratch_files_stay_out_of_the_project_diff_and_the_gate(tmp_path) -> No
         runtime.close()
 
 
+def test_scratch_files_can_be_edited_and_a_single_file_searched(tmp_path) -> None:
+    # Field case (2026-10-29): write_workspace_text made scratch:scan-crop.mjs, then
+    # apply_patch / replace_workspace_text said it did not exist, and search refused a file path.
+    platform = _Scripted(
+        ModelResponse(tool_calls=(ToolCall("w", "write_workspace_text", {"path": "scratch:probe.mjs", "text": "a = 1\nb = 2\n"}),)),
+        ModelResponse(tool_calls=(ToolCall("r", "replace_workspace_text", {"path": "scratch:probe.mjs", "old_text": "a = 1", "new_text": "a = 10"}),)),
+        ModelResponse(tool_calls=(ToolCall("p", "apply_patch", {"changes": [
+            {"action": "update", "path": "scratch:probe.mjs", "old_text": "b = 2", "new_text": "b = 20"},
+            {"action": "add", "path": "scratch:sub/new.txt", "content": "x\n"}]}),)),
+        ModelResponse(tool_calls=(ToolCall("t", "apply_patch", {
+            "patch": "*** Begin Patch\n*** Update File: scratch:probe.mjs\n@@\n-a = 10\n+a = 11\n*** End Patch"}),)),
+        ModelResponse(tool_calls=(ToolCall("e", "apply_patch", {"changes": [
+            {"action": "add", "path": "scratch:../escape.txt", "content": "x"}]}),
+                                  ToolCall("s", "search_workspace_text", {"path": "notes.md", "query": "needle"}))),
+        ModelResponse(text="Done"),
+    )
+    runtime, session, workspace = make_runtime(tmp_path, platform)
+    (workspace / "notes.md").write_text("one\nthe needle\n", encoding="utf-8")
+    try:
+        result = runtime.start_turn(session.session_id, "probe something")
+        assert result.status is AgentStatus.COMPLETED
+        turn_id = runtime.store.load(session.session_id).current_turn_id
+        scratch = runtime.store.session_dir(session.session_id) / "run-artifacts" / turn_id
+        assert (scratch / "probe.mjs").read_text() == "a = 11\nb = 20\n"
+        assert (scratch / "sub" / "new.txt").read_text() == "x\n"
+        assert not (scratch.parent / "escape.txt").exists()
+        assert sorted(p.name for p in workspace.iterdir()) == ["notes.md"]
+        tools = [m for m in platform.requests[-1].messages if m.role.value == "tool"]
+        assert "escapes the scratch directory" in tools[-2].content
+        assert '"path":"notes.md","line":2' in tools[-1].content
+        assert runtime.diff_trackers.snapshot(session.session_id, turn_id).paths == ()
+    finally:
+        runtime.close()
+
+
 def test_gitignored_probe_is_not_a_source_change_but_project_source_is(tmp_path) -> None:
     def write(call, path):
         return ModelResponse(tool_calls=(ToolCall(call, "write_workspace_text", {"path": path, "text": "print(1)"}),))

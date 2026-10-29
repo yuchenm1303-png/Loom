@@ -56,7 +56,8 @@ def apply_patch_tool() -> AgentTool:
             "Actions: add(path, content), update(path, old_text, new_text) or whole-file content, "
             "delete(path, optional expected_text), and move(path, move_to). All operations validate "
             "before filesystem mutation. Alternatively pass patch with Codex-style *** Begin Patch / "
-            "Add File / Update File / Delete File / End Patch text and exact context hunks. Returns the current turn diff."
+            "Add File / Update File / Delete File / End Patch text and exact context hunks. Returns the current turn diff. "
+            "A scratch:<name> path targets this run's scratch directory (not tracked in the diff)."
         ),
         input_schema={
             "type": "object",

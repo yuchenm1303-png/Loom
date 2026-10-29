@@ -31,7 +31,7 @@ def parse_text_patch(context, source: str):
             changes.append({"action": "delete", "path": header[len("*** Delete File: "):]})
         elif header.startswith("*** Update File: "):
             path = header[len("*** Update File: "):]
-            target = context.resolve_workspace_path(path)
+            target = context.resolve_tool_path(path)[0]
             if target.stat().st_size > 1_000_000:
                 raise ValueError("patch target exceeds editable size limit")
             before = target.read_bytes().decode("utf-8")

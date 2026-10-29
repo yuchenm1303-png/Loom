@@ -7,10 +7,19 @@ from pathlib import Path
 from typing import Any
 
 from .diff_tracker import TurnDiffTracker
-from .tools import ToolContext
+from .tools import SCRATCH_PATH_PREFIX, ToolContext
 
 
 _MAX_EDITABLE_BYTES = 1_000_000
+
+
+def _target(context: ToolContext, key: str) -> Path:
+    # Keys are workspace-relative, or scratch:<relative> for the run's scratch directory.
+    return context.resolve_tool_path(key)[0]
+
+
+def _is_scratch(key: str) -> bool:
+    return key.startswith(SCRATCH_PATH_PREFIX)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +74,10 @@ class ApplyPatchRuntime:
             value = str(relative or "").strip()
             if not value:
                 raise ValueError("patch path must not be empty")
-            resolved = context.resolve_workspace_path(value)
+            resolved, scratch = context.resolve_tool_path(value)
+            if scratch:
+                root = Path(context.service("run_scratch_dir")).resolve()
+                return SCRATCH_PATH_PREFIX + resolved.relative_to(root).as_posix()
             try:
                 return resolved.relative_to(workspace).as_posix()
             except ValueError as exc:  # defensive; resolve_workspace_path already checks this
@@ -74,7 +86,7 @@ class ApplyPatchRuntime:
         def read_initial(relative: str) -> str | None:
             if relative in original:
                 return original[relative]
-            target = context.resolve_workspace_path(relative)
+            target = _target(context, relative)
             if target.exists() and not target.is_file():
                 raise ValueError(f"patch target is not a regular file: {relative}")
             if not target.exists():
@@ -208,7 +220,7 @@ class ApplyPatchRuntime:
             for change in plan.changes:
                 if change.after is None:
                     continue
-                target = context.resolve_workspace_path(change.path)
+                target = _target(context, change.path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 temp = target.parent / f".{target.name}.loom-patch-{uuid.uuid4().hex}.tmp"
                 with temp.open("w", encoding="utf-8", newline="") as handle:
@@ -219,7 +231,7 @@ class ApplyPatchRuntime:
 
             context.raise_if_cancelled()
             for change in plan.changes:
-                target = context.resolve_workspace_path(change.path)
+                target = _target(context, change.path)
                 if change.after is None:
                     if target.exists():
                         target.unlink()
@@ -242,6 +254,9 @@ class ApplyPatchRuntime:
                     pass
 
         for change in plan.changes:
+            if _is_scratch(change.path):
+                # Scratch files are not project changes (same as write_workspace_text).
+                continue
             diff_tracker.record_text_change(
                 change.path,
                 before=change.before,
@@ -262,7 +277,7 @@ class ApplyPatchRuntime:
 
     @staticmethod
     def _read_current(context: ToolContext, relative: str) -> str | None:
-        target = context.resolve_workspace_path(relative)
+        target = _target(context, relative)
         if not target.exists():
             return None
         if not target.is_file():
@@ -273,7 +288,7 @@ class ApplyPatchRuntime:
 
     @staticmethod
     def _restore(context: ToolContext, relative: str, content: str | None) -> None:
-        target = context.resolve_workspace_path(relative)
+        target = _target(context, relative)
         if content is None:
             target.unlink(missing_ok=True)
             return

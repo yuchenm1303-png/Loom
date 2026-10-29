@@ -103,13 +103,17 @@ def workspace_search_tool() -> AgentTool:
         if not query:
             raise ValueError("query must not be empty")
         root = context.resolve_workspace_path(relative)
-        if not root.is_dir():
-            raise ValueError("search path must be a directory")
+        if root.is_file():
+            files = [root]
+        elif root.is_dir():
+            files = _iter_workspace_files(root)
+        else:
+            raise ValueError(f"search path does not exist: {relative}")
 
         needle = query if case_sensitive else query.casefold()
         matches: list[dict[str, Any]] = []
         skipped_large = 0
-        for path in _iter_workspace_files(root):
+        for path in files:
             context.raise_if_cancelled()
             try:
                 if path.stat().st_size > _MAX_READ_FILE_BYTES:
@@ -148,7 +152,8 @@ def workspace_search_tool() -> AgentTool:
     return AgentTool(
         name="search_workspace_text",
         description=(
-            "Search UTF-8 text files recursively inside the current workspace. "
+            "Search UTF-8 text files recursively inside the current workspace; path may name a "
+            "directory or a single file. "
             "Use this before editing when you need to find symbols, errors, or references."
         ),
         input_schema={
@@ -304,7 +309,7 @@ def workspace_replace_tool() -> AgentTool:
             raise ValueError("path must not be empty")
         if not old_text:
             raise ValueError("old_text must not be empty")
-        target = context.resolve_workspace_path(relative)
+        target, scratch = context.resolve_tool_path(relative)
         if not target.is_file():
             return ToolResult(ok=False, content=f"Workspace file does not exist: {relative}")
         if target.stat().st_size > _MAX_READ_FILE_BYTES:
@@ -325,7 +330,8 @@ def workspace_replace_tool() -> AgentTool:
             raise ValueError(f"updated workspace text exceeds {_MAX_WRITE_CHARS:,} characters")
         context.raise_if_cancelled()
         target.write_text(updated, encoding="utf-8")
-        _record_change(context, relative, before=text, after=updated)
+        if not scratch:
+            _record_change(context, relative, before=text, after=updated)
         return ToolResult(
             ok=True,
             content=f"Replaced one exact block in: {relative}",
@@ -341,6 +347,7 @@ def workspace_replace_tool() -> AgentTool:
         description=(
             "Replace one exact text block inside a workspace file. Fails closed if the old "
             "block is absent or ambiguous, and the change is tracked in the turn diff. "
+            "A scratch:<name> path edits this run's scratch file instead (not tracked). "
             "Prefer apply_patch for multi-file edits."
         ),
         input_schema={
