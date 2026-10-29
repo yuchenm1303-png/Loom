@@ -5,7 +5,7 @@
 const FIELD_CONTROL_SELECTOR = "input:not([type='hidden']), textarea, select";
 
 type MountElement = {
-  dataset: { liquidLens?: string; liquidSnapPad?: string };
+  dataset: { liquidLens?: string; liquidSnapPad?: string; liquidSnapMinWidth?: string; liquidSnapMinHeight?: string };
   tagName?: string;
   /** Only a label has one: the control it names. */
   control?: unknown;
@@ -78,7 +78,15 @@ export function paddedMount(element: HTMLElement, rect: DOMRect): DOMRect {
   // A 34px-tall reading capsule cuts through the letterforms themselves.
   const padX = reading ? 24 : mountPadding(element);
   const padY = reading ? 16 : mountPadding(element);
-  const height = Math.max(reading ? 64 : 34, rect.height + padY * 2);
-  return new DOMRect(rect.left - padX, rect.top + (rect.height - height) / 2,
-    Math.max(38, rect.width + padX * 2), height);
+  // Short links need a real optical safe area: a tightly cropped capsule
+  // squeezes its lettering against the refractive rim and makes it illegible.
+  // Opt-in minimums affect lens geometry only, never the DOM hit box or layout.
+  const requestedWidth = Number.parseFloat(element.dataset.liquidSnapMinWidth ?? "");
+  const requestedHeight = Number.parseFloat(element.dataset.liquidSnapMinHeight ?? "");
+  const minimumWidth = Number.isFinite(requestedWidth) ? Math.max(38, Math.min(280, requestedWidth)) : 38;
+  const minimumHeight = Number.isFinite(requestedHeight) ? Math.max(34, Math.min(120, requestedHeight)) : (reading ? 64 : 34);
+  const width = Math.max(minimumWidth, rect.width + padX * 2);
+  const height = Math.max(reading ? 64 : 34, minimumHeight, rect.height + padY * 2);
+  return new DOMRect(rect.left + (rect.width - width) / 2, rect.top + (rect.height - height) / 2,
+    width, height);
 }
