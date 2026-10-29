@@ -150,6 +150,14 @@ keeps its hairline and soft paper, the icon its 7% wash.
 761), and at 901px a squeezed language switch wrapped onto two lines; the nav now enters the menu at 960px (the first
 width that holds the name, the centred nav and all five controls) and the resize handler closes the menu at 961px.
 The language stays in the header until 760px, where it also enters the menu.
+- **The account is a name, not a chip (second pass).** The bordered pill and its filled cream disc read as a chat-app badge
+  beside an editorial header, so the account is plain text like the links around it: a 22px hairline ring holding the
+  initial, the name at 16px, no border, no background, the name underlined on hover. It is still a 36px button on the same
+  row, still opens the account dialog, and keeps its lens and magnetic marks.
+- **The lockup shares one bottom line.** The wordmark carries transparent padding, so its ink was measured, not eyeballed:
+  at 104×34 the ink ends 30/34 down the box, and `translateY(-7.5px)` (was −9px) puts that ink at 42px, half a pixel under
+  the foot of "Loom." (41.5px). The divider was 22px tall and hung 5px below the text; it is now the 18px cap band of the
+  name, its foot on the same 40.5px baseline. Checked at 1440 / 961 / 520px in light and dark.
 - **Checked.** The built bundle served locally, at 390 / 761 / 850 / 960 / 961 / 1016 / 1440px, light and dark:
 all five controls have the same 36px box and one baseline, no horizontal overflow, the menu opens and closes at 850 and
 960, the theme switch flips, the account dialog opens and closes.

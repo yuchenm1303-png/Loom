@@ -176,16 +176,19 @@
   width: 104px;
   height: 34px;
   object-fit: contain;
-  /* The artwork carries transparent padding, so its ink ends below the box: lift it onto the Loom baseline. */
-  transform: translateY(-9px);
+  /* The artwork carries transparent padding, so its ink ends above the box edge: the mark is lowered until that ink
+     rests on the same line as the bottom of "Loom." (measured, not guessed). */
+  transform: translateY(-7.5px);
 }
 .loom-editorial .editorial-brand-rule {
   flex: none;
   width: 1px;
-  height: 22px;
+  height: 18px;
   background: var(--ed-rule);
+  /* The hairline spans the cap band of "Loom.", so its foot shares the lockup's bottom line instead of hanging below it. */
+  transform: translateY(-4px);
 }
-/* The header is one control row: the nav, the language switch, the account pill, the theme switch and the icon are
+/* The header is one control row: the nav, the language switch, the account, the theme switch and the icon are
    all 36px tall and share the row's centre line, so their bottoms and the text baselines inside them line up. */
 .loom-editorial .editorial-nav { justify-self: center; display: flex; align-items: center; gap: clamp(20px, 3vw, 40px); height: 36px; }
 .loom-editorial .editorial-shell .editorial-nav a {
@@ -222,6 +225,8 @@
   cursor: pointer;
 }
 .loom-editorial .editorial-language:hover { color: var(--ed-ink); text-decoration-color: currentColor; }
+/* The account is the same kind of control as the links beside it: a name in the header's own type, opened by a
+   hairline ring, and answered on hover the way the nav answers. No pill, no filled disc. */
 .loom-editorial .editorial-account {
   display: inline-flex;
   align-items: center;
@@ -229,33 +234,45 @@
   box-sizing: border-box;
   max-width: 180px;
   height: 36px;
-  padding: 0 14px;
+  padding: 0;
   overflow: hidden;
-  border: 1px solid var(--ed-rule);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ed-ink);
+  border: 0;
+  background: none;
+  color: var(--ed-ink-muted);
   font-size: 16px;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
   text-decoration: none;
 }
-.loom-editorial .editorial-account:hover { border-color: var(--ed-ink-muted); background: var(--ed-paper-soft); }
+.loom-editorial .editorial-account:hover { color: var(--ed-ink); }
 .loom-editorial .editorial-account-avatar {
   display: grid;
   place-items: center;
   flex: none;
+  box-sizing: border-box;
   width: 22px;
   height: 22px;
+  border: 1px solid var(--ed-rule);
   border-radius: 50%;
-  background: var(--ed-ink);
-  color: var(--ed-paper);
-  font-size: 11.5px;
-  font-weight: 600;
+  background: none;
+  color: var(--ed-ink);
+  font-size: 11px;
+  font-weight: 500;
   line-height: 1;
+  letter-spacing: .02em;
+  text-transform: uppercase;
 }
-.loom-editorial .editorial-account-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loom-editorial .editorial-account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-thickness: .08em;
+  text-decoration-color: transparent;
+  text-underline-offset: .12em;
+}
+.loom-editorial .editorial-account:hover .editorial-account-name { text-decoration-color: currentColor; }
 .loom-editorial .editorial-menu-button {
   display: none;
   flex: none;
@@ -801,10 +818,10 @@
 @media (max-width: 520px) {
   .loom-editorial .editorial-header { column-gap: 12px; }
   .loom-editorial .editorial-meta { gap: 6px; }
-  .loom-editorial .editorial-account { max-width: 104px; padding: 0 10px; font-size: 13px; }
+  .loom-editorial .editorial-account { max-width: 104px; padding: 0; font-size: 15px; }
   .loom-editorial .editorial-account-name { max-width: 64px; }
   .loom-editorial .editorial-brand-group { gap: 10px; }
-  .loom-editorial .editorial-smirel-mark img { width: 84px; height: 28px; transform: translateY(-6px); }
+  .loom-editorial .editorial-smirel-mark img { width: 84px; height: 28px; transform: translateY(-4.7px); }
   .loom-editorial .editorial-brand-rule { height: 18px; }
   .loom-portal-page.loom-editorial { --ed-title: clamp(40px, 11.4vw, 52px); }
   .loom-editorial .editorial-footer { flex-direction: column; }

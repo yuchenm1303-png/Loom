@@ -624,7 +624,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
               <button className="editorial-language" type="button" onClick={toggleLanguage} aria-label={zh ? "Switch to English" : "切换到中文"} title={zh ? "Switch to English" : "切换到中文"} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "EN" : "中文"}</button>
               <button className="editorial-account" type="button" onClick={openEditorialModal} aria-label={authenticated ? (zh ? "账户与设备" : "Account and device") : (zh ? "登录或创建账户" : "Sign in or create an account")} data-liquid-snap="true" data-magnetic-hover="true">
-                {authenticated ? <><span className="editorial-account-avatar" aria-hidden="true">{accountInitial}</span><span className="editorial-account-name">{accountName}</span></> : <span>{zh ? "登录" : "Sign in"}</span>}
+                {authenticated ? <><span className="editorial-account-avatar" aria-hidden="true">{accountInitial}</span><span className="editorial-account-name">{accountName}</span></> : <span className="editorial-account-name">{zh ? "登录" : "Sign in"}</span>}
               </button>
               <button className="editorial-theme" type="button" role="switch" aria-label={zh ? "深色模式" : "Dark mode"} aria-checked={!lightEditorial} onClick={toggleEditorialTheme} data-liquid-snap="true" />
               <button className="editorial-menu-button" type="button" aria-expanded={menuOpen} aria-controls="editorial-mobile-menu" aria-label={menuOpen ? (zh ? "关闭菜单" : "Close menu") : (zh ? "打开菜单" : "Open menu")} onClick={() => setMenuOpen((open) => !open)} data-liquid-snap="true" data-magnetic-hover="true">

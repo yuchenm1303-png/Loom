@@ -143,7 +143,12 @@ test("the header offers a visible account entry, a language switch and a mobile 
   assert.ok(header.includes('className="editorial-menu-button"') && header.includes('aria-controls="editorial-mobile-menu"'), "the narrow header has a menu button");
   assert.ok(portal.includes('id="editorial-mobile-menu"') && portal.includes('aria-expanded={menuOpen}'), "the menu panel exists and reports its state");
   assert.ok(portal.includes('window.matchMedia("(min-width: 961px)")'), "the menu closes when the desktop header returns");
-  assert.match(rule(".loom-editorial .editorial-account"), /border:\s*1px solid var\(--ed-rule\)/);
+  // The account is a name beside a hairline ring, not a pill: it answers on hover the way the nav does.
+  const account = rule(".loom-editorial .editorial-account");
+  assert.match(account, /border:\s*0/);
+  assert.match(account, /color:\s*var\(--ed-ink-muted\)/);
+  assert.match(rule(".loom-editorial .editorial-account-avatar"), /border:\s*1px solid var\(--ed-rule\)/, "a hairline ring, not a filled disc");
+  assert.match(css, /\.editorial-account:hover \.editorial-account-name\s*\{\s*text-decoration-color:\s*currentColor/, "the same underline the nav uses");
   assert.match(rule(".loom-editorial .editorial-menu-button"), /display:\s*none/);
   assert.match(css, /@media \(max-width: 960px\)\s*\{[^@]*\.editorial-menu-button\s*\{\s*display:\s*grid/);
   // The house mark's base rule has three classes; the phone rule must match its specificity, or it never hides.
