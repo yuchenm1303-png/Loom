@@ -387,6 +387,9 @@
   align-items: start;
 }
 .loom-editorial .editorial-hero-text { grid-column: 1 / span 5; min-width: 0; }
+@media (min-width: 961px) {
+  .loom-editorial .editorial-hero-text { padding-top: clamp(28px, 5vh, 64px); }
+}
 .loom-editorial .editorial-hero-copy {
   margin: 0 0 clamp(24px, 3.6vh, 40px);
   font-size: var(--ed-title);
