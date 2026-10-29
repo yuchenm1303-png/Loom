@@ -12,16 +12,32 @@ from .review import criteria, StaleCandidate
 from . import parallel
 from .budget import ProjectBudget
 
-# Per-episode runtime bounds. Reaching one ends an episode, not the task: the next
-# episode continues in the same session, within the run's episode/token budget.
-EPISODE_LIMITS = {"model step limit reached", "tool call limit reached"}
-MAX_LIMIT_STREAK = 8
-# A review verdict whose evidence the runner rejects goes back to the reviewer
-# with the reason this many times before the run stops for inspection.
-MAX_REVIEW_REJECTIONS = 2
-# A provider or network outage ends an episode, not the project: the task waits
-# (30 s doubling to 30 min) and continues. Permanent refusals still stop the run.
+# How an episode ended decides what the runner does next, from the fields the
+# runtime records (limit kind, provider_failure, retryable, status). The string
+# fallbacks below only read events written before those fields existed.
+#
+#   kind                what happened                               next
+#   budget              a request was refused at the token budget   budget_limited (add budget)
+#   episode_bound       the episode hit its step/tool limit         next episode continues
+#   provider_transient  provider/network failed, retryable          wait 30 s .. 30 min, continue
+#   review_evidence     a review verdict lacked accepted evidence   back to the reviewer, with why
+#   reply_format        a final reply the runner cannot read        back to the model, with why
+#   (anything else)     settled normally, or stopped for inspection
+#
+# Each recoverable kind counts consecutive occurrences on the run; one more than its
+# allowance stops the run for inspection. Any accepted episode resets every counter.
+MAX_EPISODE_BOUND_RETRIES = 7
 MAX_TRANSIENT_STREAK = 10
+MAX_REVIEW_REJECTIONS = 2
+RECOVERY = {
+    "episode_bound": ("episodeLimitStreak", lambda: MAX_EPISODE_BOUND_RETRIES, "episode_limit_reached"),
+    "provider_transient": ("transientFailureStreak", lambda: MAX_TRANSIENT_STREAK, "transient_failure_retry"),
+    "review_evidence": ("reviewEvidenceRejections", lambda: MAX_REVIEW_REJECTIONS, "review_evidence_rejected"),
+    "reply_format": ("replyRejections", lambda: MAX_REVIEW_REJECTIONS, "reply_rejected"),
+}
+CONTINUABLE_LIMITS = {"model_steps", "tool_calls"}
+PERMANENT_STATUS = {400, 401, 402, 403, 404}
+LEGACY_EPISODE_LIMITS = {"model step limit reached", "tool call limit reached"}
 TRANSIENT_MARKERS = ("apiconnectionerror", "connection error", "apitimeouterror", "timed out", "timeout",
                      "remotedisconnected", "connection reset", "connection aborted", "stream_stall",
                      "stopped producing output", "temporarily", "overloaded", " 429", " 500", " 502", " 503", " 504",
@@ -31,10 +47,33 @@ PERMANENT_MARKERS = (" 401", " 402", " 403", "status 401", "status 402", "status
 
 
 def transient_failure(error):
+    """Message-text classification, for failures recorded before provider_failure existed."""
     text = f" {str(error or '').lower()} "
     if not text.strip().startswith("aitransporterror") and "modelrequesttimeout" not in text:
         return False  # only provider transport failures; a tool or logic error is the work's own
     return any(marker in text for marker in TRANSIENT_MARKERS) and not any(marker in text for marker in PERMANENT_MARKERS)
+
+
+def provider_transient(result):
+    if result.get("providerFailure") is None:
+        return transient_failure(result.get("error"))
+    status = result.get("providerStatus")
+    return bool(result["providerFailure"]) and result.get("retryable") is not False and status not in PERMANENT_STATUS
+
+
+def episode_outcome(state, result, refused):
+    if state != "completed" and refused:
+        return "budget"
+    if state == "limit_reached" and (result.get("limit") in CONTINUABLE_LIMITS or (
+            result.get("limit") is None and result.get("error") in LEGACY_EPISODE_LIMITS)):
+        return "episode_bound"
+    if state == "failed" and provider_transient(result):
+        return "provider_transient"
+    if result.get("reviewRejected"):
+        return "review_evidence"
+    if result.get("replyRejected"):
+        return "reply_format"
+    return None
 
 
 class ReplyFormatError(ValueError):
@@ -362,7 +401,8 @@ class ProjectRunner:
             if current["state"] == "cancelled":
                 self.store.save(db, current, "cancelled_episode_settled")
                 return
-            if state != "completed" and self.budget.refused(db, episode):
+            kind = episode_outcome(state, result, self.budget.refused(db, episode))
+            if kind == "budget":
                 # The worker was stopped before a request, not by its work: keep
                 # the task where it is so explicitly added budget can continue it.
                 current.update(control="budget_limited", reason=result.get("error") or "Project token budget reached")
@@ -370,42 +410,8 @@ class ProjectRunner:
                                       "inspect the workspace for its partial work.\n" + current.get("handoff", ""))[:12000]
                 self.store.save(db, current, "budget_limited")
                 return
-            if state == "limit_reached" and result.get("error") in EPISODE_LIMITS:
-                streak = current.get("episodeLimitStreak", 0) + 1
-                current["episodeLimitStreak"] = streak
-                if streak >= MAX_LIMIT_STREAK:
-                    current.update(state="needs_review", control="paused",
-                                   reason=f"{streak} consecutive episodes ended at their step/tool limit without a result")
-                else:
-                    current["handoff"] = (f"The previous episode ended at its per-episode bound ({result['error']}); "
-                                          "continue from the workspace and session state.\n" + current.get("handoff", ""))[:12000]
-                self.store.save(db, current, "episode_limit_reached")
-                return
-            current["episodeLimitStreak"] = 0
-            if state == "failed" and transient_failure(result.get("error")):
-                streak = current.get("transientFailureStreak", 0) + 1
-                current["transientFailureStreak"] = streak
-                if streak > MAX_TRANSIENT_STREAK:
-                    current.update(state="needs_review", control="paused",
-                                   reason=f"{streak} consecutive episodes failed on the provider or network: {result['error'][:500]}")
-                else:
-                    current["retryAfter"] = time.time() + min(1800, 30 * 2 ** (streak - 1))
-                    current["handoff"] = ("The previous episode was interrupted by a provider or network failure; "
-                                          "continue from the workspace and session state.\n" + current.get("handoff", ""))[:12000]
-                self.store.save(db, current, "transient_failure_retry")
-                return
-            if state == "completed":
-                current["transientFailureStreak"] = 0
-            if result.get("reviewRejected") and current.get("reviewEvidenceRejections", 0) < MAX_REVIEW_REJECTIONS:
-                # A malformed or under-evidenced verdict is the reviewer's protocol
-                # error, not a verdict on the project: return the reason and let it
-                # record the missing evidence. The checks it already made remain.
-                current["reviewEvidenceRejections"] = current.get("reviewEvidenceRejections", 0) + 1
-                current["reviewNote"] = result["error"][:2000]
-                self.store.save(db, current, "review_evidence_rejected")
-                return
-            if result.get("replyRejected") and self._return_reply(current, result["error"]):
-                self.store.save(db, current, "reply_rejected")
+            if kind:
+                self.store.save(db, current, self._recover(current, kind, result.get("error")))
                 return
             try:
                 if state != "completed":
@@ -419,7 +425,6 @@ class ProjectRunner:
                         current.update(phase="parallel", parallelStatus="active", teamChildren=[])
                 elif episode["phase"] == "verifying":
                     self._review_result(db, current, episode, facts)
-                    current.update(reviewNote="", reviewEvidenceRejections=0)
                 else:
                     action, summary = reply.get("action"), reply.get("summary")
                     if action not in {"continue", "candidate", "blocked"} or not isinstance(summary, str) or not summary.strip():
@@ -439,21 +444,38 @@ class ProjectRunner:
                             if current["taskIndex"] == len(current["plan"]):
                                 current.update(state="ready_for_review", control="paused",
                                                reason="Implementation candidates only; independent acceptance and integration required")
-                current.update(replyNote="", replyRejections=0)
+                for counter, _, _ in RECOVERY.values():  # an accepted episode ends every streak
+                    current[counter] = 0
+                current.update(reviewNote="", replyNote="")
             except ReplyFormatError as exc:
-                if self._return_reply(current, str(exc)):
-                    self.store.save(db, current, "reply_rejected")
-                    return
-                current.update(state="needs_review", control="paused", reason=str(exc))
+                self.store.save(db, current, self._recover(current, "reply_format", str(exc)))
+                return
             except (ValueError, TypeError) as exc:
                 current.update(state="needs_review", control="paused", reason=str(exc))
             self.store.save(db, current, "episode_settled")
 
     @staticmethod
-    def _return_reply(run, reason):
-        """A final reply in the wrong shape goes back to the model with the reason, twice."""
-        if run.get("replyRejections", 0) >= MAX_REVIEW_REJECTIONS:
-            return False
-        run["replyRejections"] = run.get("replyRejections", 0) + 1
-        run["replyNote"] = reason[:2000]
-        return True
+    def _recover(run, kind, error):
+        """Apply the recovery for ``kind``; returns the event to record."""
+        counter, allowance, event = RECOVERY[kind]
+        streak = run.get(counter, 0) + 1
+        run[counter] = streak
+        error = str(error or "")
+        if streak > allowance():
+            reason = {"episode_bound": f"{streak} consecutive episodes ended at their step/tool limit without a result",
+                      "provider_transient": f"{streak} consecutive episodes failed on the provider or network: {error[:500]}"
+                      }.get(kind, error)
+            run.update(state="needs_review", control="paused", reason=reason[:2000])
+            return "needs_review"
+        if kind == "episode_bound":
+            run["handoff"] = (f"The previous episode ended at its per-episode bound ({error}); "
+                              "continue from the workspace and session state.\n" + run.get("handoff", ""))[:12000]
+        elif kind == "provider_transient":
+            run["retryAfter"] = time.time() + min(1800, 30 * 2 ** (streak - 1))
+            run["handoff"] = ("The previous episode was interrupted by a provider or network failure; "
+                              "continue from the workspace and session state.\n" + run.get("handoff", ""))[:12000]
+        elif kind == "review_evidence":
+            run["reviewNote"] = error[:2000]
+        else:
+            run["replyNote"] = error[:2000]
+        return event

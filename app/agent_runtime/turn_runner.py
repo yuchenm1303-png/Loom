@@ -128,9 +128,9 @@ class TurnRunner:
                     session.final_text = ("工具恢复没有取得新进展，已停止重复调用；已有工作已保留。"
                         if session.communication_language == "zh" else
                         "Tool recovery made no progress; repeated calls stopped and existing work is preserved.")
-                    return rt._limit(session, session.final_text)
+                    return rt._limit(session, session.final_text, "no_progress")
                 if rt.limits.max_model_steps > 0 and session.model_steps >= rt.limits.max_model_steps:
-                    return rt._limit(session, "model step limit reached")
+                    return rt._limit(session, "model step limit reached", "model_steps")
 
                 recovery_instruction = ""
                 recovery_partial = ""
@@ -146,7 +146,7 @@ class TurnRunner:
                     if rt._cancel_if_requested(session, token):
                         return rt._result(session)
                     if rt.limits.max_model_steps > 0 and session.model_steps >= rt.limits.max_model_steps:
-                        return rt._limit(session, "model step limit reached")
+                        return rt._limit(session, "model step limit reached", "model_steps")
                     sample_steering_revision = _consume_steering_for_sample(rt, session, token)
                     request_preparation_started = time.perf_counter()
                     rt._emit_event(session, Event.TURN_PHASE_CHANGED, data={"phase": "preparing"})
@@ -186,6 +186,7 @@ class TurnRunner:
                         return rt._limit(
                             session,
                             "context message limit reached; no safe compaction boundary",
+                            "context",
                         )
                     reasoning = step.reasoning
                     profile_id = step.world_state.profile_id
@@ -678,7 +679,7 @@ class TurnRunner:
                             session.messages,
                             max_tool_result_chars=rt.limits.max_tool_result_chars,
                         ).messages)
-                        return rt._limit(session, "tool call limit reached")
+                        return rt._limit(session, "tool call limit reached", "tool_calls")
                     for call in calls:
                         rt._emit_event(session, Event.TOOL_REQUESTED, data={
                             "call_id": call.call_id,
@@ -783,7 +784,7 @@ class TurnRunner:
         except ModelAdmissionRefused as exc:
             # Nothing was sent, so history is whole. A budget stop is a limit,
             # not a failure: the work so far stays usable once budget is added.
-            return rt._limit(session, str(exc))
+            return rt._limit(session, str(exc), "admission")
         except Exception as exc:
             # A cancelled turn raises like any other failure. Reporting it as
             # FAILED loses the distinction the caller acts on, so cancellation is
@@ -806,5 +807,7 @@ class TurnRunner:
                 rt._emit_event(session, Event.TURN_FAILED, data={"error": session.error,
                     "provider_status_code": getattr(exc, "status_code", None),
                     "retryable": getattr(exc, "retryable", None),
+                    # The provider failed, not the work: callers decide on this, not on the message text.
+                    "provider_failure": isinstance(exc, (AITransportError, ModelRequestTimeout)),
                     "resume": {"durable_history_preserved": True, "new_turn_required": True}})
         return rt._result(session)

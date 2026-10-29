@@ -163,7 +163,16 @@ class ProjectExecutor:
             # however often it is offered (live listener, this poll, a restart).
             usage = [(e.event_id, tokens) for e in events if (tokens := event_tokens(e)) is not None]
             error = session.error or (terminal.data.get("reason", "Runtime limit reached") if terminal.kind is E.LIMIT_REACHED else "")
-            return {"state": session.status.value, "text": session.final_text, "error": error,
+            # The outcome as the runtime recorded it, so the runner decides on fields,
+            # not on message text. Older events lack them; the runner falls back then.
+            data = terminal.data
+            return {"state": session.status.value, "error": error,
+                    "text": data.get("model_text", session.final_text) if terminal.kind is E.TURN_COMPLETED else session.final_text,
+                    "runtimeNotice": data.get("verification_notice", "") if terminal.kind is E.TURN_COMPLETED else "",
+                    "limit": data.get("limit") if terminal.kind is E.LIMIT_REACHED else None,
+                    "providerFailure": data.get("provider_failure") if terminal.kind is E.TURN_FAILED else None,
+                    "retryable": data.get("retryable") if terminal.kind is E.TURN_FAILED else None,
+                    "providerStatus": data.get("provider_status_code") if terminal.kind is E.TURN_FAILED else None,
                     "tokens": sum(tokens for _, tokens in usage), "usage": usage}
 
     def cancel(self, episode):

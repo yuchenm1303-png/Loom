@@ -423,7 +423,7 @@ def test_per_episode_step_limit_continues_in_the_next_episode(tmp_path):
 
 def test_repeated_episode_limits_stop_for_review(tmp_path, monkeypatch):
     from app.project_runner import runner as runner_module
-    monkeypatch.setattr(runner_module, "MAX_LIMIT_STREAK", 2)
+    monkeypatch.setattr(runner_module, "MAX_EPISODE_BOUND_RETRIES", 1)
     from app.agent_runtime.contracts import AgentLimits
     tool = AgentTool(name="noop_step", description="Do nothing useful", input_schema={"type": "object", "properties": {}},
                      effect=ToolEffect.READ_ONLY, handler=lambda context, arguments: ToolResult(ok=True, content="nothing"))
@@ -502,7 +502,7 @@ def test_provider_outage_ends_the_episode_not_the_project(tmp_path):
     from app.agent_runtime.contracts import AgentLimits
     service, runtime, platform, _, source = build(tmp_path, [reply(PLAN), reply({"action": "candidate", "summary": "Done after the outage"})])
     runtime.limits = AgentLimits(transport_retries=0)
-    _failing_once(platform, AITransportError("AI request failed via provider 'p': APIConnectionError: Connection error.", retryable=False))
+    _failing_once(platform, AITransportError("AI request failed via provider 'p': APIConnectionError: Connection error."))
     try:
         run = control(service, create(service, source), "start")
         for _ in range(3):  # plan, failed worker episode, its settlement
@@ -594,5 +594,60 @@ def test_repeated_malformed_replies_stop_for_review(tmp_path):
         final = service.project_store.get(run["id"])
         assert final["state"] == "needs_review" and "JSON" in final["reason"]
         assert final["episodesUsed"] == 4
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize("state,result,refused,kind", [
+    ("limit_reached", {"limit": "model_steps"}, False, "episode_bound"),
+    ("limit_reached", {"limit": "tool_calls"}, False, "episode_bound"),
+    ("limit_reached", {"limit": "no_progress", "error": "model step limit reached"}, False, None),
+    ("limit_reached", {"limit": "context"}, False, None),
+    ("limit_reached", {"limit": "admission"}, True, "budget"),
+    ("limit_reached", {"limit": None, "error": "tool call limit reached"}, False, "episode_bound"),  # pre-field event
+    ("failed", {"providerFailure": True, "retryable": True, "providerStatus": None}, False, "provider_transient"),
+    ("failed", {"providerFailure": True, "retryable": True, "providerStatus": 503}, False, "provider_transient"),
+    ("failed", {"providerFailure": True, "retryable": False, "providerStatus": 402}, False, None),
+    ("failed", {"providerFailure": True, "retryable": True, "providerStatus": 401}, False, None),
+    # The field decides, not the text: a tool error that mentions a timeout is the work's own.
+    ("failed", {"providerFailure": False, "error": "AITransportError: APITimeoutError: timed out"}, False, None),
+    ("failed", {"providerFailure": None, "error": "AITransportError: APIConnectionError: Connection error."}, False, "provider_transient"),
+    ("failed", {"reviewRejected": True}, False, "review_evidence"),
+    ("failed", {"replyRejected": True}, False, "reply_format"),
+    ("completed", {}, False, None),
+])
+def test_episode_outcome_comes_from_recorded_fields(state, result, refused, kind):
+    from app.project_runner.runner import episode_outcome
+    assert episode_outcome(state, result, refused) == kind
+
+
+def test_runtime_records_limit_kind_and_provider_failure_on_terminal_events(tmp_path):
+    from app.ai.errors import AITransportError
+    from app.agent_runtime.contracts import AgentLimits, AgentEventKind
+    tool = AgentTool(name="noop_step", description="Do nothing", input_schema={"type": "object", "properties": {}},
+                     effect=ToolEffect.READ_ONLY, handler=lambda context, arguments: ToolResult(ok=True, content="nothing"))
+    looping = ModelResponse(tool_calls=(ToolCall(call_id="c", name="noop_step", arguments={}),), usage=ModelUsage(5, 0, 5))
+    service, runtime, platform, _, source = build(tmp_path, [reply(PLAN), looping], tools=(tool,))
+    runtime.limits = AgentLimits(max_model_steps=1, transport_retries=0)
+    _failing_once(platform, AITransportError("AI request failed: APIConnectionError: Connection error."))
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(3):  # plan, then the worker's provider failure settles into a backoff
+            cycle(service)
+        with service.project_store.transaction() as db:
+            current = service.project_store._read(db, run["id"])
+            current["retryAfter"] = 0
+            service.project_store.save(db, current, "test_backoff_elapsed")
+        for _ in range(2):  # the continued episode ends at its one-step bound
+            cycle(service)
+        worker = service.project_store.get(run["id"])["sessions"]["worker-0"]
+        events = service.store.events(worker)
+        failed = [event.data for event in events if event.kind is AgentEventKind.TURN_FAILED]
+        limits = [event.data for event in events if event.kind is AgentEventKind.LIMIT_REACHED]
+        # The provider outage is marked as one; the scripted platform running dry
+        # afterwards is an ordinary failure of the turn, and is marked as not one.
+        assert failed[0]["provider_failure"] is True and failed[0]["retryable"] is True
+        assert all(data["provider_failure"] is False for data in failed[1:])
+        assert limits and limits[0]["limit"] == "model_steps"
     finally:
         runtime.close()

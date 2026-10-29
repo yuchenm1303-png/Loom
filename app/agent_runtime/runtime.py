@@ -1758,7 +1758,9 @@ class AgentRuntime:
         self._append_tool_history(session, call, result, step=step)
         self._record_tool_result_event(session, call, result, failed=failed)
 
-    def _limit(self, session: AgentSession, reason: str) -> AgentRunResult:
+    def _limit(self, session: AgentSession, reason: str, kind: str = "other") -> AgentRunResult:
+        """End the turn at a limit. ``kind`` lets a caller act on which limit without
+        parsing ``reason``: model_steps, tool_calls, no_progress, context, admission."""
         session.status = AgentStatus.LIMIT_REACHED
         session.error = reason
         session.pending_approval = None
@@ -1766,7 +1768,7 @@ class AgentRuntime:
         session.pending_step_id = ""
         self._release_turn_steps(session)
         self._emit_event(session, AgentEventKind.LIMIT_REACHED, data={
-            "reason": reason, "text": session.final_text,
+            "reason": reason, "limit": kind, "text": session.final_text,
             "verification": self._verification_summary(session),
             "development_verification": self.development_verification.summary(session),
         })
