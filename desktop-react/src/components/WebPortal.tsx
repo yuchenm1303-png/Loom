@@ -16,6 +16,7 @@ import { PortalLiquidCursor } from "./PortalLiquidCursor";
 import { FALLBACK_RELEASE, fetchPortalRelease, RELEASES_URL } from "../portalRelease";
 import { PORTAL_HOME_COPY } from "./portalHomeCopy";
 import { HomeWorkspaceDemo } from "./HomeWorkspaceDemo";
+import { HomeComputerDemo } from "./HomeComputerDemo";
 
 export type PortalHostState = "idle" | "checking" | "online" | "offline" | "unbound" | "account-mismatch";
 type AccountController = ReturnType<typeof useAccount>;
@@ -694,6 +695,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 ))}
               </ul>
             </section>
+            <HomeComputerDemo zh={zh} />
             <section id="loom-download" className="editorial-section editorial-download" aria-labelledby="editorial-download-title">
               <div className="editorial-download-lead" data-reveal>
                 <h2 id="editorial-download-title">{home.downloadSection.heading}</h2>

@@ -1,0 +1,70 @@
+import assert from "node:assert/strict";
+const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
+const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
+const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1050 }, colorScheme: "dark" });
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto(origin);
+  const demo = page.locator(".computer-demo-window");
+  await demo.waitFor({ state: "attached" });
+  await page.waitForTimeout(2700);
+  assert.equal(await demo.getAttribute("data-step"), "0", "offscreen demo does not start");
+  await demo.scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.playing === "true");
+  await demo.getByRole("button", { name: "Pause", exact: true }).click();
+  await page.waitForTimeout(2600);
+  assert.equal(await demo.getAttribute("data-step"), "0", "pause holds the current stage");
+  await demo.getByRole("button", { name: "Play", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.step === "2", null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector('.computer-demo-event-form input')?.value.length > 0);
+  const position = await demo.evaluate(node => {
+    const stage = node.querySelector(".computer-demo-stage").getBoundingClientRect();
+    const input = node.querySelector("input").getBoundingClientRect();
+    const cursor = node.querySelector(".computer-demo-cursor").getBoundingClientRect();
+    return { aligned: Math.abs(cursor.y + 5 - (input.y + input.height / 2)) < 2, inside: cursor.x >= stage.x && cursor.x < stage.right };
+  });
+  // Allow the HUD pointer's movement to settle before checking its destination.
+  if (!position.aligned) await page.waitForTimeout(700);
+  const aligned = await demo.evaluate(node => {
+    const input = node.querySelector("input").getBoundingClientRect();
+    const cursor = node.querySelector(".computer-demo-cursor").getBoundingClientRect();
+    return Math.abs(cursor.y + 5 - (input.y + input.height / 2)) < 2;
+  });
+  assert.equal(aligned, true, "HUD pointer tracks the actual input geometry");
+  await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.step === "3");
+  assert.equal(await demo.getAttribute("data-playing"), "false", "wait for approval before saving");
+  assert.equal(await demo.getByRole("textbox", { name: "Demo event title" }).inputValue(), "Design review");
+  await demo.getByRole("button", { name: "Approve & save demo", exact: true }).click();
+  assert.equal(await demo.getAttribute("data-step"), "4");
+  assert.match(await demo.locator(".computer-demo-event").innerText(), /Design review/);
+  assert.equal(await demo.locator(".computer-demo-event-form").count(), 0);
+  await demo.getByRole("button", { name: "Replay Computer Use demo", exact: true }).click();
+  assert.equal(await demo.getAttribute("data-step"), "0");
+  await demo.getByRole("button", { name: "3 Type", exact: true }).click();
+  assert.equal(await demo.getAttribute("data-playing"), "false", "manual navigation takes over");
+  await page.mouse.move(10, 10);
+  await page.waitForTimeout(700);
+  if (process.env.LOOM_DEMO_SCREENSHOTS) await page.locator("#loom-computer-use").screenshot({ path: `${process.env.LOOM_DEMO_SCREENSHOTS}/computer-demo-dark.png` });
+
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, colorScheme: "light", reducedMotion: "reduce" });
+  await mobile.addInitScript(() => localStorage.setItem("loom.settings.language", "zh-CN"));
+  await mobile.goto(origin);
+  const small = mobile.locator(".computer-demo-window");
+  await small.scrollIntoViewIfNeeded();
+  await mobile.waitForTimeout(2600);
+  assert.equal(await small.getAttribute("data-step"), "0", "reduced motion disables autoplay");
+  await small.getByRole("button", { name: "新建日程", exact: true }).click();
+  assert.equal(await small.getByRole("textbox", { name: "演示会议主题" }).inputValue(), "设计评审");
+  await small.getByRole("button", { name: "检查日程", exact: true }).click();
+  await small.getByRole("button", { name: "批准并保存演示", exact: true }).click();
+  assert.match(await small.locator(".computer-demo-event").innerText(), /设计评审/);
+  const bounds = await small.boundingBox();
+  assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 391);
+  assert.equal(await small.evaluate(node => node.scrollWidth <= node.clientWidth), true, "mobile demo fits without overflow");
+  assert.equal(await mobile.locator(".computer-use-hud.hud-live").count(), 0, "preview does not start the real desktop HUD");
+  if (process.env.LOOM_DEMO_SCREENSHOTS) await small.screenshot({ path: `${process.env.LOOM_DEMO_SCREENSHOTS}/computer-demo-mobile.png` });
+  assert.deepEqual(errors, []);
+  console.log("Computer Use demo: viewport playback, pause, typing, HUD targeting, approval, result, replay, manual steps, Chinese, mobile and reduced motion passed.");
+} finally { await browser.close(); }
