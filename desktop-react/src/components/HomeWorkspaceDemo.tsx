@@ -53,12 +53,12 @@ export function HomeWorkspaceDemo({ zh, ready }: { zh: boolean; ready: boolean }
 
   return <div ref={root} className="home-demo" data-step={step} data-playing={auto} data-liquid-snap="false">
     <div className="home-demo-bar">
-      <span className="home-demo-brand"><img src="/loom-icon.png" alt="" /> Loom <span>/ {zh ? "修复发布测试" : "Fix release test"}</span></span>
+      <span className="home-demo-brand">{zh ? "修复发布测试" : "Fix release test"}</span>
       <span className="home-demo-badge">{zh ? "交互演示" : "Interactive demo"}</span>
     </div>
     <div className="home-demo-workspace">
       <aside className="home-demo-sidebar" aria-label={zh ? "示例项目与对话" : "Sample projects and conversations"}>
-        <div className="home-demo-sidebar-head"><PanelRight size={13} /><img src="/loom-icon.png" alt="" /><strong>Loom</strong><Search size={12} /><Pencil size={12} /></div>
+        <div className="home-demo-sidebar-head"><PanelRight size={13} /><Search size={12} /><Pencil size={12} /></div>
         <span className="home-demo-eyebrow">{zh ? "项目" : "Projects"}</span>
         <div className="home-demo-project"><FolderOpen size={13} /> Loom</div>
         <div className="home-demo-threads"><span className="is-current">{zh ? "修复发布测试" : "Fix release test"}<span className="home-demo-thread-dot" /></span><span>{zh ? "梳理项目架构" : "Explore the project"}</span><span>{zh ? "整理更新日志" : "Release notes"}</span></div>
