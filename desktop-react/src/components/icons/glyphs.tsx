@@ -321,6 +321,37 @@ export const Globe = createIcon("globe", "Globe", <>
   <path className="li li-meridian" d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
   <path d="M2 12h20" />
 </>);
+/* lucide's globe-2 (earth). Every coast ends on the rim, so the land can turn about the centre and stay inside it. */
+export const Globe2 = createIcon("earth", "Globe2", <>
+  <g className="li li-land">
+    <path d="M21.54 15H17a2 2 0 0 0-2 2v4.54" />
+    <path d="M7 3.34V5a3 3 0 0 0 3 3a2 2 0 0 1 2 2c0 1.1.9 2 2 2a2 2 0 0 0 2-2c0-1.1.9-2 2-2h3.17" />
+    <path d="M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05" />
+  </g>
+  <circle cx="12" cy="12" r="10" />
+</>);
+
+export const Clock3 = createIcon("clock", "Clock3", <>
+  <circle cx="12" cy="12" r="10" />
+  <path className="li li-minute" d="M12 6v6" />
+  <path className="li li-hour" d="M12 12h4.5" />
+</>);
+
+export const ListChecks = createIcon("list-checks", "ListChecks", <>
+  <path className="li li-tick" pathLength={1} d="m3 7 2 2 4-4" />
+  <path className="li li-tick li-tick-2" pathLength={1} d="m3 17 2 2 4-4" />
+  <path d="M13 6h8" /><path d="M13 12h8" /><path d="M13 18h8" />
+</>);
+
+export const MessagesSquare = createIcon("messages", "MessagesSquare", <>
+  <path className="li li-front" d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z" />
+  <path className="li li-back" d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" />
+</>);
+
+export const UserRound = createIcon("user-round", "UserRound", <>
+  <circle className="li li-head" cx="12" cy="8" r="5" />
+  <path d="M20 21a8 8 0 0 0-16 0" />
+</>);
 
 export const Activity = createIcon("activity", "Activity",
   <path className="li li-wave" pathLength={1}

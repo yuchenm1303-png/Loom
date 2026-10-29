@@ -130,8 +130,10 @@ html[data-loom-theme="light"] .loom-tool-rail {
   background: var(--loom-workspace-line, rgba(224, 230, 242, .12));
 }
 
-/* The glider: the one wash behind whichever tool is lit. It slides on a spring and
-   appears in place (the script parks it, so it never slides in from where it last was). */
+/* The glider: the one wash behind whichever tool is lit. The script moves it (RightToolDock.tsx): its two edges ride
+   springs of their own, so it flows from tool to tool, stretching toward where it goes and gathering itself as it
+   lands; it grows in place where the pointer comes in, and shrinks a little as it fades out. Only its transform
+   moves, from the top edge (the stretch is a scaleY), so it stays on the compositor. */
 .loom-tool-glider {
   position: absolute;
   z-index: 0;
@@ -143,13 +145,11 @@ html[data-loom-theme="light"] .loom-tool-rail {
   background: var(--dock-wash);
   opacity: 0;
   transform: translateY(var(--glide-y, 0px));
-  transition:
-    transform var(--loom-dur-panel) var(--loom-spring-settle),
-    opacity var(--loom-dur-fast) ease;
+  transform-origin: 50% 0;
+  transition: opacity var(--loom-dur-fast) ease;
   pointer-events: none;
 }
 .loom-tool-glider[data-on="true"] { opacity: 1; }
-.loom-tool-glider[data-park="true"] { transition-property: opacity; transition-duration: var(--loom-dur-fast); }
 .loom-tool-dock[data-dragging] .loom-tool-glider { opacity: 0; }
 
 .loom-tool-button {
@@ -233,9 +233,11 @@ html[data-loom-theme="light"] .loom-tool-rail {
   object-fit: cover;
   opacity: .92;
   box-shadow: 0 0 0 1px var(--loom-workspace-line, rgba(224, 230, 242, .12));
-  transition: opacity var(--loom-dur-fast) ease;
+  /* It is this tool's glyph (it carries .loom-icon), so it rides the glyph dials: comes forward a little on the
+     pointer, and gives when pressed (icon-motion.css). */
+  transition: opacity var(--loom-dur-fast) ease, scale var(--ic-dur) var(--ic-curve);
 }
-.loom-tool-button:hover > .loom-tool-avatar { opacity: 1; }
+.loom-tool-button:hover > .loom-tool-avatar { opacity: 1; scale: 1.08; }
 
 /* Carried: lifted off the dock, the others make room (their shift is a transition of its own). */
 .loom-tool-position.is-lifted { z-index: 4; }
@@ -434,6 +436,7 @@ html[data-loom-theme="light"] .loom-tool-rail {
   .loom-tool-button,
   .loom-tool-button::before,
   .loom-tool-button::after,
+  .loom-tool-avatar,
   .loom-tool-count,
   .loom-tool-status,
   .loom-tool-progress > span,
@@ -447,6 +450,7 @@ html[data-loom-reduced-motion="true"] .loom-tool-glider,
 html[data-loom-reduced-motion="true"] .loom-tool-button,
 html[data-loom-reduced-motion="true"] .loom-tool-button::before,
 html[data-loom-reduced-motion="true"] .loom-tool-button::after,
+html[data-loom-reduced-motion="true"] .loom-tool-avatar,
 html[data-loom-reduced-motion="true"] .loom-tool-count,
 html[data-loom-reduced-motion="true"] .loom-tool-status,
 html[data-loom-reduced-motion="true"] .loom-tool-progress > span,

@@ -9,7 +9,7 @@ import {
 } from "./icons";
 import { useI18n } from "../i18n";
 import { normalizeShortcut } from "../keyboardShortcuts";
-import { DUR, RETAIN, SPRING } from "../motion/tokens";
+import { DUR, DUR_OUT, EASE, RETAIN, SPRING } from "../motion/tokens";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import "./right-tool-dock.css";
@@ -60,6 +60,58 @@ function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
 }
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
+
+/** The glider's two edges, each on a spring of its own: the edge in front leads, the one behind follows. */
+const LEAD = { stiffness: 560, damping: 39 };
+const TRAIL = { stiffness: 300, damping: 31 };
+/** How far the wash may stretch past its own height on the way (a long trip must not draw a bar down the dock). */
+const STRETCH_MAX = 14;
+
+/** One glide, sampled: where the top and the bottom edge are at each step (60 a second), from its start. */
+type GlidePath = { start: number; top: number[]; bottom: number[] };
+const GLIDE_STEP = 1000 / 60;
+
+/** Where a glide in flight stands now, and how fast each edge is moving (px per ms). */
+function glideAt(path: GlidePath, now: number) {
+  const at = (now - path.start) / GLIDE_STEP;
+  const last = path.top.length - 1;
+  const i = clamp(Math.floor(at), 0, last);
+  const j = Math.min(i + 1, last);
+  const f = clamp(at - i, 0, 1);
+  const lerp = (list: number[]) => list[i] + (list[j] - list[i]) * f;
+  return {
+    top: lerp(path.top), bottom: lerp(path.bottom),
+    vTop: (path.top[j] - path.top[i]) / GLIDE_STEP, vBottom: (path.bottom[j] - path.bottom[i]) / GLIDE_STEP,
+  };
+}
+
+/** Both edges from where they are to where they go; the trailing edge is held within STRETCH_MAX of the leading one. */
+function planGlide(from: { top: number; bottom: number; vTop: number; vBottom: number }, top: number, height: number): Omit<GlidePath, "start"> {
+  const down = top > from.top;
+  // Velocities in px per second for the integration.
+  let a = from.top, va = from.vTop * 1000, b = from.bottom, vb = from.vBottom * 1000;
+  const springTop = down ? TRAIL : LEAD;
+  const springBottom = down ? LEAD : TRAIL;
+  const tops = [a], bottoms = [b];
+  const dt = 1 / 240;
+  for (let frame = 1; frame < 90; frame += 1) {
+    for (let k = 0; k < 4; k += 1) {
+      va += (-springTop.stiffness * (a - top) - springTop.damping * va) * dt;
+      vb += (-springBottom.stiffness * (b - (top + height)) - springBottom.damping * vb) * dt;
+      a += va * dt;
+      b += vb * dt;
+    }
+    // Never thinner than three quarters of itself, never longer than STRETCH_MAX past itself.
+    if (down) a = clamp(a, b - height - STRETCH_MAX, b - height * .75);
+    else b = clamp(b, a + height * .75, a + height + STRETCH_MAX);
+    tops.push(a);
+    bottoms.push(b);
+    if (Math.abs(a - top) < .1 && Math.abs(b - top - height) < .1 && Math.abs(va) < 4 && Math.abs(vb) < 4) break;
+  }
+  tops[tops.length - 1] = top;
+  bottoms[bottoms.length - 1] = top + height;
+  return { top: tops, bottom: bottoms };
+}
 
 /** "Ctrl+Shift+I" -> ["Ctrl", "Shift", "I"]; a bound `+` or `,` stays one key. */
 function shortcutKeys(value: string | undefined): string[] {
@@ -161,6 +213,9 @@ export function RightToolDock(props: RightToolDockProps) {
   const tipOn = useRef(false);
   const tipClosedAt = useRef(-1e9);
   const tipWasOn = useRef(false);
+  const glidePath = useRef<GlidePath | null>(null);
+  // The count each tool showed last, so a count that rises can be seen to rise.
+  const lastCounts = useRef(new Map<DockId, number>());
   latestOrder.current = order;
 
   const items: Record<DockId, Item> = {
@@ -235,7 +290,7 @@ export function RightToolDock(props: RightToolDockProps) {
       // A picture that cannot be drawn (a stale or damaged value from the account service) leaves the tool blank:
       // the glyph takes its place until a different picture arrives.
       icon: props.accountAvatar && props.accountAvatar !== brokenAvatar
-        ? <img className="loom-tool-avatar" src={props.accountAvatar} alt="" draggable={false}
+        ? <img className="loom-tool-avatar loom-icon" src={props.accountAvatar} alt="" draggable={false}
             onError={() => setBrokenAvatar(props.accountAvatar ?? "")} />
         : <UserRound size={16} strokeWidth={1.75} />,
       status: props.accountAuthenticated, onClick: props.onOpenAccount,
@@ -435,21 +490,98 @@ export function RightToolDock(props: RightToolDockProps) {
 
   // --- Light, name and order that follow the pointer ---------------------------------------------------------------
 
-  // The glider: one wash that slides to whichever tool is lit. It comes in without sliding from wherever it last was.
+  // The glider: one wash that flows to whichever tool is lit. Its edge in front leaves first and the one behind
+  // catches up, so it stretches a little toward where it goes and gathers itself on arrival; a new target mid-way
+  // takes it from where it is, at the speed it has. It does not slide in from where it last was: it grows in place,
+  // and lets go by shrinking a little as it fades.
   useLayoutEffect(() => {
     const glider = gliderRef.current;
     const dock = dockRef.current;
     if (!glider || !dock) return;
+    const animated = !reduce && typeof glider.animate === "function";
     const button = glideId ? dock.querySelector<HTMLElement>(`[data-tool-id="${glideId}"]`) : null;
-    if (!button) { glider.dataset.on = "false"; return; }
+    if (!button) {
+      if (glider.dataset.on === "true" && animated) {
+        const y = parseFloat(glider.style.getPropertyValue("--glide-y")) || 0;
+        const h = glider.offsetHeight;
+        glider.getAnimations().forEach(animation => animation.cancel());
+        glider.animate([
+          { transform: `translateY(${y}px)` },
+          { transform: `translateY(${y + h * .05}px) scale(.9)` },
+        ], { duration: DUR_OUT.fast, easing: EASE.exit, fill: "forwards" });
+      }
+      glidePath.current = null;
+      glider.dataset.on = "false";
+      return;
+    }
     const slot = button.offsetParent as HTMLElement | null;
     const y = (slot?.offsetTop ?? 0) + button.offsetTop;
+    const h = button.offsetHeight;
     const wasOn = glider.dataset.on === "true";
-    if (!wasOn) glider.dataset.park = "true";
+    const was = glidePath.current;
+    const from = was ? glideAt(was, performance.now()) : null;
     glider.style.setProperty("--glide-y", `${y}px`);
-    if (!wasOn) { void glider.offsetWidth; delete glider.dataset.park; }
     glider.dataset.on = "true";
-  }, [glideId, order, presence.mounted]);
+    if (!animated) { glidePath.current = null; return; }
+    if (!wasOn || !from) {
+      glider.getAnimations().forEach(animation => animation.cancel());
+      glidePath.current = { start: performance.now(), top: [y], bottom: [y + h] };
+      glider.animate([
+        { transform: `translateY(${y + h * .07}px) scale(.86)` },
+        { transform: `translateY(${y}px)` },
+      ], { duration: DUR.base, easing: SPRING.pop });
+      return;
+    }
+    if (Math.abs(from.top - y) < .5 && Math.abs(from.bottom - y - h) < .5) return;
+    const plan = planGlide(from, y, h);
+    glider.getAnimations().forEach(animation => animation.cancel());
+    const frames = plan.top.map((top, at) => ({
+      transform: `translateY(${top}px) scaleY(${(plan.bottom[at] - top) / h})`,
+      offset: plan.top.length > 1 ? at / (plan.top.length - 1) : 1,
+    }));
+    glidePath.current = { start: performance.now(), ...plan };
+    glider.animate(frames, { duration: Math.max(GLIDE_STEP, (plan.top.length - 1) * GLIDE_STEP), easing: "linear" });
+  }, [glideId, order, presence.mounted, reduce]);
+
+  // A count that rises says so: its number bumps once. (Appearing is the dot's own pop.)
+  const countKey = order.map(id => `${id}:${items[id].count ?? ""}`).join(",");
+  useLayoutEffect(() => {
+    const dock = dockRef.current;
+    const seen = lastCounts.current;
+    order.forEach(id => {
+      const count = items[id].count;
+      if (count === undefined) return;
+      const before = seen.get(id);
+      seen.set(id, count);
+      if (reduce || before === undefined || before <= 0 || count <= before) return;
+      const dot = dock?.querySelector<HTMLElement>(`[data-tool-id="${id}"] > .loom-tool-count`);
+      dot?.animate?.([
+        { transform: "scale(1)" },
+        { transform: "scale(1.34)", offset: .3 },
+        { transform: "scale(1)" },
+      ], { duration: DUR.flow, easing: EASE.out });
+    });
+    // `items` is rebuilt every render; the counts are what this reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countKey, reduce]);
+
+  /** A disabled tool that is pressed says no (its glyph shakes its head) and gives its reason at once. */
+  const refuse = (id: DockId) => {
+    window.clearTimeout(tipTimer.current);
+    setHushed(null);
+    tipOn.current = true;
+    setTip({ id, on: true });
+    if (reduce) return;
+    const glyph = dockRef.current?.querySelector<HTMLElement>(`[data-tool-id="${id}"] > :is(svg, img)`);
+    glyph?.animate?.([
+      { transform: "translateX(0)" },
+      { transform: "translateX(-2.5px)", offset: .16 },
+      { transform: "translateX(2px)", offset: .38 },
+      { transform: "translateX(-1.2px)", offset: .6 },
+      { transform: "translateX(.6px)", offset: .8 },
+      { transform: "translateX(0)" },
+    ], { duration: DUR.panel, easing: "ease-out" });
+  };
 
   // The name: it waits for a pointer that rests, and once one is open the next follows at once. Keyboard focus shows it
   // immediately.
@@ -535,6 +667,7 @@ export function RightToolDock(props: RightToolDockProps) {
         data-disabled={item.disabled ? "true" : undefined}
         style={{ "--i": index } as CSSProperties}
         onPointerEnter={() => { setHoverId(id); setHushed(previous => (previous === id ? previous : null)); }}
+        onPointerDown={item.disabled ? event => { if (event.button === 0) refuse(id); } : undefined}
       >
         <button
           type="button"

@@ -242,6 +242,11 @@
 [data-icon="thumbs-down"] .li-all { transform-origin: 20px 2px; transform: translate(0, calc(var(--ic-on) * 1.2px)) rotate(calc(var(--ic-on) * -8deg)); }
 [data-icon="sparkles"] .li-star { transform-origin: 12px 12px; transform: rotate(calc(var(--ic-on) * 16deg)) scale(calc(1 + var(--ic-on) * .06)); }
 [data-icon="globe"] .li-meridian { transform-origin: 12px 12px; transform: scaleX(calc(1 - var(--ic-on) * .5)); }
+/* The earth turns a little under its rim (every coast ends on the circle, so it stays inside it). */
+[data-icon="earth"] .li-land { transform-origin: 12px 12px; transform: rotate(calc(var(--ic-on) * -18deg)); }
+/* The clock: a quarter of an hour goes by (a full turn would unwind backwards on the way out). */
+[data-icon="clock"] .li-minute { transform-origin: 12px 12px; transform: rotate(calc(var(--ic-on) * 90deg)); }
+[data-icon="clock"] .li-hour { transform-origin: 12px 12px; transform: rotate(calc(var(--ic-on) * 12deg)); }
 
 /* -------------------------------------------------------------------------- */
 /* Things that open.                                                           */
@@ -299,6 +304,12 @@
 
 [data-icon="eye"] .li-pupil { transform: translate(calc(var(--ic-on) * 2.2px), 0); }
 
+/* Two bubbles: one says something, the other answers a beat later. */
+[data-icon="messages"] .li-front { transform: translate(0, calc(var(--ic-on) * -1.4px)); }
+[data-icon="messages"] .li-back { transform: translate(0, calc(var(--ic-on) * 1.2px)); transition-delay: calc(var(--ic-on) * 60ms); }
+
+[data-icon="user-round"] .li-head { transform: translate(0, calc(var(--ic-on) * -1.3px)); }
+
 [data-icon="bot"] .li-antenna { transform: translate(0, calc(var(--ic-on) * -1.6px)); }
 [data-icon="bot"] .li-eyes { transform-origin: 12px 14px; animation: var(--ic-k-blink) 480ms ease both; }
 
@@ -334,9 +345,12 @@
 
 /* Marks that confirm something draw again when the control is engaged. */
 [data-icon="shield-check"] .li-tick,
-[data-icon="activity"] .li-wave {
+[data-icon="activity"] .li-wave,
+[data-icon="list-checks"] .li-tick {
   animation: var(--ic-k-draw) var(--ic-t-draw) var(--ic-ease) both;
 }
+/* A plan's ticks are struck one after the other, top to bottom. */
+[data-icon="list-checks"] .li-tick-2 { animation-delay: 90ms; }
 
 @keyframes li-draw {
   0% { stroke-dasharray: 1 2; stroke-dashoffset: 1; opacity: 0; }
