@@ -251,7 +251,7 @@ def main(argv=None):
     parser.add_argument("--scenario", choices=tuple(SCENARIOS), default="tally",
                         help="tally: one small CLI; ledger: a multi-task package with a larger external oracle")
     args = parser.parse_args(argv)
-    if not 1 <= args.token_budget <= 3_000_000 or not 1 <= args.max_episodes <= 80 or not 1 <= args.seconds <= 7200:
+    if not 1 <= args.token_budget <= 8_000_000 or not 1 <= args.max_episodes <= 80 or not 1 <= args.seconds <= 7200:
         parser.error("Qualification limits exceed supported bounds")
     root = args.root.resolve()
     if root.exists():
