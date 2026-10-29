@@ -82,7 +82,7 @@ def test_app_server_patched_production_request_contains_turn_protocol(tmp_path):
 
 
 def test_default_prompt_exposes_decision_cards_without_turning_routine_work_into_questions() -> None:
-    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 15
+    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 16
     assert "```loom-decision" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert '"title"' not in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "routine implementation details" in DEFAULT_AGENT_SYSTEM_PROMPT
