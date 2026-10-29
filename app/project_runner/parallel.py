@@ -81,7 +81,7 @@ def spawn(service, root, task, source):
         reviewPolicy="independent", reviewScope="task", reviewFailures={}, feedback=[], reviewCandidate=None,
         completionPolicy="manual", delivery="isolated_candidate_only")
     workspace = store.home / "workspaces" / child["id"]
-    git(root["repository"], "worktree", "add", "--detach", str(workspace), child["baseCommit"])
+    git(root["repository"], "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(workspace), child["baseCommit"])
     baseline = candidate(child, workspace)
     with store.transaction() as db:
         current = store._read(db, root["id"])
@@ -128,7 +128,7 @@ def aggregate(service, root, child, source):
         raise ValueError("Aggregate changed since merge preparation")
     hooks = store.home / "empty-parallel-hooks"
     hooks.mkdir(exist_ok=True)
-    git(source, "-c", f"core.hooksPath={hooks}", "checkout", "--detach", intent["commit"])
+    git(source, "-c", "core.autocrlf=false", "-c", f"core.hooksPath={hooks}", "checkout", "--detach", intent["commit"])
     if git(source, "status", "--porcelain") or git(source, "rev-parse", "HEAD") != intent["commit"]:
         raise ValueError("Aggregate checkout requires inspection")
     with store.transaction() as db:

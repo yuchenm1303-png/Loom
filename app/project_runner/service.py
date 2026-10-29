@@ -40,7 +40,7 @@ class ProjectExecutor:
         workspace = self.home / "workspaces" / run["id"]
         if not workspace.exists():
             workspace.parent.mkdir(parents=True, exist_ok=True)
-            git(run["repository"], "worktree", "add", "--detach", str(workspace), run["baseCommit"])
+            git(run["repository"], "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(workspace), run["baseCommit"])
         # Never assume a preexisting directory is the expected checkout.
         common = Path(git(workspace, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve()
         if common != Path(run["gitCommonDir"]):

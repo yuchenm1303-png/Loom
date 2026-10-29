@@ -154,3 +154,40 @@ def test_export_rejects_git_tree_that_differs_from_reviewed_bytes(tmp_path, monk
     monkeypatch.setattr(delivery, "git", changed_tree)
     with pytest.raises(ValueError, match="differs from reviewed"):
         delivery.prepare(run, expected, root, tmp_path / "home")
+
+
+@pytest.mark.parametrize("text", [b"print('lf')\n", b"print('crlf')\r\n"])
+def test_export_keeps_reviewed_line_endings_under_autocrlf(tmp_path, text):
+    # This machine's Git ships core.autocrlf=true; a reviewed LF file came back
+    # CRLF from the export and a fully accepted real run could not be delivered.
+    root, run, expected = export_fixture(tmp_path)
+    git(root, "config", "core.autocrlf", "true")
+    (root / "tally.py").write_bytes(text)
+    expected = candidate(run, root)
+    run.update(verifiedCandidate=expected, lastAssessment={"verdict": "passed", "scope": "project", "candidateId": expected["id"]})
+    receipt = delivery.prepare(run, expected, root, tmp_path / "home")
+    from pathlib import Path
+    assert (Path(receipt["workspace"]) / "tally.py").read_bytes() == text
+    # The commit holds exactly the reviewed bytes.
+    blob = __import__("subprocess").run(["git", "-C", str(root), "cat-file", "blob", receipt["commit"] + ":tally.py"],
+                                        capture_output=True).stdout
+    assert blob == text
+
+
+def test_fast_forward_accepts_the_users_autocrlf_checkout_of_the_delivered_tree(tmp_path):
+    from app.project_runner import integration
+    root, run, expected = export_fixture(tmp_path)
+    git(root, "config", "core.autocrlf", "true")
+    (root / "tally.py").write_bytes(b"print('lf')\n")
+    expected = candidate(run, root)
+    run.update(verifiedCandidate=expected, lastAssessment={"verdict": "passed", "scope": "project", "candidateId": expected["id"]})
+    receipt = delivery.prepare(run, expected, root, tmp_path / "home")
+    # The user's source: clean, on its branch, at the reviewed base.
+    git(root, "checkout", "--", ".")
+    git(root, "clean", "-fdq")
+    ref = git(root, "symbolic-ref", "HEAD")
+    run["integrationTarget"] = {"ref": ref, "head": git(root, "rev-parse", "HEAD")}
+    integration.fast_forward(run, receipt)
+    assert git(root, "rev-parse", "HEAD") == receipt["commit"]
+    # The user's filters rewrote the bytes; the integrated tree is still the reviewed one.
+    assert (root / "tally.py").read_bytes() == b"print('lf')\r\n"

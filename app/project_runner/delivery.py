@@ -27,14 +27,14 @@ def prepare(run, expected, source, home):
     validate(run, expected, source)
     target = home / "deliveries" / run["id"] / str(uuid.uuid4())
     review_workspace(run, expected, source, target)
-    git(target, "add", "--all", "--", ".")
+    git(target, "-c", "core.autocrlf=false", "add", "--all", "--", ".")
     tree = git(target, "write-tree")
     commit = git(target, "-c", "user.name=Loom Project Runner", "-c", "user.email=loom@localhost",
                  "commit-tree", tree, "-p", run["baseCommit"], "-m",
                  f"Project {run['id']}: independently verified candidate {expected['id']}")
     # Git filters/line-ending conversion must not silently change tested bytes.
     exported = home / "delivery-checks" / run["id"] / commit
-    git(run["repository"], "worktree", "add", "--detach", str(exported), commit)
+    git(run["repository"], "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(exported), commit)
     actual = snapshot(exported)["files"]
     wanted = {name: item for name, item in expected["files"].items() if item["sha256"] is not None}
     if actual != wanted:

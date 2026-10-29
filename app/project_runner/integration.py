@@ -7,7 +7,7 @@ from functools import wraps
 
 from app.project_git_workflow import repository_operation_lock
 
-from .review import candidate, definition_hash, git, snapshot
+from .review import candidate, definition_hash, git
 from .store import encoded
 
 
@@ -80,7 +80,7 @@ def start(service, params):
     if parent.get("completionPolicy") == "local_integrate":
         child["workflowOwnerId"] = parent["id"]
     workspace = store.home / "workspaces" / child["id"]
-    git(root, "worktree", "add", "--detach", str(workspace), commit)
+    git(root, "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(workspace), commit)
     frozen = candidate(child, workspace)
     def record(db):
         if store._read(db, run_id)["revision"] != revision:
@@ -109,7 +109,10 @@ def fast_forward(run, receipt):
         git(root, "-c", f"core.hooksPath={hooks}", "merge", "--ff-only", "--no-edit", receipt["commit"])
     if git(root, "symbolic-ref", "HEAD") != target["ref"] or git(root, "rev-parse", "HEAD") != receipt["commit"]:
         raise ValueError("Source changed during integration; inspect before retrying")
-    if git(root, "status", "--porcelain") or snapshot(root)["files"] != snapshot(exported)["files"]:
+    # The user's checkout follows the user's Git filters (autocrlf=true writes an
+    # accepted LF file as CRLF), so its bytes are not the reviewed bytes. A clean
+    # status over exactly the delivered tree is what "integrated" means there.
+    if git(root, "status", "--porcelain") or git(root, "write-tree") != receipt["tree"]:
         raise ValueError("Integrated checkout differs from accepted delivery; inspect before retrying")
 
 

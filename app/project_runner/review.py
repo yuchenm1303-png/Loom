@@ -19,6 +19,9 @@ class StaleCandidate(ValueError):
     pass
 
 
+# Runner-owned checkouts pass core.autocrlf=false: their bytes are what gets reviewed
+# and committed, so a machine-wide autocrlf=true must not rewrite them on the way
+# (a reviewed LF file came back CRLF from the delivery export). .gitattributes still apply.
 def git(root, *args, raw=False):
     result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
         encoding="utf-8", errors="strict", timeout=30,
@@ -92,7 +95,7 @@ def review_workspace(run, expected, source, target):
         raise StaleCandidate("Candidate changed before independent review")
     if not target.exists():
         target.parent.mkdir(parents=True, exist_ok=True)
-        git(run["repository"], "worktree", "add", "--detach", str(target), expected["head"])
+        git(run["repository"], "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(target), expected["head"])
         for name, item in expected["files"].items():
             destination = target / name
             if not destination.parent.resolve().is_relative_to(target.resolve()):
