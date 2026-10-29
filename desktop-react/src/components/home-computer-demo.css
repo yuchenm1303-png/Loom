@@ -8,6 +8,7 @@
 .computer-demo-explanation strong { font-size: 20px; font-weight: 400; }
 .computer-demo-explanation p { font-size: 16px; color: var(--ed-ink-muted); line-height: 1.5; margin: 8px 0 0; }
 .computer-demo-window { grid-column: 5 / -1; min-width: 0; border: 1px solid var(--ed-rule); border-radius: 14px; background: var(--ed-paper); overflow: hidden; font: 12px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--ed-ink); }
+@media (min-width: 961px) { .computer-demo-window { width: 100%; max-width: calc((100dvh - 240px) * 1.6); justify-self: end; } }
 .computer-demo-window button { font: inherit; color: inherit; background: transparent; cursor: pointer; border: 0; border-radius: 6px; }
 .computer-demo-window button:hover { background: color-mix(in srgb, var(--ed-ink) 7%, transparent); }
 .computer-demo-window button:focus-visible { outline: 2px solid var(--ed-accent); outline-offset: 2px; }

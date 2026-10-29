@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, FolderOpen, ArrowRight, PanelRight, Search, Pencil, ChevronRight, ChevronDown, Globe2, FileDiff, Terminal, Settings, Paperclip, KeyRound, SlidersHorizontal, Layers, CircleAlert, Archive } from "./icons";
 import { ActivityGlyph } from "./ToolIdentity";
 import "./home-workspace-demo.css";
@@ -6,6 +6,7 @@ import "./home-workspace-demo.css";
 /** A local, scripted product preview. No files, commands or approvals leave this component. */
 export function HomeWorkspaceDemo({ zh, ready }: { zh: boolean; ready: boolean }) {
   const root = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [visible, setVisible] = useState(false);
@@ -14,6 +15,12 @@ export function HomeWorkspaceDemo({ zh, ready }: { zh: boolean; ready: boolean }
   const [tab, setTab] = useState<"activity" | "diff">("activity");
   const [run, setRun] = useState(0);
   const labels = zh ? ["读取项目", "修改代码", "运行测试", "等待批准", "已完成"] : ["Read project", "Edit code", "Run tests", "Your approval", "Complete"];
+
+  useLayoutEffect(() => {
+    // Follow the newest result as the real conversation view does. Keep the
+    // approval controls above the composer when the viewport is short.
+    if (content.current) content.current.scrollTop = content.current.scrollHeight;
+  }, [step, tab, run]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -71,7 +78,7 @@ export function HomeWorkspaceDemo({ zh, ready }: { zh: boolean; ready: boolean }
           <button type="button" aria-label={zh ? "对话" : "Conversation"} aria-pressed={tab === "activity"} onClick={() => { setTab("activity"); setPlaying(false); }}>{zh ? "修复发布测试" : "Fix release test"}</button>
           <button type="button" aria-pressed={tab === "diff"} onClick={() => { setTab("diff"); setPlaying(false); }}>{zh ? "代码修改" : "Changes"}<span>1</span></button>
         </div>
-        <div className="home-demo-content">
+        <div className="home-demo-content" ref={content}>
           {tab === "diff" ? <div className="home-demo-scene" key="diff"><Diff zh={zh} /><p className="home-demo-detail">{zh ? "把边界判断改为包含当前版本。" : "Include the current version in the release check."}</p></div> : <div className="home-demo-scene" key={`${run}-${step}`}>
             <div className="home-demo-prompt">{zh ? "修好发布测试，然后推送。" : "Fix the release test, then push it."}</div>
             <div className="home-demo-agent"><ActivityGlyph size={12} item={{ id: "demo-tool", threadId: "home-demo", type: step === 1 ? "file_edit" : step === 3 ? "approval" : "process", status: step < 3 ? "running" : "completed" }} /><span className="home-demo-status" role="status">{labels[step]}</span><span className="home-demo-process-time">· {step === 0 ? "1s" : "3s"}</span><ChevronRight size={10} /></div>

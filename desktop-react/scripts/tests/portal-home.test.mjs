@@ -105,7 +105,7 @@ test("the first screen is laid out from the top, so opening More moves only what
   const hero = rule(".loom-editorial .editorial-hero");
   assert.ok(!/(?:display:\s*flex|justify-content)/.test(hero), "free space goes below the words, not between them");
   assert.match(hero, /min-height:\s*min\(calc\(100dvh - var\(--ed-head\)\),\s*900px\)/, "the first screen is a screen, up to a limit");
-  assert.match(hero, /padding-block:\s*clamp\(40px,\s*19vh,\s*200px\)/, "the group sits where a share of the window's height puts it");
+  assert.match(hero, /padding-block:\s*clamp\(32px,\s*6vh,\s*96px\)/, "the demo leaves room for its controls inside the first screen");
   assert.match(rule(".loom-editorial .editorial-hero-grid"), /align-items:\s*start/);
   assert.match(css, /@media \(max-width: 960px\)\s*\{[^@]*\.editorial-hero\s*\{\s*min-height:\s*0/, "stacked, it is as tall as its words");
 });

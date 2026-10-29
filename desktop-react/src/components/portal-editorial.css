@@ -378,7 +378,7 @@
 .loom-editorial .editorial-hero {
   box-sizing: border-box;
   min-height: min(calc(100dvh - var(--ed-head)), 900px);
-  padding-block: clamp(40px, 19vh, 200px) clamp(56px, 10vh, 112px);
+  padding-block: clamp(32px, 6vh, 96px) clamp(32px, 5vh, 64px);
 }
 .loom-editorial .editorial-hero-grid {
   display: grid;
@@ -572,7 +572,7 @@
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   column-gap: var(--ed-gap);
-  margin-top: clamp(80px, 13vh, 144px);
+  margin-top: clamp(64px, 8vh, 112px);
 }
 .loom-editorial .editorial-section h2 {
   grid-column: 1 / -1;
@@ -734,7 +734,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 4px 24px;
-  margin-top: clamp(96px, 16vh, 180px);
+  margin-top: clamp(64px, 10vh, 128px);
   padding-block: 28px 36px;
   border-top: 1px solid var(--ed-rule-soft);
   color: var(--ed-ink-faint);
