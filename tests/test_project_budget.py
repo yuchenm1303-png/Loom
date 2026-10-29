@@ -280,3 +280,25 @@ def test_failed_request_assumption_depends_on_whether_output_arrived(tmp_path, t
         assert 0 < position["assumedUnknownTokens"] < 1000
     else:
         assert position["assumedUnknownTokens"] == 30000
+
+
+@pytest.mark.parametrize("cause,billed", [("connect", False), ("connect_timeout", False), ("read", True)])
+def test_a_request_whose_connection_never_opened_costs_nothing(tmp_path, cause, billed):
+    import httpx
+    store, run, budget = ledger(tmp_path, budget=1000)
+    episode(store, run)
+    inner = {"connect": httpx.ConnectError("tls handshake failed"), "connect_timeout": httpx.ConnectTimeout("timed out"),
+             "read": httpx.ReadError("connection reset")}[cause]
+    try:
+        try:
+            raise inner
+        except httpx.HTTPError as low:
+            raise AITransportError("AI request failed: APIConnectionError: Connection error.") from low
+    except AITransportError as failure:
+        failure.stream_timing = {"chunk_count": 0}
+        error = failure
+    with pytest.raises(AITransportError):
+        BudgetedModelExecutor(Inner(error), budget).execute(None, "p", request(text="x" * 300), None)
+    position = budget.report(run)
+    assert position["unknownRequests"] == (1 if billed else 0)
+    assert (position["assumedUnknownTokens"] > 0) is billed

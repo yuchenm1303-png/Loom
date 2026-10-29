@@ -245,6 +245,26 @@ class ProjectBudget:
             return position(self.store.db, owner)
 
 
+def _never_sent(exc):
+    """True when the connection itself failed (DNS, TCP or TLS setup), so no request reached the provider.
+
+    A real ledger run lost 1.6M of its 5M budget to 35 such failures during a proxy
+    outage, each assumed at its 43k-token input. httpx reports connection setup failures
+    as ConnectError/ConnectTimeout; the provider SDK and Loom keep it as the cause.
+    """
+    try:
+        import httpx
+    except ImportError:
+        return False
+    seen, current = set(), exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)):
+            return True
+        current = current.__cause__
+    return False
+
+
 def _nothing_received(exc):
     """True only when the executor recorded that no output chunk arrived before the failure."""
     timing = getattr(exc, "stream_timing", None)
@@ -274,7 +294,8 @@ class BudgetedModelExecutor:
         except AITransportError as exc:
             # A 4xx other than a timeout is the provider refusing the request.
             refused = exc.status_code is not None and 400 <= exc.status_code < 500 and exc.status_code != 408
-            self._finish(ticket, "rejected" if refused else "unknown", input_only=_nothing_received(exc))
+            # Refused by the provider, or never sent at all: nothing was billed.
+            self._finish(ticket, "rejected" if refused or _never_sent(exc) else "unknown", input_only=_nothing_received(exc))
             raise
         except BaseException as exc:
             # A tool-contract error carries the complete response, which the
