@@ -551,24 +551,24 @@ export function installWebBridge(): void {
     },
     accountStatus: () => accountRequest<LoomAccountResult>("status"),
     accountCapabilities: () => accountRequest<LoomAuthCapabilitiesResult>("capabilities"),
-    accountLogin: async (email, password) => {
-      const result = await accountRequest<LoomAccountResult>("login", { method: "POST", body: JSON.stringify({ email, password }) });
+    accountLogin: async (email, password, turnstileToken) => {
+      const result = await accountRequest<LoomAccountResult>("login", { method: "POST", body: JSON.stringify({ email, password, turnstile_token: turnstileToken || "" }) });
       if (result.ok) dispatchAuthChanged();
       return result;
     },
-    accountRegister: async (email, password) => {
-      const result = await accountRequest<LoomAccountResult>("register", { method: "POST", body: JSON.stringify({ email, password }) });
+    accountRegister: async (email, password, turnstileToken) => {
+      const result = await accountRequest<LoomAccountResult>("register", { method: "POST", body: JSON.stringify({ email, password, turnstile_token: turnstileToken || "" }) });
       if (result.ok) dispatchAuthChanged();
       return result;
     },
-    accountRegisterStart: (email, password) => accountRequest<LoomAuthChallengeResult>("register/start", { method: "POST", body: JSON.stringify({ email, password }) }),
+    accountRegisterStart: (email, password, turnstileToken) => accountRequest<LoomAuthChallengeResult>("register/start", { method: "POST", body: JSON.stringify({ email, password, turnstile_token: turnstileToken || "" }) }),
     accountVerifyEmail: async (challengeId, code) => {
       const result = await accountRequest<LoomAccountResult>("verify-email", { method: "POST", body: JSON.stringify({ challenge_id: challengeId, code }) });
       if (result.ok) dispatchAuthChanged();
       return result;
     },
     accountResendEmail: (challengeId) => accountRequest<LoomAuthChallengeResult>("resend-email", { method: "POST", body: JSON.stringify({ challenge_id: challengeId }) }),
-    accountForgotPassword: (email) => accountRequest<LoomAuthChallengeResult>("forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
+    accountForgotPassword: (email, turnstileToken) => accountRequest<LoomAuthChallengeResult>("forgot-password", { method: "POST", body: JSON.stringify({ email, turnstile_token: turnstileToken || "" }) }),
     accountResetPassword: async (challengeId, code, password) => {
       const result = await accountRequest<LoomAccountResult>("reset-password", { method: "POST", body: JSON.stringify({ challenge_id: challengeId, code, password }) });
       if (result.ok) dispatchAuthChanged();
