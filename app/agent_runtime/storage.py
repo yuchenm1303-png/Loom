@@ -619,14 +619,21 @@ class FileAgentSessionStore:
             usage=_usage_from_dict(payload.get("usage")),
             messages=[_message_from_dict(message) for message in payload.get("messages", [])])
 
-    def save(self, session: AgentSession) -> None:
+    def save(self, session: AgentSession, *, touch: bool = True) -> None:
+        """Persist the session. ``touch=False`` keeps ``updated_at``.
+
+        ``updated_at`` is what the sidebar sorts by. Housekeeping that rewrites an old
+        conversation (a newer built-in prompt, model metadata filled in on open) is not
+        activity, and stamping it moved months-old conversations above the newest ones.
+        """
         directory = self.session_dir(session.session_id)
         with session_lock(directory):
             recover(directory)
-            self._save(session)
+            self._save(session, touch=touch)
 
-    def _save(self, session: AgentSession) -> None:
-        session.updated_at = utc_now()
+    def _save(self, session: AgentSession, *, touch: bool = True) -> None:
+        if touch or not session.updated_at:
+            session.updated_at = utc_now()
         encoder, data, key = self._snapshot(session)
         if self._persisted(encoder, key, session.session_id):
             return

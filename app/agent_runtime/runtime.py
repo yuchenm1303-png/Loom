@@ -377,7 +377,7 @@ class AgentRuntime:
         if is_loom_default_prompt(session.system_prompt):
             session.system_prompt = DEFAULT_AGENT_SYSTEM_PROMPT
             session.system_prompt_version = DEFAULT_AGENT_SYSTEM_PROMPT_VERSION
-            self.store.save(session)
+            self.store.save(session, touch=False)
         return session
 
     def get_session(self, session_id: str) -> AgentSession:

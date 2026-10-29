@@ -580,7 +580,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         session.model_vision = self.vision
         session.reasoning_kind = reasoning.kind.value if reasoning is not None else ""
         session.reasoning_value = reasoning.value if reasoning is not None else ""
-        self.store.save(session)
+        self.store.save(session, touch=False)
         return session
 
     def _thread_uses_default_model(self, session: Any) -> bool:
@@ -689,7 +689,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             session.model_vision = vision
             session.model_provider = provider
             session.model_base_url = base_url
-            self.store.save(session)
+            self.store.save(session, touch=False)
         return session
 
     @staticmethod

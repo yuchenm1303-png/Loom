@@ -263,8 +263,8 @@ class _CheckingStore(FileAgentSessionStore):
         super().commit_event(session, event)
         self._check(session)
 
-    def save(self, session):
-        super().save(session)
+    def save(self, session, **kwargs):
+        super().save(session, **kwargs)
         self._check(session)
 
 

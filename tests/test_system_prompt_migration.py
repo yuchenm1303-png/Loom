@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from app.agent_runtime.contracts import AgentSession
@@ -46,6 +48,21 @@ def test_legacy_default_prompt_is_upgraded_on_session_load(tmp_path, legacy) -> 
     persisted = store.load(_SESSION_ID)
     assert persisted.system_prompt == DEFAULT_AGENT_SYSTEM_PROMPT
     assert persisted.system_prompt_version == DEFAULT_AGENT_SYSTEM_PROMPT_VERSION
+
+
+def test_prompt_upgrade_does_not_move_the_conversation_up_the_sidebar(tmp_path) -> None:
+    """The sidebar sorts by updated_at; a newer built-in prompt is not activity."""
+    store = FileAgentSessionStore(tmp_path / "state")
+    store.create(_session(tmp_path, sorted(_LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS)[0]))
+    before = store.load(_SESSION_ID).updated_at
+    time.sleep(0.01)
+    runtime = AgentRuntime(platform=_Platform(), store=store)
+
+    runtime.get_session(_SESSION_ID)
+
+    persisted = store.load(_SESSION_ID)
+    assert persisted.system_prompt == DEFAULT_AGENT_SYSTEM_PROMPT
+    assert persisted.updated_at == before
 
 
 def test_custom_prompt_is_never_rewritten(tmp_path) -> None:
