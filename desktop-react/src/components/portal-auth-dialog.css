@@ -140,23 +140,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  height: 28px;
-  color: var(--dialog-text);
-  font: 400 23px/1 var(--ed-serif);
-  letter-spacing: -.025em;
+  height: 30px;
 }
 .loom-editorial .editorial-modal-brand img {
   display: block;
-  width: 61px;
-  height: 27px;
+  width: 82px;
+  height: 30px;
   object-fit: contain;
-}
-.loom-editorial .editorial-modal-brand-divider {
-  display: block;
-  width: 1px;
-  height: 17px;
-  background: var(--dialog-edge);
 }
 .loom-editorial .editorial-panel-top h2 {
   margin: 20px 0 0;
