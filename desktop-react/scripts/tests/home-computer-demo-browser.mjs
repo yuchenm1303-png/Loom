@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
@@ -15,20 +16,21 @@ try {
   await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.playing === "true");
   await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.step === "2", null, { timeout: 10000 });
   await page.waitForFunction(() => document.querySelector('.computer-demo-event-form input')?.value.length > 0);
-  const position = await demo.evaluate(node => {
+  const native = demo.frameLocator(".computer-demo-native-hud");
+  await native.locator("#hud.live").waitFor();
+  const originalStyles = readFileSync(new URL("../../electron/hudDocument.ts", import.meta.url), "utf8").match(/<style>([\s\S]*?)<\/style>/)[1].replace(/\r\n/g, "\n");
+  assert.equal((await native.locator("style").textContent()).replace(/\r\n/g, "\n"), originalStyles, "preview uses the exact native HUD stylesheet");
+  assert.equal(await native.locator(".edge i").count(), 8, "reuse the desktop HUD's eight edge strips");
+  assert.equal(await native.locator(".cursor svg").evaluate(node => getComputedStyle(node).animationName), "float");
+  assert.equal(await native.locator(".cursor svg").evaluate(node => getComputedStyle(node).animationDuration), "2.15s", "original animation timing is unchanged");
+  await page.waitForTimeout(300);
+  const targetY = await demo.evaluate(node => {
     const stage = node.querySelector(".computer-demo-stage").getBoundingClientRect();
     const input = node.querySelector("input").getBoundingClientRect();
-    const cursor = node.querySelector(".computer-demo-cursor").getBoundingClientRect();
-    return { aligned: Math.abs(cursor.y + 5 - (input.y + input.height / 2)) < 2, inside: cursor.x >= stage.x && cursor.x < stage.right };
+    return input.y - stage.y + input.height / 2;
   });
-  // Allow the HUD pointer's movement to settle before checking its destination.
-  if (!position.aligned) await page.waitForTimeout(700);
-  const aligned = await demo.evaluate(node => {
-    const input = node.querySelector("input").getBoundingClientRect();
-    const cursor = node.querySelector(".computer-demo-cursor").getBoundingClientRect();
-    return Math.abs(cursor.y + 5 - (input.y + input.height / 2)) < 2;
-  });
-  assert.equal(aligned, true, "HUD pointer tracks the actual input geometry");
+  const cursorY = await native.locator("#cursor").evaluate(node => node.getBoundingClientRect().y + 10);
+  assert.ok(Math.abs(cursorY - targetY) < 2, "original HUD pointer tracks the input geometry");
   await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.step === "3");
   assert.equal(await demo.getAttribute("data-playing"), "true", "confirmation continues automatically");
   assert.equal(await demo.getByRole("textbox", { name: "Demo event title" }).inputValue(), "Design review");

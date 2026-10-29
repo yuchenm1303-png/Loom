@@ -8,6 +8,18 @@ ROOT = Path(__file__).resolve().parents[1]
 EXT = ROOT / "extensions" / "browser-current-tab"
 
 
+def test_home_preview_uses_the_native_hud_document_without_custom_effects() -> None:
+    native = (ROOT / "desktop-react/electron/hudWindow.ts").read_text(encoding="utf-8")
+    preview = (ROOT / "desktop-react/src/components/HomeComputerHud.tsx").read_text(encoding="utf-8")
+    css = (ROOT / "desktop-react/src/components/home-computer-demo.css").read_text(encoding="utf-8")
+    assert 'import { hudDocument } from "./hudDocument.js"' in native
+    assert 'import { hudDocument } from "../../electron/hudDocument"' in preview
+    assert 'hudDocument().replace("<script>"' in preview
+    assert 'sandbox="allow-scripts"' in preview
+    for removed in ("cu-demo-", "computer-demo-scan", "computer-demo-progress", "computer-demo-cursor", "computer-demo-edge"):
+        assert removed not in css
+
+
 def _edge_rules(source: str) -> list[str]:
     """The stylesheet rules of the edge glow, one per line, whatever the indentation."""
     return [line.strip() for line in source.splitlines() if line.strip().startswith(".edge")]
@@ -49,7 +61,7 @@ def test_browser_hud_is_standalone_and_keeps_dom_target_overlay() -> None:
 def test_phase_bar_is_removed_from_all_hud_renderers() -> None:
     sources = [
         EXT / "browser-hud.js",
-        ROOT / "desktop-react" / "electron" / "hudWindow.ts",
+        ROOT / "desktop-react" / "electron" / "hudDocument.ts",
         ROOT / "desktop-react" / "src" / "components" / "ComputerUseHudOverlay.tsx",
         ROOT / "desktop-react" / "src" / "components" / "computer-use-hud.css",
     ]
@@ -88,7 +100,7 @@ def test_browser_hud_hot_reload_replaces_old_runtime_in_existing_tabs() -> None:
 
 
 def test_browser_hud_tracks_computer_visual_language_without_sharing_lifecycle() -> None:
-    desktop = (ROOT / "desktop-react" / "electron" / "hudWindow.ts").read_text(encoding="utf-8")
+    desktop = (ROOT / "desktop-react" / "electron" / "hudDocument.ts").read_text(encoding="utf-8")
     browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
 
     for token in ("--bubble-width:420px", "top:20px", "width:82px;height:82px"):
@@ -100,7 +112,7 @@ def test_browser_hud_tracks_computer_visual_language_without_sharing_lifecycle()
     desktop_edge = _edge_rules(desktop)
     assert desktop_edge == _edge_rules(browser_hud)
     assert len(desktop_edge) >= 8
-    assert "BrowserWindow" in desktop
+    assert "BrowserWindow" in (ROOT / "desktop-react/electron/hudWindow.ts").read_text(encoding="utf-8")
     assert "loom-browser-hud-root-v2" in browser_hud
     assert "cloneNode(true)" not in browser_hud
 
@@ -135,7 +147,7 @@ def test_automation_huds_do_not_run_a_full_viewport_effect_stack() -> None:
     timer; none of the following may come back.
     """
 
-    desktop = (ROOT / "desktop-react" / "electron" / "hudWindow.ts").read_text(encoding="utf-8")
+    desktop = (ROOT / "desktop-react" / "electron" / "hudDocument.ts").read_text(encoding="utf-8")
     browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
 
     for name, source in (("hudWindow.ts", desktop), ("browser-hud.js", browser_hud)):
