@@ -203,3 +203,28 @@ aggregate review (two episodes), integration adopted it (source unchanged).
 
 Still not shown: a larger project with real rework, crash/restart recovery in a
 real run, installed-desktop acceptance, and any multi-day run.
+
+## Ledger scenario: five dependent tasks, two workers (2026-10-29)
+
+`--scenario ledger`: a standard-library package with calendar-date, precision and
+line-numbered error rules, planned as 3-5 dependent tasks, checked by a 13-case
+external oracle. No run has passed yet. Each run found the next limit:
+
+| Run | Code | Known tokens | Reached | Stopped by | Fix |
+| --- | --- | ---: | --- | --- | --- |
+| ledger1 | 2bf638e6 | 538,939 | task-1 in progress | one APIConnectionError stopped the whole team | transient provider failures back off and continue (f3b16099) |
+| ledger2 | f3b16099 | 2,752,096 | 2 tasks merged | 3M budget; tempfile.mkdtemp unwritable in the sandbox (17 denials) | sandboxed Python mkdtemp hook (efbcf0f3) |
+| ledger3 | efbcf0f3 | 2,791,663 | 3 tasks merged | 3M budget; reviewer files read as a stale candidate (680k lost) | candidate files only decide staleness (6109ca9b) |
+| ledger4 | 62bec358 | 702,107 | 1 task merged | the runtime's appended verification note broke JSON parsing | first JSON object; malformed replies go back (38ceea1e) |
+| ledger5 | 38ceea1e | 3,739,231 | 3 merged, tasks 4-5 in parallel | tests task added tests/__init__.py outside its scope | unclaimed supporting files accepted (fec8f456); outcomes from recorded fields, one recovery table (30e7a270) |
+| ledger6 | 77741d6b | 8,541 | planning | planner's self-dependency stopped the run | plan errors go back to the planner (ef61babe) |
+| ledger7 | c3401b84 | 4,240,981 | 3 merged, 4-5 parallel | 5M budget; scratch per turn (a review took 9 episodes, 1.6M); 18 failed requests assumed at 40k | per-session scratch; failed-before-output requests assumed at input (371f2e5e) |
+| ledger8 | 371f2e5e | 4,373,542 | 3 merged | README task bound-limited 8 times re-orienting | accepted checks, notes, no 8-step cap, layout in summaries (e9c95134) |
+| ledger9 | e9c95134 | 3,332,502 | 4-5 in parallel | 5M charged: 35 connection errors during a proxy outage assumed at 43k each | connection-setup failures cost nothing (0b11f95e) |
+| ledger10 | 0b11f95e | 5,940,399 | all 5 merged; whole-project review | 6M cap: two project reviews rejected (2M); a kept check named a fixture in the first reviewer's private scratch, the sandbox denied it, the rewritten check was a same-episode redefinition; requests grew to 85k inside an episode | kept checks carry their fixtures; the rejection says why and what to do; project sessions compact at 48k |
+
+After the consolidation (from ledger7) no run stopped on a protocol, format or
+transient failure; the remaining limit was cost, cut each time. Reviews fell from
+9 episodes and 1.6M tokens per task (ledger7) to 3 episodes and about 340k
+(ledger8). Total known real usage across all attempts: about 33.8M tokens (about
+84% cached input).

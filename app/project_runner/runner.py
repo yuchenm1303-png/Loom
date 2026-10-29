@@ -244,7 +244,10 @@ class ProjectRunner:
                        if run.get("reviewNote") else "")
                     + ("acceptedChecks are commands an earlier independent review ran and accepted for these criteria. Re-run them "
                        "first (they are cheap), with the same verification fields, and judge whether each still exercises its "
-                       "criterion; then probe what they miss. They are evidence only once you run them here. "
+                       "criterion; then probe what they miss. They are evidence only once you run them here. A check whose "
+                       "command changes after it was recorded is not evidence in this episode: if one fails for an "
+                       "environment reason (a sandbox denial, a missing path) rather than behavior, fix it and report "
+                       "verdict continue so the next episode records the corrected command first. "
                        if self._scoped(kept, run, review=True) else "")
                     + encoded({"objective": run["objective"], "scope": run["reviewScope"], "criteria": criteria(run),
                                "plan": run["plan"], "candidate": run["reviewCandidate"],

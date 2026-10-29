@@ -688,3 +688,23 @@ def test_project_sessions_keep_one_scratch_directory_across_episodes(tmp_path):
         assert runtime._run_scratch_dir(other.session_id, "turn-a") != runtime._run_scratch_dir(other.session_id, "turn-b")
     finally:
         runtime.close()
+
+
+def test_project_sessions_compact_at_a_working_context_not_near_the_model_window(tmp_path, monkeypatch):
+    # A real five-task run let one episode grow to 85k-token requests (953k tokens).
+    from app.agent_runtime.context_limits import resolve_context_limits
+    from app.project_runner.service import PROJECT_WORKING_CONTEXT_TOKENS
+    monkeypatch.delenv("LOOM_WORKING_CONTEXT_TOKENS", raising=False)
+    service, runtime, _, _, source = build(tmp_path, [])
+    try:
+        project = runtime.create_session("p", system_prompt="x")
+        service._project_session_ids.add(project.session_id)
+        limits = resolve_context_limits(runtime, project)
+        assert limits.working_context_source == "session_policy"
+        assert limits.working_context_tokens == PROJECT_WORKING_CONTEXT_TOKENS
+        ordinary = resolve_context_limits(runtime, runtime.get_session(source))
+        assert ordinary.working_context_source != "session_policy"
+        monkeypatch.setenv("LOOM_WORKING_CONTEXT_TOKENS", "64000")  # an explicit setting still wins
+        assert resolve_context_limits(runtime, project).working_context_source == "runtime_env"
+    finally:
+        runtime.close()

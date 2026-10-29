@@ -1,5 +1,6 @@
 """Accepted checks are kept from passing independent reviews and handed to later sessions."""
 import json
+import shutil
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -94,3 +95,38 @@ def test_notes_from_one_task_reach_later_episodes_once(tmp_path):
         assert knowledge["notes"] == [note] and knowledge["acceptedChecks"] == 0 and knowledge["recoveries"] == {}
     finally:
         runtime.close()
+
+
+def test_kept_script_carries_the_fixtures_it_names_by_absolute_path(tmp_path):
+    # ledger run 10: a reviewer's probe named its fixture inside its own private scratch;
+    # every later session was denied that path, rewrote the check, and was rejected.
+    store = ProjectStore(tmp_path / "home")
+    run = store.create("op", {"tokenBudget": 10, "maxEpisodes": 1})
+    review_checkout, scratch = tmp_path / "review", tmp_path / "session" / "run-artifacts"
+    review_checkout.mkdir()
+    fixture = scratch / "session" / "invalid.csv"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text("2026-02-30,A,1\n", encoding="utf-8")
+    script = scratch / "turn-1" / "check.py"
+    script.parent.mkdir(parents=True)
+    escaped = str(fixture).replace("\\", "\\\\")
+    script.write_text(f'raw = r"{fixture}"\nescaped = "{escaped}"\nsource = r"{review_checkout}"\n'
+                      'label = f"{workspace}"\n', encoding="utf-8")
+    request = _event(E.TOOL_REQUESTED, {"call_id": "c1", "tool": "exec", "arguments": {
+        "argv": [sys.executable, str(script)], "cwd": str(review_checkout)}})
+    passed = _event(E.CHECK_RECORDED, {"case_id": "task-1:3", "verdict": "passed", "expectation": "bad rows exit 2",
+                                       "evidence_refs": [{"call_id": "c1"}]})
+    assessment = {"verdict": "passed", "checks": [{"criterionId": "task-1:3", "eventId": passed.event_id}]}
+    assert checks.harvest(store, run, assessment, [request, passed], review_checkout, scratch) == 1
+    shutil.rmtree(tmp_path / "session")  # the first reviewer's scratch is out of reach later
+
+    later_scratch, later_checkout = tmp_path / "later" / "scratch", tmp_path / "later" / "review"
+    later_scratch.mkdir(parents=True)
+    checks.provide(store, run, later_scratch, later_checkout)
+    kept = later_scratch / "accepted-checks" / "task-1_3"
+    namespace = {"workspace": "w"}
+    exec((kept / "check.py").read_text(encoding="utf-8"), namespace)
+    assert Path(namespace["raw"]) == Path(namespace["escaped"]) == kept / "session" / "invalid.csv"
+    assert Path(namespace["raw"]).read_text(encoding="utf-8") == "2026-02-30,A,1\n"
+    assert Path(namespace["source"]) == later_checkout and namespace["label"] == "w"
+    store.close()

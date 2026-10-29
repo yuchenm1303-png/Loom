@@ -191,13 +191,20 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
 
     profile_working = getattr(profile_limits, "working_context_tokens", None)
     runtime_working = getattr(rt.limits, "working_context_tokens", None)
-    working_context = env_working if env_working is not None else profile_working if profile_working is not None else runtime_working
-    working_source = ("runtime_env" if env_working is not None else "model_profile"
-                      if profile_working is not None else "runtime_policy" if runtime_working is not None else "undeclared")
+    # A caller that owns some sessions (the project runner) may set their working
+    # context: a long unattended episode otherwise grew to 85k-token requests
+    # before compacting near the model window, and cost grew quadratically.
+    session_policy = getattr(rt, "session_working_context_tokens", None)
+    session_working = session_policy(session.session_id) if callable(session_policy) else None
+    working_context = next((value for value in (env_working, session_working, profile_working, runtime_working)
+                            if value is not None), None)
+    working_source = ("runtime_env" if env_working is not None else "session_policy" if session_working is not None
+                      else "model_profile" if profile_working is not None
+                      else "runtime_policy" if runtime_working is not None else "undeclared")
     working_input_budget = None
     if working_context is not None:
         working_context = int(working_context)
-        if working_context <= output_reserve and working_source != "runtime_policy":
+        if working_context <= output_reserve and working_source not in {"runtime_policy", "session_policy"}:
             raise ValueError("working context must exceed the output reserve")
         working_context = max(working_context, output_reserve + 4096)
         if window_known:

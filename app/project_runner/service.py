@@ -17,6 +17,8 @@ from app.agent_runtime.context_budget import estimate_tokens
 
 # History a continued episode may carry before the runner compacts it at the boundary.
 EPISODE_CARRY_TOKENS = 12000
+# Working context of a project session: auto-compaction keeps requests under it.
+PROJECT_WORKING_CONTEXT_TOKENS = 48000
 
 
 class ProjectExecutor:
@@ -261,6 +263,9 @@ class ProjectServiceMixin:
         # A project task spans many episodes (turns); its scratch must too. A
         # reviewer lost nine episodes to scripts that vanished at each boundary.
         self.runtime.session_scoped_scratch = self._project_session_ids
+        # Compact inside long episodes too, not only near the model's window.
+        self.runtime.session_working_context_tokens = (
+            lambda session_id: PROJECT_WORKING_CONTEXT_TOKENS if session_id in self._project_session_ids else None)
         self.runtime.subscribe(self.project_budget.observe)
         on_activated = self.runtime._on_turn_activated
         def project_activated(session_id, token):

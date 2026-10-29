@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import shutil
 import time
 
@@ -22,6 +23,10 @@ from app.agent_runtime.contracts import AgentEventKind as E
 
 WORKSPACE, CHECKS = "{workspace}", "{checks}"
 MAX_CHECKS_IN_PROMPT = 24
+# Inside a kept script's text; distinct from argv placeholders because "{workspace}"
+# can be ordinary Python (an f-string) in the script itself.
+IN_FILE_WORKSPACE, IN_FILE_CHECKS = "@@LOOM_WORKSPACE@@", "@@LOOM_CHECKS@@"
+MAX_SCRIPT_BYTES, MAX_FIXTURE_BYTES = 256_000, 2_000_000
 
 
 def registry_root(run):
@@ -54,12 +59,14 @@ def harvest(store, run, assessment, events, workspace, scratch):
             continue
         criterion = str(ref["criterionId"])
         target = folder / criterion.replace(":", "_")
-        rendered = []
+        rendered, templated = [], []
         for item in map(str, argv):
             path = Path(item)
             if scratch and path.is_absolute() and path.is_file() and _inside(path, scratch):
                 target.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, target / path.name)
+                if _make_portable(target / path.name, target, scratch, workspace):
+                    templated.append(path.name)
                 rendered.append(f"{CHECKS}/{criterion.replace(':', '_')}/{path.name}")
             elif path.is_absolute() and _inside(path, workspace):
                 rendered.append(_in_workspace(path, workspace))
@@ -70,7 +77,7 @@ def harvest(store, run, assessment, events, workspace, scratch):
             cwd = _in_workspace(Path(cwd), workspace)
         kept.append({"criterionId": criterion, "expectation": check.data.get("expectation"),
                      "argv": rendered, "cwd": cwd or WORKSPACE, "subjectPaths": check.data.get("subject_paths") or [],
-                     "candidateId": assessment.get("candidateId")})
+                     "templated": templated, "candidateId": assessment.get("candidateId")})
     if kept:
         with store.transaction() as db:
             for item in kept:
@@ -93,9 +100,70 @@ def provide(store, run, scratch, workspace):
         shutil.copytree(source, destination, dirs_exist_ok=True)
     def render(text):
         return str(text).replace(CHECKS, destination.as_posix()).replace(WORKSPACE, Path(workspace).as_posix())
+    for item in rows:
+        for name in item.get("templated", []):
+            copied = destination / item["criterionId"].replace(":", "_") / name
+            try:
+                text = copied.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            copied.write_text(text.replace(IN_FILE_CHECKS, destination.as_posix())
+                              .replace(IN_FILE_WORKSPACE, Path(workspace).as_posix()), encoding="utf-8")
     return [{"criterionId": item["criterionId"], "expectation": item["expectation"],
              "argv": [render(part) for part in item["argv"]], "cwd": render(item["cwd"]),
              "subjectPaths": item["subjectPaths"]} for item in rows[:MAX_CHECKS_IN_PROMPT]]
+
+
+def _make_portable(script, target, scratch, workspace):
+    """Make a kept script runnable from another session; returns whether its text was rewritten.
+
+    Reviewers write fixtures next to their probe scripts and name them by absolute path.
+    A kept script that still pointed into the first reviewer's private scratch was
+    denied by the sandbox in every later session (ledger run 10): each later reviewer
+    had to rewrite the check, and a check redefined within a turn is not acceptance
+    evidence, so the whole-project review was rejected twice. Files the script names
+    inside that scratch are copied with it, and both roots become placeholders.
+    """
+    try:
+        if script.stat().st_size > MAX_SCRIPT_BYTES:
+            return False
+        text = script.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    changed = text
+    if scratch:
+        def keep(match):
+            relative = [part for part in re.split(r"[\\/]+", match.group(1)) if part]
+            source = Path(scratch).joinpath(*relative)
+            if not relative or not _inside(source, scratch):
+                return match.group(0)
+            try:
+                if source.is_file() and source.stat().st_size <= MAX_FIXTURE_BYTES:
+                    (target / Path(*relative)).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, target / Path(*relative))
+                elif source.is_dir() and sum(f.stat().st_size for f in source.rglob("*") if f.is_file()) <= MAX_FIXTURE_BYTES:
+                    shutil.copytree(source, target / Path(*relative), dirs_exist_ok=True)
+                else:
+                    return match.group(0)
+            except OSError:
+                return match.group(0)
+            return f"{IN_FILE_CHECKS}/{target.name}/" + "/".join(relative)
+        changed = _root_pattern(scratch, tail=True).sub(keep, changed)
+    if workspace:
+        changed = _root_pattern(workspace).sub(IN_FILE_WORKSPACE, changed)
+    if changed == text:
+        return False
+    script.write_text(changed, encoding="utf-8")
+    return True
+
+
+def _root_pattern(root, *, tail=False):
+    """An absolute folder as a script may spell it: either separator, doubled backslashes, any case."""
+    parts = [re.escape(part) for part in Path(root).resolve().as_posix().split("/") if part]
+    pattern = r"[\\/]{1,2}".join(parts) + r"(?=[\\/\s\"'`]|$)"
+    if tail:
+        pattern += r"((?:[\\/]{1,2}[^\\/\s\"'`]+)+)"
+    return re.compile(pattern, re.IGNORECASE)
 
 
 def _in_workspace(path, workspace):

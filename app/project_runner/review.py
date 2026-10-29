@@ -181,6 +181,14 @@ def assess(run, episode, reply, expected, source, workspace, events):
                 data.get("assessment_source") not in {"runtime_exit_code", "runtime_browser_assertions"} or
                 data.get("check_kind") not in {"functional", "visual"} or freshness != "current"):
             # Name the criterion and the failed property: the reviewer is asked to fix exactly this.
+            if data.get("definition_changed"):
+                # ledger run 10: two whole-project reviews repeated this without knowing why it failed.
+                raise ValueError(f"Review evidence for {criterion_id} is a redefined check: its command or verification "
+                                 "changed after an earlier run of the same criterion in this episode, and a check "
+                                 "changed until it passes is never evidence in that episode. Cite the earlier "
+                                 "definition if it was right. If it could not run here (for example a sandbox denial "
+                                 "of a path outside your session), keep the corrected script and report verdict "
+                                 "continue: the next episode runs it first and it counts.")
             raise ValueError(f"Review evidence must be executed, passing, and current: {criterion_id} has verdict="
                              f"{data.get('verdict')}, check_kind={data.get('check_kind')}, acceptance_evidence="
                              f"{data.get('acceptance_evidence')}, source={data.get('assessment_source')}, freshness={freshness}")

@@ -181,7 +181,7 @@ def test_gate_rejects_foreign_unexecuted_failed_or_superseded_evidence(review_fa
         failed.data["verdict"] = "failed"
         events.append(failed)
     passed = {**PASSED, "checks": [{"criterionId": "task-1:1", "eventId": "executed-check"}]}
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="redefined check.*verdict continue" if fault == "definition_changed" else ""):
         assess(run, episode, passed, frozen, source, workspace, events)
 
 
