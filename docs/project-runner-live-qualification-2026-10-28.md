@@ -96,3 +96,30 @@ the user's `.loom/qualification/20261028-opencode-sandbox` directory. Their sepa
 the history. Total known reported usage across the two authenticated planning/
 implementation attempts is 156,425 tokens; this is token accounting, not a dollar
 or provider-quota billing assertion.
+
+## Attempt with production request-boundary budget (2026-10-28, after cf30847d)
+
+Zero-model preflight passed first (windows-mxc `appcontainer-dacl`, workspace +
+network isolation, sandboxed runtime Python in 2.7-3.6 s) after the MXC probe was
+allowed to finish its ACL recovery; see `project-runner-request-budget-2026-10-28.md`.
+One bounded real run, `.cache/project-live-20261028-budget` (80,000 tokens, 12
+episodes, 480 s):
+
+* Planner: one task, 9,198 tokens. Worker: first sample 7,685 tokens, then a
+  real `exec` of the runtime Python **inside the MXC sandbox succeeded**
+  (`sandbox=windows-mxc:workspace`, exit 0, 4.5 s) - the first real sandboxed
+  command execution in these attempts.
+- The worker's next model request failed with `APITimeoutError` after ~21 s
+  (about the Windows TCP connect timeout; the harness sets 0 transport
+  retries). The run became `needs_review`, then was cancelled. No candidate, no
+  oracle run: **not a pass**.
+* Production ledger: 16,883 known tokens charged once (matches the script's
+  independent count); the failed request counted as 1 unknown request with an
+  assumed 9,198, not as known usage. No unsettled episode.
+* Cumulative known usage across authenticated attempts: 156,425 + 16,883 =
+  173,308 tokens. No further request was sent after this transport failure.
+
+Open: transport retries happen inside one `model_executor.execute` call, so the
+budget admits the logical request once and counts a failed attempt inside it
+only as part of that request. The next attempt should decide whether the
+harness allows one transport retry for connection timeouts.
