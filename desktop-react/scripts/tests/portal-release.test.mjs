@@ -115,6 +115,19 @@ test("editorial sign-in is a centered, accessible modal without a side drawer", 
 });
 
 
+test("editorial account dialogs display only the centered Smirel wordmark", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../src/components/portal-auth-dialog.css", import.meta.url), "utf8");
+  const brand = portal.split('<div className="editorial-modal-brand" aria-label="Smirel">')[1]?.split("</div>")[0];
+  assert.ok(brand?.includes('alt="Smirel"'), "Smirel logo remains visible");
+  assert.ok(!brand?.includes("Loom") && !brand?.includes("editorial-modal-brand-divider"),
+    "no Loom title or separator in the account modal brand");
+  assert.ok(css.includes(".loom-editorial .editorial-modal-brand img"),
+    "the single logo retains its centered sizing");
+  assert.ok(!css.includes(".editorial-modal-brand-divider"),
+    "remove unused divider styles");
+});
+
 test("editorial dialog prevents background focus and restores its actual opener", () => {
   const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
   const css = readFileSync(new URL("../../src/components/portal-auth-dialog.css", import.meta.url), "utf8");
