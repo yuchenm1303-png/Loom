@@ -41,6 +41,14 @@ try {
   assert.equal(await demo.getAttribute("data-step"), "0");
   await demo.scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelector(".home-demo")?.dataset.playing === "true");
+  assert.match(await demo.locator(".home-demo-sidebar").innerText(), /Projects[\s\S]*Fix release test[\s\S]*Archive/, "sidebar mirrors projects and conversations, with playback outside the app");
+  assert.equal(await demo.locator(".home-demo-sidebar .home-demo-step-icon").count(), 0);
+  await demo.getByRole("button", { name: "View terminal", exact: true }).click();
+  assert.equal(await demo.getAttribute("data-step"), "2");
+  assert.match(await demo.locator(".home-demo-terminal").innerText(), /41 passed/);
+  await demo.getByRole("button", { name: "View code changes", exact: true }).click();
+  assert.equal(await demo.getByRole("button", { name: "View code changes", exact: true }).getAttribute("aria-pressed"), "true");
+  assert.match(await demo.locator(".home-demo-diff").innerText(), /return version >= current/);
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce", colorScheme: "light" });
   await mobile.addInitScript(() => localStorage.setItem("loom.settings.language", "zh-CN"));
