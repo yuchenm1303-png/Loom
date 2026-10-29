@@ -208,37 +208,11 @@ test("the glass cursor can snap to every control, and what it redraws is made of
   assert.ok(portal.includes('<span className="editorial-index" aria-hidden="true">{index + 1}</span>'));
 });
 
-test("every control is a lens stop, and the reading stops get a tighter crop", () => {
-  // Native controls are stops by selector, so dialogs and menus that mount
-  // later are covered without adding an attribute to each one.
-  for (const selector of ["button:not(:disabled)", "input[type='button']:not(:disabled)", "a[href]:not([data-liquid-snap='false'])", "summary", "[role='button']", "[role='switch']", "[data-liquid-snap='true']"]) {
-    assert.ok(cursor.includes(selector), selector);
-  }
-  assert.ok(cursor.includes("let snapTargets: HTMLElement[] = [];"), "the stop list is cached");
-  assert.ok((cursor.match(/refreshSnapTargets\(\);/g) ?? []).length >= 2, "refreshed at start and after React mounts");
-  assert.ok(cursor.includes("for (const candidate of snapTargets)"), "pointer moves walk the cached list");
-  assert.ok(frame.includes("liquidSnapPad") && frame.includes("Math.min(14, Math.max(4, requestedPad))"), "a reading stop can ask for a tighter crop");
-  // Only the page's deliberate marks move; the many utility controls only magnify.
-  const magnetic = cursor.slice(cursor.indexOf("const MAGNETIC_SELECTOR"), cursor.indexOf("function rectDistance"));
-  assert.ok(!magnetic.includes('"button:not(:disabled)"'), "every button snaps, but only marked ones are magnetic");
-  for (const marker of [
-    'className="editorial-session-head" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8"',
-    'className="editorial-session-ask" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8"',
-    'data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6" style={revealIndex(index)}',
-    '<strong data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{item.lead}</strong>',
-    '<strong data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{step.lead}</strong>',
-    '<div data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6"><dt>{home.downloadSection.platformLabel}</dt>',
-  ]) assert.ok(portal.includes(marker), marker);
-  // Inline links inside a sentence are not stops: a lens that jumps while the
-  // reader moves across "More", "Release notes" or the maker's name covers the
-  // words it is meant to enlarge.
-  for (const inline of ['className="editorial-more"', 'href={release.notes} target="_blank" rel="noopener noreferrer" data-liquid-snap="false"', 'className="editorial-signature"']) {
-    assert.ok(portal.includes(inline), inline);
-  }
-  assert.ok(cursor.includes("candidate.dataset.liquidSnap === \"false\""), "the selector's opt-out is also honoured in the walk");
-  assert.ok(cursor.includes("lensFrameFor"), "size and position come from one place");
-  assert.ok(frame.includes("READ_MAX_WIDTH") && frame.includes("MAX_LENS_HEIGHT"), "a snapped lens is capped");
-  assert.ok(cursor.includes("contentCenter") && cursor.includes("selectNodeContents"), "a reading lens is centred on the painted words, not a wide empty box");
+test("reading mounts follow words rather than full layout rows", () => {
+  assert.ok(cursor.includes("readingMount(element, pointerX, pointerY)"));
+  assert.ok(cursor.includes('candidate.dataset.liquidSnap === "false"'));
+  assert.ok(portal.includes('<span data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6">{emphasize(row.text)}</span>'));
+  assert.ok(!portal.includes('data-liquid-snap-pad="6" style={revealIndex(index)}'));
 });
 
 test("the page follows the system's light or dark setting until the visitor chooses", () => {

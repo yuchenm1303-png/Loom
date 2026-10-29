@@ -683,9 +683,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   <p className="editorial-session-ask" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{home.session.ask}</p>
                   <ol>
                     {home.session.rows.map((row, index) => (
-                      <li key={row.text} className={index === home.session.rows.length - 1 ? "is-waiting" : undefined} data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6" style={revealIndex(index)}>
+                      <li key={row.text} className={index === home.session.rows.length - 1 ? "is-waiting" : undefined} style={revealIndex(index)}>
                         <time dateTime={row.time}>{row.time}</time>
-                        <span>{emphasize(row.text)}</span>
+                        <span data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6">{emphasize(row.text)}</span>
                       </li>
                     ))}
                   </ol>

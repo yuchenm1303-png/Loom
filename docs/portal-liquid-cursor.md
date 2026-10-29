@@ -31,6 +31,15 @@ capture sizing, reflow tracking and upload-timing fixes remain in place.
 
 ## Loom integration
 
+Reading mounts use `portalLiquidMount.ts`: measure painted text one line at
+a time, exclude timestamps and hidden labels, and trigger only within 5px
+horizontally / 4px vertically of that text. Lines wider than 360px keep the
+free lens instead of forming a ribbon. Short reading mounts reserve 24px
+horizontal / 16px vertical whitespace and a 64px minimum height so the rim
+does not pass through the glyphs. Layout-column whitespace never triggers a
+reading mount. Native controls retain their box geometry; explicit
+`data-liquid-snap="false"` is honoured. Optical parameters remain unchanged.
+
 - `portalLiquidCapture.ts` reconstructs visible DOM content into a texture.
 - `portalLiquidMotion.ts` handles free/pinned/weight spring motion.
 - `PortalLiquidCursor.tsx` owns magnetic controls, click/input handling,

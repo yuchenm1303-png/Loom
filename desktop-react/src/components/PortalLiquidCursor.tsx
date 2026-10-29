@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { readingMount, paddedMount } from "./portalLiquidMount";
 import { rasterizePortal } from "./portalLiquidCapture";
 import { blendAnchor, stepSpring, type SpringValue } from "./portalLiquidMotion";
 import { createReferenceLensRenderer, liquidVertexShader, liquidFragmentShader } from "./portalLiquidOptics";
@@ -10,7 +11,6 @@ const BASE_HEIGHT = 54;
 const FREE_OFFSET_Y = -32;
 const SNAP_DISTANCE = 12;
 const RELEASE_DISTANCE = 17;
-const SNAP_PADDING = 10;
 const FREE_ROI_PADDING = 64;
 const ROI_DEADZONE = 35;
 // The lens samples the page it is drawn on. A separate wallpaper would show
@@ -306,22 +306,27 @@ export function PortalLiquidCursor() {
 
     refreshMagneticTargets();
 
+    const mountRect = (element: HTMLElement) => element.dataset.liquidLens === "read"
+      ? readingMount(element, pointerX, pointerY)
+      : element.getBoundingClientRect();
+
     const findSnapTarget = () => {
-      if (activeTarget?.isConnected && !activeTarget.closest("[inert], [aria-hidden='true']")) {
-        const rect = activeTarget.getBoundingClientRect();
+      if (activeTarget?.isConnected && activeTarget.dataset.liquidSnap !== "false" && !activeTarget.closest("[inert], [aria-hidden='true']")) {
+        const rect = mountRect(activeTarget);
         const style = getComputedStyle(activeTarget);
-        if (rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.pointerEvents !== "none" &&
+        if (rect && rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.pointerEvents !== "none" &&
             rectDistance(rect, pointerX, pointerY) <= RELEASE_DISTANCE) return activeTarget;
       }
       activeTarget = null;
       let closest = SNAP_DISTANCE + 0.001;
       for (const candidate of Array.from(root.querySelectorAll<HTMLElement>(SNAP_SELECTOR))) {
         if (candidate.dataset.loomLiquidCursor === "true") continue;
+        if (candidate.dataset.liquidSnap === "false") continue;
         if (candidate.closest("[inert], [aria-hidden='true']")) continue;
         const style = getComputedStyle(candidate);
         if (style.pointerEvents === "none" || style.visibility === "hidden" || style.display === "none") continue;
-        const rect = candidate.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) continue;
+        const rect = mountRect(candidate);
+        if (!rect || rect.width <= 0 || rect.height <= 0) continue;
         const distance = rectDistance(rect, pointerX, pointerY);
         if (distance <= closest) {
           closest = distance;
@@ -346,9 +351,10 @@ export function PortalLiquidCursor() {
             pinY.value = lensY;
             pinY.velocity = 0;
           }
-          const rect = target.getBoundingClientRect();
-          const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
-          const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
+          const rect = mountRect(target)!;
+          const frame = paddedMount(target, rect);
+          const finalLensWidth = Math.min(Math.max(38, window.innerWidth - 20), frame.width);
+          const finalLensHeight = Math.min(Math.max(34, window.innerHeight - 20), frame.height);
           // Allocate the entire capture surface once on snap entry. Growing
           // the canvas each spring frame destroyed the WebGL texture and made
           // the wide Ask input flicker continuously.
@@ -369,11 +375,12 @@ export function PortalLiquidCursor() {
         }
       }
       if (target) {
-        const rect = target.getBoundingClientRect();
+        const rect = mountRect(target)!;
+        const frame = paddedMount(target, rect);
         pinX.target = rect.left + rect.width / 2;
         pinY.target = rect.top + rect.height / 2;
-        width.target = Math.min(Math.max(38, window.innerWidth - 20), Math.max(38, rect.width + SNAP_PADDING * 2));
-        height.target = Math.min(Math.max(34, window.innerHeight - 20), Math.max(34, rect.height + SNAP_PADDING * 2));
+        width.target = Math.min(Math.max(38, window.innerWidth - 20), frame.width);
+        height.target = Math.min(Math.max(34, window.innerHeight - 20), frame.height);
         snap.target = 1;
       } else {
         width.target = BASE_WIDTH;
