@@ -504,7 +504,7 @@ def test_provider_outage_ends_the_episode_not_the_project(tmp_path):
     runtime.limits = AgentLimits(transport_retries=0)
     _failing_once(platform, AITransportError("AI request failed via provider 'p': APIConnectionError: Connection error."))
     try:
-        run = control(service, create(service, source), "start")
+        run = control(service, create(service, source, tokenBudget=200000), "start")
         for _ in range(3):  # plan, failed worker episode, its settlement
             cycle(service)
         waiting = service.project_store.get(run["id"])
@@ -631,7 +631,7 @@ def test_runtime_records_limit_kind_and_provider_failure_on_terminal_events(tmp_
     runtime.limits = AgentLimits(max_model_steps=1, transport_retries=0)
     _failing_once(platform, AITransportError("AI request failed: APIConnectionError: Connection error."))
     try:
-        run = control(service, create(service, source), "start")
+        run = control(service, create(service, source, tokenBudget=200000), "start")
         for _ in range(3):  # plan, then the worker's provider failure settles into a backoff
             cycle(service)
         with service.project_store.transaction() as db:
@@ -649,5 +649,38 @@ def test_runtime_records_limit_kind_and_provider_failure_on_terminal_events(tmp_
         assert failed[0]["provider_failure"] is True and failed[0]["retryable"] is True
         assert all(data["provider_failure"] is False for data in failed[1:])
         assert limits and limits[0]["limit"] == "model_steps"
+    finally:
+        runtime.close()
+
+
+def test_project_sessions_keep_one_scratch_directory_across_episodes(tmp_path):
+    # A real reviewer lost nine episodes to files it had written to scratch
+    # vanishing at every episode boundary (scratch was per turn).
+    from app.agent_runtime.contracts import AgentLimits
+    seen = []
+    def note(context, arguments):
+        scratch = context.service("run_scratch_dir")
+        seen.append(str(scratch))
+        marker = scratch / "notes.txt"
+        found = marker.exists()
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("kept")
+        return ToolResult(ok=True, content=f"earlier notes present: {found}")
+    tool = AgentTool(name="scratch_note", description="Keep a note in scratch", input_schema={"type": "object", "properties": {}},
+                     effect=ToolEffect.MUTATING, handler=note)
+    step = ModelResponse(tool_calls=(ToolCall(call_id="n", name="scratch_note", arguments={}),), usage=ModelUsage(5, 0, 5))
+    service, runtime, platform, _, source = build(tmp_path, [reply(PLAN), step, step,
+        reply({"action": "candidate", "summary": "Done"})], tools=(tool,))
+    runtime.limits = AgentLimits(max_model_steps=1)
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(5):
+            cycle(service)
+        assert service.project_store.get(run["id"])["state"] == "ready_for_review"
+        assert len(seen) == 2 and seen[0] == seen[1] and seen[0].endswith("session")
+        assert "earlier notes present: True" in str(platform.requests[-1].messages)
+        # An ordinary conversation keeps one scratch folder per turn.
+        other = runtime.create_session("p", system_prompt="x")
+        assert runtime._run_scratch_dir(other.session_id, "turn-a") != runtime._run_scratch_dir(other.session_id, "turn-b")
     finally:
         runtime.close()

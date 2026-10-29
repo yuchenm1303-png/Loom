@@ -218,6 +218,9 @@ class ProjectServiceMixin:
         # request of a previous process has unknown usage.
         self.project_budget.recover()
         self.runtime.model_executor = BudgetedModelExecutor(self.runtime.model_executor, self.project_budget)
+        # A project task spans many episodes (turns); its scratch must too. A
+        # reviewer lost nine episodes to scripts that vanished at each boundary.
+        self.runtime.session_scoped_scratch = self._project_session_ids
         self.runtime.subscribe(self.project_budget.observe)
         on_activated = self.runtime._on_turn_activated
         def project_activated(session_id, token):

@@ -90,11 +90,19 @@ def _largest_known(db, ledger):
     return _largest(db, ledger) or db.execute("SELECT COALESCE(MAX(tokens),0) FROM project_usage").fetchone()[0]
 
 
-def _assume_unknown(db, where, params):
+def _assume_unknown(db, where, params, *, input_only=False):
     # Usage nobody reported: assume the largest request observed (this ledger,
     # else this Host). Before any observation, the request's own input estimate (a provider that
     # never reports usage would otherwise never reach the budget).
+    #
+    # input_only: the request failed before a single output chunk arrived, so at most
+    # its input can have been billed. A real ledger run had 18 such connection drops
+    # and timeouts charged at the largest request each, 724k assumed tokens.
     for ticket, ledger in db.execute(f"SELECT id,ledger_run_id FROM project_model_requests WHERE {where}", params).fetchall():
+        if input_only:
+            db.execute("UPDATE project_model_requests SET state='unknown',reserved=CASE WHEN estimate>0 THEN estimate "
+                       "ELSE reserved END WHERE id=?", (ticket,))
+            continue
         largest = _largest_known(db, ledger)
         db.execute("UPDATE project_model_requests SET state='unknown',reserved=MAX(reserved,CASE WHEN ?>0 THEN ? ELSE estimate END) "
                    "WHERE id=?", (largest, largest, ticket))
@@ -154,10 +162,10 @@ class ProjectBudget:
             raise ModelAdmissionRefused(reason)
         return ticket
 
-    def finish(self, ticket, state, tokens=0):
+    def finish(self, ticket, state, tokens=0, *, input_only=False):
         with self.store.transaction() as db:
             if state == "unknown" or (state == "returned" and not tokens):
-                _assume_unknown(db, "id=? AND state='open'", (ticket,))
+                _assume_unknown(db, "id=? AND state='open'", (ticket,), input_only=input_only and state == "unknown")
             else:
                 db.execute("UPDATE project_model_requests SET state=?,tokens=? WHERE id=? AND state='open'",
                            (state, max(0, int(tokens or 0)), ticket))
@@ -237,6 +245,12 @@ class ProjectBudget:
             return position(self.store.db, owner)
 
 
+def _nothing_received(exc):
+    """True only when the executor recorded that no output chunk arrived before the failure."""
+    timing = getattr(exc, "stream_timing", None)
+    return isinstance(timing, dict) and timing.get("chunk_count") == 0
+
+
 class BudgetedModelExecutor:
     """Wraps the runtime's model executor; non-project sessions pass straight through."""
 
@@ -260,21 +274,21 @@ class BudgetedModelExecutor:
         except AITransportError as exc:
             # A 4xx other than a timeout is the provider refusing the request.
             refused = exc.status_code is not None and 400 <= exc.status_code < 500 and exc.status_code != 408
-            self._finish(ticket, "rejected" if refused else "unknown")
+            self._finish(ticket, "rejected" if refused else "unknown", input_only=_nothing_received(exc))
             raise
         except BaseException as exc:
             # A tool-contract error carries the complete response, which the
             # runtime commits (and reports usage for) like any other.
             carried = getattr(getattr(exc, "response", None), "usage", None)
             tokens = getattr(carried, "total_tokens", 0) or 0
-            self._finish(ticket, "returned" if tokens else "unknown", tokens)
+            self._finish(ticket, "returned" if tokens else "unknown", tokens, input_only=_nothing_received(exc))
             raise
         usage = getattr(response, "usage", None)
         self._finish(ticket, "returned", getattr(usage, "total_tokens", 0) or 0)
         return response
 
-    def _finish(self, ticket, state, tokens=0):
+    def _finish(self, ticket, state, tokens=0, *, input_only=False):
         try:
-            self.budget.finish(ticket, state, tokens)
+            self.budget.finish(ticket, state, tokens, input_only=input_only)
         except Exception:
             pass  # the open row stays open and is treated as unknown on recovery

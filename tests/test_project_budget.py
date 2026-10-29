@@ -257,3 +257,26 @@ def test_tool_contract_error_with_a_carried_response_is_known_usage_not_unknown(
     # Charged once as known; a real 2026-10-29 run was refused its last request
     # because two such responses were also assumed as unknown usage.
     assert position["knownTokens"] == 21 and position["unknownRequests"] == 0 and position["chargedTokens"] == 21
+
+
+@pytest.mark.parametrize("timing,assumed", [
+    ({"chunk_count": 0}, "estimate"),   # nothing arrived: at most the input was billed
+    ({"chunk_count": 7}, "largest"),    # output was streaming: it may have cost as much as the largest
+    (None, "largest"),                  # unknown: stay conservative
+])
+def test_failed_request_assumption_depends_on_whether_output_arrived(tmp_path, timing, assumed):
+    store, run, budget = ledger(tmp_path, budget=100000)
+    item = episode(store, run)
+    BudgetedModelExecutor(Inner(30000), budget).execute(None, "p", request(), None)
+    budget.observe(usage_event("s1", item["turnId"], 30000))
+    failure = AITransportError("AI request failed: APIConnectionError: Connection error.")
+    if timing is not None:
+        failure.stream_timing = timing
+    with pytest.raises(AITransportError):
+        BudgetedModelExecutor(Inner(failure), budget).execute(None, "p", request(text="x" * 300), None)
+    position = budget.report(run)
+    assert position["unknownRequests"] == 1
+    if assumed == "estimate":
+        assert 0 < position["assumedUnknownTokens"] < 1000
+    else:
+        assert position["assumedUnknownTokens"] == 30000

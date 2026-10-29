@@ -1317,6 +1317,10 @@ class AgentRuntime:
         session_dir = getattr(self.store, "session_dir", None)
         if not callable(session_dir) or not turn_id:
             return None
+        if session_id in getattr(self, "session_scoped_scratch", ()):
+            # One task carried over many turns (a project episode loop): files a
+            # turn left in scratch are what the next turn continues from.
+            return session_dir(session_id) / "run-artifacts" / "session"
         return session_dir(session_id) / "run-artifacts" / turn_id
 
     def _tool_context(

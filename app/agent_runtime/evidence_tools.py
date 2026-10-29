@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from .contracts import AgentEventKind, ToolEffect
@@ -154,7 +155,10 @@ def task_history_tool(store: FileAgentSessionStore) -> AgentTool:
 
 def run_scratch_dir_tool(store: FileAgentSessionStore) -> AgentTool:
     def scratch_dir(context: ToolContext, _arguments: dict[str, Any]) -> ToolResult:
-        path = store.session_dir(context.session_id) / "run-artifacts" / context.turn_id
+        # The runtime decides the scope (per turn, or per session for a task that
+        # spans turns); fall back to the per-turn folder when it is not provided.
+        provided = context.services.get("run_scratch_dir")
+        path = Path(provided) if provided else store.session_dir(context.session_id) / "run-artifacts" / context.turn_id
         path.mkdir(parents=True, exist_ok=True)
         return ToolResult(
             ok=True,

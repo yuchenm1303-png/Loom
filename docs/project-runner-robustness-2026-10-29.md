@@ -68,3 +68,20 @@ whole-checkout staleness comparison fails it.
 These are scripted and zero-model checks. Real-model qualification, long runs
 and installed-desktop acceptance are recorded separately in
 `project-runner-live-qualification-2026-10-28.md`.
+
+## Found by real ledger run 7 (after the consolidation)
+
+The consolidated runner recovered every protocol failure on its own (a provider
+outage, an under-evidenced verdict), so the run reached its 5M token budget
+instead of stopping. Where the tokens went exposed two more defects:
+
+* **Scratch was per turn.** A project task spans many episodes (turns), so
+  every boundary handed the model an empty `scratch:` folder; one reviewer
+  spent nine episodes (1.6M tokens) recreating probe scripts and data files.
+  Project sessions now keep one scratch folder per session
+  (`runtime.session_scoped_scratch`); ordinary conversations stay per turn.
+* **Failed requests were assumed at the largest request.** Eighteen connection
+  drops and timeouts were charged about 40k each (724k assumed). A request that
+  failed before any output chunk arrived is now assumed at its own input
+  estimate; with output already streaming, or no timing recorded, it stays at
+  the largest request seen.

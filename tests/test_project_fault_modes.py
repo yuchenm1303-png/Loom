@@ -58,7 +58,7 @@ def test_one_project_survives_every_recorded_real_failure_mode(tmp_path, monkeyp
         return original(profile, request)
     platform.execute_chat = execute
     try:
-        run = create(service, source, reviewPolicy="independent", maxEpisodes=20)
+        run = create(service, source, reviewPolicy="independent", maxEpisodes=20, tokenBudget=200000)
         control(service, run, "start")
         states = []
         for _ in range(24):
