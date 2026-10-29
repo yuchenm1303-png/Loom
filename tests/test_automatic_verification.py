@@ -298,6 +298,12 @@ def test_changing_expected_exit_status_marks_a_check_for_review(tmp_path):
         assert checks[-2]["definition_changed"] is True
         state = runtime._verification_summary(runtime.store.load(session.session_id))
         assert state["checks"][-1]["status"] == "needs_review"
+        # The model learns it at once, in the tool result, not after it reports a verdict.
+        results = {e.data["call_id"]: e.data["content"] for e in runtime.store.events(session.session_id)
+                   if e.kind in (E.TOOL_COMPLETED, E.TOOL_FAILED)}
+        assert "Not acceptance evidence" not in results["fail"]
+        assert "Not acceptance evidence: this check for same-check" in results["weaken"]
+        assert "Not acceptance evidence" in str(platform.requests[2].messages)
     finally:
         runtime.close()
 

@@ -222,9 +222,10 @@ external oracle. No run has passed yet. Each run found the next limit:
 | ledger8 | 371f2e5e | 4,373,542 | 3 merged | README task bound-limited 8 times re-orienting | accepted checks, notes, no 8-step cap, layout in summaries (e9c95134) |
 | ledger9 | e9c95134 | 3,332,502 | 4-5 in parallel | 5M charged: 35 connection errors during a proxy outage assumed at 43k each | connection-setup failures cost nothing (0b11f95e) |
 | ledger10 | 0b11f95e | 5,940,399 | all 5 merged; whole-project review | 6M cap: two project reviews rejected (2M); a kept check named a fixture in the first reviewer's private scratch, the sandbox denied it, the rewritten check was a same-episode redefinition; requests grew to 85k inside an episode | kept checks carry their fixtures; the rejection says why and what to do; project sessions compact at 48k |
+| ledger11 | 351858a2 | 5,909,128 | all 5 merged; project review found a README defect, fixed; re-review | 6M cap: the re-review rewrote a too-strict kept README check and learned only at the end (714k) that a same-episode redefinition is not evidence; largest request 54k (was 85k), 81% cached input | the runtime says so in the tool result the moment it happens |
 
 After the consolidation (from ledger7) no run stopped on a protocol, format or
 transient failure; the remaining limit was cost, cut each time. Reviews fell from
 9 episodes and 1.6M tokens per task (ledger7) to 3 episodes and about 340k
-(ledger8). Total known real usage across all attempts: about 33.8M tokens (about
+(ledger8). Total known real usage across all attempts: about 39.7M tokens (about
 84% cached input).

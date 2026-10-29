@@ -1494,7 +1494,7 @@ class AgentRuntime:
                     result = ToolResult(ok=False, content=f"{type(exc).__name__}: {exc}")
                     diff_snapshot = None
                 self._record_diff_snapshot(session, diff_snapshot)
-                self._record_tool_result_event(
+                result = self._record_tool_result_event(
                     session,
                     prepared.call,
                     result,
@@ -1703,7 +1703,32 @@ class AgentRuntime:
         parallel_batch_id: str = "",
         parallel_index: int = 0,
         parallel_size: int = 1,
-    ) -> None:
+    ) -> ToolResult:
+        """Record a tool result; returns it as the model must see it (a redefined check says so)."""
+        assessment = result.data.get("verification") if call.name in {"exec", "browser_run_check"} else None
+        spec = call.arguments.get("verification") if call.name in {"exec", "browser_run_check"} else None
+        if assessment is None and isinstance(spec, dict) and spec.get("case_id") and not result.ok:
+            assessment = {"case_id": spec["case_id"], "expectation": str(spec.get("expectation", ""))[:2000],
+                          "verdict": "blocked", "assessment_source": "runtime_command_failure",
+                          "observed": result.content[:2000]}
+        if isinstance(assessment, dict) and spec:
+            import hashlib
+            definition = assessment.get("recipe_fingerprint") or hashlib.sha256(json.dumps(
+                {"argv": call.arguments.get("argv"), "verification": spec}, sort_keys=True).encode()).hexdigest()
+            previous = next((e.data for e in self._lifecycle_events(session.session_id,
+                turn_id=session.current_turn_id, kinds=(AgentEventKind.CHECK_RECORDED,))
+                if e.data.get("case_id") == assessment.get("case_id") and e.data.get("definition_fingerprint")), {})
+            changed_definition = bool(previous.get("definition_fingerprint") and previous["definition_fingerprint"] != definition)
+            assessment = {**assessment, "definition_fingerprint": definition, "definition_changed": changed_definition,
+                          "acceptance_evidence": assessment.get("acceptance_evidence", False) and not changed_definition}
+            if changed_definition and assessment.get("verdict") == "passed":
+                # Say so now, not after the whole review: a real reviewer spent 700k tokens
+                # finishing a review that was then rejected for exactly this.
+                result = ToolResult(result.ok, result.content + (
+                    f"\nNot acceptance evidence: this check for {assessment.get('case_id')} differs from the one "
+                    "recorded earlier in this turn (a check changed until it passes never counts in the same turn). "
+                    "Cite the earlier definition if it was right; otherwise end this turn reporting that more "
+                    "checking is needed, and run this corrected check first in the next turn."), result.data)
         data: dict[str, object] = {
             "call_id": call.call_id,
             "tool": call.name,
@@ -1726,29 +1751,15 @@ class AgentRuntime:
         self.development_verification.observe(session)
         self.development_verification.observed(session, call, result)
         self.development_verification._spent(session.session_id, "result_bookkeeping_ms", recorded)
-        assessment = result.data.get("verification") if call.name in {"exec", "browser_run_check"} else None
-        spec = call.arguments.get("verification") if call.name in {"exec", "browser_run_check"} else None
-        if assessment is None and isinstance(spec, dict) and spec.get("case_id") and not result.ok:
-            assessment = {"case_id": spec["case_id"], "expectation": str(spec.get("expectation", ""))[:2000],
-                          "verdict": "blocked", "assessment_source": "runtime_command_failure",
-                          "observed": result.content[:2000]}
         if isinstance(assessment, dict) and spec:
             from .evidence import resolve_evidence
-            import hashlib
-            definition = assessment.get("recipe_fingerprint") or hashlib.sha256(json.dumps(
-                {"argv": call.arguments.get("argv"), "verification": spec}, sort_keys=True).encode()).hexdigest()
-            previous = next((e.data for e in self._lifecycle_events(session.session_id,
-                turn_id=session.current_turn_id, kinds=(AgentEventKind.CHECK_RECORDED,))
-                if e.data.get("case_id") == assessment.get("case_id") and e.data.get("definition_fingerprint")), {})
-            changed_definition = bool(previous.get("definition_fingerprint") and previous["definition_fingerprint"] != definition)
-            assessment = {**assessment, "definition_fingerprint": definition, "definition_changed": changed_definition,
-                          "acceptance_evidence": assessment.get("acceptance_evidence", False) and not changed_definition}
             context = ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir))
             refs = [{"call_id": call.call_id}]
             facts, invalid = resolve_evidence(self.store, context, refs)
             if not invalid:
                 self._emit_event(session, AgentEventKind.CHECK_RECORDED,
                                  data={**assessment, "evidence_refs": refs, "evidence_facts": facts})
+        return result
 
     def _append_tool_result(
         self,
@@ -1759,8 +1770,8 @@ class AgentRuntime:
         failed: bool,
         step: StepContext | None = None,
     ) -> None:
+        result = self._record_tool_result_event(session, call, result, failed=failed)
         self._append_tool_history(session, call, result, step=step)
-        self._record_tool_result_event(session, call, result, failed=failed)
 
     def _limit(self, session: AgentSession, reason: str, kind: str = "other") -> AgentRunResult:
         """End the turn at a limit. ``kind`` lets a caller act on which limit without
