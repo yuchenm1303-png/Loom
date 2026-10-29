@@ -168,3 +168,18 @@ end to end with a real model under the production runner, sandbox and budget.
 It is not a parallel (two-worker) real qualification, not an installed-desktop
 acceptance, and not a multi-day run; none of those has been attempted yet. The
 cost is still high for the task size (three full reviews of ~100-180k each).
+
+## Run 10: same pass at about half the cost (2026-10-29, at 99cb423b)
+
+Run from a clean worktree of 99cb423b (the shared checkout had another
+window's uncommitted runtime edits). Same objective, model, sandbox and caps.
+
+* Passed: the external oracle 8/8; the source main gained one verified commit.
+* 307,159 known tokens, 4 episodes, 308 s - against run 9's 569,725 tokens,
+  8 episodes, 750 s (-46% tokens, -59% time).
+* One review instead of three: the last (only) task went straight to the
+  whole-project review, and integration adopted that acceptance because the
+  source had not moved since the reviewed base (`integration_review_reused`).
+  A source that advanced still gets a fresh review of the merged result.
+* What remains: about 170k of the 307k is the worker (two episodes at the 8-step
+  bound) and 128k the single review; requests re-send a 7-27k context each step.
