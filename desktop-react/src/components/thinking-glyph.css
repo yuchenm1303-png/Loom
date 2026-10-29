@@ -1,27 +1,48 @@
 /* Thinking glyph ------------------------------------------------------------
-   The live "working" mark (ThinkingGlyph): Loom's mark as drawn, never redrawn,
-   with light that follows its own shape. It owns its tg- classes, so no older
-   thinking-* rule can restyle it.
+   The live "working" mark (ThinkingGlyph): Loom's mark rebuilt from its own
+   geometry (loomMarkGeometry.ts) and drawn as the original is, in glass. It
+   owns its tg- classes, so no older thinking-* rule can restyle it.
 
-   Positions are the mark's own, measured on the 512px original and scaled to
-   the 22px box: the sphere's centre at (255, 262) r 103 -> (11, 11.3) r 4.4;
-   the arrowhead's centre at (400, 135) -> (17.2, 5.8).
+   One cycle (--thinking-cycle) holds one passage:
+     0-72%   a run of light travels the ribbon's centreline from its tail, over
+             the top, down the left, across the front of the sphere, along the
+             bottom and up the right side into the arrowhead;
+     64-90%  the arrowhead pushes forward along its own direction and lights
+             up as the light arrives, then settles;
+     0-64%   the sphere's glow swells out and dissolves behind the mark.
+   The light is three dashes of one path (a bright head, a body, a long faint
+   tail) whose heads move together, so the run fades out behind itself.
 
-   - The run of light: a conic wedge turning round the sphere's centre,
-     anticlockwise, the way the ribbon runs from its loop under the sphere up to
-     the arrowhead. Its box (.tg-shine) is masked by the mark itself less the
-     sphere, so the light only ever lies on the ribbon and the arrowhead.
-   - The arrowhead flares as the light reaches it, at the end of each cycle.
-   - The sphere's glow swells and dissolves behind the mark (the pulse the row's
-     shimmer follows).
-   Transform and opacity only, on HTML boxes; the mask, the mark and the wedge's
-   drawing are static, so the compositor turns the wedge without repainting. */
+   Cost: the base (ribbons, sphere, glow filter) never changes and the motion
+   layer is promoted on its own, so the base and its filter are painted once;
+   only the motion layer's 22px is repainted while it runs (no filters there).
+   The pulse is an HTML box the compositor animates. Nothing animates a custom
+   property; the arrowhead's push vector is a static one. */
 
 .tg {
-  --tg-light: rgba(236, 250, 255, .92);
-  --tg-light-2: rgba(170, 220, 255, .42);
+  /* The mark's own colours, measured on the original: glass bodies of deep
+     blue going violet, edges of cyan-white light, a cyan sphere core. */
+  --tg-b1: #2c8dff;
+  --tg-b2: #2357f0;
+  --tg-b3: #3a3ad8;
+  --tg-b4: #9a3df2;
+  --tg-e1: #c9f5ff;
+  --tg-e2: #7fdcff;
+  --tg-e3: #8fb0ff;
+  --tg-e4: #f2a6ff;
+  --tg-s1: #f2fdff;
+  --tg-s2: #8fe6ff;
+  --tg-s3: #3895ff;
+  --tg-s4: #2f55ea;
+  --tg-s5: #7a4cf2;
+  --tg-a1: #e2f8ff;
+  --tg-a2: #6fb6ff;
+  --tg-a3: #3f63f4;
+  --tg-rim: rgba(210, 244, 255, .7);
+  --tg-glint: rgba(255, 255, 255, .8);
+  --tg-glow: rgba(70, 120, 255, .55);
+  --tg-light: #f4fdff;
   --tg-pulse: rgba(110, 150, 255, .4);
-  --tg-flare: rgba(220, 240, 255, .9);
 
   position: relative;
   width: 22px;
@@ -31,85 +52,117 @@
 }
 
 html[data-loom-theme="light"] .tg {
-  --tg-light: rgba(255, 255, 255, .85);
-  --tg-light-2: rgba(225, 242, 255, .38);
-  --tg-pulse: rgba(80, 110, 235, .26);
-  --tg-flare: rgba(255, 255, 255, .85);
+  --tg-glow: rgba(60, 100, 240, .32);
+  --tg-pulse: rgba(80, 110, 235, .24);
 }
 
-.tg-mark,
-.tg-shine {
+.tg-base,
+.tg-motion {
   position: absolute;
   inset: 0;
   width: 22px;
   height: 22px;
   display: block;
+  overflow: visible;
 }
 
-.tg-mark {
-  user-select: none;
-  -webkit-user-drag: none;
+/* Its own layer, so its repaints never reach the base and its glow. */
+.tg-motion {
+  will-change: transform;
 }
 
-/* The ribbon's cut-out: the mark's own alpha, less a disc over the sphere. */
-.tg-shine {
-  overflow: hidden;
-  -webkit-mask:
-    url("../assets/loom-mark-64.png") center / 100% 100% no-repeat,
-    radial-gradient(circle 4.6px at 11px 11.3px, #000 96%, transparent 100%);
-  -webkit-mask-composite: xor;
-  mask:
-    url("../assets/loom-mark-64.png") center / 100% 100% no-repeat exclude,
-    radial-gradient(circle 4.6px at 11px 11.3px, #000 96%, transparent 100%);
-  /* Light adds to the ribbon's own colour, so a bright stretch of glass reads as
-     brighter still instead of being painted over. */
-  mix-blend-mode: plus-lighter;
+.tg-stop-b1 { stop-color: var(--tg-b1); }
+.tg-stop-b2 { stop-color: var(--tg-b2); }
+.tg-stop-b3 { stop-color: var(--tg-b3); }
+.tg-stop-b4 { stop-color: var(--tg-b4); }
+.tg-stop-e1 { stop-color: var(--tg-e1); }
+.tg-stop-e2 { stop-color: var(--tg-e2); }
+.tg-stop-e3 { stop-color: var(--tg-e3); }
+.tg-stop-e4 { stop-color: var(--tg-e4); }
+.tg-stop-s1 { stop-color: var(--tg-s1); }
+.tg-stop-s2 { stop-color: var(--tg-s2); }
+.tg-stop-s3 { stop-color: var(--tg-s3); }
+.tg-stop-s4 { stop-color: var(--tg-s4); }
+.tg-stop-s5 { stop-color: var(--tg-s5); }
+.tg-stop-a1 { stop-color: var(--tg-a1); }
+.tg-stop-a2 { stop-color: var(--tg-a2); }
+.tg-stop-a3 { stop-color: var(--tg-a3); }
+
+.tg-glow-colour {
+  flood-color: var(--tg-glow);
 }
 
-/* The wedge: a square centred on the sphere, large enough to cover the box at
-   any angle. Its bright edge is the head (0deg, the top); the tail fades behind
-   it. It starts on the arrowhead (49deg clockwise from the top) and runs one turn
-   anticlockwise back to it. */
-.tg-sweep {
-  position: absolute;
-  left: -5px;
-  top: -4.7px;
-  width: 32px;
-  height: 32px;
-  display: block;
-  border-radius: 50%;
-  background: conic-gradient(
-    var(--tg-light) 0deg,
-    var(--tg-light-2) 34deg,
-    transparent 130deg,
-    transparent 360deg
-  );
-  transform: rotate(409deg);
-  animation: tg-sweep var(--thinking-cycle, var(--loom-period-shimmer)) linear infinite;
+/* Glass: the ribbons' sides are lit lines; their bodies let what is behind
+   show through a little, and the stretch in front of the sphere a lot. */
+.tg-edge {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
 }
 
-/* The arrowhead's flare: a soft light on its centre, inside the cut-out, so only
-   the arrowhead's own pixels light up. */
-.tg-flare {
-  position: absolute;
-  left: 17.2px;
-  top: 5.8px;
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
-  display: block;
-  border-radius: 50%;
-  background: radial-gradient(circle closest-side, var(--tg-flare) 0%, transparent 100%);
+/* Each lit edge sits on a soft halo of its own light. */
+.tg-edge-halo {
+  fill: none;
+  stroke-width: 24;
+  stroke-linecap: round;
+  opacity: .28;
+}
+
+.tg-front {
+  fill-opacity: .5;
+}
+
+.tg-sphere-rim {
+  fill: none;
+  stroke: var(--tg-rim);
+  stroke-width: 6;
+}
+
+.tg-sphere-glint {
+  fill: var(--tg-glint);
+}
+
+.tg-arrow-body {
+  stroke: var(--tg-e1);
+  stroke-width: 8;
+  stroke-linejoin: round;
+}
+
+/* The run of light: three dashes of the centreline (a path normalised to 100),
+   as wide as the ribbon (the mask cuts them to it). Each pattern opens with a
+   gap of 30 less its dash, so all three heads sit at 30 along the pattern and
+   one offset moves them together. Literal numbers on purpose: Chrome treats a
+   var() in these keyframes as a discrete step instead of interpolating it. */
+.tg-run {
+  fill: none;
+  stroke: var(--tg-light);
+  stroke-width: 96;
+  stroke-linecap: butt;
+  stroke-dashoffset: 30;
+  animation: tg-run var(--thinking-cycle, var(--loom-period-shimmer)) linear infinite;
+}
+
+.tg-run-head { stroke-dasharray: 0 25 5 240; opacity: .95; }
+.tg-run-body { stroke-dasharray: 0 17 13 240; opacity: .5; }
+.tg-run-tail { stroke-dasharray: 0 0 30 240; opacity: .2; }
+
+.tg-arrow {
+  transform: translate(0, 0);
+  animation: tg-arrow var(--thinking-cycle, var(--loom-period-shimmer)) ease-in-out infinite;
+}
+
+.tg-arrow-lit {
+  fill: var(--tg-light);
   opacity: 0;
-  animation: tg-flare var(--thinking-cycle, var(--loom-period-shimmer)) ease-out infinite;
+  animation: tg-arrow-lit var(--thinking-cycle, var(--loom-period-shimmer)) ease-out infinite;
 }
 
 /* The sphere's glow, behind the mark: swells out and dissolves before it
-   reaches the edge of the box. */
+   reaches the edge of the box. Centred on the sphere (251, 273 of 512). */
 .tg-pulse {
   position: absolute;
-  left: 11px;
-  top: 11.3px;
+  left: 10.8px;
+  top: 11.7px;
   width: 22px;
   height: 22px;
   margin: -11px 0 0 -11px;
@@ -121,25 +174,44 @@ html[data-loom-theme="light"] .tg {
   animation: tg-pulse var(--thinking-cycle, var(--loom-period-shimmer)) cubic-bezier(.2, .6, .3, 1) infinite;
 }
 
-@keyframes tg-sweep {
-  from {
-    transform: rotate(409deg);
+/* The heads leave the tail at the cycle's start, travel the route in one easy
+   sweep and reach the arrowhead (100) at 64%, as it starts its push; the rest
+   of the run then pours into it (to 100 + the longest dash, 30) by 72%. */
+@keyframes tg-run {
+  0% {
+    stroke-dashoffset: 30;
+    animation-timing-function: cubic-bezier(.42, 0, .5, 1);
   }
-  to {
-    transform: rotate(49deg);
+  64% {
+    stroke-dashoffset: -70;
+    animation-timing-function: linear;
+  }
+  72%, 100% {
+    stroke-dashoffset: -102;
   }
 }
 
-/* Lit as the head arrives (the cycle's end), gone shortly after it leaves. */
-@keyframes tg-flare {
-  0% {
-    opacity: 1;
+@keyframes tg-arrow {
+  0%, 64%, 100% {
+    transform: translate(0, 0);
   }
-  22%, 88% {
+  74% {
+    transform: translate(var(--tg-push-x), var(--tg-push-y));
+  }
+  90% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes tg-arrow-lit {
+  0%, 62%, 100% {
     opacity: 0;
   }
-  100% {
-    opacity: 1;
+  72% {
+    opacity: .5;
+  }
+  92% {
+    opacity: 0;
   }
 }
 
@@ -157,25 +229,27 @@ html[data-loom-theme="light"] .tg {
   }
 }
 
-/* Reduced motion keeps the mark as it is, without the light. */
+/* Reduced motion keeps the mark as it is: no light, the arrowhead at rest. */
 @media (prefers-reduced-motion: reduce) {
-  .tg-sweep,
-  .tg-flare,
+  .tg-run,
+  .tg-arrow,
+  .tg-arrow-lit,
   .tg-pulse {
     animation: none;
   }
 
-  .tg-shine {
+  .tg-light {
     display: none;
   }
 }
 
-:root[data-loom-reduced-motion="true"] .tg-sweep,
-:root[data-loom-reduced-motion="true"] .tg-flare,
+:root[data-loom-reduced-motion="true"] .tg-run,
+:root[data-loom-reduced-motion="true"] .tg-arrow,
+:root[data-loom-reduced-motion="true"] .tg-arrow-lit,
 :root[data-loom-reduced-motion="true"] .tg-pulse {
   animation: none;
 }
 
-:root[data-loom-reduced-motion="true"] .tg-shine {
+:root[data-loom-reduced-motion="true"] .tg-light {
   display: none;
 }
