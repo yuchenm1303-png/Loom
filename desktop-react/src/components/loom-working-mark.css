@@ -1,0 +1,256 @@
+/* Loom working mark --------------------------------------------------------
+   A live "working" mark (LoomWorkingMark), kept for later: not in use yet,
+   the thinking row draws ThinkingGlyph's bead. Loom's mark rebuilt from its
+   own geometry (loomMarkGeometry.ts) and drawn as the original is, in glass.
+   It owns its lm- classes.
+
+   One cycle (--thinking-cycle) holds one passage:
+     0-72%   a run of light travels the ribbon's centreline from its tail, over
+             the top, down the left, across the front of the sphere, along the
+             bottom and up the right side into the arrowhead;
+     64-90%  the arrowhead pushes forward along its own direction and lights
+             up as the light arrives, then settles;
+     0-64%   the sphere's glow swells out and dissolves behind the mark.
+   The light is three dashes of one path (a bright head, a body, a long faint
+   tail) whose heads move together, so the run fades out behind itself.
+
+   Cost: the base (ribbons, sphere, glow filter) never changes and the motion
+   layer is promoted on its own, so the base and its filter are painted once;
+   only the motion layer's 22px is repainted while it runs (no filters there).
+   The pulse is an HTML box the compositor animates. Nothing animates a custom
+   property; the arrowhead's push vector is a static one. */
+
+.lm {
+  /* The mark's own colours, measured on the original: glass bodies of deep
+     blue going violet, edges of cyan-white light, a cyan sphere core. */
+  --lm-b1: #2c8dff;
+  --lm-b2: #2357f0;
+  --lm-b3: #3a3ad8;
+  --lm-b4: #9a3df2;
+  --lm-e1: #c9f5ff;
+  --lm-e2: #7fdcff;
+  --lm-e3: #8fb0ff;
+  --lm-e4: #f2a6ff;
+  --lm-s1: #f2fdff;
+  --lm-s2: #8fe6ff;
+  --lm-s3: #3895ff;
+  --lm-s4: #2f55ea;
+  --lm-s5: #7a4cf2;
+  --lm-a1: #e2f8ff;
+  --lm-a2: #6fb6ff;
+  --lm-a3: #3f63f4;
+  --lm-rim: rgba(210, 244, 255, .7);
+  --lm-glint: rgba(255, 255, 255, .8);
+  --lm-glow: rgba(70, 120, 255, .55);
+  --lm-light: #f4fdff;
+  --lm-pulse: rgba(110, 150, 255, .4);
+
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: block;
+}
+
+html[data-loom-theme="light"] .lm {
+  --lm-glow: rgba(60, 100, 240, .32);
+  --lm-pulse: rgba(80, 110, 235, .24);
+}
+
+.lm-base,
+.lm-motion {
+  position: absolute;
+  inset: 0;
+  width: 22px;
+  height: 22px;
+  display: block;
+  overflow: visible;
+}
+
+/* Its own layer, so its repaints never reach the base and its glow. */
+.lm-motion {
+  will-change: transform;
+}
+
+.lm-stop-b1 { stop-color: var(--lm-b1); }
+.lm-stop-b2 { stop-color: var(--lm-b2); }
+.lm-stop-b3 { stop-color: var(--lm-b3); }
+.lm-stop-b4 { stop-color: var(--lm-b4); }
+.lm-stop-e1 { stop-color: var(--lm-e1); }
+.lm-stop-e2 { stop-color: var(--lm-e2); }
+.lm-stop-e3 { stop-color: var(--lm-e3); }
+.lm-stop-e4 { stop-color: var(--lm-e4); }
+.lm-stop-s1 { stop-color: var(--lm-s1); }
+.lm-stop-s2 { stop-color: var(--lm-s2); }
+.lm-stop-s3 { stop-color: var(--lm-s3); }
+.lm-stop-s4 { stop-color: var(--lm-s4); }
+.lm-stop-s5 { stop-color: var(--lm-s5); }
+.lm-stop-a1 { stop-color: var(--lm-a1); }
+.lm-stop-a2 { stop-color: var(--lm-a2); }
+.lm-stop-a3 { stop-color: var(--lm-a3); }
+
+.lm-glow-colour {
+  flood-color: var(--lm-glow);
+}
+
+/* Glass: the ribbons' sides are lit lines; their bodies let what is behind
+   show through a little, and the stretch in front of the sphere a lot. */
+.lm-edge {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+/* Each lit edge sits on a soft halo of its own light. */
+.lm-edge-halo {
+  fill: none;
+  stroke-width: 24;
+  stroke-linecap: round;
+  opacity: .28;
+}
+
+.lm-front {
+  fill-opacity: .5;
+}
+
+.lm-sphere-rim {
+  fill: none;
+  stroke: var(--lm-rim);
+  stroke-width: 6;
+}
+
+.lm-sphere-glint {
+  fill: var(--lm-glint);
+}
+
+.lm-arrow-body {
+  stroke: var(--lm-e1);
+  stroke-width: 8;
+  stroke-linejoin: round;
+}
+
+/* The run of light: three dashes of the centreline (a path normalised to 100),
+   as wide as the ribbon (the mask cuts them to it). Each pattern opens with a
+   gap of 30 less its dash, so all three heads sit at 30 along the pattern and
+   one offset moves them together. Literal numbers on purpose: Chrome treats a
+   var() in these keyframes as a discrete step instead of interpolating it. */
+.lm-run {
+  fill: none;
+  stroke: var(--lm-light);
+  stroke-width: 96;
+  stroke-linecap: butt;
+  stroke-dashoffset: 30;
+  animation: lm-run var(--thinking-cycle, var(--loom-period-shimmer)) linear infinite;
+}
+
+.lm-run-head { stroke-dasharray: 0 25 5 240; opacity: .95; }
+.lm-run-body { stroke-dasharray: 0 17 13 240; opacity: .5; }
+.lm-run-tail { stroke-dasharray: 0 0 30 240; opacity: .2; }
+
+.lm-arrow {
+  transform: translate(0, 0);
+  animation: lm-arrow var(--thinking-cycle, var(--loom-period-shimmer)) ease-in-out infinite;
+}
+
+.lm-arrow-lit {
+  fill: var(--lm-light);
+  opacity: 0;
+  animation: lm-arrow-lit var(--thinking-cycle, var(--loom-period-shimmer)) ease-out infinite;
+}
+
+/* The sphere's glow, behind the mark: swells out and dissolves before it
+   reaches the edge of the box. Centred on the sphere (251, 273 of 512). */
+.lm-pulse {
+  position: absolute;
+  left: 10.8px;
+  top: 11.7px;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  display: block;
+  border-radius: 50%;
+  background: radial-gradient(circle closest-side, var(--lm-pulse) 0%, transparent 100%);
+  opacity: 0;
+  transform: scale(.3);
+  animation: lm-pulse var(--thinking-cycle, var(--loom-period-shimmer)) cubic-bezier(.2, .6, .3, 1) infinite;
+}
+
+/* The heads leave the tail at the cycle's start, travel the route in one easy
+   sweep and reach the arrowhead (100) at 64%, as it starts its push; the rest
+   of the run then pours into it (to 100 + the longest dash, 30) by 72%. */
+@keyframes lm-run {
+  0% {
+    stroke-dashoffset: 30;
+    animation-timing-function: cubic-bezier(.42, 0, .5, 1);
+  }
+  64% {
+    stroke-dashoffset: -70;
+    animation-timing-function: linear;
+  }
+  72%, 100% {
+    stroke-dashoffset: -102;
+  }
+}
+
+@keyframes lm-arrow {
+  0%, 64%, 100% {
+    transform: translate(0, 0);
+  }
+  74% {
+    transform: translate(var(--lm-push-x), var(--lm-push-y));
+  }
+  90% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes lm-arrow-lit {
+  0%, 62%, 100% {
+    opacity: 0;
+  }
+  72% {
+    opacity: .5;
+  }
+  92% {
+    opacity: 0;
+  }
+}
+
+@keyframes lm-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(.3);
+  }
+  9% {
+    opacity: 1;
+  }
+  64%, 100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+/* Reduced motion keeps the mark as it is: no light, the arrowhead at rest. */
+@media (prefers-reduced-motion: reduce) {
+  .lm-run,
+  .lm-arrow,
+  .lm-arrow-lit,
+  .lm-pulse {
+    animation: none;
+  }
+
+  .lm-light {
+    display: none;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .lm-run,
+:root[data-loom-reduced-motion="true"] .lm-arrow,
+:root[data-loom-reduced-motion="true"] .lm-arrow-lit,
+:root[data-loom-reduced-motion="true"] .lm-pulse {
+  animation: none;
+}
+
+:root[data-loom-reduced-motion="true"] .lm-light {
+  display: none;
+}

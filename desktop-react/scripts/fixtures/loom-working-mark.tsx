@@ -1,18 +1,18 @@
 /**
- * The live "working" glyph (ThinkingGlyph) at real size inside a thinking row, enlarged to judge its drawing, and
- * beside Loom's original mark at the same sizes.
+ * The Loom working mark (LoomWorkingMark, kept for later) at real size in a thinking row, enlarged to judge its
+ * drawing, and beside Loom's original mark at the same sizes.
  *
- *   open /scripts/fixtures/thinking-glyph.html
+ *   open /scripts/fixtures/loom-working-mark.html
  *
  *   ?theme=dark|light   (default dark)
  *   ?still=0.25         hold every animation at this fraction of the cycle (a still to look at)
- *   ?row=1              only the thinking row (for measuring what the live glyph costs)
+ *   ?row=1              only the thinking row (for measuring what the live mark costs)
  *   ?row=0              nothing at all (the baseline for that measurement)
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "../../src/renderer-styles";
-import { ThinkingGlyph } from "../../src/components/ThinkingGlyph";
+import { LoomWorkingMark } from "../../src/components/LoomWorkingMark";
 import original from "./mark-lab/loom-mark-512.png";
 
 const params = new URLSearchParams(location.search);
@@ -26,7 +26,7 @@ document.body.style.cssText = "margin:0;padding:24px;font:12px/1.4 system-ui,\"S
 if (still !== null) {
   const style = document.createElement("style");
   // A negative delay of the cycle's fraction holds every animation at that point.
-  style.textContent = `.tg, .tg * { animation-play-state: paused !important; animation-delay: calc(var(--loom-period-shimmer) * -${Number(still)}) !important; }`;
+  style.textContent = `.lm, .lm * { animation-play-state: paused !important; animation-delay: calc(var(--loom-period-shimmer) * -${Number(still)}) !important; }`;
   document.head.append(style);
 }
 
@@ -37,7 +37,7 @@ function Scaled({ size }: { size: number }) {
   return (
     <div style={{ width: size, height: size, position: "relative" }}>
       <div style={{ position: "absolute", left: 0, top: 0, transform: `scale(${scale})`, transformOrigin: "0 0" }}>
-        <ThinkingGlyph />
+        <LoomWorkingMark />
       </div>
     </div>
   );
@@ -45,12 +45,12 @@ function Scaled({ size }: { size: number }) {
 
 function App() {
   if (row !== null) {
-    return row === "1" ? <div className="inline-thinking" role="status"><ThinkingGlyph /><span className="thinking-shimmer">正在思考…</span></div> : null;
+    return row === "1" ? <div className="inline-thinking" role="status"><LoomWorkingMark /><span className="thinking-shimmer">正在思考…</span></div> : null;
   }
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <div className="inline-thinking" role="status">
-        <ThinkingGlyph />
+        <LoomWorkingMark />
         <span className="thinking-shimmer">正在思考…</span>
       </div>
       {[["original", (size: number) => <img src={original} width={size} height={size} alt="" />],
