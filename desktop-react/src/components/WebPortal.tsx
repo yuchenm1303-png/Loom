@@ -672,7 +672,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                     {home.platform}
                     {release.package ? <><span aria-hidden="true"> · </span>{release.package}</> : null}
                     <span aria-hidden="true"> · </span>
-                    <a href={release.notes} target="_blank" rel="noopener noreferrer" data-liquid-snap="true" data-liquid-snap-min-width="136" data-liquid-snap-min-height="50">{home.notes}</a>
+                    <a href={release.notes} target="_blank" rel="noopener noreferrer" data-liquid-snap="true" data-liquid-snap-min-width="136" data-liquid-snap-min-height="50" data-magnetic-bounce="true">{home.notes}</a>
                   </p>
                 </div>
                 <figure ref={threadRef} className="editorial-session editorial-thread editorial-reveal" style={revealIndex(6)} data-state={threadState} aria-label={home.session.label}>
@@ -709,7 +709,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 </dl>
                 <div className="editorial-actions">
                   <a className="editorial-primary" href={release.download} data-liquid-snap="true" data-magnetic-hover="true">{home.download}<Download size={16} aria-hidden="true" /></a>
-                  <a className="editorial-download" href={release.notes} target="_blank" rel="noopener noreferrer" data-liquid-snap="true" data-liquid-snap-min-width="158" data-liquid-snap-min-height="54">{home.notes}<span aria-hidden="true"> ↗</span></a>
+                  <a className="editorial-download" href={release.notes} target="_blank" rel="noopener noreferrer" data-liquid-snap="true" data-liquid-snap-min-width="158" data-liquid-snap-min-height="54" data-magnetic-bounce="true">{home.notes}<span aria-hidden="true"> ↗</span></a>
                 </div>
               </div>
             </section>
@@ -805,7 +805,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             </div>
           <div className="loom-download-module" aria-labelledby="loom-download-title">
             <div className="loom-download-product"><Laptop size={26} aria-hidden="true" /><div><h2 id="loom-download-title">Loom for Windows</h2><p>Windows 10 / 11 · x64{release.package ? ` · ${release.package}` : ""}</p><p>{zh ? "包含本机 Host · 桌面界面可选" : "Local Host included · Desktop optional"}</p></div></div>
-            <div className="loom-download-version"><span>{(release.version || (zh ? "最新稳定版" : "Latest stable"))} · Stable</span><a href={release.notes} target="_blank" rel="noreferrer" data-liquid-snap="true" data-liquid-snap-min-width="150" data-liquid-snap-min-height="54">{zh ? "更新日志" : "Release notes"}<span aria-hidden="true"> ↗</span></a></div>
+            <div className="loom-download-version"><span>{(release.version || (zh ? "最新稳定版" : "Latest stable"))} · Stable</span><a href={release.notes} target="_blank" rel="noreferrer" data-liquid-snap="true" data-liquid-snap-min-width="150" data-liquid-snap-min-height="54" data-magnetic-bounce="true">{zh ? "更新日志" : "Release notes"}<span aria-hidden="true"> ↗</span></a></div>
             <a className="loom-secondary-action" href={release.download}><span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong></span><Download size={16} aria-hidden="true" /></a>
           </div>
 
