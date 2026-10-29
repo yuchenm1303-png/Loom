@@ -277,7 +277,9 @@ export function PortalLiquidCursor() {
           const centerY = baseTop + height / 2;
           const normalizedX = Math.max(-1, Math.min(1, (pointerX - centerX) / Math.max(width / 2, 1)));
           const normalizedY = Math.max(-1, Math.min(1, (pointerY - centerY) / Math.max(height / 2, 1)));
-          const distance = magnetAmplitude({
+          // Keep tiny inline release links responsive without tugging the
+          // neighboring version number into the refractive capsule.
+          const distance = element.dataset.magneticBounce === "true" ? 4.5 : magnetAmplitude({
             brand: element.classList.contains("loom-portal-brand"),
             typingSurface: element.matches("input, textarea, select, .loom-input-shell, .loom-code-input, [contenteditable='true']"),
             width,
@@ -424,6 +426,13 @@ export function PortalLiquidCursor() {
       const previousOwner = previousTarget ? ownerOf(previousTarget) : null;
       const owner = target ? ownerOf(target) : null;
       if (owner !== previousOwner) {
+        // A short link otherwise sits motionless when the pointer lands near
+        // its center. A single small spring impulse makes the glass mount feel
+        // responsive, then settles naturally; no perpetual wobble/timer.
+        if (owner?.dataset.magneticBounce === "true") {
+          const magnetic = magneticStates.get(owner);
+          if (magnetic) magnetic.y.velocity = Math.min(magnetic.y.velocity, -110);
+        }
         rasterDirty = true;
         roiLockedTarget = null;
         if (target) {
