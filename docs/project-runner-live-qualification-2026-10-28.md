@@ -183,3 +183,23 @@ window's uncommitted runtime edits). Same objective, model, sandbox and caps.
   A source that advanced still gets a fresh review of the merged result.
 * What remains: about 170k of the 307k is the worker (two episodes at the 8-step
   bound) and 128k the single review; requests re-send a 7-27k context each step.
+
+## Two-worker runs (2026-10-29)
+
+**par1 (at bf770790): passed, but not parallel.** Oracle 8/8, 635,897 tokens,
+620 s. The planner made README depend on tally.py, so the two team tasks ran
+one after the other. It also showed each team task reviewed twice over the same
+bytes (task scope, then project scope inside the one-task team run).
+
+Fixed in dd65eca9: a team task's one review is at project scope (the merged
+aggregate keeps its own review); the qualification objective asks for two
+independent tasks; the report records `peakActiveWorkers`.
+
+**par2 (at dd65eca9): passed, really parallel.** Oracle 8/8, 628,852 tokens,
+485 s, no unknown or refused requests, `peakActiveWorkers` 2. Both workers
+started at the same second in their own worktrees and MXC sandboxes; task-2's
+review overlapped task-1's implementation. One review per team task, one
+aggregate review (two episodes), integration adopted it (source unchanged).
+
+Still not shown: a larger project with real rework, crash/restart recovery in a
+real run, installed-desktop acceptance, and any multi-day run.
