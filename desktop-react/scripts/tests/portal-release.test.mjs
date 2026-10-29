@@ -296,4 +296,7 @@ test("release notes get a restrained one-shot magnetic spring without moving adj
     "Entering a release link injects one damped vertical spring impulse");
   assert.ok(cursor.includes('owner !== previousOwner'),
     "The impulse must be linked to a mount change rather than every frame");
+  const css = readFileSync(new URL("../../src/components/portal-editorial.css", import.meta.url), "utf8");
+  assert.match(css, /\.editorial-release a\[data-magnetic-bounce="true"\]\s*\{\s*display:\s*inline-block/,
+    "The short inline release link needs a transformable box for visible wobble");
 });
