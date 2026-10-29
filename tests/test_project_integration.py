@@ -118,8 +118,7 @@ def test_conflict_keeps_source_and_has_no_new_review_or_model_call(accepted):
 def test_merged_review_rejection_can_rework_in_isolation_before_integration(accepted):
     service, child, root, platform = prepare(accepted)
     platform.responses.extend([checking(code="raise AssertionError('merged behavior needs rework')"),
-                               reply(CHANGES), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED),
-                               checking(), reply(PASSED)])
+                               reply(CHANGES), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED)])
     result = drive(service, child["id"])
     assert result["state"] == "ready_for_review", result
     assert result["reviewFailures"] == {"project": 1}

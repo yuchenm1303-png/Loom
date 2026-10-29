@@ -66,6 +66,12 @@ def start(service, params):
     if (type(budget) is not int or not parent["tokensUsed"] < budget <= 1_000_000_000 or
             type(episodes) is not int or not parent["episodesUsed"] < episodes <= 10000):
         raise ValueError("Provide explicit total integration budgets above cumulative usage")
+    if head == parent["baseCommit"]:
+        # The source has not moved since the reviewed base, so the accepted
+        # delivery commit fast-forwards it unchanged: the merged bytes are the
+        # bytes the whole-project review accepted. A second review of identical
+        # bytes was the costliest step of a real run and proved nothing new.
+        return adopt(store, operation, request, parent, ref, head, budget, episodes)
     # merge-tree writes objects only. Conflicts never touch the source index/files.
     tree = git(root, "merge-tree", "--write-tree", head, receipt["commit"]).splitlines()[0]
     commit = git(root, "-c", "user.name=Loom Project Runner", "-c", "user.email=loom@localhost",
@@ -88,6 +94,28 @@ def start(service, params):
         db.execute("INSERT INTO project_runs VALUES(?,0,?)", (child["id"], encoded(child)))
         store.put_candidate(db, child, frozen)
         store.save(db, child, "integration_review_started")
+        return child
+    return store.command(operation, request, record)
+
+
+def adopt(store, operation, request, parent, ref, head, budget, episodes):
+    child = {key: copy.deepcopy(parent[key]) for key in ("sourceThreadId", "objective", "repository", "gitCommonDir",
+        "budgetEnforcement", "reviewPolicy", "maxReviewCycles", "plan", "tokensUsed", "episodesUsed",
+        "verifiedCandidate", "reviewCandidate", "lastAssessment", "deliveryReceipt")}
+    child.update(id=str(uuid.uuid4()), revision=0, state="delivered", control="paused", phase="verifying",
+        reviewScope="project", taskIndex=len(child["plan"]), sessions={}, activeEpisode=None, reviewFailures={},
+        feedback=[], verificationStatus="passed", createdAt=time.time(), baseCommit=parent["baseCommit"],
+        tokenBudget=budget, maxEpisodes=episodes, delivery="local_verified_branch",
+        reason="Source unchanged since the reviewed base; the accepted delivery fast-forwards as is",
+        integrationTarget={"parentRunId": parent["id"], "ref": ref, "head": head,
+                           "deliveryCommit": parent["deliveryReceipt"]["commit"], "reviewReused": True})
+    if parent.get("completionPolicy") == "local_integrate":
+        child["workflowOwnerId"] = parent["id"]
+    def record(db):
+        if store._read(db, parent["id"])["revision"] != request["expectedRevision"]:
+            raise ValueError("Delivered project changed during integration preparation")
+        db.execute("INSERT INTO project_runs VALUES(?,0,?)", (child["id"], encoded(child)))
+        store.save(db, child, "integration_review_reused")
         return child
     return store.command(operation, request, record)
 

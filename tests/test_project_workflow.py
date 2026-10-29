@@ -11,8 +11,10 @@ from test_project_review import setup_review, writing, checking, CANDIDATE, PASS
 
 @pytest.fixture
 def automatic(tmp_path):
+    # One whole-project review: the only task goes straight to it, and the source
+    # never advances, so integration fast-forwards the accepted delivery as is.
     service, runtime, platform, root, source = setup_review(tmp_path, [reply(PLAN), writing("fixed"),
-        reply(CANDIDATE), checking(), reply(PASSED), checking(), reply(PASSED), checking(), reply(PASSED)])
+        reply(CANDIDATE), checking(), reply(PASSED)])
     try:
         run = create(service, source, completionPolicy="local_integrate", reviewPolicy="independent", maxEpisodes=12)
         control(service, run, "start")
@@ -37,14 +39,15 @@ def test_one_start_runs_to_verified_local_integration_without_extra_model_calls(
     assert (root / "app.txt").read_text() == "fixed"
     child = service.project_store.get(final["integrationRunId"])
     assert child["integrationStatus"] == "integrated"
-    assert final["tokensUsed"] == child["tokensUsed"] == 25
-    assert final["episodesUsed"] == child["episodesUsed"] == 5
-    assert len(platform.requests) == 9
+    assert final["tokensUsed"] == child["tokensUsed"] == 15
+    assert final["episodesUsed"] == child["episodesUsed"] == 3
+    assert child["integrationTarget"]["reviewReused"] is True
+    assert len(platform.requests) == 5
     assert child["deliveryReceipt"]["publication"] == "pending"
     assert git(root, "symbolic-ref", "HEAD") == final["completionRef"]
     for _ in range(3):
         cycle(service)
-    assert len(platform.requests) == 9
+    assert len(platform.requests) == 5
 
 
 def test_pause_and_cancel_propagate_to_child_and_do_not_touch_source(automatic):
@@ -102,25 +105,31 @@ def test_dirty_source_blocks_once_and_explicit_resume_retries_after_fix(automati
     assert len(platform.requests) == count
     git(root, "add", "user.txt")
     git(root, "commit", "-m", "Preserve user work")
+    # The source advanced, so the merged result differs from what was accepted:
+    # integration needs its own fresh review this time.
+    platform.responses.extend([checking(), reply(PASSED)])
     control(service, blocked, "resume")
     final = until(service, run_id, lambda r: r.get("workflowStatus") == "completed")
     assert (root / "user.txt").read_text() == "user work"
+    child = service.project_store.get(final["integrationRunId"])
+    assert "reviewReused" not in child["integrationTarget"] and child["verificationStatus"] == "passed"
+    assert len(platform.requests) == 7
 
 
 def test_automatic_integration_does_not_reset_or_expand_exhausted_budget(automatic):
     service, run_id, root, platform = automatic
     with service.project_store.transaction() as db:
         run = service.project_store._read(db, run_id)
-        run["maxEpisodes"] = 4
+        run["maxEpisodes"] = 3
         service.project_store.save(db, run, "test_explicit_budget")
     blocked = until(service, run_id, lambda r: r.get("workflowStatus") == "blocked")
-    assert blocked["episodesUsed"] == blocked["maxEpisodes"] == 4
+    assert blocked["episodesUsed"] == blocked["maxEpisodes"] == 3
     assert "budgets" in blocked["workflowError"]
-    assert len(platform.requests) == 7
+    assert len(platform.requests) == 5
     assert len(service.project_store.list()) == 1
     assert not (root / "app.txt").exists()
     service.project_control({"operationId": str(uuid.uuid4()), "runId": run_id,
         "expectedRevision": blocked["revision"], "maxEpisodes": 8}, "resume")
     final = until(service, run_id, lambda r: r.get("workflowStatus") == "completed")
-    assert final["episodesUsed"] == 5
+    assert final["episodesUsed"] == 3
     assert final["maxEpisodes"] == 8

@@ -13,7 +13,7 @@ from test_project_review import setup_review, writing, checking, CANDIDATE, PASS
 @pytest.fixture
 def accepted(tmp_path):
     service, runtime, platform, workspace, source = setup_review(tmp_path, [reply(PLAN), writing("fixed"),
-        reply(CANDIDATE), checking(), reply(PASSED), checking(), reply(PASSED)])
+        reply(CANDIDATE), checking(), reply(PASSED)])
     try:
         run = create(service, source, reviewPolicy="independent")
         control(service, run, "start")

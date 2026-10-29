@@ -122,7 +122,9 @@ def test_dependencies_start_on_merged_predecessor_and_parallel_root_auto_integra
         assert (root / "alpha.txt").read_text() == "A" and (root / "beta.txt").read_text() == "B"
         first, second = final["teamChildren"]
         assert service.project_store.get(second["runId"])["baseCommit"] == first["commit"]
-        assert final["episodesUsed"] == 9 and final["tokensUsed"] == 45
+        # The source never advanced, so the accepted aggregate integrates without a third review.
+        assert final["episodesUsed"] == 8 and final["tokensUsed"] == 40
+        assert service.project_store.get(final["integrationRunId"])["integrationTarget"]["reviewReused"] is True
     finally:
         runtime.close()
 

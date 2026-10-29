@@ -30,6 +30,19 @@ def object_reply(text):
     return value
 
 
+def review_target(run):
+    """The review a worker's candidate goes to.
+
+    The last task of a standalone run goes straight to whole-project review: it
+    covers every criterion, that task's included, so a separate task review
+    before it only re-verified the same bytes. Earlier tasks keep their own
+    review as the gate to the next task; parallel team tasks keep theirs too.
+    """
+    if not run.get("teamOwnerId") and run["taskIndex"] == len(run["plan"]) - 1:
+        return {**run, "reviewScope": "project", "taskIndex": len(run["plan"])}
+    return {**run, "reviewScope": "task"}
+
+
 def validate_plan(value):
     tasks = value.get("tasks")
     if not isinstance(tasks, list) or not 1 <= len(tasks) <= 16:
@@ -363,7 +376,9 @@ class ProjectRunner:
                     if action == "candidate":
                         current["plan"][episode["taskIndex"]]["state"] = "candidate"
                         if current.get("reviewPolicy") == "independent":
-                            current.update(phase="verifying", reviewScope="task", verificationStatus="pending")
+                            target = review_target(current)
+                            current.update(phase="verifying", reviewScope=target["reviewScope"], taskIndex=target["taskIndex"],
+                                           verificationStatus="pending")
                             self.store.put_candidate(db, current, facts["candidate"])
                         else:
                             current["taskIndex"] += 1

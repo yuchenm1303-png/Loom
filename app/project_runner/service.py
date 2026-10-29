@@ -7,7 +7,7 @@ from pathlib import Path
 from app.agent_runtime import PermissionMode
 from app.agent_runtime.contracts import AgentEventKind as E
 from app.app_server_local_ipc import runtime_home_from_store
-from .runner import ProjectRunner
+from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
 from . import delivery, integration, workflow, parallel
@@ -102,7 +102,7 @@ class ProjectExecutor:
             return {}
         if episode["phase"] == "working" and reply.get("action") == "candidate":
             parallel.allowed(self.service.project_store, run, source)
-            return {"candidate": candidate(run, source)}
+            return {"candidate": candidate(review_target(run), source)}
         if episode["phase"] == "verifying":
             expected = self.service.project_store.candidate(run)
             workspace = Path(self.service._load(episode["sessionId"]).workspace_dir)
