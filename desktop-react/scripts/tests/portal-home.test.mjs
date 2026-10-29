@@ -101,11 +101,12 @@ test("the page is laid on a wide frame and a 12-column grid; its prose keeps the
   assert.match(css, /@media \(max-width: 960px\)\s*\{[^@]*\.editorial-nav[^{]*\{[^}]*display:\s*none/);
 });
 
-test("the first screen is laid out from the top, so opening More moves only what is under it", () => {
+test("the first screen centers its two columns below the navigation", () => {
   const hero = rule(".loom-editorial .editorial-hero");
-  assert.ok(!/(?:display:\s*flex|justify-content)/.test(hero), "free space goes below the words, not between them");
-  assert.match(hero, /min-height:\s*min\(calc\(100dvh - var\(--ed-head\)\),\s*900px\)/, "the first screen is a screen, up to a limit");
-  assert.match(hero, /padding-block:\s*clamp\(32px,\s*6vh,\s*96px\)/, "the demo leaves room for its controls inside the first screen");
+  assert.match(hero, /display:\s*grid/);
+  assert.match(hero, /align-content:\s*center/);
+  assert.match(hero, /min-height:\s*calc\(100dvh - var\(--ed-head\)\)/, "use the full height below navigation, including tall screens");
+  assert.match(hero, /padding-block:\s*24px/, "keep a minimum breathing space on shorter screens");
   assert.match(rule(".loom-editorial .editorial-hero-grid"), /align-items:\s*start/);
   assert.match(css, /@media \(max-width: 960px\)\s*\{[^@]*\.editorial-hero\s*\{\s*min-height:\s*0/, "stacked, it is as tall as its words");
 });

@@ -11,6 +11,9 @@ try {
     await demo.waitFor();
     await page.waitForFunction(() => document.querySelector(".editorial-shell")?.dataset.typeReady === "true");
     const firstHeight = (await demo.boundingBox()).height;
+    const hero = await page.locator(".editorial-hero").boundingBox();
+    const heroGrid = await page.locator(".editorial-hero-grid").boundingBox();
+    assert.ok(Math.abs((heroGrid.y - hero.y) - (hero.y + hero.height - heroGrid.y - heroGrid.height)) < 2, "hero columns are vertically centered in the first screen");
     if (width >= 1920) {
       const grid = await page.locator(".editorial-hero-grid").boundingBox();
       assert.ok(grid.width >= Math.min(width * .83, 1760) - 1, "large displays use an expanded page frame");

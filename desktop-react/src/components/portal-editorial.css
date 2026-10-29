@@ -371,14 +371,15 @@
 .loom-editorial.is-light .editorial-theme::after { transform: translateX(0); }
 .loom-editorial .editorial-theme::before { content: ""; position: absolute; inset: -12px -6px; }
 
-/* The first screen: what it is, said once, in one column (the name, the sentence, where to start), and beside it the one
-   picture. The group sits where the window's height puts it (a share of it, not what is left over), so opening "More"
-   moves only what is under it. */
+/* Center the complete introduction below the header. On short screens the
+   minimum padding lets expanded copy grow naturally into the page. */
 .loom-editorial .editorial-body { display: block; flex: 1 0 auto; }
 .loom-editorial .editorial-hero {
   box-sizing: border-box;
-  min-height: min(calc(100dvh - var(--ed-head)), 900px);
-  padding-block: clamp(32px, 6vh, 96px) clamp(32px, 5vh, 64px);
+  display: grid;
+  align-content: center;
+  min-height: calc(100dvh - var(--ed-head));
+  padding-block: 24px;
 }
 .loom-editorial .editorial-hero-grid {
   display: grid;
