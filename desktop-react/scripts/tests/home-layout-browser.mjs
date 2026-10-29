@@ -34,7 +34,7 @@ try {
     await page.locator("#loom-computer-use").evaluate(node => node.scrollIntoView({ block: "start" }));
     const computer = await page.locator(".computer-demo-window").boundingBox();
     assert.ok(computer.y >= 72 && computer.y + computer.height <= height - 8, `${width}×${height}: complete Computer Use window fits after section navigation`);
-    for (const selector of [".editorial-session", "#loom-capabilities", "#loom-computer-use", "#loom-download", "#loom-start"]) {
+    for (const selector of [".editorial-session", "#loom-computer-use", "#loom-download", "#loom-start"]) {
       const box = await page.locator(selector).boundingBox();
       assert.ok(box.x >= 0 && box.x + box.width <= width + 1, `${selector} fits the page width`);
     }

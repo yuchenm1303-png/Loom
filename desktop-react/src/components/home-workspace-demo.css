@@ -95,7 +95,6 @@
 @keyframes home-demo-spin { to { transform: rotate(360deg); } }
 @keyframes home-demo-type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
 @media (min-width: 961px) and (max-height: 780px) {
-  .loom-editorial .editorial-session-head { margin-bottom: 12px; }
   .loom-editorial .editorial-session-ask { font-size: 21px; margin-bottom: 18px; }
   .loom-editorial .editorial-thread figcaption { font-size: 14px; margin-top: 12px; padding-left: 0; }
   .home-demo-workspace { height: clamp(250px, calc(100dvh - 410px), 330px); }

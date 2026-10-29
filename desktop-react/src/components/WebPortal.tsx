@@ -614,7 +614,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
               <a className="editorial-brand" href="/" aria-label="Loom" onClick={goToTop} data-liquid-snap="true" data-magnetic-hover="true"><span className="editorial-brand-name">Loom<span className="editorial-brand-period" aria-hidden="true">.</span></span></a>
             </div>
             <nav className="editorial-nav" aria-label={home.nav.label}>
-              <a href="#loom-capabilities" onClick={(event) => goToSection(event, "loom-capabilities")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.doing}</a>
+              <a href="#loom-computer-use" onClick={(event) => goToSection(event, "loom-computer-use")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.doing}</a>
               <a href="#loom-start" onClick={(event) => goToSection(event, "loom-start")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.start}</a>
               <a href="#loom-download" onClick={(event) => goToSection(event, "loom-download")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
             </nav>
@@ -634,7 +634,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           </header>
           {menuOpen ? <div id="editorial-mobile-menu" className="editorial-mobile-menu">
             <nav aria-label={home.nav.label}>
-              <a href="#loom-capabilities" onClick={(event) => goToSection(event, "loom-capabilities")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.doing}</a>
+              <a href="#loom-computer-use" onClick={(event) => goToSection(event, "loom-computer-use")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.doing}</a>
               <a href="#loom-start" onClick={(event) => goToSection(event, "loom-start")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.start}</a>
               <a href="#loom-download" onClick={(event) => goToSection(event, "loom-download")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
               <a href={release.download} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "下载 Windows 版" : "Download for Windows"}<span aria-hidden="true">↓</span></a>
@@ -676,24 +676,11 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   </p>
                 </div>
                 <figure ref={threadRef} className="editorial-session editorial-thread editorial-reveal" style={revealIndex(6)} data-state={threadState} aria-label={home.session.label}>
-                  <p className="editorial-session-head" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{home.session.heading}</p>
                   <p className="editorial-session-ask" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{home.session.ask}</p>
                   <HomeWorkspaceDemo zh={zh} ready={typeReady && threadState === "in"} />
                   <figcaption>{home.session.note}</figcaption>
                 </figure>
               </div>
-            </section>
-            <section id="loom-capabilities" className="editorial-section editorial-capabilities" aria-labelledby="editorial-do-title">
-              <h2 id="editorial-do-title" data-reveal>{home.doing.heading}</h2>
-              <ul className="editorial-list">
-                {home.doing.items.map((item, index) => (
-                  <li key={item.lead} data-reveal style={revealIndex(index)}>
-                    <span className="editorial-index" aria-hidden="true">{`0${index + 1}`}</span>
-                    <strong data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{item.lead}</strong>
-                    <p>{item.text}</p>
-                  </li>
-                ))}
-              </ul>
             </section>
             <HomeComputerDemo zh={zh} />
             <section id="loom-download" className="editorial-section editorial-download" aria-labelledby="editorial-download-title">

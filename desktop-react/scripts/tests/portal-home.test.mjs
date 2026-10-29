@@ -114,9 +114,9 @@ test("the header is a nav: sections by scrolling, a hairline once the page has m
   const header = portal.slice(portal.indexOf('<header className="editorial-header'), portal.indexOf("</header>"));
   assert.ok(header.includes('data-stuck={stuck ? "true" : "false"}'));
   assert.ok(header.indexOf("editorial-brand") < header.indexOf("editorial-nav") && header.indexOf("editorial-nav") < header.indexOf("editorial-meta"));
-  for (const target of ["loom-capabilities", "loom-start", "loom-download"]) {
+  for (const target of ["loom-computer-use", "loom-start", "loom-download"]) {
     assert.ok(header.includes(`href="#${target}"`) && header.includes(`goToSection(event, "${target}")`), `${target} is a link that scrolls`);
-    assert.ok(portal.includes(`id="${target}"`), `${target} exists`);
+    assert.ok(target === "loom-computer-use" ? portal.includes("<HomeComputerDemo zh={zh} />") : portal.includes(`id="${target}"`), `${target} exists`);
   }
   assert.ok(portal.includes('document.getElementById(id)?.scrollIntoView({ block: "start" })'), "no hash in the address");
   assert.ok(portal.includes('href={release.download}'), "the download section carries the installer");
@@ -169,12 +169,12 @@ test("the download section names the release, and the footer points at the proje
   assert.match(rule(".loom-editorial .editorial-download-panel .editorial-primary"), /color:\s*var\(--ed-paper\)/);
 });
 
-test("the one picture is a task, start to finish, beside the words and opened by a hairline", () => {
-  const grid = portal.slice(portal.indexOf('<div className="editorial-hero-grid">'), portal.indexOf('<section id="loom-capabilities"'));
+test("the one picture is a task, start to finish, beside the words without the removed heading or hairline", () => {
+  const grid = portal.slice(portal.indexOf('<div className="editorial-hero-grid">'), portal.indexOf('<HomeComputerDemo'));
   // One column of words (the name, the sentence, where to start), then the picture.
   assert.ok(grid.indexOf("editorial-hero-text") < grid.indexOf("<h1 ") && grid.indexOf("<h1 ") < grid.indexOf("editorial-intro") && grid.indexOf("editorial-intro") < grid.indexOf("editorial-actions"));
   assert.ok(grid.indexOf("editorial-release") < grid.indexOf("editorial-session"), "the words first, the picture after");
-  for (const part of ["{home.session.heading}", "{home.session.ask}", "{home.session.note}", "data-state={threadState}", "aria-label={home.session.label}"]) {
+  for (const part of ["{home.session.ask}", "{home.session.note}", "data-state={threadState}", "aria-label={home.session.label}"]) {
     assert.ok(grid.includes(part), part);
   }
   assert.ok(grid.includes('<HomeWorkspaceDemo zh={zh} ready={typeReady && threadState === "in"} />'), "the interactive preview begins once the page and session are visible");
@@ -183,7 +183,9 @@ test("the one picture is a task, start to finish, beside the words and opened by
   assert.match(rule(".loom-editorial .editorial-thread li.is-waiting::before"), /background:\s*var\(--ed-accent\)/);
   // No box: like the items below it, the picture is opened by one hairline, and that hairline is level with the headline's cap line.
   const picture = rule(".loom-editorial .editorial-session");
-  assert.match(picture, /border-top:\s*1px solid var\(--ed-rule\)/);
+  assert.ok(!picture.includes("border-top"), "the removed header rule stays absent");
+  assert.ok(!grid.includes("editorial-session-head"));
+  assert.ok(!portal.includes("editorial-capabilities"));
   assert.match(picture, /margin:\s*calc\(var\(--ed-title\) \* \.04\) 0 0;/, "level with the cap line: half the leading below the top of the headline's box");
   assert.ok(!/(?:background|border-radius|box-shadow|border:)/.test(picture), "a hairline, not a card");
   assert.match(rule(".loom-editorial .editorial-thread li::before"), /background:\s*var\(--ed-paper\)/, "the knots are cut out of the page, not of a card");
@@ -213,7 +215,7 @@ test("the glass cursor can snap to every control, and what it redraws is made of
   assert.match(cursor, /const MAGNETIC_OPT_OUT = "\[data-magnetic-hover='false'\]"/, "a single explicit way to opt out");
   assert.ok(cursor.includes("magnetAmplitude({"), "the lean is sized per control");
   // Numbers are elements (a pseudo-element is not redrawn into the lens).
-  assert.ok(portal.includes('<span className="editorial-index" aria-hidden="true">{`0${index + 1}`}</span>'));
+  assert.ok(portal.includes('<span className="editorial-index" aria-hidden="true">{index + 1}</span>'));
   assert.ok(portal.includes('<span className="editorial-index" aria-hidden="true">{index + 1}</span>'));
 });
 

@@ -473,17 +473,7 @@
   grid-column: 7 / span 6;
   min-width: 0;
   margin: calc(var(--ed-title) * .04) 0 0;
-  padding: clamp(16px, 2.4vh, 22px) 0 0;
-  border-top: 1px solid var(--ed-rule);
-}
-.loom-editorial .editorial-session-head {
-  margin: 0 0 clamp(18px, 2.6vh, 24px);
-  color: var(--ed-ink-faint);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: .08em;
-  line-height: 1.4;
-  text-transform: uppercase;
+  padding: 0;
 }
 .loom-editorial .editorial-session-ask {
   margin: 0 0 clamp(18px, 3vh, 28px);
@@ -773,7 +763,6 @@
 .loom-editorial:lang(zh-CN) .editorial-thread figcaption { font-style: normal; }
 .loom-editorial:lang(zh-CN) .editorial-thread em { font-style: normal; }
 .loom-editorial:lang(zh-CN) .editorial-thread li { line-height: 1.7; }
-.loom-editorial:lang(zh-CN) .editorial-session-head { letter-spacing: .12em; }
 .loom-editorial:lang(zh-CN) .editorial-list p,
 .loom-editorial:lang(zh-CN) .editorial-steps p { line-height: 1.75; text-wrap: pretty; }
 
