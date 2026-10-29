@@ -369,7 +369,12 @@ export function PortalLiquidCursor() {
       return owner.getBoundingClientRect();
     };
     const canMount = (element: HTMLElement) => {
-      if (element.matches(":disabled, [aria-disabled='true'], input[type='hidden']") ||
+      // Verification CTA remains a visible lens stop while the code is incomplete.
+      // This opt-in is only visual: click forwarding still refuses disabled buttons.
+      const disabledVisualStop = element.dataset.liquidSnap === "true" &&
+        element.dataset.liquidSnapDisabled === "true";
+      if (((element.matches(":disabled") && !disabledVisualStop) ||
+           element.matches("[aria-disabled='true'], input[type='hidden']")) ||
           element.closest("[inert], [aria-hidden='true']")) return false;
       // Every actionable control mounts, including formerly opted-out links.
       if (element.dataset.liquidSnap === "false" && !element.matches(CLICKABLE_SELECTOR)) return false;
