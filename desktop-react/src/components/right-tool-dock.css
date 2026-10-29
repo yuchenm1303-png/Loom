@@ -231,6 +231,9 @@ html[data-loom-theme="light"] .loom-tool-rail {
   height: 22px;
   border-radius: 50%;
   object-fit: cover;
+  /* .loom-icon lets glyphs paint outside their box (overflow: visible); on a picture that also drops the round clip
+     and lets a cover-fitted photo spill out as a square. */
+  overflow: clip;
   opacity: .92;
   box-shadow: 0 0 0 1px var(--loom-workspace-line, rgba(224, 230, 242, .12));
   /* It is this tool's glyph (img.loom-icon): icon-motion.css brings it forward on the pointer or
