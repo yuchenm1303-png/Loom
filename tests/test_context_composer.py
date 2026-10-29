@@ -25,10 +25,17 @@ def test_actual_production_prefix_and_budget(tmp_path):
         runtime.start_turn(session.session_id, "Inspect the workspace")
         first, second = platform.requests
         assert "LOOM_LIVE_STEERING_CONTRACT" in first.messages[0].content
-        assert second.messages[:len(first.messages)] == first.messages
+        # The progress feedback restatement is for one request only and always last; everything
+        # before it is append-only, so the cached prefix still reaches up to it.
+        def persistent(request):
+            names = [message.name for message in request.messages]
+            assert "loom_progress_feedback" not in names[:-1]
+            return request.messages[:-1] if names[-1:] == ["loom_progress_feedback"] else request.messages
+        assert second.messages[-1].name == "loom_progress_feedback"
+        assert persistent(second)[:len(persistent(first))] == persistent(first)
         runtime.start_turn(session.session_id, "Continue inspecting")
         third = platform.requests[-1]
-        assert third.messages[:len(second.messages)] == second.messages
+        assert third.messages[:len(persistent(second))] == persistent(second)
         requested = [e for e in runtime.store.events(session.session_id) if e.kind.value == "model_requested"]
         for request, event in zip(platform.requests, requested):
             assert event.data["estimated_input_tokens_after"] == estimate_tokens(request.messages, request.tools)

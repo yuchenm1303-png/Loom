@@ -100,6 +100,27 @@ test("the progress feedback level moves the line: detailed shows every sentence,
   assert.equal(settleLiveText([...worked, streaming("s", "字".repeat(SUBSTANTIAL_TEXT_CHARS))], undefined, "quiet").held, "s", "quiet holds long narration too");
 });
 
+test("balanced shows a sentence that breaks a silence; a model narrating every step stays in the log", () => {
+  const input = [user("u"), message("reply", { stepId: "s1" }), tool("a", { stepId: "s1" }), tool("b", { stepId: "s2" }),
+    message("turn", { stepId: "s3" }), tool("c", { stepId: "s3" }), message("chatter", { stepId: "s4" }), tool("d", { stepId: "s4" }),
+    message("blank", { text: " ", stepId: "s5" }), tool("e", { stepId: "s5" }), message("after-blank", { stepId: "s6" }), tool("f", { stepId: "s6" })];
+  assert.deepEqual(reports(input, undefined, "balanced"), ["reply", "turn", "after-blank"], "a blank reply is a silent step");
+  assert.deepEqual(reports(input, undefined, "quiet"), ["reply"]);
+  assert.deepEqual(reports(input, undefined, "detailed"), ["reply", "turn", "chatter", "after-blank"]);
+  // Parallel calls of one step are one step, and a sub-agent's calls are not this run's steps.
+  const parallel = [user("u"), message("reply", { stepId: "s1" }), tool("a", { stepId: "s1" }), tool("b", { stepId: "s2" }),
+    tool("c", { stepId: "s2" }), tool("n", { stepId: "x", nested: true }), message("m", { stepId: "s3" })];
+  assert.deepEqual(reports(parallel, undefined, "balanced"), ["reply", "m"]);
+  const together = [user("u"), message("reply", { stepId: "s1" }), tool("a", { stepId: "s1" }), message("m", { stepId: "s2" }),
+    tool("b", { stepId: "s2" }), tool("c", { stepId: "s2" }), tool("n", { stepId: "x", nested: true }), message("m2", { stepId: "s3" })];
+  assert.deepEqual(reports(together, undefined, "balanced"), ["reply"]);
+  // Calls that do not name their step may be one parallel step: they are not counted as silence.
+  assert.deepEqual(reports([user("u"), message("reply"), tool("a"), tool("b"), tool("c"), message("m")], undefined, "balanced"), ["reply"]);
+  // A new user message starts the count again.
+  assert.deepEqual(reports([user("u"), message("reply"), tool("a", { stepId: "s1" }), tool("b", { stepId: "s2" }), user("v"),
+    tool("c", { stepId: "s3" }), message("m", { stepId: "s4" })], undefined, "balanced"), ["reply"]);
+});
+
 test("a run that goes well says little; the sentence after a failed step is the model's reaction to it, and a message", () => {
   const input = [user("u"), message("reply"), failedTool("t1"), message("reaction"), tool("t2"), message("routine"), tool("t3"), message("routine2"),
     failedTool("t4"), message("again")];

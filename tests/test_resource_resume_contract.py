@@ -8,6 +8,7 @@ from app.agent_runtime.contracts import AgentEventKind
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import ModelResponse, ToolCall
 from test_agent_request_layout import ScriptedPlatform
+from app.agent_runtime.system_prompts import persistent_request_messages
 
 
 class Browser:
@@ -72,7 +73,8 @@ def test_real_release_is_reported_only_in_next_turn_first_request(tmp_path):
         resume_counts = [sum(m.name == "loom_resource_resume" for m in r.messages) for r in platform.requests]
         assert resume_counts == [0, 0, 1, 1, 1]
         for previous, following in zip(platform.requests[2:], platform.requests[3:]):
-            assert following.messages[:len(previous.messages)] == previous.messages
+            kept = persistent_request_messages(previous.messages)
+            assert following.messages[:len(kept)] == kept
         resume = next(m for m in platform.requests[2].messages if m.name == "loom_resource_resume")
         assert all(next(m for m in r.messages if m.name == "loom_resource_resume") == resume
                    for r in platform.requests[2:])

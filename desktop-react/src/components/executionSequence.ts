@@ -73,7 +73,10 @@ const isFailedStep = (item: TranscriptItem): boolean =>
  *   will do instead, which is what the reader wants to know when the log turns red;
  * - any sentence long enough to carry real content.
  * The reader's progress feedback level moves that last line: `detailed` shows every sentence, `quiet` drops
- * the length rule and keeps only the reply, plan reports and reactions to failures.
+ * the length rule and keeps only the reply, plan reports and reactions to failures. `balanced` also shows a
+ * sentence that breaks a silence: at that level the model is asked to speak only when a result changes the
+ * picture, and those sentences are short (median 45-76 chars in replays), so the length rule alone hid them.
+ * A model that narrates every step never breaks a silence, so its narration still stays in the log.
  * `released` names sentences that were already drawn because they waited out their hold; they stay.
  * Position, step status and length only, never the wording. Each verdict depends only on what came
  * before the sentence and on its own length, so it never changes once the sentence is drawn.
@@ -84,15 +87,25 @@ export function reportIds(items: TranscriptItem[], released: ReadonlySet<string>
   const ids = new Set<string>();
   // A step failed since the model last said anything: its next sentence is the reaction.
   let failed = false;
+  // Tool steps since the model last said anything. Its own step comes right after a sentence, so a
+  // second one means a step went by in silence. Only calls that name their step count: without it,
+  // parallel calls of one step would look like several silent steps.
+  const steps = new Set<string>();
   for (const item of items) {
-    if (item.type === "user_message") failed = false;
-    else if (isFailedStep(item)) failed = true;
-    else if (item.type === "assistant_message" && item.phase === "commentary") {
+    if (item.type === "user_message") {
+      failed = false;
+      steps.clear();
+    } else if (item.type === "tool_call" && !item.nested) {
+      if (item.stepId) steps.add(item.stepId);
+      if (isFailedStep(item)) failed = true;
+    } else if (item.type === "assistant_message" && item.phase === "commentary") {
       const text = String(item.text ?? "").trim();
       if (!text) continue;
-      const substantial = mode === "detailed" || (mode === "balanced" && text.length >= SUBSTANTIAL_TEXT_CHARS);
+      const substantial = mode === "detailed"
+        || (mode === "balanced" && (text.length >= SUBSTANTIAL_TEXT_CHARS || steps.size >= 2));
       if (initial.has(item.id) || plan.has(item.id) || released.has(item.id) || failed || substantial) ids.add(item.id);
       failed = false;
+      steps.clear();
     }
   }
   return ids;

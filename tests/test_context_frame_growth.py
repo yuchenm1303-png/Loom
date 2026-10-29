@@ -4,6 +4,7 @@ from __future__ import annotations
 from app.agent_runtime import AgentRuntime, FileAgentSessionStore, SandboxManager, SandboxPolicy
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import ModelResponse, ToolCall
+from app.agent_runtime.system_prompts import persistent_request_messages
 
 
 class _LongTurn:
@@ -41,6 +42,7 @@ def test_unchanged_state_and_plan_are_not_reappended_every_step(tmp_path):
         assert '"step_id"' not in state and '"model_step"' not in state
         # The prefix stays append-only while the frames stop growing.
         for earlier, later in zip(platform.requests, platform.requests[1:]):
-            assert later.messages[:len(earlier.messages)] == earlier.messages
+            kept = persistent_request_messages(earlier.messages)
+            assert later.messages[:len(kept)] == kept
     finally:
         runtime.close()

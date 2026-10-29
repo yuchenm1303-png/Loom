@@ -55,6 +55,9 @@ from .system_prompts import (
     _DEFAULT_AGENT_SYSTEM_PROMPT_V7,
     PROGRESS_FEEDBACK_MODES,
     is_loom_default_prompt,
+    progress_feedback_mode,
+    progress_feedback_reminder,
+    PROGRESS_FEEDBACK_REMINDER_NAME,
     system_prompt_with_feedback,
 )
 
@@ -651,6 +654,11 @@ class AgentRuntime:
         else:
             messages = render_request(self, session, stable_prefix(self, session, step), session.messages)
             extra = {}
+        # Mid-turn, the level is restated last (see progress_feedback_reminder). It is read from
+        # the step's frozen prompt, so it always matches the policy and the logged level.
+        reminder = progress_feedback_reminder(progress_feedback_mode(step.request_state.system_prompt))
+        if reminder and session.messages and session.messages[-1].role is MessageRole.TOOL:
+            messages = [*messages, AIMessage(role=MessageRole.USER, name=PROGRESS_FEEDBACK_REMINDER_NAME, content=reminder)]
         extra = dict(extra)
         if step.request_state.context_limits is not None:
             extra["context_limits"] = step.request_state.context_limits.as_dict()

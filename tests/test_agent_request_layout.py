@@ -4,6 +4,7 @@ import json
 from app.agent_runtime import AgentRuntime, FileAgentSessionStore, SandboxManager, SandboxPolicy
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import ModelResponse, ToolCall
+from app.agent_runtime.system_prompts import persistent_request_messages
 
 
 class ScriptedPlatform:
@@ -43,6 +44,7 @@ def test_production_request_layout_before_context_composer(tmp_path):
             ("assistant", ""), ("tool", "update_plan"),
             ("user", "loom_task_plan"),
             ("assistant", ""), ("tool", "list_workspace_files"),
+            ("user", "loom_progress_feedback"),
         ]
         state = next(m.content for m in reversed(request.messages) if m.name == "loom_runtime_state")
         assert "authoritative for the current model step" in state
@@ -50,7 +52,8 @@ def test_production_request_layout_before_context_composer(tmp_path):
         assert request.messages[1].content == "Two steps"
         assert "LOOM_CONTEXT_ITEMS v1" in request.messages[0].content
         for earlier, later in zip(platform.requests, platform.requests[1:]):
-            assert later.messages[:len(earlier.messages)] == earlier.messages
+            kept = persistent_request_messages(earlier.messages)
+            assert later.messages[:len(kept)] == kept
         assert [m.tool_call_id for m in request.messages if m.role.value == "tool"] == ["plan", "list"]
     finally:
         runtime.close()

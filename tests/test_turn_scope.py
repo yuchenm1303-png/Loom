@@ -21,6 +21,7 @@ from app.agent_runtime.system_prompts import (
     _V13_DEFAULT_AGENT_SYSTEM_PROMPT,
     _V14_DEFAULT_AGENT_SYSTEM_PROMPT,
     _V15_DEFAULT_AGENT_SYSTEM_PROMPT,
+    _V16_DEFAULT_AGENT_SYSTEM_PROMPT,
     is_loom_default_prompt,
 )
 from test_development_feedback import make_runtime
@@ -120,7 +121,8 @@ def test_v16_keeps_every_v15_rule_under_sections(tmp_path) -> None:
         "For substantial multi-stage work, use update_plan to track a few outcome milestones and update them when their status changes.",
     }
     sentences = lambda text: {s.strip() for s in re.split(r"(?<=[.!?])\s+|\n", text) if s.strip()}
-    current = sentences(DEFAULT_AGENT_SYSTEM_PROMPT)
+    # Against v16 as shipped: v17 rewrote the progress feedback paragraph on purpose.
+    current = sentences(_V16_DEFAULT_AGENT_SYSTEM_PROMPT)
     missing = sentences(_V15_DEFAULT_AGENT_SYSTEM_PROMPT) - current - reworded
     assert not missing, missing
     for heading in ("# Priorities", "# Scope", "# Working", "# Commands and this computer", "# Verification",
@@ -130,7 +132,7 @@ def test_v16_keeps_every_v15_rule_under_sections(tmp_path) -> None:
     assert _V15_DEFAULT_AGENT_SYSTEM_PROMPT in _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS
     store, runtime = _stored(tmp_path, _V15_DEFAULT_AGENT_SYSTEM_PROMPT, version=15)
     assert runtime.get_session(_SESSION_ID).system_prompt == DEFAULT_AGENT_SYSTEM_PROMPT
-    assert store.load(_SESSION_ID).system_prompt_version == DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 16
+    assert store.load(_SESSION_ID).system_prompt_version == DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 17
 
 
 class _Scripted:

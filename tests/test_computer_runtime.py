@@ -30,6 +30,7 @@ from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import AGENT_FAST_ROLE, ImagePart, ModelResponse, ToolCall
+from app.agent_runtime.system_prompts import persistent_request_messages
 
 
 class ScriptedPlatform:
@@ -299,7 +300,7 @@ def test_screenshot_feedback_is_consumed_once_and_retained_as_immutable_history(
     assert len(platform.requests) == 3
     assert not any(message.uses_vision for message in platform.requests[0][1].messages)
     assert sum(message.uses_vision for message in platform.requests[1][1].messages) == 1
-    second = platform.requests[1][1].messages
+    second = persistent_request_messages(platform.requests[1][1].messages)
     third = platform.requests[2][1].messages
     assert third[:len(second)] == second
     assert sum(message.uses_vision for message in third) == 1  # No duplicate fresh attachment.

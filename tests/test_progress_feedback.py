@@ -4,7 +4,8 @@ import pytest
 
 from app.agent_runtime import AgentRuntime, FileAgentSessionStore, SandboxManager, SandboxPolicy
 from app.agent_runtime.builtin_tools import builtin_read_only_tools
-from app.agent_runtime.system_prompts import communication_policy, progress_feedback_mode, system_prompt_with_feedback
+from app.agent_runtime.system_prompts import (
+    communication_policy, progress_feedback_mode, progress_feedback_reminder, system_prompt_with_feedback)
 from app.ai import ModelResponse, ToolCall
 from app.app_server_project_move import ProjectMovableLoomAppServerService
 
@@ -45,7 +46,7 @@ def test_saved_mode_reaches_production_request_and_survives_restart(tmp_path, mo
         prompt = platform.requests[-1].messages[0].content
         assert prompt.count("[LOOM_COMMUNICATION]") == 1
         assert communication_policy(mode) in prompt
-        assert "At every feedback level, promptly report blockers" in prompt
+        assert "At every level, report blockers" in prompt
         assert "final answer" in prompt
     finally:
         service.runtime.close()
@@ -121,19 +122,59 @@ def test_custom_instructions_are_preserved_and_presets_are_replaced_instead_of_s
             replaced = system_prompt_with_feedback(rendered, next_mode)
             assert replaced.count("[LOOM_COMMUNICATION]") == 1
             assert replaced.endswith(communication_policy(next_mode))
-    # A prompt carrying the v16 detailed suffix is replaced too, never stacked.
-    from app.agent_runtime.system_prompts import _V16_DETAILED_COMMUNICATION_POLICY
-    old = custom + _V16_DETAILED_COMMUNICATION_POLICY
-    assert system_prompt_with_feedback(old, "detailed") == custom + communication_policy("detailed")
+    # Any level as v16 rendered it is replaced too, never stacked.
+    from app.agent_runtime.system_prompts import _V16_COMMUNICATION_POLICIES
+    for old_policy in _V16_COMMUNICATION_POLICIES:
+        for mode in ("quiet", "balanced", "detailed"):
+            assert system_prompt_with_feedback(custom + old_policy, mode) == custom + communication_policy(mode)
 
 
-def test_detailed_asks_for_findings_instead_of_keeping_analysis_in_reasoning():
-    # deepseek-v4.1-flash stayed silent on detailed when it shared "keep analysis in reasoning".
-    detailed = communication_policy("detailed")
-    assert "Keep analysis in reasoning" not in detailed
-    assert "what you found" in detailed
-    for mode in ("quiet", "balanced"):
-        assert "Keep analysis in reasoning" in communication_policy(mode)
+def test_each_level_is_a_rule_about_when_to_write():
+    # Up to v16 the levels only listed kinds of news and all three said "keep analysis in
+    # reasoning"; models treated them as one instruction.
+    quiet, balanced, detailed = map(communication_policy, ("quiet", "balanced", "detailed"))
+    assert "tool calls only and no text until the work is done" in quiet
+    assert "only when a result changes the picture" in balanced
+    assert "whenever a tool result tells you something" in detailed
+    for policy in (quiet, balanced, detailed):
+        assert "Keep analysis in reasoning rather than progress text" not in policy
+        assert "decisions the user must make as soon as you hit them" in policy
+
+
+def test_v16_sessions_still_migrate_to_the_new_default():
+    from app.agent_runtime.system_prompts import (
+        DEFAULT_AGENT_SYSTEM_PROMPT, _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS, _V16_DEFAULT_AGENT_SYSTEM_PROMPT,
+        is_loom_default_prompt)
+    assert _V16_DEFAULT_AGENT_SYSTEM_PROMPT != DEFAULT_AGENT_SYSTEM_PROMPT
+    assert _V16_DEFAULT_AGENT_SYSTEM_PROMPT in _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS
+    assert is_loom_default_prompt(_V16_DEFAULT_AGENT_SYSTEM_PROMPT)
+
+
+@pytest.mark.parametrize("mode", ["quiet", "balanced", "detailed"])
+def test_level_is_restated_after_tool_results_and_never_stored(tmp_path, mode):
+    platform = Platform()
+    platform.on_first = lambda: None
+    service = make_service(tmp_path, platform)
+    try:
+        service.settings_set({"path": "agent.progressFeedback", "value": mode})
+        session = service.runtime.create_session("agent.fast", workspace_dir=tmp_path)
+        service.runtime.start_turn(session.session_id, "Check")
+        first, second = platform.requests
+        # The first request answers the user's message; the policy at the top is enough there.
+        assert all(message.name != "loom_progress_feedback" for message in first.messages)
+        last = second.messages[-1]
+        assert last.name == "loom_progress_feedback"
+        assert last.role.value == "user"
+        assert last.content == progress_feedback_reminder(mode)
+        assert f"Progress feedback preference: {mode}." in last.content
+        assert [message.name for message in second.messages].count("loom_progress_feedback") == 1
+        saved = service.runtime.store.load(session.session_id)
+        assert all("[LOOM_PROGRESS_FEEDBACK]" not in str(message.content) for message in saved.messages)
+        assert "[LOOM_PROGRESS_FEEDBACK]" not in json.dumps(saved.request_context_frames, ensure_ascii=False)
+    finally:
+        service.runtime.close()
+    assert progress_feedback_reminder(None) is None
+    assert progress_feedback_reminder("loud") is None
 
 
 def test_logged_mode_is_the_one_frozen_into_the_prompt_even_if_authors_mention_it():

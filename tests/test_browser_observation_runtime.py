@@ -12,6 +12,7 @@ from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.tools import ToolResult
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import ImagePart, MessageRole, ModelResponse, TextPart, ToolCall
+from app.agent_runtime.system_prompts import persistent_request_messages
 
 
 class DummyPlatform:
@@ -139,7 +140,7 @@ def test_full_dom_is_transient_not_durable(tmp_path):
     assert payload["data"]["dom_chars"] == len(marker)
 
     messages, extra = runtime._prepare_model_request(session, _step(runtime, session), None)
-    observation = messages[-1]
+    observation = persistent_request_messages(messages)[-1]
     assert isinstance(observation.content, tuple)
     assert observation.role is MessageRole.USER
     assert observation.name == "loom_tool_observation_text"
@@ -188,7 +189,7 @@ def test_identical_post_click_state_is_uncertain_not_confirmed(tmp_path):
     assert "user-visible effect is uncertain" in payload["content"]
 
     messages, _ = runtime._prepare_model_request(session, _step(runtime, session), None)
-    text = next(part for part in messages[-1].content if isinstance(part, TextPart) and "LOOM_BROWSER_OBSERVATION" in part.text)
+    text = next(part for part in persistent_request_messages(messages)[-1].content if isinstance(part, TextPart) and "LOOM_BROWSER_OBSERVATION" in part.text)
     assert "effect: uncertain" in text.text
     runtime.close()
 
@@ -402,7 +403,7 @@ def test_browser_screenshot_is_ephemeral_visual_feedback(tmp_path):
     assert "VISUAL_BYTES_NEVER_DURABLE" not in durable_history
 
     messages, extra = runtime._prepare_model_request(session, _step(runtime, session), None)
-    parts = messages[-1].content
+    parts = persistent_request_messages(messages)[-1].content
     assert isinstance(parts, tuple)
     assert any(isinstance(part, ImagePart) for part in parts)
     assert extra["browser_observation"]["has_screenshot"] is True
@@ -467,6 +468,7 @@ def test_new_turn_retains_observation_prefix_without_claiming_fresh_feedback(tmp
     runtime._emit_event(session, AgentEventKind.TURN_COMPLETED, data={"text": "Done"})
     session.current_turn_id = "next-turn"
     later, later_metadata = runtime._prepare_model_request(session, _step(runtime, session), None)
+    first = persistent_request_messages(first)
     assert later[:len(first)] == first
     assert "browser_observation" not in later_metadata
     assert len([m for m in later if m.name == "loom_tool_observation_text"]) == 1
