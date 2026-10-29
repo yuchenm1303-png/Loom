@@ -248,3 +248,36 @@ test("verification submit mounts the lens while disabled without bypassing valid
   assert.ok(cursor.includes('action.matches(":disabled, [aria-disabled='),
     "snapped click forwarding must never invoke a disabled action");
 });
+
+test("release notes use a legible centered liquid mount without enlarging the link itself", async () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../src/components/portalLiquidMount.ts", import.meta.url), "utf8");
+  assert.equal((portal.match(/data-liquid-snap-min-width="204" data-liquid-snap-min-height="76"/g) ?? []).length, 3,
+    "both modern release notes entries and the classic link have a readable lens");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const { paddedMount } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
+  const NativeRect = globalThis.DOMRect;
+  globalThis.DOMRect = class DOMRect {
+    constructor(x, y, width, height) {
+      this.x = x; this.y = y; this.width = width; this.height = height;
+      this.left = x; this.top = y;
+    }
+  };
+  try {
+    const rect = { left: 230, top: 100, width: 92, height: 18 };
+    const shortLink = { dataset: { liquidSnapMinWidth: "204", liquidSnapMinHeight: "76" } };
+    const frame = paddedMount(shortLink, rect);
+    assert.equal(frame.width, 204);
+    assert.equal(frame.height, 76);
+    assert.equal(frame.x + frame.width / 2, rect.left + rect.width / 2);
+    assert.equal(frame.y + frame.height / 2, rect.top + rect.height / 2);
+    const normal = paddedMount({ dataset: {} }, rect);
+    assert.equal(normal.width, 112, "unrelated controls retain original lens width");
+    assert.equal(normal.height, 38, "unrelated controls retain original lens height");
+  } finally {
+    if (NativeRect === undefined) delete globalThis.DOMRect;
+    else globalThis.DOMRect = NativeRect;
+  }
+});
