@@ -13,10 +13,6 @@ try {
   assert.equal(await demo.getAttribute("data-step"), "0", "offscreen demo does not start");
   await demo.scrollIntoViewIfNeeded();
   await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.playing === "true");
-  await demo.getByRole("button", { name: "Pause", exact: true }).click();
-  await page.waitForTimeout(2600);
-  assert.equal(await demo.getAttribute("data-step"), "0", "pause holds the current stage");
-  await demo.getByRole("button", { name: "Play", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.step === "2", null, { timeout: 10000 });
   await page.waitForFunction(() => document.querySelector('.computer-demo-event-form input')?.value.length > 0);
   const position = await demo.evaluate(node => {
@@ -34,16 +30,18 @@ try {
   });
   assert.equal(aligned, true, "HUD pointer tracks the actual input geometry");
   await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.step === "3");
-  assert.equal(await demo.getAttribute("data-playing"), "false", "wait for approval before saving");
+  assert.equal(await demo.getAttribute("data-playing"), "true", "confirmation continues automatically");
   assert.equal(await demo.getByRole("textbox", { name: "Demo event title" }).inputValue(), "Design review");
-  await demo.getByRole("button", { name: "Approve & save demo", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.step === "4");
   assert.equal(await demo.getAttribute("data-step"), "4");
   assert.match(await demo.locator(".computer-demo-event").innerText(), /Design review/);
   assert.equal(await demo.locator(".computer-demo-event-form").count(), 0);
-  await demo.getByRole("button", { name: "Replay Computer Use demo", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.cycle === "1", null, { timeout: 3000 });
   assert.equal(await demo.getAttribute("data-step"), "0");
+  await page.waitForFunction(() => document.querySelector(".computer-demo-window")?.dataset.cycle === "2", null, { timeout: 7000 });
+  assert.equal(await demo.getAttribute("data-playing"), "true", "multiple cycles keep playing");
   await demo.getByRole("button", { name: "3 Type", exact: true }).click();
-  assert.equal(await demo.getAttribute("data-playing"), "false", "manual navigation takes over");
+  assert.equal(await demo.getAttribute("data-playing"), "true", "manual navigation does not stop the loop");
   await page.mouse.move(10, 10);
   await page.waitForTimeout(700);
   if (process.env.LOOM_DEMO_SCREENSHOTS) await page.locator("#loom-computer-use").screenshot({ path: `${process.env.LOOM_DEMO_SCREENSHOTS}/computer-demo-dark.png` });
@@ -66,5 +64,5 @@ try {
   assert.equal(await mobile.locator(".computer-use-hud.hud-live").count(), 0, "preview does not start the real desktop HUD");
   if (process.env.LOOM_DEMO_SCREENSHOTS) await small.screenshot({ path: `${process.env.LOOM_DEMO_SCREENSHOTS}/computer-demo-mobile.png` });
   assert.deepEqual(errors, []);
-  console.log("Computer Use demo: viewport playback, pause, typing, HUD targeting, approval, result, replay, manual steps, Chinese, mobile and reduced motion passed.");
+  console.log("Computer Use demo: fast continuous cycles, typing, HUD targeting, automatic confirmation, result, manual steps, Chinese, mobile and reduced motion passed.");
 } finally { await browser.close(); }
