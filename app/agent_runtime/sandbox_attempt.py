@@ -164,6 +164,7 @@ class AttemptAwareSandboxManager(SandboxManager):
         permissions=None,
         permission_mode=None,
         environment: Mapping[str, str] | None = None,
+        scratch: Path | None = None,
     ) -> SandboxCommand:
         attempt = current_sandbox_attempt()
         if attempt.selection is SandboxAttemptSelection.POLICY:
@@ -174,6 +175,7 @@ class AttemptAwareSandboxManager(SandboxManager):
                 permissions=permissions,
                 permission_mode=permission_mode,
                 environment=environment,
+                scratch=scratch,
             )
         if attempt.selection is SandboxAttemptSelection.ADDITIONAL_PERMISSIONS:
             profile = attempt.additional_permissions
@@ -192,6 +194,7 @@ class AttemptAwareSandboxManager(SandboxManager):
                 permission_mode=permission_mode,
                 environment=environment,
                 profile=profile,
+                scratch=scratch,
             )
 
         root = Path(workspace).expanduser().resolve()

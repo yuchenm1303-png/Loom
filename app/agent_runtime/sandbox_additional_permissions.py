@@ -214,6 +214,7 @@ def prepare_with_additional_permissions(
     permission_mode=None,
     environment: Mapping[str, str] | None = None,
     profile: AdditionalPermissionProfile,
+    scratch: Path | None = None,
 ) -> SandboxCommand:
     """Apply one approved AdditionalPermissionProfile without leaving the sandbox.
 
@@ -248,6 +249,7 @@ def prepare_with_additional_permissions(
             permissions=permissions,
             permission_mode=permission_mode,
             environment=environment,
+            scratch=scratch,
         )
     if not ambient.enforced:
         raise SandboxExecutionError(
@@ -264,6 +266,7 @@ def prepare_with_additional_permissions(
         permissions=permissions,
         permission_mode=permission_mode,
         environment=environment,
+        scratch=scratch,
     )
     if prepared.snapshot.backend is SandboxBackend.BUBBLEWRAP:
         return _augment_bubblewrap(

@@ -958,6 +958,7 @@ class ProcessStore:
         pty: bool = False,
         rows: int = 24,
         cols: int = 80,
+        scratch: Path | None = None,
     ) -> ManagedProcess:
         self._prune_finished()
         root = Path(workspace or cwd).expanduser().resolve()
@@ -973,6 +974,7 @@ class ProcessStore:
             permission_mode=permission_mode,
             permissions=permissions,
             environment=child_env,
+            scratch=scratch,
         )
         parsed_rows, parsed_cols = validate_terminal_size(rows, cols)
         process_id = f"proc-{uuid.uuid4().hex[:12]}"

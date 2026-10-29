@@ -394,6 +394,7 @@ class SandboxManager:
         permissions: PermissionSnapshot | None = None,
         permission_mode: PermissionMode | str | None = None,
         environment: Mapping[str, str] | None = None,
+        scratch: Path | None = None,
     ) -> SandboxCommand:
         root = Path(workspace).expanduser().resolve()
         resolved_cwd = Path(cwd).expanduser().resolve()
@@ -401,6 +402,10 @@ class SandboxManager:
             resolved_cwd.relative_to(root)
         except ValueError as exc:
             raise ValueError("command cwd escapes the Loom workspace") from exc
+        # The turn's own scratch directory: Loom-owned, outside the project. The
+        # prompt sends probes there and the file tools write there, so a command
+        # must be able to run them; it gets the same access as the workspace.
+        scratch = Path(scratch).expanduser().resolve() if scratch is not None and Path(scratch).is_dir() else None
 
         snapshot = self.snapshot(
             permissions=permissions,
@@ -423,6 +428,7 @@ class SandboxManager:
                     cwd=resolved_cwd,
                     workspace=root,
                     mode=snapshot.mode,
+                    scratch=scratch,
                 ),
                 cwd=Path("/"),
                 snapshot=snapshot,
@@ -435,6 +441,7 @@ class SandboxManager:
                     workspace=root,
                     mode=snapshot.mode,
                     environment=environment or {},
+                    scratch=scratch,
                 ),
                 cwd=resolved_cwd,
                 snapshot=snapshot,
@@ -448,6 +455,7 @@ class SandboxManager:
         cwd: Path,
         workspace: Path,
         mode: SandboxMode,
+        scratch: Path | None = None,
     ) -> tuple[str, ...]:
         executable = self.bubblewrap_executable
         if not executable:
@@ -475,6 +483,8 @@ class SandboxManager:
                 protected = workspace / name
                 if protected.exists():
                     command.extend(["--ro-bind", str(protected), str(protected)])
+            if scratch is not None:
+                command.extend(["--bind", str(scratch), str(scratch)])
         command.extend(["--chdir", str(cwd), "--"])
         command.extend(argv)
         return tuple(command)
@@ -487,6 +497,7 @@ class SandboxManager:
         workspace: Path,
         mode: SandboxMode,
         environment: Mapping[str, str],
+        scratch: Path | None = None,
     ) -> tuple[str, ...]:
         executable = self.windows_mxc_executable
         if not executable:
@@ -505,8 +516,10 @@ class SandboxManager:
         if mode is SandboxMode.READ_ONLY:
             readonly_paths.insert(0, str(workspace))
             readwrite_paths: list[str] = []
+            if scratch is not None:
+                readonly_paths.append(str(scratch))
         else:
-            readwrite_paths = [str(workspace)]
+            readwrite_paths = [str(workspace)] + ([str(scratch)] if scratch is not None else [])
             for name in (".git", ".loom", ".agents"):
                 protected = workspace / name
                 if protected.exists():

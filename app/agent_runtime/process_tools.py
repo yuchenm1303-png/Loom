@@ -199,6 +199,7 @@ def _exec_handler(
         pty=use_pty,
         rows=rows,
         cols=cols,
+        scratch=context.services.get("run_scratch_dir"),
     )
     _emit_started(context, managed, relative_cwd=relative_cwd, background=not should_wait)
     if not should_wait:

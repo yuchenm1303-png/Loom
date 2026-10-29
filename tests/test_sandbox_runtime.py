@@ -395,3 +395,26 @@ def test_recovery_terminates_ephemeral_processes_before_history_repair(tmp_path)
     assert result.status is AgentStatus.INTERRUPTED
     assert managed.running is False
     runtime.close()
+
+
+def test_turn_scratch_directory_is_reachable_from_sandboxed_commands(tmp_path):
+    # The prompt sends probe scripts to the run scratch directory and the file
+    # tools write there; a sandboxed command must be able to run them.
+    workspace, scratch = tmp_path / "project", tmp_path / "state" / "run-artifacts" / "turn"
+    workspace.mkdir()
+    scratch.mkdir(parents=True)
+    mxc = _fake_windows_mxc_manager()
+    written = _decode_mxc_config(mxc.prepare(argv=("python", "probe.py"), cwd=workspace, workspace=workspace,
+                                             permission_mode=PermissionMode.WORKSPACE, scratch=scratch).argv)
+    assert str(scratch.resolve()) in written["filesystem"]["readwritePaths"]
+    read_only = _decode_mxc_config(mxc.prepare(argv=("python", "probe.py"), cwd=workspace, workspace=workspace,
+                                               permission_mode=PermissionMode.READ_ONLY, scratch=scratch).argv)
+    assert str(scratch.resolve()) in read_only["filesystem"]["readonlyPaths"]
+    assert read_only["filesystem"]["readwritePaths"] == []
+    bwrap = _fake_bwrap_manager().prepare(argv=("python", "probe.py"), cwd=workspace, workspace=workspace,
+                                          permission_mode=PermissionMode.WORKSPACE, scratch=scratch).argv
+    assert ("--bind", str(scratch.resolve()), str(scratch.resolve())) in zip(bwrap, bwrap[1:], bwrap[2:])
+    # Not yet created: nothing is granted (and nothing is created on its behalf).
+    missing = _decode_mxc_config(mxc.prepare(argv=("python", "probe.py"), cwd=workspace, workspace=workspace,
+                                             permission_mode=PermissionMode.WORKSPACE, scratch=tmp_path / "absent").argv)
+    assert all("absent" not in path for path in missing["filesystem"]["readwritePaths"])
