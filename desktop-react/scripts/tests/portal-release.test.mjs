@@ -252,8 +252,10 @@ test("verification submit mounts the lens while disabled without bypassing valid
 test("release notes use a legible centered liquid mount without enlarging the link itself", async () => {
   const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
   const source = readFileSync(new URL("../../src/components/portalLiquidMount.ts", import.meta.url), "utf8");
-  assert.equal((portal.match(/data-liquid-snap-min-width="204" data-liquid-snap-min-height="76"/g) ?? []).length, 3,
-    "both modern release notes entries and the classic link have a readable lens");
+  for (const [width, height] of [[136, 50], [158, 54], [150, 54]]) {
+    assert.ok(portal.includes(`data-liquid-snap-min-width="${width}" data-liquid-snap-min-height="${height}"`),
+      "release note mounts should stay compact and context-sensitive");
+  }
   const compiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
   }).outputText;
@@ -267,10 +269,10 @@ test("release notes use a legible centered liquid mount without enlarging the li
   };
   try {
     const rect = { left: 230, top: 100, width: 92, height: 18 };
-    const shortLink = { dataset: { liquidSnapMinWidth: "204", liquidSnapMinHeight: "76" } };
+    const shortLink = { dataset: { liquidSnapMinWidth: "150", liquidSnapMinHeight: "54" } };
     const frame = paddedMount(shortLink, rect);
-    assert.equal(frame.width, 204);
-    assert.equal(frame.height, 76);
+    assert.equal(frame.width, 150);
+    assert.equal(frame.height, 54);
     assert.equal(frame.x + frame.width / 2, rect.left + rect.width / 2);
     assert.equal(frame.y + frame.height / 2, rect.top + rect.height / 2);
     const normal = paddedMount({ dataset: {} }, rect);
