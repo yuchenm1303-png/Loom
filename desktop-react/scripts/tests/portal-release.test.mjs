@@ -308,6 +308,7 @@ test("web login card uses Turnstile only when public sitekey is advertised", () 
   const bridge = readFileSync(new URL("../../src/webBridge.ts", import.meta.url), "utf8");
   const compose = readFileSync(new URL("../../../services/loom_web_gateway/docker-compose.yml", import.meta.url), "utf8");
   assert.ok(portal.includes("account.capabilities.turnstileSiteKey"));
+  assert.ok(portal.includes("turnstileRequired && (!editorial || drawerOpen)"), "Do not render CAPTCHA in hidden editorial modal");
   assert.ok(portal.includes("turnstileRequired && !turnstileToken"));
   assert.ok(portal.includes("account.login(submittedEmail, submittedPassword, turnstileToken)"));
   assert.ok(portal.includes("account.registerStart(submittedEmail, submittedPassword, turnstileToken)"));
