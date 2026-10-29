@@ -1,3 +1,5 @@
+import { drawEditableField } from "./portalLiquidEditable";
+
 function intersects(rect: DOMRect, left: number, top: number, width: number, height: number) {
   return rect.right >= left && rect.left <= left + width && rect.bottom >= top && rect.top <= top + height;
 }
@@ -354,6 +356,7 @@ export function rasterizePortal(
   roiWidth: number,
   roiHeight: number,
   dpr: number,
+  caretOn = true,
 ) {
   const ctx = canvas.getContext("2d", { alpha: true });
   const scratchCtx = scratch.getContext("2d", { alpha: true });
@@ -458,21 +461,7 @@ export function rasterizePortal(
     }
 
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-      const textStyle = el.value ? style : getComputedStyle(el, "::placeholder");
-      const text = el instanceof HTMLInputElement && el.type === "password"
-        ? (el.value ? "•".repeat(el.value.length) : el.placeholder)
-        : el.value || el.placeholder;
-      if (text && visibleColor(textStyle.color)) {
-        ctx.save();
-        roundedRect(ctx, localX, localY, rect.width, rect.height, radius);
-        ctx.clip();
-        ctx.globalAlpha = opacity * cssNumber(textStyle.opacity, 1);
-        ctx.fillStyle = textStyle.color;
-        ctx.font = `${textStyle.fontStyle || style.fontStyle || "normal"} ${textStyle.fontWeight || style.fontWeight || "400"} ${textStyle.fontSize || style.fontSize || "16px"} ${textStyle.fontFamily || style.fontFamily || "sans-serif"}`;
-        ctx.textBaseline = "middle";
-        ctx.fillText(text, localX + cssNumber(style.paddingLeft) - el.scrollLeft, localY + rect.height / 2 - el.scrollTop);
-        ctx.restore();
-      }
+      drawEditableField(ctx, el, rect, style, roiLeft, roiTop, opacity, caretOn);
     }
 
     ctx.save();
