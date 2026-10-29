@@ -221,3 +221,17 @@ test("glass capture includes native input selection, caret blink and password ma
   assert.ok(portal.includes('type="text" inputMode="email" pattern='),
     "email keyboard and validation must remain usable while exposing selection ranges");
 });
+
+test("verification submit mounts the lens while disabled without bypassing validation", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const cursor = readFileSync(new URL("../../src/components/PortalLiquidCursor.tsx", import.meta.url), "utf8");
+  const verify = portal.split('Verify & create account')[0].slice(-550);
+  assert.ok(verify.includes('data-liquid-snap="true" data-liquid-snap-disabled="true"'),
+    "verification submit opts into a visual lens stop while awaiting the 6-digit code");
+  assert.ok(verify.includes('disabled={account.busy || verificationCode.length !== 6}'),
+    "verification submission must still reject an incomplete code");
+  assert.ok(cursor.includes('element.dataset.liquidSnapDisabled === "true"'),
+    "the lens accepts the explicitly marked disabled stop");
+  assert.ok(cursor.includes('action.matches(":disabled, [aria-disabled='),
+    "snapped click forwarding must never invoke a disabled action");
+});
