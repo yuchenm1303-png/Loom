@@ -83,6 +83,22 @@ const threads = [
 }));
 const THREAD = threads[0].id;
 
+// ?runs=1: other conversations work in the background (the conversations palette and the split pane read them).
+// live-1 runs and takes a step every 1.2 s, live-2 waits for an approval, live-3 finishes a few seconds in.
+const backgroundRuns = params.get("runs") === "1";
+const backgroundItems = new Map<string, Item[]>();
+if (backgroundRuns) {
+  const startedAt = new Date(Date.now() - 95_000).toISOString();
+  ([["live-1", "running"], ["live-2", "waiting_approval"], ["live-3", "running"]] as const).forEach(([id, status]) => {
+    const entry = threads.find((candidate) => candidate.id === id)!;
+    Object.assign(entry, { status, currentTurnId: `turn-${id}` });
+    backgroundItems.set(id, [
+      { id: `${id}-u`, threadId: id, turnId: `turn-${id}`, type: "user_message", status: "completed", text: english ? "Fix the card alignment in the model panel." : "修复模型面板卡片错位", createdAt: startedAt },
+      { id: `${id}-r`, threadId: id, turnId: `turn-${id}`, type: "tool_call", toolName: "read_workspace_text", status: "completed", arguments: { path: "src/components/ModelPanel.tsx" }, createdAt: startedAt },
+    ] as Item[]);
+  });
+}
+
 // One completed turn of history so the live turn arrives below real content.
 const history: Item[] = params.get("empty") === "1" ? [] : [
   { id: "h-user", type: "user_message", status: "completed", text: english ? "What does the login form validate today?" : "登录表单现在都校验了什么？" },
@@ -658,7 +674,11 @@ const toolCatalog = {
 
 function snapshot(id: string) {
   const record = threads.find((entry) => entry.id === id) || threads[0];
-  if (id !== THREAD) return { thread: record, turns: [] };
+  if (id !== THREAD) {
+    const own = backgroundItems.get(id) ?? [];
+    return { thread: record, turns: own.length ? [{ id: `turn-${id}`, threadId: id, status: record.status === "completed" ? "completed" : "running",
+      startedAt: new Date(Date.now() - 95_000).toISOString(), items: own.map((item) => ({ ...item })) }] : [] };
+  }
   const turnIds = [...new Set(items.map((item) => String(item.turnId)))];
   return { thread: record, turns: turnIds.map((turnId) => ({ id: turnId, threadId: id, status: "completed", startedAt: historyAt, completedAt: historyAt,
     finalItemId: turnId === "turn-history" ? "h-a1" : "", items: items.filter((item) => item.turnId === turnId) })) };
@@ -872,6 +892,26 @@ async function send(text = COPY.prompt) {
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
   await new Promise((resolve) => window.setTimeout(resolve, 60));
   textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
+}
+
+if (backgroundRuns) {
+  const commands = ["npm run typecheck", "rg ModelPanel src", "node --test scripts/tests/model-panel.test.mjs", "git diff --stat"];
+  let step = 0;
+  window.setInterval(() => {
+    const id = "live-1";
+    const command = commands[step % commands.length];
+    const item = { id: `${id}-s${step}`, threadId: id, turnId: `turn-${id}`, type: "tool_call", toolName: "exec_command", status: "running",
+      arguments: { cmd: command }, createdAt: now() } as Item;
+    backgroundItems.get(id)!.push(item);
+    emit("item/started", { threadId: id, item: { ...item } });
+    step += 1;
+  }, 1200);
+  window.setTimeout(() => {
+    const entry = threads.find((candidate) => candidate.id === "live-3")!;
+    Object.assign(entry, { status: "completed" });
+    emit("turn/completed", { threadId: "live-3", turn: { id: "turn-live-3", threadId: "live-3", status: "completed", items: [] } });
+    emit("thread/updated", { thread: { ...entry } });
+  }, 3500);
 }
 
 Object.assign(window, { liveFixture: { send, emit, items, interrupt, prompt: COPY.prompt } });

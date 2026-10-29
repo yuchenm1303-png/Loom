@@ -4,7 +4,7 @@ const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwri
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true,
   ignoreDefaultArgs: ["--hide-scrollbars"] });
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
-const ids = ["files","browser","review","artifacts","terminal","background","tasks","agents",
+const ids = ["files","browser","review","artifacts","runs","terminal","background","tasks","agents",
   "inspector","profile","account","settings"];
 try {
   for (const theme of ["dark", "light"]) {

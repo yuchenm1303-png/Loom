@@ -12,6 +12,7 @@ import {
   FolderOpen,
   FolderPlus,
   GitFork,
+  PanelRight,
   Pencil,
   Pin,
   PinOff,
@@ -25,6 +26,7 @@ import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import { branchDepth, orderThreadBranches } from "../state/threadBranches";
+import { endThreadDrag, startThreadDrag } from "../threadDrag";
 import "./sidebar.css";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow } from "../motion/useReducedMotion";
@@ -59,6 +61,7 @@ const SIDEBAR_COPY = {
     deleteConversation: "Delete conversation",
     expand: (name: string) => `Expand ${name}`,
     fork: "Fork",
+    openSplit: "Open in split view",
     forked: "Forked into a new conversation",
     idLabel: "conversation ID",
     loadingConversations: "Loading conversations",
@@ -134,6 +137,7 @@ const SIDEBAR_COPY = {
     deleteConversation: "删除会话",
     expand: (name: string) => `展开 ${name}`,
     fork: "分叉",
+    openSplit: "在分屏中打开",
     forked: "已创建分叉会话",
     idLabel: "会话 ID",
     loadingConversations: "正在加载对话",
@@ -210,6 +214,8 @@ interface SidebarProps {
   onArchive(threadId: string, archived: boolean): Promise<void>;
   onDelete(threadId: string): Promise<void>;
   onFork(threadId: string): Promise<void>;
+  /** Opens the conversation beside the open one (split view). */
+  onOpenSplit?(threadId: string): void;
   onViewChange(view: ThreadView): Promise<void> | void;
   /** The search field under the top row; its button is on the sidebar's toolbar (SidebarControls), which App owns. */
   searchOpen: boolean;
@@ -354,6 +360,7 @@ export const Sidebar = memo(function Sidebar({
   onArchive,
   onDelete,
   onFork,
+  onOpenSplit,
   onViewChange,
   searchOpen,
   onSearchOpenChange,
@@ -843,6 +850,13 @@ export const Sidebar = memo(function Sidebar({
             }}
             onFocus={() => onPrefetch?.(thread.id)}
             onClick={() => void openThread(thread)}
+            // Carried to the workspace, a conversation opens there or beside the open one (threadDrag.ts).
+            draggable={Boolean(onOpenSplit)}
+            onDragStart={(event) => {
+              cancelScheduledPrefetch();
+              startThreadDrag(event, thread.id, thread.title || copy.untitled);
+            }}
+            onDragEnd={endThreadDrag}
             type="button"
             title={`${thread.title || copy.untitled}${statusLabel ? ` · ${statusLabel}` : ""}${time ? ` · ${time}` : ""}`}
             aria-current={active ? "page" : undefined}
@@ -1237,6 +1251,19 @@ export const Sidebar = memo(function Sidebar({
             </div>
           ) : null}
 
+          {onOpenSplit && menuThread.id !== activeId ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onOpenSplit(menuThread.id);
+                closeContextMenu();
+              }}
+            >
+              <PanelRight size={16} strokeWidth={1.75} />
+              <span>{copy.openSplit}</span>
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"

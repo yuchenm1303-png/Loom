@@ -39,6 +39,9 @@ import { RightToolDock } from "./components/RightToolDock";
 import { BackgroundTaskPanel } from "./components/BackgroundTaskPanel";
 import { OPEN_TERMINAL_EVENT, type TerminalRequest } from "./terminal";
 import { TaskProgressPanel } from "./components/TaskProgressPanel";
+import { ConversationRunsPanel } from "./components/ConversationRunsPanel";
+import { SPLIT_DEFAULT, SPLIT_MAX, SPLIT_MIN, SplitConversationPane, SplitDropTarget } from "./components/SplitConversationPane";
+import { startConversationActivity, useConversationAttention, watchConversations } from "./state/conversationActivity";
 import { latestTaskPlan } from "./components/liveTaskProgress";
 import { Transcript } from "./components/Transcript";
 import { useLeavingItems } from "./components/leavingItems";
@@ -85,6 +88,15 @@ const INSPECTOR_MIN = 280;
 const INSPECTOR_MAX = 520;
 const MIN_WORKSPACE_WIDTH = 520;
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
+const SPLIT_RATIO_KEY = "loom.layout.splitRatio";
+
+function readSplitRatio(): number {
+  try {
+    const saved = Number(localStorage.getItem(SPLIT_RATIO_KEY));
+    if (Number.isFinite(saved) && saved > 0) return Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, saved));
+  } catch { /* The default share serves when storage is unavailable. */ }
+  return SPLIT_DEFAULT;
+}
 const EMPTY_TRANSCRIPT_ITEMS: TranscriptItem[] = [];
 
 type ResizePanel = "sidebar" | "inspector";
@@ -472,6 +484,9 @@ export default function App() {
   const [terminalRequest, setTerminalRequest] = useState<TerminalRequest | null>(null);
   const [backgroundRunningCount, setBackgroundRunningCount] = useState(0);
   const [taskPlanOpen, setTaskPlanOpen] = useState(false);
+  const [runsOpen, setRunsOpen] = useState(false);
+  const [splitThreadId, setSplitThreadId] = useState("");
+  const [splitRatio, setSplitRatio] = useState(readSplitRatio);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [artifactPreview, setArtifactPreview] = useState<{ path: string; workspace: string } | null>(null);
   const autoOpenedAgentsForThreadRef = useRef("");
@@ -543,6 +558,38 @@ export default function App() {
   // and the counts vanish and come back on every switch.
   const heldContext = useHeldWhile(loom.context, threadSwitching);
   const selectedThread = loom.threads.find(candidate => candidate.id === selectedThreadId) ?? thread;
+  // What the other conversations are doing: one listener on the Host's stream, read by the conversations palette.
+  useEffect(() => { if (loom.connection === "ready") startConversationActivity(); }, [loom.connection]);
+  useEffect(() => { watchConversations([selectedThreadId, splitThreadId]); }, [selectedThreadId, splitThreadId]);
+  const runsFinished = useConversationAttention();
+  const runsLive = loom.threads.filter(entry => entry.id !== selectedThreadId && !entry.archived
+    && (entry.status === "running" || entry.status === "waiting_approval")).length;
+  // A conversation is shown once: opening the one in the split pane as the main one swaps the two.
+  const openInMain = useCallback((threadId: string) => {
+    if (!threadId || threadId === selectedThreadId) return;
+    if (threadId === splitThreadId) setSplitThreadId(selectedThreadId);
+    void loom.openThread(threadId);
+  }, [loom.openThread, selectedThreadId, splitThreadId]);
+  const openInSplit = useCallback((threadId: string) => {
+    if (!threadId) return;
+    if (threadId === selectedThreadId) return;
+    setSplitThreadId(threadId);
+  }, [selectedThreadId]);
+  const changeSplitRatio = useCallback((ratio: number) => {
+    setSplitRatio(ratio);
+    try { localStorage.setItem(SPLIT_RATIO_KEY, String(ratio)); } catch { /* Kept until the next reload. */ }
+  }, []);
+  const resetSplitRatio = useCallback(() => {
+    setSplitRatio(SPLIT_DEFAULT);
+    try { localStorage.removeItem(SPLIT_RATIO_KEY); } catch { /* Nothing saved to clear. */ }
+  }, []);
+  // The split conversation cannot also be the main one (opened from the sidebar, say): the pane closes.
+  useEffect(() => {
+    if (splitThreadId && splitThreadId === selectedThreadId) setSplitThreadId("");
+  }, [selectedThreadId, splitThreadId]);
+  useEffect(() => {
+    if (splitThreadId && loom.threads.length && !loom.threads.some(entry => entry.id === splitThreadId)) setSplitThreadId("");
+  }, [loom.threads, splitThreadId]);
   const runtimeTurnRunning = thread?.status === "running" || thread?.status === "waiting_approval";
   // A terminal error ends an orphaned turn even when the last thread snapshot
   // still says running. Match the steering router so the model picker reappears.
@@ -864,7 +911,7 @@ export default function App() {
     if (terminalOpen) { setTerminalOpen(false); return; }
     runLayoutTransition(() => {
       closeSidePanelsForPalette();
-      setBackgroundTasksOpen(false); setTaskPlanOpen(false);
+      setBackgroundTasksOpen(false); setTaskPlanOpen(false); setRunsOpen(false);
       setTerminalMounted(true); setTerminalOpen(true);
     }, rightSurfaceOpen ? "right-close" : "neutral");
   }
@@ -883,8 +930,8 @@ export default function App() {
   }, [selectedThread?.workspace, workspace, rightSurfaceOpen, runLayoutTransition]);
 
   useEffect(() => {
-    if (rightSurfaceOpen || backgroundTasksOpen || taskPlanOpen || settingsOpen || profileOpen || accountOpen || filesProjectId) setTerminalOpen(false);
-  }, [rightSurfaceOpen, backgroundTasksOpen, taskPlanOpen, settingsOpen, profileOpen, accountOpen, filesProjectId]);
+    if (rightSurfaceOpen || backgroundTasksOpen || taskPlanOpen || runsOpen || settingsOpen || profileOpen || accountOpen || filesProjectId) setTerminalOpen(false);
+  }, [rightSurfaceOpen, backgroundTasksOpen, taskPlanOpen, runsOpen, settingsOpen, profileOpen, accountOpen, filesProjectId]);
 
   function toggleTaskPlan(): void {
     if (taskPlanOpen) {
@@ -894,9 +941,25 @@ export default function App() {
     runLayoutTransition(() => {
       closeSidePanelsForPalette();
       setBackgroundTasksOpen(false);
+      setRunsOpen(false);
       setTaskPlanOpen(true);
     }, rightSurfaceOpen ? "right-close" : "neutral");
   }
+
+  // The conversations palette hangs on the same edge as the plan and the background tasks; it does not close the docks
+  // (it is read while working), and it stays open across conversations so it can be used to hop between them.
+  function toggleRuns(): void {
+    if (runsOpen) { setRunsOpen(false); return; }
+    setBackgroundTasksOpen(false);
+    setTaskPlanOpen(false);
+    setTerminalOpen(false);
+    setRunsOpen(true);
+  }
+
+  useEffect(() => {
+    if (!runsOpen) return;
+    if (backgroundTasksOpen || taskPlanOpen || settingsOpen || profileOpen || accountOpen || filesProjectId) setRunsOpen(false);
+  }, [accountOpen, backgroundTasksOpen, filesProjectId, profileOpen, runsOpen, settingsOpen, taskPlanOpen]);
 
   useEffect(() => {
     setDismissedApprovalIds(new Set());
@@ -1406,7 +1469,7 @@ export default function App() {
     <>
       <div
         ref={shellRef}
-        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${artifactLayoutOpen ? "with-artifact-preview" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${shellCovered ? "is-settings-obscured" : ""}`}
+        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${artifactLayoutOpen ? "with-artifact-preview" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${splitThreadId ? "with-split" : ""} ${resizingPanel ? "is-resizing" : ""} ${shellCovered ? "is-settings-obscured" : ""}`}
         style={layoutStyle}
         inert={shellInert}
       >
@@ -1424,6 +1487,10 @@ export default function App() {
         taskCompleted={taskCompleted}
         taskTotal={taskMilestones.length}
         taskRunning={running && taskMilestones.some(step => step.status === "in_progress")}
+        runsOpen={runsOpen}
+        runsLive={runsLive}
+        runsFinished={runsFinished}
+        onToggleRuns={toggleRuns}
         agentsOpen={agentsOpen}
         agentCount={heldCounts.agents}
         reviewOpen={reviewOpen}
@@ -1503,6 +1570,7 @@ export default function App() {
         onArchive={loom.archiveThread}
         onDelete={loom.deleteThread}
         onFork={loom.forkThread}
+        onOpenSplit={openInSplit}
         onViewChange={loom.setThreadView}
         searchOpen={sidebarSearchOpen}
         onSearchOpenChange={setSidebarSearchOpen}
@@ -1528,6 +1596,7 @@ export default function App() {
 
       <section
         className={`workspace ${threadSwitching ? "is-thread-switching" : ""}`.trim()}
+        style={splitThreadId ? { "--loom-split-ratio": splitRatio } as CSSProperties : undefined}
         aria-busy={threadSwitching ? true : undefined}
       >
         <ThreadHeader
@@ -1567,6 +1636,16 @@ export default function App() {
           steps={taskMilestones}
           open={taskPlanOpen}
           onClose={() => setTaskPlanOpen(false)}
+        />
+        <ConversationRunsPanel
+          open={runsOpen}
+          threads={loom.threads}
+          projects={loom.projects}
+          activeId={selectedThreadId}
+          splitId={splitThreadId}
+          onClose={() => setRunsOpen(false)}
+          onOpen={openInMain}
+          onSplit={openInSplit}
         />
 
         <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>
@@ -1673,6 +1752,16 @@ export default function App() {
           />
         </div>
       </section>
+      <SplitConversationPane
+        threadId={splitThreadId}
+        projects={loom.projects}
+        ratio={splitRatio}
+        onRatioChange={changeSplitRatio}
+        onRatioReset={resetSplitRatio}
+        onClose={() => setSplitThreadId("")}
+        onPromote={openInMain}
+      />
+      <SplitDropTarget splitOpen={Boolean(splitThreadId)} onOpen={openInMain} onSplit={openInSplit} />
 
       <div
         className="workspace-panel-resizer workspace-panel-resizer-right"

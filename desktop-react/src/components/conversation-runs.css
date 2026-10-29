@@ -1,0 +1,269 @@
+/* Conversations palette -------------------------------------------------------
+   What the other conversations are doing, hung beside the tool rail like the
+   task plan: one floating surface from the panel language, one row per
+   conversation that is running, waiting for approval or finished out of sight.
+   A row is a drag source (threadDrag.ts): dropped on the workspace it opens
+   there or in the split pane. */
+.conversation-runs-panel {
+  --runs-warning: var(--warning, #f7c85d);
+  position: fixed;
+  top: max(58px, calc(var(--loom-rail-height, 40px) + 12px));
+  right: calc(var(--loom-tool-rail-track, 56px) + 12px);
+  z-index: 2100;
+  width: min(380px, calc(100vw - var(--loom-tool-rail-track, 56px) - 28px));
+  max-height: min(560px, calc(100dvh - max(58px, calc(var(--loom-rail-height, 40px) + 12px)) - 14px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+html[data-loom-theme="light"] .conversation-runs-panel {
+  --runs-warning: #996300;
+}
+
+.conversation-runs-header .pl-mark { position: relative; }
+
+.conversation-runs-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 6px 6px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.conversation-run {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-radius: 10px;
+  transition: background-color var(--loom-dur-fast) ease;
+}
+
+.conversation-run + .conversation-run { margin-top: 2px; }
+.conversation-run:hover,
+.conversation-run:focus-within { background: var(--pl-hover); }
+.conversation-run[draggable="true"] { cursor: grab; }
+html[data-loom-thread-drag] .conversation-run { cursor: grabbing; }
+
+.conversation-run-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 8px 9px 10px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: inherit;
+}
+
+.conversation-run-main:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: -2px; }
+
+/* The state lives on the node: a ring that turns while the conversation runs,
+   a steady amber dot while it waits for you, a tick, a cross or a stop mark
+   once it is over. */
+.conversation-run-mark {
+  position: relative;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--pl-muted);
+}
+
+.conversation-run.is-running .conversation-run-mark::before,
+.conversation-run.is-paused .conversation-run-mark::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 1.6px solid var(--pl-line);
+  border-top-color: var(--pl-accent);
+  border-radius: 50%;
+  animation: conversation-run-turn 1.1s linear infinite;
+}
+
+.conversation-run.is-paused .conversation-run-mark::before {
+  animation: none;
+  border-color: var(--pl-line);
+  border-left-color: var(--pl-muted);
+  border-right-color: var(--pl-muted);
+}
+
+.conversation-run.is-approval .conversation-run-mark::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--runs-warning);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--runs-warning) 16%, transparent);
+}
+
+.conversation-run.is-completed .conversation-run-mark {
+  color: var(--semantic-success-text);
+  background: var(--semantic-success-soft);
+}
+
+.conversation-run.is-failed .conversation-run-mark {
+  color: var(--pl-danger);
+  background: color-mix(in srgb, var(--pl-danger) 11%, transparent);
+}
+
+.conversation-run.is-stopped .conversation-run-mark { background: var(--pl-hover); }
+
+.conversation-run-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.conversation-run-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.conversation-run-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pl-ink);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-run-state {
+  flex: none;
+  color: var(--pl-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.conversation-run.is-running .conversation-run-state { color: var(--pl-accent); }
+.conversation-run.is-approval .conversation-run-state { color: var(--runs-warning); }
+.conversation-run.is-completed .conversation-run-state { color: var(--semantic-success-text); }
+.conversation-run.is-failed .conversation-run-state { color: var(--pl-danger); }
+
+.conversation-run-step {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pl-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-run-meta {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  color: var(--pl-faint);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.conversation-run-meta > span + span::before {
+  content: "·";
+  margin: 0 6px;
+}
+
+.conversation-run-place {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Actions sit over the row's right edge and appear with the pointer or focus;
+   the row's state label makes room for them. */
+.conversation-run-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  padding-left: 14px;
+  background: linear-gradient(to right, transparent, var(--pl-surface-raised) 14px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--loom-dur-fast) ease;
+}
+
+.conversation-run:hover .conversation-run-actions,
+.conversation-run:focus-within .conversation-run-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.conversation-run-actions .pl-icon-button { width: 26px; height: 26px; }
+
+.conversation-runs-empty { padding: 26px 20px 22px; }
+
+.conversation-runs-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px 8px 16px;
+  border-top: 1px solid var(--pl-edge);
+  color: var(--pl-faint);
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+.conversation-runs-foot > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-runs-clear {
+  flex: none;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pl-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.conversation-runs-clear:hover { background: var(--pl-hover); color: var(--pl-ink); }
+.conversation-runs-clear:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 1px; }
+
+@keyframes conversation-run-turn {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 650px) {
+  .conversation-runs-panel {
+    right: calc(var(--loom-tool-rail-track, 52px) + 8px);
+    width: calc(100vw - var(--loom-tool-rail-track, 52px) - 16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-run,
+  .conversation-run-actions { transition: none; }
+  .conversation-run.is-running .conversation-run-mark::before { animation: none; }
+}
+
+html[data-loom-reduced-motion="true"] .conversation-run,
+html[data-loom-reduced-motion="true"] .conversation-run-actions { transition: none; }
+html[data-loom-reduced-motion="true"] .conversation-run.is-running .conversation-run-mark::before { animation: none; }

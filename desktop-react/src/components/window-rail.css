@@ -35,7 +35,7 @@
 
 /* 2 -- headers that reach the right edge of the window.
    The thread header only does when no panel is open next to it. */
-:root.loom-desktop-chrome .app-shell:not(.inspector-layout-open, .with-review, .with-agents, .with-artifact-preview, .with-project-details)
+:root.loom-desktop-chrome .app-shell:not(.inspector-layout-open, .with-review, .with-agents, .with-artifact-preview, .with-project-details, .with-split)
   .thread-header.polished-thread-header {
   padding-right: var(--loom-caption-reserve);
 }
@@ -140,6 +140,8 @@
 :root.loom-desktop-chrome :is(
   .thread-header-actions,
   .workspace-panel-resizer,
+  .split-pane-resizer,
+  .split-drop-target,
   .sub-agent-dock-resizer,
   .artifact-preview-resizer
 ),

@@ -129,6 +129,7 @@ jobs:
           node scripts/tests/control-popover-response-browser.mjs
           node scripts/tests/right-tool-dock-browser.mjs
           node scripts/tests/right-tool-dock-motion-browser.mjs
+          node scripts/tests/conversation-runs-browser.mjs
 
   windows-context-smoke:
     runs-on: windows-latest

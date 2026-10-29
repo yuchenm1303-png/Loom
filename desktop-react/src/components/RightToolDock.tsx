@@ -5,7 +5,7 @@ import {
 import { flushSync } from "react-dom";
 import {
   FileDiff, FolderOpen, GitFork, Globe2, ListChecks, PanelsTopLeft, PanelRightClose, PanelRightOpen,
-  Pulse, Settings, Terminal, UserRound, Clock3,
+  MessagesSquare, Pulse, Settings, Terminal, UserRound, Clock3,
 } from "./icons";
 import { useI18n } from "../i18n";
 import { normalizeShortcut } from "../keyboardShortcuts";
@@ -15,16 +15,14 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import "./right-tool-dock.css";
 
 type DockId =
-  | "files" | "browser" | "terminal" | "background" | "tasks" | "agents" | "review"
+  | "files" | "browser" | "terminal" | "background" | "tasks" | "runs" | "agents" | "review"
   | "artifacts" | "inspector" | "profile" | "account" | "settings";
 
 const ORDER_KEY = "loom.ui.rightToolDock.order.v1";
 export const DEFAULT_TOOL_ORDER: readonly DockId[] = [
-  "files", "browser", "review", "artifacts", "terminal", "tasks", "background", "agents", "inspector", "profile", "account", "settings",
+  "files", "browser", "review", "artifacts", "runs", "terminal", "tasks", "background", "agents", "inspector", "profile", "account", "settings",
 ];
-/** Where the utilities start. The rule above them belongs to the slot, so a tool dragged across it joins the other group. */
-const UTILITY_SLOT = 9;
-const toolGroup = (id: DockId) => ["profile", "account", "settings"].includes(id) ? 2 : ["terminal", "tasks", "background", "agents", "inspector"].includes(id) ? 1 : 0;
+const toolGroup = (id: DockId) => ["profile", "account", "settings"].includes(id) ? 2 : ["runs", "terminal", "tasks", "background", "agents", "inspector"].includes(id) ? 1 : 0;
 /** Pointer travel before a press becomes a drag, so a click with a shaky hand is still a click. */
 const DRAG_THRESHOLD = 4;
 /** How long a lifted tool takes to settle into its slot, in step with `--dock-settle` in the stylesheet. */
@@ -83,6 +81,10 @@ export interface RightToolDockProps {
   taskCompleted: number;
   taskTotal: number;
   taskRunning: boolean;
+  /** The other conversations: how many run (or wait for approval) and how many finished out of sight. */
+  runsOpen: boolean;
+  runsLive: number;
+  runsFinished: number;
   agentsOpen: boolean;
   agentCount: number;
   reviewOpen: boolean;
@@ -100,6 +102,7 @@ export interface RightToolDockProps {
   onToggleBackground(): void;
   onToggleTerminal?(): void;
   onToggleTasks(): void;
+  onToggleRuns(): void;
   onToggleAgents(): void;
   onToggleReview(): void;
   onToggleArtifacts(): void;
@@ -198,6 +201,12 @@ export function RightToolDock(props: RightToolDockProps) {
       live: props.taskRunning,
       progress: props.taskTotal ? { completed: props.taskCompleted, total: props.taskTotal } : undefined,
       onClick: props.onToggleTasks,
+    },
+    runs: {
+      label: zh ? "对话动态" : "Conversations", icon: <MessagesSquare size={16} strokeWidth={1.75} />,
+      active: props.runsOpen,
+      count: props.runsLive + props.runsFinished, live: props.runsLive > 0,
+      onClick: props.onToggleRuns,
     },
     agents: {
       label: zh ? "子代理" : "Sub-agents", icon: <GitFork size={16} strokeWidth={1.75} />,
@@ -571,8 +580,11 @@ export function RightToolDock(props: RightToolDockProps) {
       </div>
     );
   });
-  rows.splice(UTILITY_SLOT, 0, <span className="loom-tool-divider" key="divider" aria-hidden="true"></span>);
-  rows.splice(4, 0, <span className="loom-tool-divider" key="activity-divider" aria-hidden="true"></span>);
+  // The rules belong to the slots where a group starts, so a tool dragged across one joins the other group.
+  const utilityAt = order.findIndex(id => toolGroup(id) === 2);
+  const activityAt = order.findIndex(id => toolGroup(id) === 1);
+  if (utilityAt > 0) rows.splice(utilityAt, 0, <span className="loom-tool-divider" key="divider" aria-hidden="true"></span>);
+  if (activityAt > 0) rows.splice(activityAt, 0, <span className="loom-tool-divider" key="activity-divider" aria-hidden="true"></span>);
 
   return (
     <aside className="loom-tool-rail" aria-label={zh ? "快捷工具" : "Quick tools"} data-motion-phase={presence.phase}>

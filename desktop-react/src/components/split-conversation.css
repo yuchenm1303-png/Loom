@@ -1,0 +1,277 @@
+/* Split view ------------------------------------------------------------------
+   A second conversation beside the open one. Both live in the workspace's grid
+   area (workspace-panels.css, column 2): the workspace gives up the pane's
+   share as a right margin and the pane stands in that space, so the shell's
+   tracks, the docks and the tool rail are untouched. The share is a custom
+   property that is not inherited and is set only on those two boxes: dragging
+   the divider restyles them and nothing else. */
+@property --loom-split-ratio {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: .46;
+}
+
+.app-shell.workspace-panels.with-split > .workspace {
+  margin-right: calc(var(--loom-split-ratio) * 100%);
+}
+
+.app-shell.workspace-panels > .split-pane {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
+  width: calc(var(--loom-split-ratio) * 100%);
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: loom-split;
+}
+
+/* A conversation, not a tool: the pane wears the conversation's canvas, and
+   the dock surface only lends it its edge and its arrival. */
+:root .app-shell > .split-pane.pl-dock {
+  background: var(--loom-workspace-canvas, var(--bg));
+}
+
+html[data-loom-split-resizing] .app-shell,
+html[data-loom-split-resizing] .app-shell * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+/* The divider: the pane's left edge, a few pixels wider than it looks. */
+.split-pane-resizer {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.split-pane-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--pl-accent);
+  opacity: 0;
+  transition: opacity var(--loom-dur-fast) ease;
+}
+
+.split-pane-resizer:hover::after,
+.split-pane-resizer:focus-visible::after,
+html[data-loom-split-resizing] .split-pane-resizer::after { opacity: .7; }
+.split-pane-resizer:focus-visible { outline: none; }
+
+/* Header: the mark is the conversation's state, not an icon. */
+.split-pane-mark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--pl-line);
+}
+
+.split-pane-state {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pl-faint);
+}
+
+.split-pane[data-run-state="running"] .split-pane-state { background: var(--pl-accent); }
+.split-pane[data-run-state="running"] .split-pane-state::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 1.5px solid var(--pl-accent);
+  border-radius: 50%;
+  opacity: 0;
+  animation: pl-pulse var(--loom-period-breathe) ease-out infinite;
+}
+.split-pane[data-run-state="approval"] .split-pane-state { background: var(--warning, #f7c85d); }
+.split-pane[data-run-state="completed"] .split-pane-state { background: var(--semantic-success-strong, #4cc38a); }
+.split-pane[data-run-state="failed"] .split-pane-state { background: var(--pl-danger); }
+
+/* Transcript: the same rows as the main column, set for a narrower measure. */
+.split-pane-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.split-pane-stage > .transcript-scroll {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+.split-pane-stage .chat-ambient { display: none; }
+
+.split-pane-stage .transcript {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  padding-left: 22px;
+  padding-right: 22px;
+}
+
+.split-pane-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--pl-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.split-pane-spinner { animation: split-pane-turn 1s linear infinite; }
+
+/* Composer: one field that answers the conversation, or guides it while it runs. */
+.split-pane-composer {
+  flex: none;
+  padding: 8px 16px 14px;
+}
+
+.split-pane-error {
+  margin: 0 2px 6px;
+  color: var(--pl-danger);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.split-pane-field {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 7px 7px 7px 13px;
+  border: 1px solid var(--pl-line);
+  border-radius: 16px;
+  background: var(--pl-field, var(--pl-card));
+  transition: border-color var(--loom-dur-fast) ease;
+}
+
+.split-pane-field:focus-within { border-color: var(--pl-accent-line); }
+
+.split-pane-field textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 22px;
+  max-height: 132px;
+  margin: 3px 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--pl-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.split-pane-field textarea::placeholder { color: var(--pl-faint); }
+
+.split-pane-action {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--pl-ink);
+  color: var(--pl-surface-raised, #191c22);
+  cursor: pointer;
+  transition: opacity var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease;
+}
+
+.split-pane-action:disabled { opacity: .35; cursor: default; }
+.split-pane-action.is-stop { background: var(--pl-hover); color: var(--pl-ink); box-shadow: inset 0 0 0 1px var(--pl-line); }
+.split-pane-action:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 2px; }
+
+/* Drop zone ---------------------------------------------------------------------
+   While a conversation is carried (threadDrag.ts sets html[data-loom-thread-drag]),
+   the workspace shows where it can land: the left part opens it as the main
+   conversation, the right part beside it. */
+.split-drop-target {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: calc(var(--loom-rail-height, 60px) + 10px) 14px 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--loom-dur-fast) ease;
+}
+
+html[data-loom-thread-drag] .split-drop-target {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.split-drop-half {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  border: 1.5px dashed color-mix(in srgb, var(--pl-muted) 45%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--loom-workspace-canvas, #111317) 78%, transparent);
+  color: var(--pl-muted);
+  font-size: 13px;
+  font-weight: 500;
+  transition: border-color var(--loom-dur-fast) ease, background-color var(--loom-dur-fast) ease, color var(--loom-dur-fast) ease;
+}
+
+.split-drop-half[data-over="true"] {
+  border-color: var(--pl-accent);
+  border-style: solid;
+  background: color-mix(in srgb, var(--pl-accent) 12%, var(--loom-workspace-canvas, #111317));
+  color: var(--pl-ink);
+}
+
+.split-drop-half svg { opacity: .8; }
+
+@keyframes split-pane-turn {
+  to { transform: rotate(360deg); }
+}
+
+@container loom-split (max-width: 420px) {
+  .split-pane-stage .transcript { padding-left: 14px; padding-right: 14px; }
+  .split-pane-composer { padding: 6px 10px 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .split-pane-resizer::after,
+  .split-pane-field,
+  .split-pane-action,
+  .split-drop-target,
+  .split-drop-half { transition: none; }
+  .split-pane[data-run-state="running"] .split-pane-state::after { animation: none; }
+}
+
+html[data-loom-reduced-motion="true"] :is(.split-pane-field, .split-pane-action, .split-drop-target, .split-drop-half),
+html[data-loom-reduced-motion="true"] .split-pane-resizer::after {
+  transition: none;
+}
+html[data-loom-reduced-motion="true"] .split-pane[data-run-state="running"] .split-pane-state::after { animation: none; }
