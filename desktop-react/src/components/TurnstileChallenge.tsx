@@ -76,7 +76,12 @@ export function TurnstileChallenge(props: {
         theme: props.theme,
         size: "normal",
         callback: (token) => { if (active) callbacks.current.onToken(token); },
-        "expired-callback": () => { if (active) callbacks.current.onToken(""); },
+        "expired-callback": () => {
+          if (active) {
+            callbacks.current.onToken("");
+            if (widgetId !== null) ready.reset(widgetId);
+          }
+        },
         "error-callback": () => {
           if (active) {
             callbacks.current.onToken("");
