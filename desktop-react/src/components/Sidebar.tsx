@@ -28,6 +28,7 @@ import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import { branchDepth, orderThreadBranches } from "../state/threadBranches";
 import { endThreadDrag, startThreadDrag } from "../threadDrag";
 import "./sidebar.css";
+import { LoomMark } from "./LoomMark";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 import { useSidebarSelectionMotion } from "./useSidebarSelectionMotion";
@@ -1022,7 +1023,9 @@ export const Sidebar = memo(function Sidebar({
     <aside className="sidebar compact-sidebar codex-sidebar">
       {/* The top row is where the sidebar's toolbar lies (SidebarControls, one layer up, above the card): the toggle at
           its start, search and the quill at its end. It keeps the room and stays part of the window's drag rail. */}
-      <div className="codex-sidebar-topbar" aria-hidden="true" />
+      <div className="codex-sidebar-topbar" aria-hidden="true">
+        <span className="codex-sidebar-brand"><LoomMark size={20} />Loom</span>
+      </div>
 
       <div className={`compact-search-shell ${searchOpen ? "open" : ""}`} aria-hidden={!searchOpen}>
         <div className="compact-search">

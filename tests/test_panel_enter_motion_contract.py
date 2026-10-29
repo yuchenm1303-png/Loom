@@ -38,8 +38,9 @@ def test_the_sidebar_toolbar_is_one_set_of_buttons() -> None:
     assert "<NewConversationRow" in controls
     assert "data-sidebar-control" not in sidebar and "NewConversationRow" not in sidebar
     assert "data-sidebar-control" not in header and "NewConversationRow" not in header
-    # The card keeps their row; the closed header keeps their room.
-    assert '<div className="codex-sidebar-topbar" aria-hidden="true" />' in sidebar
+    # The card keeps their row (with only the app's mark and name, after the toggle); the closed header keeps their room.
+    assert '<div className="codex-sidebar-topbar" aria-hidden="true">' in sidebar
+    assert '<span className="codex-sidebar-brand"><LoomMark size={20} />Loom</span>' in sidebar
     assert '{sidebarOpen ? null : <div className="thread-header-leading" aria-hidden="true" />}' in header
     # The trail (search, the quill) glides between the card row's end and the toggle on the layout clock; dragging
     # the sidebar's edge carries it frame for frame.
