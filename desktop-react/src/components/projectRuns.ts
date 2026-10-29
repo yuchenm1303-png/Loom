@@ -4,6 +4,8 @@ export interface ProjectRun {
   workflowControl?: string; workflowStatus?: string; workflowError?: string; workflowOwnerId?: string;
   integrationRunId?: string; integrationTarget?: { parentRunId: string };
   tokensUsed: number; tokenBudget: number; episodesUsed: number; maxEpisodes: number;
+  budgetPosition?: { knownTokens: number; inFlightTokens: number; assumedUnknownTokens: number; unknownRequests: number;
+    chargedTokens: number; tokenBudget: number; hardBillingCap: boolean };
   plan: { id: string; instructions: string; acceptance: string[]; state: string; dependsOn?: string[]; fileScopes?: string[] }[];
   activeEpisode?: { sessionId: string; state: string } | null;
   verificationStatus?: string; verificationFreshness?: string;

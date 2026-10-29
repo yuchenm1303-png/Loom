@@ -7,7 +7,7 @@ from dataclasses import replace
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
 from app.ai.errors import AIEmptyResponseError, AIResponseError, AIToolContractError, AITransportError, AITruncatedToolCallError, AIQuotaExceeded
-from app.ai.execution_control import ModelCancelled, ModelSteered
+from app.ai.execution_control import ModelAdmissionRefused, ModelCancelled, ModelSteered
 
 from .context_budget import is_context_window_error, request_forced_compaction
 from .contracts import AgentEventKind as Event
@@ -780,6 +780,10 @@ class TurnRunner:
         except ModelCancelled:
             token.cancel()
             rt._cancel_if_requested(session, token)
+        except ModelAdmissionRefused as exc:
+            # Nothing was sent, so history is whole. A budget stop is a limit,
+            # not a failure: the work so far stays usable once budget is added.
+            return rt._limit(session, str(exc))
         except Exception as exc:
             # A cancelled turn raises like any other failure. Reporting it as
             # FAILED loses the distinction the caller acts on, so cancellation is

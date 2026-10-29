@@ -11,6 +11,7 @@ from .runner import ProjectRunner
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
 from . import delivery, integration, workflow, parallel
+from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 
 
 class ProjectExecutor:
@@ -124,14 +125,12 @@ class ProjectExecutor:
             if terminal is None or session.current_turn_id != episode["turnId"]:
                 return {"state": "outcome_unknown", "error": service._task_errors.get(session.session_id)
                         or "No matching durable terminal turn; execution must not be replayed"}
-            tokens = 0
-            for e in events:
-                if e.kind in {E.MODEL_RESPONSE, E.MODEL_RESPONSE_REJECTED, E.TURN_STOP_CHECKED}:
-                    tokens += int(e.data.get("usage", {}).get("total_tokens") or 0)
-                elif e.kind is E.CONTEXT_CHECKPOINTED:
-                    tokens += int(e.data.get("summary_usage", {}).get("total_tokens") or 0)
+            # Each usage event keeps its ID: the ledger charges an event once,
+            # however often it is offered (live listener, this poll, a restart).
+            usage = [(e.event_id, tokens) for e in events if (tokens := event_tokens(e)) is not None]
             error = session.error or (terminal.data.get("reason", "Runtime limit reached") if terminal.kind is E.LIMIT_REACHED else "")
-            return {"state": session.status.value, "text": session.final_text, "error": error, "tokens": tokens}
+            return {"state": session.status.value, "text": session.final_text, "error": error,
+                    "tokens": sum(tokens for _, tokens in usage), "usage": usage}
 
     def cancel(self, episode):
         # _launch owns preparation too. runtime.cancel is safe if it has started;
@@ -170,7 +169,13 @@ class ProjectServiceMixin:
                     original_schedule(session, observed)
             idle.schedule = project_schedule
         executor = ProjectExecutor(self, home)
-        self.project_runner = ProjectRunner(self.project_store, executor)
+        self.project_budget = ProjectBudget(lambda: self.project_store, self._project_session_ids)
+        self.project_runner = ProjectRunner(self.project_store, executor, self.project_budget)
+        # After the scheduler lease: only its owner may decide that an open
+        # request of a previous process has unknown usage.
+        self.project_budget.recover()
+        self.runtime.model_executor = BudgetedModelExecutor(self.runtime.model_executor, self.project_budget)
+        self.runtime.subscribe(self.project_budget.observe)
         on_activated = self.runtime._on_turn_activated
         def project_activated(session_id, token):
             on_activated(session_id, token)
@@ -224,7 +229,7 @@ class ProjectServiceMixin:
             "sourceThreadId": source.session_id, "objective": objective, "tokenBudget": budget, "maxEpisodes": episodes,
             "repository": str(root), "baseCommit": git(root, "rev-parse", "HEAD"),
             "gitCommonDir": str(Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve()),
-            "budgetEnforcement": "between_episodes", "delivery": "isolated_candidate_only",
+            "budgetEnforcement": "request_boundary", "delivery": "isolated_candidate_only",
             "reviewPolicy": policy, "maxReviewCycles": cycles, "completionPolicy": completion,
             "workflowControl": "paused", "workflowStatus": "idle", "completionRef": completion_ref, "maxWorkers": workers}, request=request)
 
@@ -259,8 +264,11 @@ class ProjectServiceMixin:
             if child["activeEpisode"]:
                 self.project_runner.executor.cancel(child["activeEpisode"])
 
+    def project_budget_position(self, run):
+        return {**run, "budgetPosition": self.project_budget.report(run)}
+
     def project_read(self, run_id):
-        run = self.project_store.get(run_id)
+        run = self.project_budget_position(self.project_store.get(run_id))
         run["verificationFreshness"] = "not_assessed"
         if run.get("verifiedCandidate"):
             try:
@@ -340,7 +348,7 @@ class ProjectControllerMixin:
     def _initialize(self, params):
         result = super()._initialize(params)
         result.setdefault("capabilities", {})["projectRunner"] = {
-            "version": 6, "maxWorkers": 2, "delivery": "local_verified_branch", "tokenLimit": "between_episodes",
+            "version": 7, "maxWorkers": 2, "delivery": "local_verified_branch", "tokenLimit": "request_boundary",
             "independentReview": True, "automaticRework": True, "reviewedIntegration": True, "automaticLocalCompletion": True}
         return result
 
@@ -350,7 +358,8 @@ class ProjectControllerMixin:
         if method == "projectRun/get":
             return {"run": self.service.project_read(self.service._required_text(params, "runId"))}
         if method == "projectRun/list":
-            return {"runs": self.service.project_store.list(), "error": self.service.project_runner.error}
+            return {"runs": [self.service.project_budget_position(run) for run in self.service.project_store.list()],
+                    "error": self.service.project_runner.error}
         if method == "projectRun/events":
             return {"events": self.service.project_store.events(self.service._required_text(params, "runId"),
                     int(params.get("afterSequence", 0)), int(params.get("limit", 100)))}

@@ -9,6 +9,7 @@ import uuid
 from .store import encoded
 from .review import criteria, StaleCandidate
 from . import parallel
+from .budget import ProjectBudget
 
 
 def object_reply(text):
@@ -41,8 +42,9 @@ def validate_plan(value):
 
 
 class ProjectRunner:
-    def __init__(self, store, executor):
+    def __init__(self, store, executor, budget=None):
         self.store, self.executor = store, executor
+        self.budget = budget or ProjectBudget(lambda: self.store, set())
         self.lease = (store.home / "scheduler.lock").open("a+b")
         try:
             if os.fstat(self.lease.fileno()).st_size == 0:
@@ -137,6 +139,7 @@ class ProjectRunner:
 
     def tick(self):
         with self.guard:
+            self.budget.apply_late()
             runs = self.store.list()
             # Reconcile even while paused/cancelled; never drop late usage/results.
             for run in runs:
@@ -164,11 +167,12 @@ class ProjectRunner:
 
     def _dispatch(self, run):
         budget_owner = parallel.owner(self.store, run) or run
-        if budget_owner["episodesUsed"] >= budget_owner["maxEpisodes"] or budget_owner["tokensUsed"] >= budget_owner["tokenBudget"]:
+        if (budget_owner["episodesUsed"] >= budget_owner["maxEpisodes"]
+                or self.budget.report(run)["chargedTokens"] >= budget_owner["tokenBudget"]):
             with self.store.transaction() as db:
                 current = self.store._read(db, run["id"])
                 if current["revision"] == run["revision"]:
-                    current.update(control="budget_limited", reason="Episode or between-turn token budget reached")
+                    current.update(control="budget_limited", reason="Episode or token budget reached")
                     self.store.save(db, current, "budget_limited")
             return
         try:
@@ -287,16 +291,21 @@ class ProjectRunner:
                         current.update(state="needs_review", control="paused", reason=result.get("error", "Unknown execution outcome"))
                     self.store.save(db, current, "needs_review")
                 return
-            current["tokensUsed"] += result["tokens"]
-            if current.get("teamOwnerId"):
-                parent = self.store._read(db, current["teamOwnerId"])
-                parent["tokensUsed"] += result["tokens"]
-                self.store.save(db, parent, "parallel_usage_settled")
+            # Usage is charged by event, exactly once, before the episode closes.
+            result = {**result, "tokens": self.budget.settle(db, current, episode, result, self.store.save)}
             current["activeEpisode"] = None
             db.execute("UPDATE project_episodes SET state=?,data=? WHERE id=?",
                        (state, encoded({**episode, "result": result}), episode["id"]))
             if current["state"] == "cancelled":
                 self.store.save(db, current, "cancelled_episode_settled")
+                return
+            if state != "completed" and self.budget.refused(db, episode):
+                # The worker was stopped before a request, not by its work: keep
+                # the task where it is so explicitly added budget can continue it.
+                current.update(control="budget_limited", reason=result.get("error") or "Project token budget reached")
+                current["handoff"] = ("The previous episode stopped at the project token budget before reporting; "
+                                      "inspect the workspace for its partial work.\n" + current.get("handoff", ""))[:12000]
+                self.store.save(db, current, "budget_limited")
                 return
             try:
                 if state != "completed":

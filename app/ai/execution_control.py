@@ -11,6 +11,10 @@ class ModelCancelled(Exception):
     pass
 
 
+class ModelAdmissionRefused(Exception):
+    """The caller's budget refused this request before it was sent."""
+
+
 class ModelSteered(Exception):
     """The current model sample was superseded by newer same-turn guidance."""
 

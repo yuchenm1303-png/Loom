@@ -30,7 +30,7 @@ class QualificationService(ProjectServiceMixin, LoomAppServerService):
 
 
 class RequestBudgetGuard:
-    """Qualification-only stop at observed response boundaries, not a billing cap."""
+    """Independent cross-check of production admission at response boundaries; not a billing cap."""
     def __init__(self, runtime, maximum):
         self.runtime, self.maximum = runtime, maximum
         self.tokens = 0
@@ -125,6 +125,7 @@ def settle_usage(service, run_id):
         root = service.project_store.get(run_id)
         ledger = service.project_store.get(root["integrationRunId"]) if root.get("integrationRunId") else root
         return {"finalState": root["state"], "ledgerRunId": ledger["id"], "tokensUsed": ledger["tokensUsed"],
+                "budgetPosition": service.project_budget.report(ledger),
                 "episodesUsed": ledger["episodesUsed"],
                 "unsettledEpisodes": sum(bool(item["activeEpisode"]) for item in service.project_store.list())}
 
@@ -149,7 +150,9 @@ def probe_workspace_sandbox(workspace):
             process = subprocess.Popen(command.argv, cwd=command.cwd, env=environment, stdin=subprocess.DEVNULL,
                 stdout=stdout_file, stderr=stderr_file, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
             try:
-                process.wait(timeout=20)
+                # MXC may first restore ACEs left by an interrupted sandbox (38 s
+                # measured). Killing it then leaves them for the next run.
+                process.wait(timeout=120)
             except subprocess.TimeoutExpired:
                 if process.poll() is None:
                     if os.name == "nt":
@@ -253,7 +256,10 @@ def main(argv=None):
                 report["oracle"] = oracle(workspace)
                 report["outcome"] = "passed" if all(item["passed"] for item in report["oracle"]) else "oracle_failed"
                 break
-            if run.get("workflowStatus") == "blocked" or run["state"] == "needs_review" or run["control"] == "budget_limited":
+            if any(item["control"] == "budget_limited" for item in [run, *children]):
+                report["outcome"] = "token_budget_reached"
+                break
+            if run.get("workflowStatus") == "blocked" or run["state"] == "needs_review":
                 report["outcome"] = "blocked"
                 report["failureKind"] = failure_kind(run.get("workflowError") or run.get("reason"))
                 break

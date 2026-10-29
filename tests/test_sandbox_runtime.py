@@ -170,10 +170,10 @@ def test_windows_mxc_full_access_never_wraps_command(tmp_path):
 
 
 def test_windows_mxc_probe_requires_a_real_isolation_tier(monkeypatch):
-    def completed(stdout: str, returncode: int = 0):
-        return subprocess.CompletedProcess(["wxc-exec", "--probe"], returncode, stdout, "")
+    def probe(output):
+        return lambda args, **kwargs: _FakeProbe(args, output=output, **kwargs)
 
-    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: completed('{"tier":"base-container"}'))
+    monkeypatch.setattr(subprocess, "Popen", probe('{"tier":"base-container"}'))
     manager = SandboxManager(
         windows_mxc_executable=r"C:\mxc\wxc-exec.exe",
         system_name="Windows",
@@ -181,7 +181,7 @@ def test_windows_mxc_probe_requires_a_real_isolation_tier(monkeypatch):
     assert manager._backend_available is True
     assert "base-container" in manager._backend_reason
 
-    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: completed('{"tier":"unknown"}'))
+    monkeypatch.setattr(subprocess, "Popen", probe('{"tier":"unknown"}'))
     manager = SandboxManager(
         windows_mxc_executable=r"C:\mxc\wxc-exec.exe",
         system_name="Windows",
@@ -190,26 +190,45 @@ def test_windows_mxc_probe_requires_a_real_isolation_tier(monkeypatch):
     assert "usable isolation tier" in manager._backend_reason
 
 
-def test_windows_probe_uses_files_so_inherited_pipes_cannot_block_startup(monkeypatch):
-    def run(args, **kwargs):
-        assert kwargs["timeout"] == 8
+class _FakeProbe:
+    def __init__(self, args, *, output="", returncode=0, hang=False, **kwargs):
         assert kwargs["stdout"] != subprocess.PIPE
         assert kwargs["stderr"] != subprocess.PIPE
-        kwargs["stdout"].write('{"tier":"base-container"}')
-        return subprocess.CompletedProcess(args, 0)
+        self.args, self.returncode, self.hang, self.killed = args, returncode, hang, False
+        kwargs["stdout"].write(output)
 
-    monkeypatch.setattr(subprocess, "run", run)
+    def wait(self, timeout=None):
+        if self.hang:
+            raise subprocess.TimeoutExpired(self.args, timeout)
+        return self.returncode
+
+    def kill(self):
+        self.killed = True
+
+
+def test_windows_probe_uses_files_so_inherited_pipes_cannot_block_startup(monkeypatch):
+    seen = []
+    def popen(args, **kwargs):
+        seen.append(kwargs)
+        return _FakeProbe(args, output='{"tier":"base-container"}', **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", popen)
     ok, reason = SandboxManager._probe_windows_mxc("wxc-exec")
-    assert ok and "base-container" in reason
+    assert ok and "base-container" in reason and seen
 
 
-def test_windows_probe_timeout_fails_closed(monkeypatch):
-    def run(args, **kwargs):
-        raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+def test_windows_probe_timeout_fails_closed_without_interrupting_acl_recovery(monkeypatch):
+    probes = []
+    def popen(args, **kwargs):
+        probes.append(_FakeProbe(args, hang=True, **kwargs))
+        return probes[-1]
 
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(subprocess, "Popen", popen)
     ok, reason = SandboxManager._probe_windows_mxc("wxc-exec")
-    assert not ok and "TimeoutExpired" in reason
+    # A probe killed while it restores leftover ACEs leaves them for the next
+    # probe, which then times out too. It fails closed and is left to finish.
+    assert not ok and "did not finish" in reason
+    assert probes and not probes[0].killed
 
 
 def test_full_access_intentionally_bypasses_os_sandbox(tmp_path):

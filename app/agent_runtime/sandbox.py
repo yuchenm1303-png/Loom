@@ -29,6 +29,7 @@ _MXC_TIERS = frozenset({"base-container", "appcontainer-bfs", "appcontainer-dacl
 # In this tier MXC enforces nothing itself: the AppContainer access check is the
 # boundary, and MXC edits DACLs to open each declared path.
 _MXC_DACL_TIER = "appcontainer-dacl"
+_MXC_PROBE_SECONDS = 60
 _MXC_ENV_ALWAYS = frozenset(
     {
         "ALLUSERSPROFILE",
@@ -238,29 +239,34 @@ class SandboxManager:
 
         try:
             # On Windows a descendant can inherit a pipe after the probe exits.
-            # subprocess.run then waits forever for EOF, even after its timeout.
+            # A pipe read then waits forever for EOF, even after a timeout.
             # Regular files keep both process waiting and output reads bounded.
             with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stdout, tempfile.TemporaryFile(
                 mode="w+", encoding="utf-8", errors="replace"
             ) as stderr:
-                completed = subprocess.run(
+                process = subprocess.Popen(
                     [executable, "--probe"],
                     stdin=subprocess.DEVNULL,
                     stdout=stdout,
                     stderr=stderr,
                     text=True,
                     errors="replace",
-                    timeout=8,
-                    check=False,
                 )
+                try:
+                    returncode = process.wait(timeout=_MXC_PROBE_SECONDS)
+                except subprocess.TimeoutExpired:
+                    # --probe first restores ACEs an interrupted sandbox left
+                    # behind (measured: 0.1 s normally, 38 s while restoring).
+                    # Killing it mid-restore leaves the ACEs for the next probe,
+                    # so every later probe times out the same way. Let it finish.
+                    return False, (
+                        f"Microsoft MXC probe did not finish within {_MXC_PROBE_SECONDS} s; it may be "
+                        "restoring ACLs left by an interrupted sandbox and was left to finish"
+                    )
                 stdout.seek(0)
                 stderr.seek(0)
-                completed = subprocess.CompletedProcess(
-                    completed.args, completed.returncode,
-                    completed.stdout if completed.stdout is not None else stdout.read(65536),
-                    completed.stderr if completed.stderr is not None else stderr.read(65536),
-                )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+                completed = subprocess.CompletedProcess(process.args, returncode, stdout.read(65536), stderr.read(65536))
+        except OSError as exc:
             return False, f"Microsoft MXC probe failed: {type(exc).__name__}: {exc}"
         if completed.returncode != 0:
             detail = str(completed.stderr or completed.stdout or "").strip().replace("\n", " ")[:240]
