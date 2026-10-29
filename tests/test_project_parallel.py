@@ -104,7 +104,11 @@ def test_two_workers_really_overlap_and_aggregate_requires_fresh_project_review(
         assert stats["peak"] == 2 and len(stats["workspaces"]) == 2
         assert final["verificationStatus"] == "passed"
         assert all(item["state"] == "merged" for item in final["teamChildren"])
-        assert final["episodesUsed"] == 8 and final["tokensUsed"] == 40
+        assert final["episodesUsed"] == 6 and final["tokensUsed"] == 30
+        # One review per team task (its single task is its whole scope), then a fresh aggregate review.
+        for item in final["teamChildren"]:
+            reviews = service.project_store.assessments(item["runId"])
+            assert [(a["scope"], a["verdict"]) for a in reviews] == [("project", "passed")]
         assert not (root / "alpha.txt").exists() and not (root / "beta.txt").exists()
         aggregate = service.project_store.home / "workspaces" / run_id
         assert (aggregate / "alpha.txt").read_text() == "A" and (aggregate / "beta.txt").read_text() == "B"
@@ -123,7 +127,7 @@ def test_dependencies_start_on_merged_predecessor_and_parallel_root_auto_integra
         first, second = final["teamChildren"]
         assert service.project_store.get(second["runId"])["baseCommit"] == first["commit"]
         # The source never advanced, so the accepted aggregate integrates without a third review.
-        assert final["episodesUsed"] == 8 and final["tokensUsed"] == 40
+        assert final["episodesUsed"] == 6 and final["tokensUsed"] == 30
         assert service.project_store.get(final["integrationRunId"])["integrationTarget"]["reviewReused"] is True
     finally:
         runtime.close()
@@ -142,7 +146,7 @@ def test_scope_and_shared_budget_fail_closed_without_reset(tmp_path, outside):
             service.project_control({"operationId": str(uuid.uuid4()), "runId": run_id,
                 "expectedRevision": blocked["revision"], "maxEpisodes": 40}, "resume")
             final = until(service, run_id, lambda r: r["state"] == "ready_for_review")
-            assert final["episodesUsed"] == 8
+            assert final["episodesUsed"] == 6
     finally:
         runtime.close()
 
@@ -204,7 +208,7 @@ def test_aggregate_checkout_loss_reconciles_intent_without_replaying_model_work(
         service.project_runner.store = service.project_store
         control(service, service.project_store.get(run_id), "resume")
         final = until(service, run_id, lambda r: r["state"] == "ready_for_review")
-        assert final["episodesUsed"] == 8 and len(final["teamChildren"]) == 2
+        assert final["episodesUsed"] == 6 and len(final["teamChildren"]) == 2
         assert final["parallelMerge"] is None
         assert not (root / "alpha.txt").exists()
     finally:

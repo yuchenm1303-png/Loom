@@ -234,7 +234,13 @@ def main(argv=None):
         selected = {"list_workspace_files", "read_workspace_text", "write_workspace_text", "replace_workspace_text", "apply_patch", "exec"}
         session.tool_selection = [tool.name for tool in runtime.tools.definitions() if tool.name in selected]
         store.save(session)
-        objective = OBJECTIVE + ("\nFor this serial smoke, return exactly one task covering CLI, README and all acceptance cases." if args.max_workers == 1 else "")
+        objective = OBJECTIVE + ("\nFor this serial smoke, return exactly one task covering CLI, README and all acceptance cases."
+            if args.max_workers == 1 else
+            # Without this the planner reasonably orders README after tally.py, and
+            # nothing runs concurrently: the parallel path is never exercised.
+            "\nFor this parallel smoke, return exactly two independent tasks with dependsOn [] and no shared resources: "
+            "task-1 owns only tally.py (the CLI and its behavioral checks); task-2 owns only README.md, written from the "
+            "specification above rather than from tally.py, and checked by inspecting README.md itself.")
         objective += "\nRuntime Python executable (use this exact argv[0], not python/py or interpreter discovery): " + json.dumps(sys.executable)
         objective += "\nDo not execute Git commands; the Host owns Git delivery and integration for this qualification."
         run = service.project_run_create({"operationId": str(uuid.uuid4()), "threadId": source, "objective": objective,
@@ -242,6 +248,7 @@ def main(argv=None):
             "reviewPolicy": "independent", "completionPolicy": "local_integrate"})
         service.project_control({"operationId": str(uuid.uuid4()), "runId": run["id"], "expectedRevision": run["revision"]}, "start")
         previous = None
+        report["peakActiveWorkers"] = 0
         while True:
             run = service.project_store.get(run["id"])
             projection = (run["state"], run["phase"], run.get("workflowStatus"), run["control"], run["episodesUsed"], run["tokensUsed"])
@@ -249,6 +256,9 @@ def main(argv=None):
                 print(json.dumps(dict(zip(("state", "phase", "workflow", "control", "episodes", "tokens"), projection))), flush=True)
                 previous = projection
             children = [item for item in service.project_store.list() if item.get("teamOwnerId") == run["id"] or item.get("workflowOwnerId") == run["id"]]
+            # Sampled once a second: evidence that team tasks really overlapped.
+            report["peakActiveWorkers"] = max(report["peakActiveWorkers"], sum(
+                bool(item["activeEpisode"]) for item in children if item.get("teamOwnerId") == run["id"]))
             if budget_guard.stopped:
                 report["outcome"] = "request_budget_reached"
                 break

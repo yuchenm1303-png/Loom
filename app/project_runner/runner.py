@@ -33,12 +33,13 @@ def object_reply(text):
 def review_target(run):
     """The review a worker's candidate goes to.
 
-    The last task of a standalone run goes straight to whole-project review: it
-    covers every criterion, that task's included, so a separate task review
-    before it only re-verified the same bytes. Earlier tasks keep their own
-    review as the gate to the next task; parallel team tasks keep theirs too.
+    The last task of a run goes straight to whole-project review: it covers
+    every criterion, that task's included, so a separate task review before it
+    only re-verified the same bytes. Earlier tasks keep their own review as the
+    gate to the next task. A parallel team task is a one-task run, so its one
+    review is at project scope too; the merged aggregate still gets its own.
     """
-    if not run.get("teamOwnerId") and run["taskIndex"] == len(run["plan"]) - 1:
+    if run["taskIndex"] == len(run["plan"]) - 1:
         return {**run, "reviewScope": "project", "taskIndex": len(run["plan"])}
     return {**run, "reviewScope": "task"}
 
