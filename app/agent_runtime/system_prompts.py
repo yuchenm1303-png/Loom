@@ -206,22 +206,42 @@ PROGRESS_FEEDBACK_MODES = ("quiet", "balanced", "detailed")
 _PROGRESS_FEEDBACK_STYLES = {
     "quiet": "Give a brief initial update for substantial work, then work silently between major results. Report major discoveries, changed outcomes, blockers and required user decisions; omit minor findings and routine intermediate summaries.",
     "balanced": "Give a brief initial update for substantial work, then report useful discoveries, completed milestones, changed approaches, blockers and required user decisions. Keep each progress update to one short sentence; otherwise issue the next tool calls without text.",
-    "detailed": "Give a brief initial update for substantial work. Also explain useful intermediate findings and why a meaningful next action or change of approach follows from them. Use one to three concise sentences per update. Do not narrate every tool call or acknowledge routine receipts.",
+    # Field case (2026-10-29): with the general wording below, deepseek-v4.1-flash wrote text
+    # in 1 of 48 tool replies on detailed -- the same ~3% as balanced -- because it read
+    # "keep analysis in reasoning" and "do not narrate" as permission to stay silent. Detailed
+    # therefore names the moments that need words instead of only what to leave out.
+    "detailed": "The user wants to follow your work as it happens. Start substantial work with one sentence on what you will look at first. After that, whenever a tool result tells you something, put one to three sentences before the next tool calls in the same reply: what you found (a cause, a relevant file or value, a check that passed or failed, a hypothesis confirmed or ruled out) and what you will do next because of it. Say it in the reply right after the result that showed it, not later in a summary. Plain reads and searches that taught you nothing new yet need no text.",
 }
+
+# Up to v16 every level shared this tail. Its "keep analysis in reasoning" line is what
+# detailed must not say, so detailed gets its own; the others render byte-identically,
+# which stored session prompts (always balanced) depend on to be recognized.
+_SHARED_FEEDBACK_TAIL = (
+    "At every feedback level, promptly report blockers, failures that affect the outcome, and required user decisions. "
+    "Routine tool receipts do not need an acknowledgment. Keep analysis in reasoning rather than progress text. "
+)
+_DETAILED_FEEDBACK_TAIL = (
+    "At every feedback level, promptly report blockers, failures that affect the outcome, and required user decisions. "
+    "Routine tool receipts do not need an acknowledgment. Keep deliberation in reasoning, and write its conclusions as progress text. "
+)
 
 
 def communication_policy(mode: str = "balanced") -> str:
     if mode not in PROGRESS_FEEDBACK_MODES:
         raise ValueError(f"unsupported progress feedback mode: {mode}")
+    return _communication_policy(mode, _PROGRESS_FEEDBACK_STYLES[mode],
+                                 _DETAILED_FEEDBACK_TAIL if mode == "detailed" else _SHARED_FEEDBACK_TAIL)
+
+
+def _communication_policy(mode: str, style: str, tail: str) -> str:
     return (
         "\n\n[LOOM_COMMUNICATION]\n"
         "A reply without a tool call ends your turn and is delivered as your final answer; nothing continues automatically. "
         "While work remains and no user decision is needed, include the next tool call in the same reply. "
         "Never end with an announcement of what you will do next. Give a final answer only when the requested work is done, "
         "or when you are blocked or need a decision, and say which.\n"
-        f"Progress feedback preference: {mode}. {_PROGRESS_FEEDBACK_STYLES[mode]}\n"
-        "At every feedback level, promptly report blockers, failures that affect the outcome, and required user decisions. "
-        "Routine tool receipts do not need an acknowledgment. Keep analysis in reasoning rather than progress text. "
+        f"Progress feedback preference: {mode}. {style}\n"
+        f"{tail}"
         "Tools and the harness already show activity and waiting status; do not repeat unchanged status. "
         "Maintain milestones through update_plan when their status changes rather than restating the plan. "
         "Keep internal protocol, authority and bookkeeping explanations out of user reports unless they explain a problem the user must resolve. "
@@ -230,6 +250,12 @@ def communication_policy(mode: str = "balanced") -> str:
 
 
 EXECUTION_COMMUNICATION_POLICY = communication_policy()
+# The detailed suffix as v16 rendered it, so a prompt carrying it is still replaced, not stacked.
+_V16_DETAILED_COMMUNICATION_POLICY = _communication_policy(
+    "detailed",
+    "Give a brief initial update for substantial work. Also explain useful intermediate findings and why a meaningful next action or change of approach follows from them. Use one to three concise sentences per update. Do not narrate every tool call or acknowledge routine receipts.",
+    _SHARED_FEEDBACK_TAIL,
+)
 
 _PROGRESS_FEEDBACK_MARKER = "Progress feedback preference: "
 
@@ -258,7 +284,8 @@ _V15_DEFAULT_AGENT_SYSTEM_PROMPT = _V15_DEFAULT_AGENT_TASK_PROMPT + EXECUTION_CO
 def system_prompt_with_feedback(prompt: str, mode: str = "balanced") -> str:
     # Replace only an exact Loom-owned suffix. User-authored instructions stay
     # intact, and changing presets never writes back to canonical history.
-    for owned in (*map(communication_policy, PROGRESS_FEEDBACK_MODES), _V11_EXECUTION_COMMUNICATION_POLICY):
+    for owned in (*map(communication_policy, PROGRESS_FEEDBACK_MODES), _V16_DETAILED_COMMUNICATION_POLICY,
+                  _V11_EXECUTION_COMMUNICATION_POLICY):
         if prompt.endswith(owned):
             prompt = prompt[:-len(owned)]
             break

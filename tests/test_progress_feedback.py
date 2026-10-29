@@ -121,6 +121,19 @@ def test_custom_instructions_are_preserved_and_presets_are_replaced_instead_of_s
             replaced = system_prompt_with_feedback(rendered, next_mode)
             assert replaced.count("[LOOM_COMMUNICATION]") == 1
             assert replaced.endswith(communication_policy(next_mode))
+    # A prompt carrying the v16 detailed suffix is replaced too, never stacked.
+    from app.agent_runtime.system_prompts import _V16_DETAILED_COMMUNICATION_POLICY
+    old = custom + _V16_DETAILED_COMMUNICATION_POLICY
+    assert system_prompt_with_feedback(old, "detailed") == custom + communication_policy("detailed")
+
+
+def test_detailed_asks_for_findings_instead_of_keeping_analysis_in_reasoning():
+    # deepseek-v4.1-flash stayed silent on detailed when it shared "keep analysis in reasoning".
+    detailed = communication_policy("detailed")
+    assert "Keep analysis in reasoning" not in detailed
+    assert "what you found" in detailed
+    for mode in ("quiet", "balanced"):
+        assert "Keep analysis in reasoning" in communication_policy(mode)
 
 
 def test_logged_mode_is_the_one_frozen_into_the_prompt_even_if_authors_mention_it():
