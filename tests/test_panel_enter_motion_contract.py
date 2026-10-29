@@ -113,9 +113,8 @@ def test_inspector_micro_motion_is_frozen_during_panel_handoff() -> None:
     # 7c34b9cb dropped the runtime-pane `animation: none` guard along with the
     # redundant runtime-pane-in entrance it existed to suppress, so only the
     # persistent micro-motion freeze is still part of the contract.
-    assert ".runtime-orbit-dot" in css
-    assert ".runtime-orbit-one::before" in css
-    assert ".runtime-orbit-two::before" in css
+    # The empty-state orbit (and its loops) is gone; the mark is the panels' still tile.
+    assert "runtime-orbit" not in css
     assert ".runtime-status-dot" in css
     assert "animation-play-state: paused !important" in css
     assert "scrollbar-gutter: stable" in css

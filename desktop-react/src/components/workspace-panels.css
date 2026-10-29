@@ -395,9 +395,6 @@ body.loom-panel-motion .workspace-panels .run-progress-inline {
   transform-style: preserve-3d;
 }
 
-body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-dot,
-body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-one::before,
-body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-two::before,
 body.loom-panel-motion .workspace-panels > .inspector .runtime-health.live .runtime-health-dot,
 body.loom-panel-motion .workspace-panels > .inspector .runtime-status-dot,
 body.loom-panel-motion .workspace-panels > .inspector .runtime-stream-mark.live i {

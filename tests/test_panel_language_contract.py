@@ -247,10 +247,15 @@ def test_empty_panels_share_one_still_state() -> None:
     start = kit.index("/* Empty state (PanelEmpty.tsx)")
     empty = kit[start:kit.index(".pl-card {", start)]
 
-    # A static orbit around the panel's glyph: an empty panel asks for no frame while the run streams.
+    # A still tile in one fading frame: an empty panel asks for no frame while the run streams.
     assert "animation" not in empty and "@keyframes" not in empty
-    for part in (".pl-empty-core", ".pl-empty-orbit", ".pl-empty-title", ".pl-empty-copy", ".pl-empty-chips"):
+    for part in (".pl-empty-art::before", ".pl-empty-core", ".pl-empty-title", ".pl-empty-copy", ".pl-empty-chips"):
         assert part in empty, part
+    # No orbit, ring or satellite dot is left anywhere, the inspector's included: it draws the same art.
+    for path in ("components/PanelEmpty.tsx", "components/panel-language.css", "components/Inspector.tsx",
+                 "components/InspectorMark.css", "components/Inspector.css", "components/runtime-controls-polish.css"):
+        assert "orbit" not in read(path).replace("Nothing orbits", ""), path
+    assert '"pl-empty-art runtime-empty-visual"' in read("components/Inspector.tsx")
     for path in ("components/SubAgentWorkspace.tsx", "components/ReviewWorkspace.tsx", "components/FilesWorkbench.tsx"):
         assert "<PanelEmpty" in read(path), path
     # The orbit the agent panel used to draw for itself is gone from both the markup and the sheet.

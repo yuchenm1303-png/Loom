@@ -232,11 +232,8 @@ function EmptyState({ tab }: { tab: Tab }) {
   const copy = (zh ? emptyCopyZh : emptyCopy)[tab];
   return (
     <div className={`runtime-empty runtime-empty-${tab}`}>
-      <div className="runtime-empty-visual" aria-hidden="true">
-        <span className="runtime-orbit runtime-orbit-one" />
-        <span className="runtime-orbit runtime-orbit-two" />
-        <span className="runtime-orbit-dot" />
-        <span className="runtime-empty-icon">
+      <div className="pl-empty-art runtime-empty-visual" aria-hidden="true">
+        <span className="pl-empty-core runtime-empty-icon">
           {emptyIcons.map(({ id, icon: Icon }) => (
             <Icon
               key={id}
