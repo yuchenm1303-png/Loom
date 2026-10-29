@@ -1,0 +1,94 @@
+"""Accepted checks are kept from passing independent reviews and handed to later sessions."""
+import json
+from pathlib import Path
+import sys
+from types import SimpleNamespace
+import uuid
+
+from app.agent_runtime.contracts import AgentEventKind as E
+from app.project_runner import checks
+from app.project_runner.store import ProjectStore
+from test_project_runner import create, control, cycle, reply
+from test_project_review import setup_review, writing, checking, check_both, CANDIDATE, PASSED, PASSED_ALL, TWO_TASKS
+
+
+def _event(kind, data):
+    return SimpleNamespace(event_id=str(uuid.uuid4()), kind=kind, data=data)
+
+
+def test_passing_review_keeps_its_cited_command_and_script_for_later_sessions(tmp_path):
+    store = ProjectStore(tmp_path / "home")
+    run = store.create("op", {"tokenBudget": 10, "maxEpisodes": 1})
+    review_checkout, scratch = tmp_path / "review", tmp_path / "session" / "run-artifacts"
+    (review_checkout / "pkg").mkdir(parents=True)
+    script = scratch / "turn-1" / "check_dates.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("print('calendar dates rejected')", encoding="utf-8")
+    request = _event(E.TOOL_REQUESTED, {"call_id": "c1", "tool": "exec", "arguments": {
+        "argv": [sys.executable, str(script), str(review_checkout / "pkg")], "cwd": str(review_checkout)}})
+    passed = _event(E.CHECK_RECORDED, {"case_id": "task-1:2", "verdict": "passed", "expectation": "bad dates exit 2",
+                                       "subject_paths": ["pkg/parse.py"], "evidence_refs": [{"call_id": "c1"}]})
+    failed = _event(E.CHECK_RECORDED, {"case_id": "task-1:3", "verdict": "failed", "expectation": "x",
+                                       "evidence_refs": [{"call_id": "c1"}]})
+    assessment = {"verdict": "passed", "candidateId": "cand", "checks": [
+        {"criterionId": "task-1:2", "eventId": passed.event_id}, {"criterionId": "task-1:3", "eventId": failed.event_id}]}
+    assert checks.harvest(store, run, assessment, [request, passed, failed], review_checkout, scratch) == 1
+    # A failing verdict keeps nothing.
+    assert checks.harvest(store, run, {**assessment, "verdict": "needs_changes"}, [request, passed], review_checkout, scratch) == 0
+
+    later_scratch, later_checkout = tmp_path / "later" / "scratch", tmp_path / "later" / "review"
+    later_scratch.mkdir(parents=True)
+    provided = checks.provide(store, run, later_scratch, later_checkout)
+    assert [item["criterionId"] for item in provided] == ["task-1:2"]
+    argv = provided[0]["argv"]
+    copied = later_scratch / "accepted-checks" / "task-1_2" / "check_dates.py"
+    assert copied.read_text(encoding="utf-8") == "print('calendar dates rejected')"
+    assert argv == [sys.executable, copied.as_posix(), later_checkout.as_posix() + "/pkg"]
+    assert provided[0]["cwd"] == later_checkout.as_posix()
+    store.close()
+
+
+def test_later_review_and_next_worker_receive_the_accepted_checks(tmp_path):
+    responses = [reply(TWO_TASKS), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED),
+                 reply(CANDIDATE), check_both(), reply(PASSED_ALL)]
+    service, runtime, platform, workspace, source = setup_review(tmp_path, responses)
+    try:
+        run = create(service, source, reviewPolicy="independent", maxEpisodes=12)
+        control(service, run, "start")
+        for _ in range(12):
+            cycle(service)
+            if service.project_store.get(run["id"])["state"] != "running":
+                break
+        final = service.project_store.get(run["id"])
+        assert final["verificationStatus"] == "passed", final["reason"]
+        worker_two = str(platform.requests[5].messages)   # task-2 worker
+        project_review = str(platform.requests[6].messages)
+        assert "regressionChecks" in worker_two and "task-1:1" in worker_two
+        assert "acceptedChecks" in project_review and "Re-run them" in project_review
+        with service.project_store.lock:
+            kept = [json.loads(row[0]) for row in service.project_store.db.execute("SELECT data FROM project_checks")]
+        assert {item["criterionId"] for item in kept} >= {"task-1:1"}
+    finally:
+        runtime.close()
+
+
+def test_notes_from_one_task_reach_later_episodes_once(tmp_path):
+    from test_project_runner import build
+    note = "cmd /c mangles the quoted non-ASCII interpreter path; call python directly"
+    responses = [reply(TWO_TASKS),
+                 reply({"action": "candidate", "summary": "task 1 done", "notes": [note, note, 7]}),
+                 reply({"action": "candidate", "summary": "task 2 done", "notes": "not a list"})]
+    service, runtime, platform, _, source = build(tmp_path, responses)
+    try:
+        run = control(service, create(service, source, reviewPolicy="manual"), "start")
+        for _ in range(4):
+            cycle(service)
+        final = service.project_store.get(run["id"])
+        assert final["state"] == "ready_for_review", final["reason"]
+        assert note in str(platform.requests[2].messages)          # task-2's worker sees it
+        assert note not in str(platform.requests[1].messages)      # nothing invented before it was written
+        with service.project_store.lock:
+            rows = service.project_store.db.execute("SELECT note FROM project_notes").fetchall()
+        assert [row[0] for row in rows] == [note]
+    finally:
+        runtime.close()

@@ -11,6 +11,7 @@ import time
 import uuid
 
 from .budget import SCHEMA as budget_schema
+from .checks import SCHEMA as checks_schema
 
 
 def encoded(value):
@@ -42,7 +43,7 @@ class ProjectStore:
             CREATE TABLE IF NOT EXISTS project_assessments(id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES project_runs(id),
                 candidate_id TEXT NOT NULL REFERENCES project_candidates(id), episode_id TEXT NOT NULL UNIQUE REFERENCES project_episodes(id), data TEXT NOT NULL);
             INSERT OR IGNORE INTO project_runner_schema_versions VALUES(2);
-        """ + budget_schema)
+        """ + budget_schema + checks_schema)
 
     @contextmanager
     def transaction(self):

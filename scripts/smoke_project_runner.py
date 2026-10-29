@@ -300,7 +300,9 @@ def main(argv=None):
         else:
             os.environ["LOOM_API_KEY"] = old_key
         secret = None
-    runtime.limits = AgentLimits(max_model_steps=8, max_tool_calls=16, model_retries=2, transport_retries=2, max_recovery_seconds=90)
+    # Production episodes have no step bound; these only stop a runaway. Eight steps
+    # (the old value) left a real README task re-orienting every episode, never finishing.
+    runtime.limits = AgentLimits(max_model_steps=40, max_tool_calls=80, model_retries=2, transport_retries=2, max_recovery_seconds=90)
     budget_guard = RequestBudgetGuard(runtime, args.token_budget)
     runtime.subscribe(budget_guard.observe)
     service = QualificationService(runtime=runtime, store=store, model=model, default_workspace=workspace)

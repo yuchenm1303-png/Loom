@@ -466,6 +466,7 @@ def test_continued_episode_starts_from_a_compacted_handoff_without_a_model_call(
         last = str(platform.requests[-1].messages)
         # The continued request carries the runner's summary, not the earlier tool output.
         assert "compacted by the project runner" in last and "saved part one saved part one" not in last
+        assert "workspaceFiles" in last and "README.md" in last  # the layout, so no re-listing
         assert len(platform.requests) == 3  # compaction itself never sampled the model
         assert final["tokensUsed"] == 15
     finally:
@@ -601,7 +602,7 @@ def test_repeated_malformed_replies_stop_for_review(tmp_path):
 @pytest.mark.parametrize("state,result,refused,kind", [
     ("limit_reached", {"limit": "model_steps"}, False, "episode_bound"),
     ("limit_reached", {"limit": "tool_calls"}, False, "episode_bound"),
-    ("limit_reached", {"limit": "no_progress", "error": "model step limit reached"}, False, None),
+    ("limit_reached", {"limit": "no_progress", "error": "model step limit reached"}, False, "no_progress"),
     ("limit_reached", {"limit": "context"}, False, None),
     ("limit_reached", {"limit": "admission"}, True, "budget"),
     ("limit_reached", {"limit": None, "error": "tool call limit reached"}, False, "episode_bound"),  # pre-field event

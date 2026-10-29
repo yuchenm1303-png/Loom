@@ -10,7 +10,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
-from . import delivery, integration, workflow, parallel
+from . import delivery, integration, workflow, parallel, checks
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
 from app.agent_runtime.context_budget import estimate_tokens
@@ -68,6 +68,15 @@ class ProjectExecutor:
                           "titleSource": "manual", "autoTitleDisabled": True, "projectRunId": run["id"]})
         return session.session_id
 
+    def accepted_checks(self, run, session_id):
+        """The project's kept checks, copied into this session's scratch and rendered for it."""
+        scratch = self.service.runtime._run_scratch_dir(session_id, "accepted-checks")
+        workspace = self.service._load(session_id).workspace_dir
+        if scratch is None:
+            return []
+        scratch.mkdir(parents=True, exist_ok=True)
+        return checks.provide(self.service.project_store, run, scratch, workspace)
+
     def compact_between_episodes(self, run, session_id):
         """Start a continued episode from the run's own handoff, not the whole history.
 
@@ -80,17 +89,29 @@ class ProjectExecutor:
         session = self.service._load(session_id)
         if compact is None or estimate_tokens(session.messages) <= EPISODE_CARRY_TOKENS:
             return
-        checks = {}
+        recorded = {}
         for event in self.service.store.events(session_id):
             if event.kind is E.CHECK_RECORDED:
-                checks[str(event.data.get("case_id"))] = str(event.data.get("verdict"))
+                recorded[str(event.data.get("case_id"))] = str(event.data.get("verdict"))
         task = run["plan"][run["taskIndex"]] if run["phase"] == "working" and run["plan"] else None
+        # A real README task spent five of every eight steps re-listing the tree and
+        # re-reading every source file after each boundary, and never finished. Give
+        # the layout up front and ask for targeted reads only.
+        try:
+            names = git(session.workspace_dir, "ls-files", "--cached", "--others", "--exclude-standard").splitlines()
+            files = {name: (Path(session.workspace_dir) / name).stat().st_size
+                     for name in names[:200] if (Path(session.workspace_dir) / name).is_file()}
+        except (ValueError, OSError):
+            files = {}
         summary = encoded({"note": "Earlier episodes of this session were compacted by the project runner at an "
-                                   "episode boundary. The workspace holds all file changes; re-read files instead of "
-                                   "relying on memory. Do not repeat checks already recorded unless the code changed.",
+                                   "episode boundary. The workspace holds all file changes; workspaceFiles lists them "
+                                   "with sizes, so do not list directories again. Read only the files you are about "
+                                   "to change or check, and continue from the handoff rather than starting over. "
+                                   "Scratch files from earlier episodes are still there. Do not repeat checks already "
+                                   "recorded unless the code changed.",
                            "objective": run["objective"][:4000], "phase": run["phase"], "task": task,
                            "handoff": run.get("handoff", "")[:6000], "reviewFeedback": run.get("feedback", []),
-                           "recordedChecks": checks})
+                           "recordedChecks": recorded, "workspaceFiles": files})
         try:
             compact(session_id, summary)
         except (ValueError, RuntimeError):
@@ -109,6 +130,11 @@ class ProjectExecutor:
             events = self.service.store.events(episode["sessionId"])
             assessment = assess(run, episode, reply, expected, source, workspace, events)
             facts = {"assessment": assessment}
+            try:
+                checks.harvest(self.service.project_store, run, assessment, events, workspace,
+                               self.service.store.session_dir(episode["sessionId"]) / "run-artifacts")
+            except OSError:
+                pass  # a check that could not be kept costs a later review time, not correctness
             if assessment["verdict"] == "passed" and run["reviewScope"] == "task" and run["taskIndex"] + 1 == len(run["plan"]):
                 facts["finalCandidate"] = candidate({**run, "reviewScope": "project", "taskIndex": len(run["plan"])}, source)
             return facts
