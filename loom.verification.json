@@ -1,8 +1,16 @@
 {
   "version": 1,
+  "servers": {
+    "renderer": {
+      "argv": ["node", "node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", "5199"],
+      "cwd": "desktop-react",
+      "ready_url": "http://127.0.0.1:5199/"
+    }
+  },
   "features": [
     {
       "id": "sidebar-motion",
+      "server": "renderer",
       "sources": ["desktop-react/src/components/Sidebar*", "desktop-react/src/components/sidebar*.css"],
       "entry": "http://127.0.0.1:5199/scripts/fixtures/live-app.html?lang=en&theme=dark",
       "setup": "From desktop-react: node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5199. This is a renderer fixture, not evidence of installed Electron behavior.",
@@ -11,6 +19,7 @@
     },
     {
       "id": "composer",
+      "server": "renderer",
       "sources": ["desktop-react/src/components/Composer*", "desktop-react/src/components/composer*.css"],
       "entry": "http://127.0.0.1:5199/scripts/fixtures/live-app.html?lang=en&theme=dark",
       "setup": "From desktop-react: node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5199. Use a real desktop run as well if the change depends on native bridges.",

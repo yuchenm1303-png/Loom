@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import ssl
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any, Mapping
 
 from .contracts import AgentEventKind, ToolEffect
 from .process_runtime import (
+    _MAX_TIMEOUT_SECONDS,
     ManagedProcess,
     ProcessSnapshot,
     ProcessState,
@@ -23,6 +28,9 @@ INTERRUPT_SETTLE_SECONDS = 1.5
 
 
 _MAX_WAIT_SECONDS = 120.0
+_READY_TIMEOUT_SECONDS = 60
+_READY_POLL_SECONDS = 0.25
+_READY_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 def _store(context: ToolContext) -> ProcessStore:
@@ -51,13 +59,16 @@ def _validate_env(raw: object) -> Mapping[str, object] | None:
     return {str(key): value for key, value in raw.items()}
 
 
-def _resolve_command(context: ToolContext, arguments: dict[str, Any]):
+def _resolve_command(context: ToolContext, arguments: dict[str, Any], *, server: bool = False):
     argv = validate_argv(arguments["argv"])
     relative_cwd = str(arguments.get("cwd") or ".").strip() or "."
     cwd = context.resolve_workspace_path(relative_cwd)
     if not cwd.is_dir():
         raise ValueError("command cwd must be a workspace directory")
-    timeout_seconds = validate_timeout(arguments.get("timeout_seconds"))
+    # A preview server lives across edits and turns; two minutes would kill it
+    # between the first look and the second.
+    timeout_seconds = (validate_timeout(arguments.get("timeout_seconds"), default=_MAX_TIMEOUT_SECONDS)
+                       if server else validate_timeout(arguments.get("timeout_seconds")))
     stdin_text = str(arguments.get("stdin") or "")
     if len(stdin_text) > 256_000:
         raise ValueError("stdin exceeds 256,000 characters")
@@ -174,6 +185,125 @@ def _emit_exit_once(
     )
 
 
+def _validate_ready_url(raw: object) -> str:
+    url = str(raw or "").strip()
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or (parsed.hostname or "").lower() not in _READY_HOSTS:
+        raise ValueError("ready_url must be an http(s) URL on localhost, 127.0.0.1 or [::1]")
+    return url
+
+
+def _validate_ready_timeout(raw: object) -> float:
+    if isinstance(raw, bool):
+        raise ValueError("ready_timeout_seconds must be a number")
+    seconds = float(_READY_TIMEOUT_SECONDS if raw is None else raw)
+    if not 1 <= seconds <= _MAX_WAIT_SECONDS:
+        raise ValueError(f"ready_timeout_seconds must be within 1..{int(_MAX_WAIT_SECONDS)}")
+    return seconds
+
+
+def _url_answers(url: str, *, timeout: float = 1.0) -> bool:
+    """Whether a server is listening at ``url``: any HTTP response counts.
+
+    A dev server often has no page at its root, so a 404 still means ready.
+    Proxies are bypassed (a configured HTTP(S)_PROXY would answer for
+    localhost itself) and loopback certificates are not verified.
+    """
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        urllib.request.HTTPSHandler(context=ssl._create_unverified_context()),
+    )
+    try:
+        with opener.open(url, timeout=timeout):
+            return True
+    except urllib.error.HTTPError:
+        return True
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+def _await_ready(
+    context: ToolContext,
+    managed: ManagedProcess,
+    url: str,
+    ready_timeout: float,
+    *,
+    reused: bool,
+) -> ToolResult:
+    deadline = time.monotonic() + ready_timeout
+    while True:
+        snapshot = managed.snapshot(drain_delta=True)
+        _emit_snapshot_delta(context, managed, snapshot)
+        if context.cancelled:
+            managed.terminate_tree()
+            snapshot = managed.snapshot(drain_delta=True)
+            _emit_exit_once(context, managed, snapshot)
+            return ToolResult(ok=False, content="Start cancelled and the server process tree was terminated.",
+                              data={**snapshot.to_dict(), "ready_url": url, "ready": False})
+        if not snapshot.running:
+            _emit_exit_once(context, managed, snapshot)
+            result = _result_from_snapshot(
+                snapshot, content_prefix=f"Server exited before {url} answered.")
+            return ToolResult(ok=False, content=result.content,
+                              data={**result.data, "ready_url": url, "ready": False})
+        if _url_answers(url):
+            prefix = (f"Reusing this conversation's running server; {url} answers." if reused
+                      else f"Server ready; {url} answers.")
+            result = _result_from_snapshot(snapshot, content_prefix=prefix + (
+                " It keeps running across edits and turns: reload the page after a change instead of "
+                "starting it again, and stop it with exec_terminate when done."))
+            return ToolResult(ok=True, content=result.content,
+                              data={**result.data, "ready_url": url, "ready": True, "reused": reused})
+        if time.monotonic() >= deadline:
+            result = _result_from_snapshot(snapshot, content_prefix=(
+                f"{url} did not answer within {ready_timeout:g}s; the process is still running. "
+                "Check its output for the address it chose, or exec_wait and retry."))
+            return ToolResult(ok=False, content=result.content,
+                              data={**result.data, "ready_url": url, "ready": False})
+        time.sleep(_READY_POLL_SECONDS)
+
+
+def _start_server(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+    """Start a dev/preview server and return once its URL answers, reusing one already running."""
+    if arguments.get("wait") is True or arguments.get("pty"):
+        raise ValueError("ready_url starts a background server: omit wait (or set wait=false) and pty")
+    url = _validate_ready_url(arguments.get("ready_url"))
+    ready_timeout = _validate_ready_timeout(arguments.get("ready_timeout_seconds"))
+    argv, relative_cwd, cwd, timeout_seconds, stdin_text, env, _pty, rows, cols = _resolve_command(
+        context, arguments, server=True)
+    store = _store(context)
+    # The same command in the same folder is the same server: wait on it rather
+    # than start a second copy that would fight it for the port.
+    same = next((s for s in reversed(store.list_for_session(context.session_id))
+                 if s.running and tuple(s.argv) == tuple(argv) and Path(s.cwd) == cwd.resolve()), None)
+    if same is not None:
+        return _await_ready(context, store.get(same.process_id, session_id=context.session_id),
+                            url, ready_timeout, reused=True)
+    if _url_answers(url):
+        return ToolResult(ok=True, content=(
+            f"{url} already answers, so no second server was started. This conversation did not start it: "
+            "it may serve another checkout or code from before your edits. If that matters, stop it or "
+            "start this server on a free port."),
+            data={"ready_url": url, "ready": True, "reused": True, "process_id": None})
+    managed = store.start(
+        session_id=context.session_id,
+        argv=argv,
+        cwd=cwd,
+        workspace=context.workspace,
+        permission_mode=context.permission_mode,
+        permissions=context.services.get("permission_snapshot"),
+        environment_policy=context.services.get("environment_policy"),
+        timeout_seconds=timeout_seconds,
+        stdin_text=stdin_text,
+        env=env,
+        rows=rows,
+        cols=cols,
+        scratch=_scratch_root(context),
+    )
+    _emit_started(context, managed, relative_cwd=relative_cwd, background=True)
+    return _await_ready(context, managed, url, ready_timeout, reused=False)
+
+
 def _exec_handler(
     context: ToolContext,
     arguments: dict[str, Any],
@@ -181,6 +311,8 @@ def _exec_handler(
     force_wait: bool | None = None,
 ) -> ToolResult:
     context.raise_if_cancelled()
+    if arguments.get("ready_url") is not None and force_wait is None:
+        return _start_server(context, arguments)
     (
         argv,
         relative_cwd,
@@ -250,6 +382,10 @@ def _exec_schema(*, include_wait: bool = True) -> dict[str, Any]:
     }
     if include_wait:
         properties["wait"] = {"type": "boolean"}
+        properties["ready_url"] = {"type": "string", "description":
+            "Start a dev/preview server: runs in the background and returns once this localhost URL "
+            "answers. Reuses the same command already running in this conversation."}
+        properties["ready_timeout_seconds"] = {"type": "number"}
         from .verification import VERIFICATION_SCHEMA
         properties["verification"] = VERIFICATION_SCHEMA
     return {
@@ -268,7 +404,8 @@ def exec_tool() -> AgentTool:
         from .tools import validate_tool_arguments
         from .verification import VERIFICATION_SCHEMA, subject_snapshot, assess_command
         validate_tool_arguments(VERIFICATION_SCHEMA, spec)
-        if arguments.get("wait", True) is not True or arguments.get("pty", False):
+        if (arguments.get("wait", True) is not True or arguments.get("pty", False)
+                or arguments.get("ready_url") is not None):
             raise ValueError("exec.verification requires wait=true and pty=false; start the app separately")
         before = subject_snapshot(context, spec["subject_paths"])
         result = _exec_handler(context, arguments)
@@ -293,7 +430,10 @@ def exec_tool() -> AgentTool:
             "unless shell features are needed. Pass scripts as files for complex shell logic. "
             "For repeatable checks, set verification with case_id, expectation, subject_paths and optional "
             "expected_exit_code. Loom records the actual exit status against the tested source bytes and "
-            "marks results stale after source changes. Requires wait=true, pty=false."
+            "marks results stale after source changes. Requires wait=true, pty=false. "
+            "To preview a UI, start its dev server once with ready_url (for example "
+            "http://127.0.0.1:5173/): the call returns when the URL answers, the server stays up across "
+            "edits and turns, and repeating the call reuses it. Reload the page after each edit."
         ),
         input_schema=_exec_schema(include_wait=True),
         handler=execute,

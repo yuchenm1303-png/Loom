@@ -31,6 +31,8 @@ _EXEC_ARGUMENT_NAMES = frozenset(
         "cols",
         "wait",
         "verification",
+        "ready_url",
+        "ready_timeout_seconds",
         "sandbox_permissions",
         "additional_permissions",
         "justification",
@@ -81,6 +83,13 @@ def _validate_exec_argument_shape(arguments: dict[str, object]) -> None:
         validate_tool_arguments(VERIFICATION_SCHEMA, arguments["verification"])
         if arguments.get("wait", True) is not True or arguments.get("pty", False):
             raise ValueError("exec.verification requires wait=true and pty=false")
+    if "ready_url" in arguments and not isinstance(arguments["ready_url"], str):
+        raise ValueError("ready_url must be a string")
+    if "ready_timeout_seconds" in arguments and (
+        isinstance(arguments["ready_timeout_seconds"], bool)
+        or not isinstance(arguments["ready_timeout_seconds"], (int, float))
+    ):
+        raise ValueError("ready_timeout_seconds must be a number")
     for name in ("rows", "cols"):
         if name in arguments and (
             isinstance(arguments[name], bool) or not isinstance(arguments[name], int)

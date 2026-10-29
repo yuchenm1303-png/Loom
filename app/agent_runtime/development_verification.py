@@ -228,15 +228,33 @@ def feature_recipes(context, paths):
         data = json.loads(target.read_text(encoding="utf-8"))
         if data.get("version") != 1 or not isinstance(data.get("features"), list) or len(data["features"]) > 64:
             raise ValueError("expected version=1 and up to 64 features")
+        servers = data.get("servers", {})
+        if not isinstance(servers, dict) or len(servers) > 16:
+            raise ValueError("servers must be an object of up to 16 entries")
+        for server in servers.values():
+            if (not isinstance(server, dict) or not isinstance(server.get("argv"), list) or not server["argv"]
+                    or any(not isinstance(a, str) for a in server["argv"])
+                    or not isinstance(server.get("ready_url"), str)):
+                raise ValueError("a server needs argv (strings) and ready_url")
         recipes = []
         for feature in data["features"]:
             if not isinstance(feature, dict) or not isinstance(feature.get("sources"), list):
                 raise ValueError("feature requires sources")
             if any(not isinstance(p, str) for p in feature["sources"]):
                 raise ValueError("source patterns must be strings")
+            if "server" in feature and feature["server"] not in servers:
+                raise ValueError(f"feature {feature.get('id', '')!r} names an undefined server")
             if any(fnmatch.fnmatchcase(path, pattern) for path in paths for pattern in feature["sources"]):
-                recipes.append({key: str(feature.get(key, ""))[:2000] for key in
-                                ("id", "entry", "setup", "exercise", "expectation")})
+                recipe = {key: str(feature.get(key, ""))[:2000] for key in
+                          ("id", "entry", "setup", "exercise", "expectation")}
+                if "server" in feature:
+                    # Exact exec arguments, so the model starts the preview
+                    # instead of reconstructing it from the setup prose.
+                    server = servers[feature["server"]]
+                    recipe["start"] = {"argv": [a[:500] for a in server["argv"][:32]],
+                                       "cwd": str(server.get("cwd", "."))[:500],
+                                       "ready_url": server["ready_url"][:500]}
+                recipes.append(recipe)
         return recipes[:16], "configured"
     except (ValueError, OSError, TypeError, AttributeError) as exc:
         return [], f"invalid: {str(exc)[:200]}"
@@ -583,7 +601,8 @@ class DevelopmentVerification:
             "A subject marked light is a small edit to an existing file: one passing build, type check or test that "
             "covers it (exec.verification with its path in subject_paths) is enough; do not screenshot it. "
             "Resolve other pending/failed UI checks by running the affected app and inspecting current visual behavior; "
-            "compiler output is insufficient for them. Use browser_run_check for replayable assertions "
+            "compiler output is insufficient for them. A recipe's start holds the exec arguments for its "
+            "preview server; start it once and reload after edits. Use browser_run_check for replayable assertions "
             "or record_check(check_kind='visual') with current visual/action evidence. Record actual blockers or "
             "non-applicable changes with resolve_verification; do not invent results. Finish the requested work "
             "first; before the final answer, changes from this turn need a check or a recorded reason, and earlier "
