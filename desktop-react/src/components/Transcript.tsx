@@ -1,5 +1,4 @@
 import "./model-input-notice.css";
-import { LoomMark } from "./LoomMark";
 import {
   ArrowUpRight,
   Bot,
@@ -1764,7 +1763,6 @@ function EmptyState({ disabled, onPrompt, onOpenInsights, connecting, startupSta
   return (
     <section className="empty-state">
       <div className="empty-intro">
-        <LoomMark size={52} className="empty-mark" />
         <h1>{lang ? "今天我们做点什么？" : "What are we working on?"}</h1>
         <p>
           {lang

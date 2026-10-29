@@ -1,13 +1,12 @@
-import markSmall from "../assets/loom-mark-64.png";
-import markLarge from "../assets/loom-mark-160.png";
+import mark from "../assets/loom-mark-64.png";
 
-/** Loom's mark (the glass orb in its orbit), bundled so it resolves under the desktop shell's `./` base too. Small
-    places draw the 64px copy; the home screen's larger one draws the 160px copy, enough for 2x displays. */
+/** Loom's mark (the glass orb in its orbit), bundled so it resolves under the desktop shell's `./` base too. The 64px
+    copy covers the small places it is drawn (up to 32px on a 2x display). */
 export function LoomMark({ size, className }: { size: number; className?: string }) {
   return (
     <img
       className={className ? `loom-mark ${className}` : "loom-mark"}
-      src={size > 32 ? markLarge : markSmall}
+      src={mark}
       width={size}
       height={size}
       alt=""

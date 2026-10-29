@@ -83,11 +83,6 @@ html[data-loom-theme="light"] .empty-state {
   align-items: center;
 }
 
-.empty-mark {
-  display: block;
-  margin: 0 0 14px;
-}
-
 .empty-intro h1 {
   margin: 0;
   color: var(--home-ink);
