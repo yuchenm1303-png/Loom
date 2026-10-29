@@ -1024,7 +1024,7 @@ export const Sidebar = memo(function Sidebar({
       {/* The top row is where the sidebar's toolbar lies (SidebarControls, one layer up, above the card): the toggle at
           its start, search and the quill at its end. It keeps the room and stays part of the window's drag rail. */}
       <div className="codex-sidebar-topbar" aria-hidden="true">
-        <span className="codex-sidebar-brand"><LoomMark size={20} />Loom</span>
+        <span className="codex-sidebar-brand"><LoomMark size={20} /></span>
       </div>
 
       <div className={`compact-search-shell ${searchOpen ? "open" : ""}`} aria-hidden={!searchOpen}>

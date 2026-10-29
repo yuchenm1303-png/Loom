@@ -145,17 +145,12 @@ html[data-loom-density="spacious"] .sidebar.compact-sidebar { --sb-row-h: 38px; 
   align-items: center;
 }
 
-/* The app's mark and name, just after the toggle (30px button + 6px). Part of the card, so it leaves with it; it never
-   takes the pointer, so the stretch keeps moving the window. */
+/* The app's mark, just after the toggle (30px button + 6px). Part of the card, so it leaves with it; it never takes the
+   pointer, so the stretch keeps moving the window. */
 .codex-sidebar-brand {
   margin-left: 36px;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  color: var(--sb-ink);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -.01em;
   pointer-events: none;
   user-select: none;
 }
