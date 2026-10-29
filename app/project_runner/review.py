@@ -90,12 +90,25 @@ def candidate(run, root):
             "scope": run.get("reviewScope", "task"), "taskIndex": run["taskIndex"]}
 
 
+def candidate_view(root, expected):
+    """The candidate's own files as they are in root; files root adds are not part of it.
+
+    A reviewer's checkout collects its test outputs and probe scripts. Comparing the
+    whole checkout called that a changed candidate, threw away a three-episode review
+    and sent unchanged work back to its worker (real ledger run, 680k tokens).
+    """
+    current = snapshot(root)["files"]
+    return {name: current.get(name, {"sha256": None, "mode": None}) for name in expected["files"]}
+
+
 def review_workspace(run, expected, source, target):
     if snapshot(source)["digest"] != expected["digest"]:
         raise StaleCandidate("Candidate changed before independent review")
     if not target.exists():
         target.parent.mkdir(parents=True, exist_ok=True)
         git(run["repository"], "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(target), expected["head"])
+    if candidate_view(target, expected) != expected["files"]:
+        # New checkout, or a reviewer edited candidate files: put back exactly the frozen bytes.
         for name, item in expected["files"].items():
             destination = target / name
             if not destination.parent.resolve().is_relative_to(target.resolve()):
@@ -112,7 +125,7 @@ def review_workspace(run, expected, source, target):
                     raise ValueError("Review destination is a symlink")
                 destination.write_bytes(data)
                 destination.chmod(mode)
-    if snapshot(source)["digest"] != expected["digest"] or snapshot(target)["digest"] != expected["digest"]:
+    if snapshot(source)["digest"] != expected["digest"] or candidate_view(target, expected) != expected["files"]:
         raise StaleCandidate("Review source no longer matches the frozen candidate")
     return target
 
@@ -130,7 +143,8 @@ def assess(run, episode, reply, expected, source, workspace, events):
               "definitionHash": expected["definitionHash"], "sessionId": episode["sessionId"],
               "turnId": episode["turnId"], "scope": expected["scope"],
               "hostEnvironment": {"os": platform.system(), "python": platform.python_version()}}
-    if expected["definitionHash"] != definition_hash(run) or snapshot(source)["digest"] != expected["digest"] or snapshot(workspace)["digest"] != expected["digest"]:
+    if (expected["definitionHash"] != definition_hash(run) or snapshot(source)["digest"] != expected["digest"]
+            or candidate_view(workspace, expected) != expected["files"]):
         return {**result, "verdict": "stale", "summary": "Source or acceptance definition changed during review"}
     if verdict == "needs_changes":
         issues = reply.get("issues")

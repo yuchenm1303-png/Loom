@@ -391,3 +391,23 @@ def test_under_evidenced_pass_goes_back_to_the_reviewer_with_the_reason(tmp_path
         assert kinds.count("review_evidence_rejected") == 1
     finally:
         runtime.close()
+
+
+def test_reviewer_artifacts_in_its_checkout_do_not_invalidate_the_candidate(tmp_path):
+    # Real ledger run: test outputs the reviewer left in its own checkout were read as
+    # a changed candidate; a three-episode review was discarded and unchanged work reworked.
+    leaves_artifact = checking(code="from pathlib import Path; Path('reviewer-output.log').write_text('ran'); "
+                                    "assert Path('app.txt').read_text() == 'fixed'")
+    responses = [reply(TWO_TASKS), writing("fixed"), reply(CANDIDATE), leaves_artifact,
+                 reply({"verdict": "continue", "summary": "More checks next episode"}), reply(PASSED),
+                 reply(CANDIDATE), check_both(), reply(PASSED_ALL)]
+    service, runtime, platform, workspace, source = setup_review(tmp_path, responses)
+    try:
+        run = create(service, source, reviewPolicy="independent", maxEpisodes=12)
+        control(service, run, "start")
+        final = drive(service, run["id"])
+        assert final.get("verificationStatus") == "passed", final["reason"]
+        assert final["reviewFailures"] == {}
+        assert [a["verdict"] for a in service.project_store.assessments(run["id"])] == ["passed", "passed", "continue"]
+    finally:
+        runtime.close()
