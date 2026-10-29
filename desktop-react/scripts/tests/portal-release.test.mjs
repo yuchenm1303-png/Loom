@@ -165,15 +165,36 @@ test("the glass cursor keeps the control it is mounted on readable", () => {
 });
 
 
-test("adjacent OAuth actions stay stationary during liquid-lens handoff", () => {
+test("OAuth buttons retain magnetic wobble without overlapping borders", async () => {
   const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
   const cursor = readFileSync(new URL("../../src/components/PortalLiquidCursor.tsx", import.meta.url), "utf8");
+  const motion = readFileSync(new URL("../../src/components/portalLiquidMotion.ts", import.meta.url), "utf8");
   for (const provider of ["google", "github"]) {
-    assert.match(portal, new RegExp('className="loom-oauth-button" data-magnetic-hover="false"[^>]*onClick=\\{\\(\\) => startOauth\\("'+provider+'"\\)\\}'),
-      provider + " must not magnetically drag its border into the neighboring OAuth button");
+    assert.ok(portal.includes(`onClick={() => startOauth("${provider}")}`), "Preserve " + provider + " sign-in");
   }
+  assert.ok(!portal.includes('className="loom-oauth-button" data-magnetic-hover="false"'),
+    "OAuth buttons must retain their elastic magnetic hover");
+  assert.ok(cursor.includes('constrainAdjacentMagneticOffsets(left.nextX, right.nextX, originalGap)'),
+    "Only the inward motion between adjacent OAuth buttons should be limited");
+  assert.ok(cursor.includes('stepSpring(state.x, dt, 250, 21)'),
+    "Keep the existing horizontal spring");
   assert.ok(cursor.includes('".loom-oauth-button:not(:disabled)"'),
-    "both OAuth actions must remain liquid-lens snap targets");
-  assert.ok(cursor.includes('const MAGNETIC_OPT_OUT = "[data-magnetic-hover='),
-    "magnet opt-out should not disable lens capture or click forwarding");
+    "OAuth actions must stay valid lens snap targets");
+
+  const compiled = ts.transpileModule(motion, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const { constrainAdjacentMagneticOffsets: guard } = await import(
+    `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
+  );
+  for (const [left, right, originalGap] of [[7, -8.5, 10], [9, -7, 10], [12, 0, 10], [0, -12, 10]]) {
+    const limited = guard(left, right, originalGap);
+    assert.ok(originalGap + limited.rightX - limited.leftX >= 6,
+      "The two button borders must retain at least 6px during crossover");
+    assert.ok(limited.leftX !== 0 || limited.rightX !== 0,
+      "Restoring wobble must not freeze both buttons");
+  }
+  assert.deepEqual(guard(-8, 9, 10), { leftX: -8, rightX: 9 },
+    "Moving away from a neighbor keeps the full spring motion");
+  assert.deepEqual(guard(0, 0, 10), { leftX: 0, rightX: 0 });
 });
