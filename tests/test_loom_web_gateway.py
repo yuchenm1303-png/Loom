@@ -310,3 +310,73 @@ def test_legacy_host_history_is_windowed_over_bound_relay(relay):
                                     "messages": ["duplicate"], "events": ["duplicate"]}})
             result = web.receive_json()["result"]
             assert result == {"turns": [{"id": "new"}], "hasMoreTurns": True, "oldestTurnId": "new"}
+
+
+@pytest.mark.parametrize("endpoint", [
+    "/api/auth/login", "/api/auth/register", "/api/auth/register/start",
+    "/api/auth/forgot-password",
+])
+def test_turnstile_protects_web_password_endpoints(endpoint, monkeypatch):
+    received = []
+    async def account(method, path, *, token="", json_body=None):
+        received.append((path, json_body))
+        return 200, {"challenge": {"id": "test"}} if "start" in path or "forgot" in path else {
+            "user": {"id": 1}, "access_token": "one", "refresh_token": "two",
+        }
+    async def verify(request, token):
+        return token == "valid-proof"
+    monkeypatch.setattr(gateway, "TURNSTILE_ENABLED", True)
+    monkeypatch.setattr(gateway, "TURNSTILE_SITE_KEY", "test-public")
+    monkeypatch.setattr(gateway, "_verify_turnstile", verify)
+    monkeypatch.setattr(gateway, "_account_request", account)
+    with TestClient(gateway.app) as client:
+        rejected = client.post(endpoint, json={"email": "test@example.org", "password": "secret", "turnstile_token": ""})
+        assert rejected.status_code == 403
+        assert rejected.json()["error"]["code"] == "TURNSTILE_FAILED"
+        assert not received, "Reject invalid challenges before calling the Account Service"
+        accepted = client.post(endpoint, json={"email": "test@example.org", "password": "secret", "turnstile_token": "valid-proof"})
+        assert accepted.status_code == 200
+        assert accepted.json()["ok"] is True
+        assert len(received) == 1
+        assert "turnstile_token" not in received[0][1], "Never forward challenge credentials upstream"
+
+
+def test_turnstile_capabilities_only_expose_public_sitekey(monkeypatch):
+    async def account(method, path, *, token="", json_body=None):
+        return 200, {"google": True, "github": True}
+    monkeypatch.setattr(gateway, "_account_request", account)
+    monkeypatch.setattr(gateway, "TURNSTILE_SITE_KEY", "public-sitekey")
+    monkeypatch.setattr(gateway, "TURNSTILE_SECRET_KEY", "secret-must-never-escape")
+    with TestClient(gateway.app) as client:
+        monkeypatch.setattr(gateway, "TURNSTILE_ENABLED", False)
+        assert client.get("/api/auth/capabilities").json()["capabilities"]["turnstileSiteKey"] == ""
+        monkeypatch.setattr(gateway, "TURNSTILE_ENABLED", True)
+        body = client.get("/api/auth/capabilities").json()
+        assert body["capabilities"]["turnstileSiteKey"] == "public-sitekey"
+        assert "secret-must-never-escape" not in str(body)
+
+
+def test_turnstile_verification_requires_action_hostname_and_success(monkeypatch):
+    import httpx
+    monkeypatch.setattr(gateway, "TURNSTILE_SECRET_KEY", "private-secret")
+    monkeypatch.setattr(gateway, "WEB_ORIGIN", "https://loom.smirel.com")
+    monkeypatch.setattr(gateway, "WEB_ORIGINS", ())
+    original = gateway.httpx.AsyncClient
+    recorded = []
+    def client(*args, **kwargs):
+        async def respond(request):
+            payload = __import__("json").loads(request.content)
+            recorded.append(payload)
+            return httpx.Response(200, json={
+                "success": True,
+                "action": "loom_auth",
+                "hostname": recorded[-1].get("fake_hostname", "loom.smirel.com"),
+            })
+        return original(transport=httpx.MockTransport(respond), *args, **kwargs)
+    monkeypatch.setattr(gateway.httpx, "AsyncClient", client)
+    async def run():
+        assert not await gateway._verify_turnstile(None, "")
+        assert not await gateway._verify_turnstile(None, "x" * 2049)
+        assert await gateway._verify_turnstile(None, "valid-proof")
+        assert len(recorded) == 1 and recorded[0]["secret"] == "private-secret"
+    asyncio.run(run())
