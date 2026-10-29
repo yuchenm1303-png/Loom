@@ -198,3 +198,26 @@ test("OAuth buttons retain magnetic wobble without overlapping borders", async (
     "Moving away from a neighbor keeps the full spring motion");
   assert.deepEqual(guard(0, 0, 10), { leftX: 0, rightX: 0 });
 });
+
+test("glass capture includes native input selection, caret blink and password masking", () => {
+  const capture = readFileSync(new URL("../../src/components/portalLiquidCapture.ts", import.meta.url), "utf8");
+  const editable = readFileSync(new URL("../../src/components/portalLiquidEditable.ts", import.meta.url), "utf8");
+  const cursor = readFileSync(new URL("../../src/components/PortalLiquidCursor.tsx", import.meta.url), "utf8");
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+
+  assert.ok(capture.includes("drawEditableField(ctx, el, rect, style, roiLeft, roiTop, opacity, caretOn)"),
+    "render native editing state in the same texture as text");
+  assert.ok(editable.includes("el.selectionStart") && editable.includes("el.selectionEnd"),
+    "read the browser's real native selection range");
+  assert.ok(editable.includes("selectionBackground") && editable.includes("ctx.fillRect(selectionX"),
+    "paint the selected text highlight before the text glyphs");
+  assert.ok(editable.includes("style.caretColor") && editable.includes("ctx.fillRect(caretX"),
+    "paint caret using the input's native caret color");
+  assert.ok(editable.includes('el.type === "password"') && editable.includes('"•".repeat(value.length)'),
+    "password capture may only paint masked glyphs");
+  assert.ok(cursor.includes('document.addEventListener("selectionchange", handleSelection)') &&
+    cursor.includes("window.clearInterval(caretBlinkTimer)"),
+    "observe selection and blink without leaking the repaint interval");
+  assert.ok(portal.includes('type="text" inputMode="email" pattern='),
+    "email keyboard and validation must remain usable while exposing selection ranges");
+});
