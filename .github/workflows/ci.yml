@@ -38,6 +38,19 @@ jobs:
           loom-chatgpt-mcp --help
 
 
+
+  turnstile-auth-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Loom Web auth test dependencies
+        run: python -m pip install -e '.[dev]' -r services/loom_web_gateway/requirements.txt
+      - name: Validate server-side Turnstile enforcement
+        run: python -m pytest -q tests/test_loom_web_gateway.py -k turnstile
+
   portal-integration-smoke:
     runs-on: ubuntu-24.04
     defaults:
