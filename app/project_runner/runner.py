@@ -37,13 +37,24 @@ def transient_failure(error):
     return any(marker in text for marker in TRANSIENT_MARKERS) and not any(marker in text for marker in PERMANENT_MARKERS)
 
 
+class ReplyFormatError(ValueError):
+    """A final reply the runner cannot read; returned to the model, not a verdict on the work."""
+
+
 def object_reply(text):
-    text = str(text).strip()
-    if text.startswith("```json\n") and text.endswith("```"):
-        text = text[8:-3]
-    value = json.loads(text)
+    # The reply is the first JSON object in the final text. The runtime may append a
+    # verification note after it ("Runtime verification: ..."), and models wrap JSON
+    # in fences or a lead-in; a strict parse stopped a real five-task project on that.
+    text = str(text)
+    start = text.find("{")
+    try:
+        if start < 0:
+            raise ValueError("no JSON object")
+        value, _ = json.JSONDecoder().raw_decode(text, start)
+    except ValueError as exc:
+        raise ReplyFormatError(f"final reply must contain one JSON object ({exc})") from None
     if not isinstance(value, dict):
-        raise ValueError("worker response must be a JSON object")
+        raise ReplyFormatError("worker response must be a JSON object")
     return value
 
 
@@ -64,17 +75,17 @@ def review_target(run):
 def validate_plan(value):
     tasks = value.get("tasks")
     if not isinstance(tasks, list) or not 1 <= len(tasks) <= 16:
-        raise ValueError("planner must return 1..16 ordered tasks")
+        raise ReplyFormatError("planner must return 1..16 ordered tasks")
     plan = []
     for index, task in enumerate(tasks):
         if not isinstance(task, dict) or not isinstance(task.get("instructions"), str) or not task["instructions"].strip():
-            raise ValueError("each task needs instructions")
+            raise ReplyFormatError("each task needs instructions")
         acceptance = task.get("acceptance")
         if not isinstance(acceptance, list) or not acceptance or len(acceptance) > 16 or any(
                 not isinstance(c, str) or not c.strip() or len(c) > 2000 for c in acceptance):
-            raise ValueError("each task needs concrete acceptance criteria")
+            raise ReplyFormatError("each task needs concrete acceptance criteria")
         if len(task["instructions"]) > 12000:
-            raise ValueError("task instructions too long")
+            raise ReplyFormatError("task instructions too long")
         plan.append({"id": f"task-{index+1}", "instructions": task["instructions"], "acceptance": acceptance,
                      "state": "pending"})
     return plan
@@ -138,6 +149,11 @@ class ProjectRunner:
                 self.error = f"{type(exc).__name__}: {exc}"
 
     def prompt(self, run):
+        note = run.get("replyNote")
+        text = self._prompt(run)
+        return (f"The runner could not accept your previous final reply: {note} End with only the required JSON object.\n" + text) if note else text
+
+    def _prompt(self, run):
         if run["phase"] == "planning":
             if run.get("maxWorkers", 1) > 1:
                 return ('Plan this project as ordered task IDs task-1, task-2, etc. Return only JSON {"tasks":[{"instructions":"scoped implementation",'
@@ -317,7 +333,8 @@ class ProjectRunner:
                 facts = self.executor.result_facts(run, episode, object_reply(result["text"]))
             except (ValueError, TypeError, OSError) as exc:
                 result = {**result, "state": "failed", "error": f"Candidate review facts rejected: {exc}",
-                          "reviewRejected": episode["phase"] == "verifying"}
+                          "reviewRejected": episode["phase"] == "verifying",
+                          "replyRejected": isinstance(exc, ReplyFormatError) and episode["phase"] != "verifying"}
         with self.store.transaction() as db:
             current = self.store._read(db, run["id"])
             if not current["activeEpisode"] or current["activeEpisode"]["id"] != episode["id"]:
@@ -387,6 +404,9 @@ class ProjectRunner:
                 current["reviewNote"] = result["error"][:2000]
                 self.store.save(db, current, "review_evidence_rejected")
                 return
+            if result.get("replyRejected") and self._return_reply(current, result["error"]):
+                self.store.save(db, current, "reply_rejected")
+                return
             try:
                 if state != "completed":
                     raise ValueError(result.get("error") or f"Episode ended with {state}")
@@ -403,7 +423,7 @@ class ProjectRunner:
                 else:
                     action, summary = reply.get("action"), reply.get("summary")
                     if action not in {"continue", "candidate", "blocked"} or not isinstance(summary, str) or not summary.strip():
-                        raise ValueError("worker must report action and nonempty summary")
+                        raise ReplyFormatError("worker must report action and nonempty summary")
                     current["handoff"] = summary[:12000]
                     if action == "blocked":
                         raise ValueError(summary[:2000])
@@ -419,6 +439,21 @@ class ProjectRunner:
                             if current["taskIndex"] == len(current["plan"]):
                                 current.update(state="ready_for_review", control="paused",
                                                reason="Implementation candidates only; independent acceptance and integration required")
+                current.update(replyNote="", replyRejections=0)
+            except ReplyFormatError as exc:
+                if self._return_reply(current, str(exc)):
+                    self.store.save(db, current, "reply_rejected")
+                    return
+                current.update(state="needs_review", control="paused", reason=str(exc))
             except (ValueError, TypeError) as exc:
                 current.update(state="needs_review", control="paused", reason=str(exc))
             self.store.save(db, current, "episode_settled")
+
+    @staticmethod
+    def _return_reply(run, reason):
+        """A final reply in the wrong shape goes back to the model with the reason, twice."""
+        if run.get("replyRejections", 0) >= MAX_REVIEW_REJECTIONS:
+            return False
+        run["replyRejections"] = run.get("replyRejections", 0) + 1
+        run["replyNote"] = reason[:2000]
+        return True

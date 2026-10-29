@@ -148,14 +148,15 @@ def test_store_idempotency_cas_and_real_connection_claim_constraint(tmp_path):
 
 
 def test_invalid_plan_and_plain_done_never_complete_project(tmp_path):
-    service, runtime, platform, _, source = build(tmp_path, [ModelResponse(text="All done!")])
+    # A reply without a plan goes back to the planner twice, then the run stops; it never completes.
+    service, runtime, platform, _, source = build(tmp_path, [ModelResponse(text="All done!", usage=ModelUsage(5, 0, 5))] * 3)
     try:
         run = create(service, source)
         control(service, run, "start")
-        cycle(service)
-        cycle(service)
+        for _ in range(5):
+            cycle(service)
         final = service.project_store.get(run["id"])
-        assert final["state"] == "needs_review" and len(platform.requests) == 1
+        assert final["state"] == "needs_review" and len(platform.requests) == 3 and not final["plan"]
     finally:
         runtime.close()
 
@@ -540,5 +541,58 @@ def test_permanent_provider_refusal_still_stops_the_project(tmp_path):
         final = service.project_store.get(run["id"])
         assert final["state"] == "needs_review" and "402" in final["reason"]
         assert not final.get("retryAfter")
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize("text", [
+    '{"action": "candidate", "summary": "done"}',
+    '```json\n{"action": "candidate", "summary": "done"}\n```',
+    # A real five-task run stopped here: the runtime appends its verification note.
+    '{"action": "candidate", "summary": "done"}\n\nRuntime verification: earlier changes still lack current acceptance evidence and remain unverified.',
+    'Result:\n{"action": "candidate", "summary": "done"}',
+])
+def test_reply_is_the_first_json_object_in_the_final_text(text):
+    from app.project_runner.runner import object_reply
+    assert object_reply(text) == {"action": "candidate", "summary": "done"}
+
+
+@pytest.mark.parametrize("text", ["no json here", "[1, 2]", '{"action": "candidate", "summary": '])
+def test_reply_without_a_complete_json_object_is_rejected(text):
+    from app.project_runner.runner import object_reply
+    with pytest.raises(ValueError):
+        object_reply(text)
+
+
+def test_malformed_plan_or_worker_reply_goes_back_to_the_model(tmp_path):
+    bad_plan = reply({"tasks": [{"instructions": "No acceptance given"}]})
+    service, runtime, platform, _, source = build(tmp_path, [bad_plan, reply(PLAN),
+        ModelResponse(text="I finished the work.", usage=ModelUsage(5, 0, 5)),
+        reply({"action": "candidate", "summary": "Implemented and checked"})])
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(6):
+            cycle(service)
+        final = service.project_store.get(run["id"])
+        assert final["state"] == "ready_for_review", final["reason"]
+        assert final["replyRejections"] == 0 and not final["replyNote"]
+        assert "acceptance criteria" in str(platform.requests[1].messages)  # the planner was told why
+        assert "could not accept your previous final reply" in str(platform.requests[3].messages)
+        kinds = [item["kind"] for item in service.project_store.events(run["id"], limit=200)]
+        assert kinds.count("reply_rejected") == 2
+    finally:
+        runtime.close()
+
+
+def test_repeated_malformed_replies_stop_for_review(tmp_path):
+    prose = ModelResponse(text="Done, no JSON.", usage=ModelUsage(5, 0, 5))
+    service, runtime, _, _, source = build(tmp_path, [reply(PLAN), prose, prose, prose])
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(6):
+            cycle(service)
+        final = service.project_store.get(run["id"])
+        assert final["state"] == "needs_review" and "JSON" in final["reason"]
+        assert final["episodesUsed"] == 4
     finally:
         runtime.close()
