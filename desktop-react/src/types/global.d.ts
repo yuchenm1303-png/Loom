@@ -31,12 +31,12 @@ export interface LoomBridge {
       service's error code reaches the renderer intact. */
   accountStatus(): Promise<LoomAccountResult>;
   accountCapabilities(): Promise<LoomAuthCapabilitiesResult>;
-  accountLogin(email: string, password: string): Promise<LoomAccountResult>;
-  accountRegister(email: string, password: string): Promise<LoomAccountResult>;
-  accountRegisterStart(email: string, password: string): Promise<LoomAuthChallengeResult>;
+  accountLogin(email: string, password: string, turnstileToken?: string): Promise<LoomAccountResult>;
+  accountRegister(email: string, password: string, turnstileToken?: string): Promise<LoomAccountResult>;
+  accountRegisterStart(email: string, password: string, turnstileToken?: string): Promise<LoomAuthChallengeResult>;
   accountVerifyEmail(challengeId: string, code: string): Promise<LoomAccountResult>;
   accountResendEmail(challengeId: string): Promise<LoomAuthChallengeResult>;
-  accountForgotPassword(email: string): Promise<LoomAuthChallengeResult>;
+  accountForgotPassword(email: string, turnstileToken?: string): Promise<LoomAuthChallengeResult>;
   accountResetPassword(challengeId: string, code: string, password: string): Promise<LoomAccountResult>;
   accountOAuthExchange(code: string): Promise<LoomAccountResult>;
   accountOAuthStart(provider: "google" | "github"): Promise<{ ok: true } | { ok: false; error: LoomAccountError }>;
