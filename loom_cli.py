@@ -583,7 +583,7 @@ def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Loom — personal general-purpose tool-using AI agent")
     parser.add_argument("prompt", nargs="*", help="run one prompt non-interactively")
-    parser.add_argument("--provider", choices=["openai", "openai-compatible"])
+    parser.add_argument("--provider", choices=["openai", "openai-compatible", "opencode-go"])
     parser.add_argument("--base-url")
     parser.add_argument("--model")
     parser.add_argument("--context-limits", type=json.loads, help="selected model context metadata as JSON")

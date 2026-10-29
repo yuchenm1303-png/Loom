@@ -120,7 +120,7 @@ class ProjectExecutor:
                 return {"state": "waiting_approval"}
             events = [e for e in service.store.events(session.session_id) if e.turn_id == episode["turnId"]]
             terminal = next((e for e in reversed(events) if e.kind in {
-                E.TURN_COMPLETED, E.TURN_FAILED, E.TURN_CANCELLED, E.TURN_INTERRUPTED}), None)
+                E.TURN_COMPLETED, E.TURN_FAILED, E.TURN_CANCELLED, E.TURN_INTERRUPTED, E.LIMIT_REACHED}), None)
             if terminal is None or session.current_turn_id != episode["turnId"]:
                 return {"state": "outcome_unknown", "error": service._task_errors.get(session.session_id)
                         or "No matching durable terminal turn; execution must not be replayed"}
@@ -130,7 +130,8 @@ class ProjectExecutor:
                     tokens += int(e.data.get("usage", {}).get("total_tokens") or 0)
                 elif e.kind is E.CONTEXT_CHECKPOINTED:
                     tokens += int(e.data.get("summary_usage", {}).get("total_tokens") or 0)
-            return {"state": session.status.value, "text": session.final_text, "error": session.error, "tokens": tokens}
+            error = session.error or (terminal.data.get("reason", "Runtime limit reached") if terminal.kind is E.LIMIT_REACHED else "")
+            return {"state": session.status.value, "text": session.final_text, "error": error, "tokens": tokens}
 
     def cancel(self, episode):
         # _launch owns preparation too. runtime.cancel is safe if it has started;
