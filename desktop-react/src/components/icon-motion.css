@@ -197,8 +197,35 @@
 
 [data-icon="panel-right-open"] .li-chevron { transform: translate(calc(var(--ic-lean) * -1.8px), 0); }
 [data-icon="panel-right-close"] .li-chevron { transform: translate(calc(var(--ic-lean) * 1.8px), 0); }
-[data-icon="panel-left"] .li-divider,
-[data-icon="panels"] .li-divider { transform: translate(calc(var(--ic-lean) * 1.8px), 0); }
+[data-icon="panel-left"] .li-divider { transform: translate(calc(var(--ic-lean) * 1.8px), 0); }
+
+/* Panes that are a sheet behind a divider: the sheet and its divider move as one piece (the sheet is scaled
+   from its far edge to where the divider stands), so a pane is seen to widen, and it takes on tone as it does. */
+
+/* Artifacts: the side pane widens under the title bar and is lit. */
+[data-icon="panels"] .li-divider { transform: translate(calc(var(--ic-on) * 2.6px), 0); }
+[data-icon="panels"] .li-sheet {
+  transform-origin: 3px 15px;
+  transform: scaleX(calc(1 + var(--ic-on) * 2.6 / 6));
+  opacity: calc(var(--ic-on) * .26);
+}
+
+/* The inspector: the pane on the right is its state. Its width is 6 units closed, 9 open; hover leans 1.2 units
+   toward the other state, so a click carries on the way the hover started (closed 6 -> 7.2 -> 9, open 9 -> 7.8 -> 6).
+   It is clear when closed and toned when open; the chevron stays centred in what is left and turns round with the state. */
+[data-icon="inspector"] {
+  --ip-grow: calc(var(--ic-open) * 3 + var(--ic-on) * (1.2 - var(--ic-open) * 2.4));
+}
+[data-icon="inspector"] .li-divider { transform: translate(calc(var(--ip-grow) * -1px), 0); }
+[data-icon="inspector"] .li-sheet {
+  transform-origin: 21px 12px;
+  transform: scaleX(calc(1 + var(--ip-grow) / 6));
+  opacity: calc(var(--ic-open) * .3 + var(--ic-on) * (.14 - var(--ic-open) * .24));
+}
+[data-icon="inspector"] .li-chevron {
+  transform-origin: 8.5px 12px;
+  transform: translate(calc(var(--ip-grow) * -.5px), 0) rotate(calc(var(--ic-open) * 180deg));
+}
 [data-icon="panel-right"] .li-divider { transform: translate(calc(var(--ic-lean) * -1.8px), 0); }
 /* The sidebar's toggle (SidebarControls) leans the way the sidebar will go: open, the divider moves in. */
 [aria-expanded="true"] > [data-icon="panel-left"] .li-divider { transform: translate(calc(var(--ic-lean) * -1.8px), 0); }
@@ -263,8 +290,18 @@
 [data-icon="lock"] .li-lid,
 [data-icon="lock-keyhole"] .li-lid { transform: translate(0, calc(var(--ic-on) * -1.8px)); }
 
-[data-icon="folder"] .li-all,
-[data-icon="folder-open"] .li-all { transform: translate(0, calc(var(--ic-on) * -1.4px)); }
+[data-icon="folder"] .li-all { transform: translate(0, calc(var(--ic-on) * -1.4px)); }
+
+/* The open folder's cover falls further open about the corner it shares with the back: its top edge drops and
+   slides out, its foot stays where it is, and the back stands a little taller, so the folder is seen to open rather than the icon to move. */
+[data-icon="folder-open"] .li-cover {
+  transform-origin: 4px 20px;
+  transform: skewX(calc(var(--ic-on) * -16deg)) scaleY(calc(1 - var(--ic-on) * .2));
+}
+[data-icon="folder-open"] .li-back {
+  transform-origin: 4px 20px;
+  transform: scaleY(calc(1 + var(--ic-on) * .06));
+}
 
 [data-icon="pin"] .li-head { transform: translate(0, calc(var(--ic-on) * 1.8px)); }
 [data-icon="pin"] .li-needle { transform-origin: 12px 22px; transform: scaleY(calc(1 - var(--ic-on) * .36)); }

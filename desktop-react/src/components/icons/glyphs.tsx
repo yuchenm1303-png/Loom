@@ -239,9 +239,12 @@ export const ShieldCheck = createIcon("shield-check", "ShieldCheck", <>
 export const Folder = createIcon("folder", "Folder", <g className="li li-all">
   <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
 </g>);
-export const FolderOpen = createIcon("folder-open", "FolderOpen", <g className="li li-all">
-  <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
-</g>);
+// The open folder in two parts that meet at the bottom-left corner: the back with its tab, and the front cover,
+// which can fall open further about that corner.
+export const FolderOpen = createIcon("folder-open", "FolderOpen", <>
+  <path className="li li-back" d="M4 20a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+  <path className="li li-cover" d="M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4" />
+</>);
 export const FolderPlus = createIcon("folder-plus", "FolderPlus", <>
   <g className="li li-plus"><path d="M12 10v6" /><path d="M9 13h6" /></g>
   <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
@@ -290,10 +293,22 @@ export const PanelRightClose = createIcon("panel-right-close", "PanelRightClose"
   <path d="M15 3v18" />
   <path className="li li-chevron" d="m8 9 3 3-3 3" />
 </>);
+// Panes under a title bar. The side pane is a sheet (filled, faint or clear) behind its divider, so it can widen
+// and take on tone as one piece.
 export const PanelsTopLeft = createIcon("panels", "PanelsTopLeft", <>
+  <path className="li li-sheet" d="M3 9h6v12H5a2 2 0 0 1-2-2z" fill="currentColor" stroke="none" />
   <rect width="18" height="18" x="3" y="3" rx="2" />
   <path d="M3 9h18" />
   <path className="li li-divider" d="M9 21V9" />
+</>);
+// The dock's inspector toggle: a window with a pane on the right that is the state. Closed, the pane is clear and
+// narrow and the chevron points the way it will open; open, it is wider and toned and the chevron has turned round.
+// Hover leans the divider toward the other state. One glyph for both states, so a click is seen to open or close it.
+export const InspectorPanel = createIcon("inspector", "InspectorPanel", <>
+  <path className="li li-sheet" d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4z" fill="currentColor" stroke="none" />
+  <rect width="18" height="18" x="3" y="3" rx="2" />
+  <path className="li li-divider" d="M15 3v18" />
+  <path className="li li-chevron" d="m10 15-3-3 3-3" />
 </>);
 
 export const FileDiff = createIcon("file-diff", "FileDiff", <>

@@ -4,7 +4,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import {
-  FileDiff, FolderOpen, GitFork, Globe2, ListChecks, PanelsTopLeft, PanelRightClose, PanelRightOpen,
+  FileDiff, FolderOpen, GitFork, Globe2, InspectorPanel, ListChecks, PanelsTopLeft,
   MessagesSquare, Pulse, Settings, Terminal, UserRound, Clock3,
 } from "./icons";
 import { useI18n } from "../i18n";
@@ -277,8 +277,8 @@ export function RightToolDock(props: RightToolDockProps) {
     },
     inspector: {
       label: zh ? "运行详情" : "Runtime inspector",
-      icon: props.inspectorOpen ? <PanelRightClose size={16} strokeWidth={1.75} />
-        : <PanelRightOpen size={16} strokeWidth={1.75} />,
+      // One glyph for both states: it reads aria-pressed, so opening and closing are seen to happen.
+      icon: <InspectorPanel size={16} strokeWidth={1.75} />,
       active: props.inspectorOpen, disabled: props.loading, onClick: props.onToggleInspector,
     },
     profile: {

@@ -40,6 +40,7 @@ export {
   MessagesSquare,
   Clock3,
   UserRound,
+  InspectorPanel,
   KeyRound,
   Layers,
   Link2,
