@@ -164,8 +164,8 @@ test("the download section names the release, and the footer points at the proje
   assert.ok(portal.includes('href={`${RELEASES_URL}#readme`}'), "documentation points at the repository readme");
   assert.ok(portal.includes("href={RELEASES_URL}") && portal.includes("{home.links.github}"), "the footer points at the repository");
   assert.ok(portal.includes('id="loom-download"') && portal.includes('goToSection(event, "loom-download")'), "the nav's Download reaches the section");
-  const panel = rule(".loom-editorial .editorial-download-panel");
-  assert.match(panel, /border-top:\s*1px solid var\(--ed-rule\)/, "a hairline, like every block");
+  const panel = rule(".loom-editorial .editorial-section.editorial-download");
+  assert.match(panel, /border:\s*1px solid var\(--ed-rule\)/, "one shared download panel groups its copy, release details and action");
   // The installer is a link, so it needs its own foreground: the global link colour would paint it ink on ink.
   assert.match(rule(".loom-editorial .editorial-download-panel .editorial-primary"), /color:\s*var\(--ed-paper\)/);
 });

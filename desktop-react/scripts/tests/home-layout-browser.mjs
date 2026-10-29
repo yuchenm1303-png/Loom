@@ -48,7 +48,24 @@ try {
       const box = await page.locator(selector).boundingBox();
       assert.ok(box.x >= 0 && box.x + box.width <= width + 1, `${selector} fits the page width`);
     }
+    const steps = await page.locator(".editorial-steps > li").evaluateAll(nodes => nodes.map(node => {
+      const r = node.getBoundingClientRect(); return { x: r.x, y: r.y };
+    }));
+    assert.ok(steps[0].x < steps[1].x && steps[1].x < steps[2].x && Math.abs(steps[0].y - steps[2].y) < 1, "getting started presents three aligned columns");
+    assert.equal(await page.locator('#loom-start a[href]').count(), 0, "getting started avoids repeating download links");
     await page.close();
   }
+  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce", colorScheme: "light" });
+  await mobile.addInitScript(() => localStorage.setItem("loom.settings.language", "zh-CN"));
+  await mobile.goto(origin);
+  await mobile.locator("#loom-download").scrollIntoViewIfNeeded();
+  for (const selector of ["#loom-download", "#loom-start", ".editorial-download-panel .editorial-actions", ".editorial-steps"]) {
+    const box = await mobile.locator(selector).boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= 391, `${selector} fits the phone width`);
+  }
+  const mobileSteps = await mobile.locator(".editorial-steps > li").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().y));
+  assert.ok(mobileSteps[0] < mobileSteps[1] && mobileSteps[1] < mobileSteps[2], "phone steps stack in reading order");
+  if (process.env.LOOM_DEMO_SCREENSHOTS) await mobile.locator("#loom-download").screenshot({ path: `${process.env.LOOM_DEMO_SCREENSHOTS}/home-download-mobile.png` });
+  await mobile.close();
   console.log("Home layout: full hero and controls fit at six desktop sizes; stable demo height, Chinese copy, sidebar containment and complete Computer Use section passed.");
 } finally { await browser.close(); }

@@ -740,7 +740,6 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <p>{home.start.lead}</p>
                 <div className="editorial-actions">
                   <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{home.open}<ArrowRight size={16} aria-hidden="true" /></button>
-                  <a className="editorial-download" href={release.download}>{home.download}<span aria-hidden="true">↓</span></a>
                 </div>
               </div>
               <ol className="editorial-steps">
