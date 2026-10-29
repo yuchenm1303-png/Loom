@@ -162,7 +162,22 @@ The language stays in the header until 760px, where it also enters the menu.
 all five controls have the same 36px box and one baseline, no horizontal overflow, the menu opens and closes at 850 and
 960, the theme switch flips, the account dialog opens and closes.
 
-## Files
+## Every mount point leans (2026-10-28, third pass)
+
+- **One selector.** The magnet list used to be a hand-curated subset (which is why the theme switch, the "More"
+  summary and most of the workspace were still), while the lens list was a different, longer one. The magnet set is
+  now `SNAP_SELECTOR` itself: if the lens stops on it, it leans. Measured on the built home page, 54 mount points (38
+  visible) all answer the pointer, the theme switch included (5px / 4px at 85% / 80% of its box, back to `none` on
+  leave).
+- **Opt-out stays explicit.** `data-magnetic-hover="false"` is the only way to stay still; inert and `aria-hidden`
+  subtrees are skipped, as they are for the lens.
+- **The lean is sized, not uniform.** `magnetAmplitude` in `portalLiquidMotion.ts` returns 8px for the house brand,
+  7px for the control under the lens, 10px for its neighbours, 4px for a block taller than 64px or wider than 520px,
+  and 3px for typing surfaces (an input, textarea, select, the Ask shell, the code input) — a 10px swing there would
+  pull the caret out from under the pointer.
+- **Measured before written.** With every control in the set, the loop now reads all base rects first and writes the
+  translates afterwards; interleaving them forced one layout per element per frame. Spring stays 250 / 21.
+
 
 - `desktop-react/src/components/WebPortal.tsx`: the editorial markup and the state (theme, More, thread, type-ready, stuck, reveal, language, narrow menu, account entry).
 - `desktop-react/src/components/portalHomeCopy.ts`: all the words, including the download block and the footer links.

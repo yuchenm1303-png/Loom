@@ -207,7 +207,11 @@ test("the glass cursor can snap to every control, and what it redraws is made of
   const header = portal.slice(portal.indexOf('<header className="editorial-header'), portal.indexOf("</header>"));
   // the house mark, brand, three nav links, language, account, theme switch, menu, icon: the lens samples buttons and links, text, plain fills and borders.
   assert.equal((header.match(/data-liquid-snap="true"/g) ?? []).length, 10);
-  assert.equal((header.match(/data-magnetic-hover="true"/g) ?? []).length, 9, "the theme switch stays put");
+  // Every mount point is also a magnet; the header marks the ones we want documented.
+  assert.equal((header.match(/data-magnetic-hover="true"/g) ?? []).length, 9);
+  assert.ok(cursor.includes("const MAGNETIC_SELECTOR = SNAP_SELECTOR;"), "the magnet set is the lens-stop set: nothing mounts without leaning");
+  assert.match(cursor, /const MAGNETIC_OPT_OUT = "\[data-magnetic-hover='false'\]"/, "a single explicit way to opt out");
+  assert.ok(cursor.includes("magnetAmplitude({"), "the lean is sized per control");
   // Numbers are elements (a pseudo-element is not redrawn into the lens).
   assert.ok(portal.includes('<span className="editorial-index" aria-hidden="true">{`0${index + 1}`}</span>'));
   assert.ok(portal.includes('<span className="editorial-index" aria-hidden="true">{index + 1}</span>'));

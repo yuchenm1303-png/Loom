@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { readingMount, paddedMount } from "./portalLiquidMount";
 import { rasterizePortal } from "./portalLiquidCapture";
-import { blendAnchor, stepSpring, type SpringValue } from "./portalLiquidMotion";
+import { blendAnchor, magnetAmplitude, stepSpring, type SpringValue } from "./portalLiquidMotion";
 import { createReferenceLensRenderer, liquidVertexShader, liquidFragmentShader } from "./portalLiquidOptics";
 import { useReducedMotion } from "../motion/useReducedMotion";
 
@@ -40,21 +40,11 @@ const SNAP_SELECTOR = [
   "[data-liquid-snap='true']",
 ].join(",");
 
-const MAGNETIC_SELECTOR = [
-  ".loom-portal-brand",
-  ".loom-primary-action:not(:disabled)",
-  ".loom-secondary-action",
-  ".loom-download-version a",
-  ".loom-oauth-button:not(:disabled)",
-  ".loom-inline-link:not(:disabled)",
-  ".loom-password-toggle:not(:disabled)",
-  ".loom-form-submit:not(:disabled)",
-  ".loom-account-switch:not(:disabled)",
-  ".loom-host-setup-retry:not(:disabled)",
-  ".loom-profile-home-action:not(:disabled)",
-  ".loom-site a[href], .loom-site button:not(:disabled)",
-  "[data-magnetic-hover='true']",
-].join(",");
+const MAGNETIC_SELECTOR = SNAP_SELECTOR;
+
+// A control that moves with the magnet must not fight the pointer: an element can opt out
+// with data-magnetic-hover="false" (and nothing else can).
+const MAGNETIC_OPT_OUT = "[data-magnetic-hover='false']";
 
 function rectDistance(rect: DOMRect, x: number, y: number) {
   const dx = Math.max(rect.left - x, 0, x - rect.right);
@@ -225,7 +215,8 @@ export function PortalLiquidCursor() {
     let magneticTargets: HTMLElement[] = [];
 
     const refreshMagneticTargets = () => {
-      const next = Array.from(root.querySelectorAll<HTMLElement>(MAGNETIC_SELECTOR));
+      const next = Array.from(root.querySelectorAll<HTMLElement>(MAGNETIC_SELECTOR))
+        .filter((element) => !element.matches(MAGNETIC_OPT_OUT) && !element.closest("[inert], [aria-hidden='true']"));
       const nextSet = new Set(next);
       for (const [element] of magneticStates) {
         if (!nextSet.has(element)) {
@@ -246,17 +237,31 @@ export function PortalLiquidCursor() {
       }
     };
 
+    // Every lens stop is a magnet, so this loop now runs over every control on the
+    // page. It measures them all before writing any translate: interleaving the two
+    // would force a layout per element per frame.
     const updateMagneticTargets = (dt: number) => {
       let settled = true;
+      const measured: Array<{ element: HTMLElement; state: MagneticState; baseLeft: number; baseTop: number; width: number; height: number }> = [];
       for (const element of magneticTargets) {
         const state = magneticStates.get(element);
         if (!state || !element.isConnected) continue;
-
         const rect = element.getBoundingClientRect();
-        const baseLeft = rect.left - state.appliedX;
-        const baseTop = rect.top - state.appliedY;
-        const baseRight = baseLeft + rect.width;
-        const baseBottom = baseTop + rect.height;
+        measured.push({
+          element,
+          state,
+          baseLeft: rect.left - state.appliedX,
+          baseTop: rect.top - state.appliedY,
+          width: rect.width,
+          height: rect.height,
+        });
+      }
+
+      for (const item of measured) {
+        const { element, state } = item;
+        const { baseLeft, baseTop, width, height } = item;
+        const baseRight = baseLeft + width;
+        const baseBottom = baseTop + height;
         const hoverArea = element.classList.contains("loom-portal-brand") ? 22 : 18;
         const inside =
           pointerInside &&
@@ -266,11 +271,17 @@ export function PortalLiquidCursor() {
           pointerY <= baseBottom + hoverArea;
 
         if (inside) {
-          const centerX = baseLeft + rect.width / 2;
-          const centerY = baseTop + rect.height / 2;
-          const normalizedX = Math.max(-1, Math.min(1, (pointerX - centerX) / Math.max(rect.width / 2, 1)));
-          const normalizedY = Math.max(-1, Math.min(1, (pointerY - centerY) / Math.max(rect.height / 2, 1)));
-          const distance = element.classList.contains("loom-portal-brand") ? 8 : (activeTarget === element ? 7 : 10);
+          const centerX = baseLeft + width / 2;
+          const centerY = baseTop + height / 2;
+          const normalizedX = Math.max(-1, Math.min(1, (pointerX - centerX) / Math.max(width / 2, 1)));
+          const normalizedY = Math.max(-1, Math.min(1, (pointerY - centerY) / Math.max(height / 2, 1)));
+          const distance = magnetAmplitude({
+            brand: element.classList.contains("loom-portal-brand"),
+            typingSurface: element.matches("input, textarea, select, .loom-input-shell, .loom-code-input, [contenteditable='true']"),
+            width,
+            height,
+            active: activeTarget === element,
+          });
           state.x.target = normalizedX * distance;
           state.y.target = normalizedY * distance;
         } else {
