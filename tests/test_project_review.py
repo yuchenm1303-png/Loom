@@ -93,7 +93,9 @@ def test_real_command_failure_reworks_then_independently_verifies_whole_candidat
 
 
 def test_claimed_pass_without_executed_evidence_cannot_pass(tmp_path):
-    service, runtime, _, _, source = setup_review(tmp_path, [reply(PLAN), writing("fixed"), reply(CANDIDATE), reply(PASSED)])
+    # Each bare pass is returned to the reviewer with the reason; it never becomes a pass.
+    service, runtime, platform, _, source = setup_review(tmp_path, [reply(PLAN), writing("fixed"), reply(CANDIDATE),
+                                                                    reply(PASSED), reply(PASSED), reply(PASSED)])
     try:
         run = create(service, source, reviewPolicy="independent")
         control(service, run, "start")
@@ -101,6 +103,7 @@ def test_claimed_pass_without_executed_evidence_cannot_pass(tmp_path):
         assert final["state"] == "needs_review"
         assert "evidence" in final["reason"].lower()
         assert service.project_store.assessments(run["id"]) == []
+        assert len(platform.requests) == 6
     finally:
         runtime.close()
 
@@ -363,5 +366,28 @@ def test_malformed_review_settles_episode_instead_of_wedging_scheduler(tmp_path,
         final = drive(service, run["id"])
         assert final["state"] == "needs_review" and final["activeEpisode"] is None
         assert not service.project_runner.error
+    finally:
+        runtime.close()
+
+
+def test_under_evidenced_pass_goes_back_to_the_reviewer_with_the_reason(tmp_path):
+    # Real run 8: the whole-project reviewer verified every criterion but filed one
+    # check as check_kind=static. The pass was rightly refused, but the run died
+    # instead of letting the reviewer record proper evidence.
+    static = checking()
+    static.tool_calls[0].arguments["verification"]["check_kind"] = "static"
+    responses = [reply(PLAN), writing("fixed"), reply(CANDIDATE), static, reply(PASSED),
+                 checking(), reply(PASSED), checking(), reply(PASSED)]
+    service, runtime, platform, workspace, source = setup_review(tmp_path, responses)
+    try:
+        run = create(service, source, reviewPolicy="independent", maxEpisodes=12)
+        control(service, run, "start")
+        final = drive(service, run["id"])
+        assert final["state"] == "ready_for_review" and final["verificationStatus"] == "passed", final["reason"]
+        assert final["reviewEvidenceRejections"] == 0 and not final["reviewNote"]
+        retried = str(platform.requests[5].messages)
+        assert "rejected your previous verdict" in retried and "check_kind=static" in retried
+        kinds = [item["kind"] for item in service.project_store.events(run["id"], limit=200)]
+        assert kinds.count("review_evidence_rejected") == 1
     finally:
         runtime.close()

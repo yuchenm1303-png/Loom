@@ -123,3 +123,24 @@ Open: transport retries happen inside one `model_executor.execute` call, so the
 budget admits the logical request once and counts a failed attempt inside it
 only as part of that request. The next attempt should decide whether the
 harness allows one transport retry for connection timeouts.
+
+## Runs 2-7 and what each one fixed (2026-10-28/29)
+
+Same OpenCode Flash profile, same isolated tally objective and external oracle;
+every run in a new `.cache/project-live-*` directory, sandbox preflight first.
+Token figures are the production ledger's known usage (cached input included).
+
+| Run | Cap | Known tokens | Reached | Stopped by | Fix (commit) |
+| --- | --- | ---: | --- | --- | --- |
+| budget2 | 80k | 32,857 | worker wrote tally.py | two ~21 s connect timeouts via the local TUN proxy (198.18.x fake-ip) | harness uses production retry defaults |
+| budget3 | 80k | 67,716 | worker ran checks in MXC | 16-tool-call episode bound treated as failure | episode limits continue in the next episode; exec accepts empty arguments (be22f576) |
+| budget4 | 300k | 288,935 | worker finished, all self-checks pass | budget (refused at the boundary, not exceeded); 3 steps lost to scratch denied in sandbox | exec gets the turn scratch (319183e0) |
+| run5 | 500k | 443,125 | task review ran all 5 checks | budget; 45,218 double-charged as unknown; review denied its previous turn's scratch | tool-contract responses count once; session-wide scratch (6fd088c2) |
+| run6 | 1M | 955,158 | review in its 4th episode | budget; requests grew 8k -> 61k: continued episodes re-sent all history | episode-boundary compaction from run state, no model call (f8e2b346) |
+| run7 | 1M | 676,212 | **independent task and whole-project acceptance passed** | delivery export: autocrlf=true turned the reviewed LF file into CRLF | runner checkouts keep exact bytes; fast-forward checks the delivered tree (a643bab7) |
+| run8 | 1M | 618,003 | task acceptance passed; whole-project reviewer verified all criteria and reported passed | runner refused the pass (one check filed as check_kind=static) and the run stopped | an under-evidenced verdict goes back to the reviewer with the named criterion and reason (2 tries); prompt states static never counts |
+
+The production budget held in every run (no run exceeded its cap; refusals
+happened at request boundaries). After compaction the largest request stayed
+at ~27k. Total known real usage across runs 1-8 plus the earlier attempts:
+3,255,314 tokens. No run has yet reached delivery, integration and the external oracle.

@@ -15,6 +15,9 @@ from .budget import ProjectBudget
 # episode continues in the same session, within the run's episode/token budget.
 EPISODE_LIMITS = {"model step limit reached", "tool call limit reached"}
 MAX_LIMIT_STREAK = 8
+# A review verdict whose evidence the runner rejects goes back to the reviewer
+# with the reason this many times before the run stops for inspection.
+MAX_REVIEW_REJECTIONS = 2
 
 
 def object_reply(text):
@@ -118,6 +121,8 @@ class ProjectRunner:
                     "Do not implement fixes, change source/tests/acceptance, commit, merge, or publish. "
                     "Inspect the actual code and exercise behavior; worker summaries are claims, not proof. "
                     "Build/type-check success alone is not behavioral acceptance; use functional checks or exercised browser assertions. "
+                    "check_kind static is only for builds and type checks and never counts as acceptance evidence; a command that "
+                    "asserts a criterion (including a source property such as allowed imports) and exits nonzero on violation is functional. "
                     "Use exec with wait=true, pty=false and verification.case_id equal to each criterion ID, "
                     "verification.expectation exactly equal to its expectation, and subject_paths covering actual candidate source. "
                     + ("For parallel task review, do not use browser/desktop, bind server ports or mutate shared environments; report blocked if these are necessary. "
@@ -130,6 +135,8 @@ class ProjectRunner:
                     "eventId is optional: the runner resolves the latest real check for each criterion in this review session; never invent IDs. "
                     "passed requires all criteria with current executed evidence; needs_changes requires concrete scoped issues. "
                     "Use blocked if the environment cannot verify behavior; continue if more checking needs another episode.\n"
+                    + (f"The runner rejected your previous verdict: {run['reviewNote']} Record the missing or corrected evidence, then report again. "
+                       if run.get("reviewNote") else "")
                     + encoded({"objective": run["objective"], "scope": run["reviewScope"], "criteria": criteria(run),
                                "plan": run["plan"], "candidate": run["reviewCandidate"]}))
         task = run["plan"][run["taskIndex"]]
@@ -276,7 +283,8 @@ class ProjectRunner:
             try:
                 facts = self.executor.result_facts(run, episode, object_reply(result["text"]))
             except (ValueError, TypeError, OSError) as exc:
-                result = {**result, "state": "failed", "error": f"Candidate review facts rejected: {exc}"}
+                result = {**result, "state": "failed", "error": f"Candidate review facts rejected: {exc}",
+                          "reviewRejected": episode["phase"] == "verifying"}
         with self.store.transaction() as db:
             current = self.store._read(db, run["id"])
             if not current["activeEpisode"] or current["activeEpisode"]["id"] != episode["id"]:
@@ -324,6 +332,14 @@ class ProjectRunner:
                 self.store.save(db, current, "episode_limit_reached")
                 return
             current["episodeLimitStreak"] = 0
+            if result.get("reviewRejected") and current.get("reviewEvidenceRejections", 0) < MAX_REVIEW_REJECTIONS:
+                # A malformed or under-evidenced verdict is the reviewer's protocol
+                # error, not a verdict on the project: return the reason and let it
+                # record the missing evidence. The checks it already made remain.
+                current["reviewEvidenceRejections"] = current.get("reviewEvidenceRejections", 0) + 1
+                current["reviewNote"] = result["error"][:2000]
+                self.store.save(db, current, "review_evidence_rejected")
+                return
             try:
                 if state != "completed":
                     raise ValueError(result.get("error") or f"Episode ended with {state}")
@@ -336,6 +352,7 @@ class ProjectRunner:
                         current.update(phase="parallel", parallelStatus="active", teamChildren=[])
                 elif episode["phase"] == "verifying":
                     self._review_result(db, current, episode, facts)
+                    current.update(reviewNote="", reviewEvidenceRejections=0)
                 else:
                     action, summary = reply.get("action"), reply.get("summary")
                     if action not in {"continue", "candidate", "blocked"} or not isinstance(summary, str) or not summary.strip():

@@ -162,11 +162,14 @@ def assess(run, episode, reply, expected, source, workspace, events):
         data = event.data
         if data.get("case_id") != criterion_id or latest.get(criterion_id) != event_id or data.get("expectation") != required[criterion_id]["expectation"]:
             raise ValueError("Check does not match the current acceptance definition or latest result")
+        freshness = check_freshness(data, context)
         if (data.get("verdict") != "passed" or data.get("definition_changed") or data.get("acceptance_evidence") is not True or
                 data.get("assessment_source") not in {"runtime_exit_code", "runtime_browser_assertions"} or
-                data.get("check_kind") not in {"functional", "visual"} or
-                check_freshness(data, context) != "current"):
-            raise ValueError("Review evidence must be executed, passing, and current")
+                data.get("check_kind") not in {"functional", "visual"} or freshness != "current"):
+            # Name the criterion and the failed property: the reviewer is asked to fix exactly this.
+            raise ValueError(f"Review evidence must be executed, passing, and current: {criterion_id} has verdict="
+                             f"{data.get('verdict')}, check_kind={data.get('check_kind')}, acceptance_evidence="
+                             f"{data.get('acceptance_evidence')}, source={data.get('assessment_source')}, freshness={freshness}")
         tested_files = data.get("subject_snapshot", {}).get("files", {})
         source_hashes = {os.path.normcase(path): item["sha256"] for path, item in expected["files"].items()}
         if not any(value is not None and source_hashes.get(os.path.normcase(path)) == value for path, value in tested_files.items()):
