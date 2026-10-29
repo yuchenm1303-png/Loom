@@ -72,7 +72,7 @@ test("the introduction homepage keeps task entry inside the workspace", () => {
   const home = portal.slice(portal.indexOf('<main className="editorial-body">'), portal.indexOf('<footer className="editorial-footer'));
   assert.ok(home.includes('onClick={openWorkspace}'));
   assert.ok(home.includes('href={release.download}'));
-  assert.ok(home.includes('editorial-capabilities'));
+  assert.ok(home.includes('editorial-start'), "homepage retains the task-entry introduction even when the old capabilities section is removed");
   assert.ok(!/<(?:input|textarea|form)\b/.test(home), "homepage introduces Loom without a chat composer");
   assert.ok(!portal.includes('pendingPrompt && authenticated'), "connecting must not auto-submit a homepage task");
 });
