@@ -135,11 +135,16 @@ def test_dependencies_start_on_merged_predecessor_and_parallel_root_auto_integra
 
 @pytest.mark.parametrize("outside", [False, True])
 def test_scope_and_shared_budget_fail_closed_without_reset(tmp_path, outside):
-    service, runtime, _, root, run_id, _ = setup(tmp_path, outside=outside, budget=3)
+    # outside: both concurrent tasks write the same undeclared file. Each is told so
+    # (twice) and, still conflicting, the run stops; the file never reaches the source.
+    service, runtime, _, root, run_id, _ = setup(tmp_path, outside=outside, budget=40 if outside else 3)
     try:
         blocked = until(service, run_id, lambda r: r["control"] == "paused")
-        assert blocked["episodesUsed"] == blocked["maxEpisodes"] == 3
-        assert ("outside" if outside else "budget") in blocked["reason"].lower()
+        if outside:
+            assert "another task owns or is changing: unclaimed.txt" in blocked["reason"]
+        else:
+            assert blocked["episodesUsed"] == blocked["maxEpisodes"] == 3
+            assert "budget" in blocked["reason"].lower()
         assert not (root / "unclaimed.txt").exists()
         assert not any(item["state"] == "merged" for item in blocked["teamChildren"])
         if not outside:
@@ -262,5 +267,24 @@ def test_project_sessions_do_not_spawn_unbudgeted_idle_models(tmp_path, monkeypa
         runtime.idle_compaction.schedule(runtime.get_session(source_id), 100000)
         until(service, run_id, lambda r: r["state"] == "ready_for_review")
         assert scheduled == [source_id]
+    finally:
+        runtime.close()
+
+
+def test_unclaimed_supporting_file_outside_the_declared_scope_is_accepted(tmp_path):
+    # A real tests task needed tests/__init__.py beside its one declared test file.
+    from app.project_runner import parallel
+    service, runtime, _, root, run_id, _ = setup(tmp_path, barrier=False)
+    try:
+        parent = until(service, run_id, lambda r: len(r.get("teamChildren", [])) >= 1)
+        child = service.project_store.get(parent["teamChildren"][0]["runId"])
+        workspace = service.project_store.home / "workspaces" / child["id"]
+        (workspace / "support").mkdir()
+        (workspace / "support" / "__init__.py").write_text("", encoding="utf-8")
+        parallel.allowed(service.project_store, child, workspace)  # nobody else declares or changes it
+        other = "beta.txt" if child["plan"][0]["fileScopes"] == ["alpha.txt"] else "alpha.txt"
+        (workspace / other).write_text("not mine", encoding="utf-8")
+        with pytest.raises(parallel.ScopeViolation, match=other):
+            parallel.allowed(service.project_store, child, workspace)  # another task declares it
     finally:
         runtime.close()

@@ -39,15 +39,44 @@ def overlap(left, right):
                b.casefold().startswith(a.casefold()+"/") for a in left for b in right)
 
 
+class ScopeViolation(ValueError):
+    """A team task changed a file another task owns or is changing; returned to its worker."""
+
+
+def _in_scope(name, scopes):
+    folded = name.casefold()
+    return any(scope == "*" or folded == scope.casefold() or folded.startswith(scope.casefold() + "/") for scope in scopes)
+
+
 def allowed(store, run, source):
+    """Scopes exist so concurrent tasks never touch the same file, not to forbid supporting files.
+
+    A real five-task run stopped because its tests task added tests/__init__.py (unittest
+    discovery needs it) next to the one test file its plan declared. A change outside the
+    declared scope is accepted when no other task declares that path and no unmerged
+    sibling has changed it; an aggregation conflict would still stop the merge safely.
+    """
     if not run.get("teamOwnerId"):
         return
     baseline = store.candidate(run, run["teamBaseCandidateId"])["files"]
     current = snapshot(source)["files"]
-    scopes = run["plan"][0]["fileScopes"]
-    for name in baseline.keys() | current.keys():
-        if baseline.get(name) != current.get(name) and not any(scope == "*" or name.casefold() == scope.casefold() or name.casefold().startswith(scope.casefold()+"/") for scope in scopes):
-            raise ValueError(f"Task changed a file outside its declared scope: {name}")
+    outside = sorted(name for name in baseline.keys() | current.keys()
+                     if baseline.get(name) != current.get(name) and not _in_scope(name, run["plan"][0]["fileScopes"]))
+    if not outside:
+        return
+    root = store.get(run["teamOwnerId"])
+    others = [task for task in root["plan"] if task["id"] != run["plan"][0]["id"]]
+    owned = [name for name in outside if any(_in_scope(name, task.get("fileScopes", ["*"])) for task in others)]
+    for item in root.get("teamChildren", []):
+        if item["runId"] == run["id"] or item["state"] == "merged":
+            continue
+        sibling = store.get(item["runId"])
+        sibling_base = store.candidate(sibling, sibling["teamBaseCandidateId"])["files"]
+        sibling_now = snapshot(store.home / "workspaces" / sibling["id"])["files"]
+        owned += [name for name in outside if sibling_base.get(name) != sibling_now.get(name)]
+    if owned:
+        raise ScopeViolation("Task changed files outside its declared scope that another task owns or is changing: "
+                             + ", ".join(sorted(set(owned))[:20]) + "; restore them or report blocked")
 
 
 def owner(store, run):

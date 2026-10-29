@@ -22,6 +22,7 @@ from .budget import ProjectBudget
 #   provider_transient  provider/network failed, retryable          wait 30 s .. 30 min, continue
 #   review_evidence     a review verdict lacked accepted evidence   back to the reviewer, with why
 #   reply_format        a final reply the runner cannot read        back to the model, with why
+#   scope               a team task changed another task's files    back to the worker, with why
 #   (anything else)     settled normally, or stopped for inspection
 #
 # Each recoverable kind counts consecutive occurrences on the run; one more than its
@@ -34,6 +35,7 @@ RECOVERY = {
     "provider_transient": ("transientFailureStreak", lambda: MAX_TRANSIENT_STREAK, "transient_failure_retry"),
     "review_evidence": ("reviewEvidenceRejections", lambda: MAX_REVIEW_REJECTIONS, "review_evidence_rejected"),
     "reply_format": ("replyRejections", lambda: MAX_REVIEW_REJECTIONS, "reply_rejected"),
+    "scope": ("scopeRejections", lambda: MAX_REVIEW_REJECTIONS, "scope_rejected"),
 }
 CONTINUABLE_LIMITS = {"model_steps", "tool_calls"}
 PERMANENT_STATUS = {400, 401, 402, 403, 404}
@@ -73,6 +75,8 @@ def episode_outcome(state, result, refused):
         return "review_evidence"
     if result.get("replyRejected"):
         return "reply_format"
+    if result.get("scopeRejected"):
+        return "scope"
     return None
 
 
@@ -198,6 +202,7 @@ class ProjectRunner:
                 return ('Plan this project as ordered task IDs task-1, task-2, etc. Return only JSON {"tasks":[{"instructions":"scoped implementation",'
                     '"acceptance":["observable behavior"],"dependsOn":[],"fileScopes":["relative/file.py"],"sharedResources":[]}]}. '
                     "Use 1..16 tasks. Dependencies may reference only earlier task IDs. Only explicitly independent tasks with disjoint file scopes and no shared resources run together. "
+                    "A fileScope may name a directory (tests) when a task needs supporting files such as tests/__init__.py. "
                     "List common ports, databases, GUI/browser or environment resources in sharedResources. Omitted declarations serialize safely.\n" + run["objective"])
             return ("Plan this long-running project. Do not edit files or execute commands. Return only JSON: "
                     '{"tasks":[{"instructions":"scoped implementation", "acceptance":["observable behavior"]}]}. '
@@ -373,7 +378,8 @@ class ProjectRunner:
             except (ValueError, TypeError, OSError) as exc:
                 result = {**result, "state": "failed", "error": f"Candidate review facts rejected: {exc}",
                           "reviewRejected": episode["phase"] == "verifying",
-                          "replyRejected": isinstance(exc, ReplyFormatError) and episode["phase"] != "verifying"}
+                          "replyRejected": isinstance(exc, ReplyFormatError) and episode["phase"] != "verifying",
+                          "scopeRejected": isinstance(exc, parallel.ScopeViolation)}
         with self.store.transaction() as db:
             current = self.store._read(db, run["id"])
             if not current["activeEpisode"] or current["activeEpisode"]["id"] != episode["id"]:
@@ -476,6 +482,8 @@ class ProjectRunner:
                               "continue from the workspace and session state.\n" + run.get("handoff", ""))[:12000]
         elif kind == "review_evidence":
             run["reviewNote"] = error[:2000]
+        elif kind == "scope":
+            run["handoff"] = ("The runner refused the candidate: " + error[:2000] + "\n" + run.get("handoff", ""))[:12000]
         else:
             run["replyNote"] = error[:2000]
         return event
