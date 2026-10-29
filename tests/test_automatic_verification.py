@@ -82,6 +82,57 @@ def test_static_pass_cannot_discharge_ui_and_evidenced_blocker_can_finish(tmp_pa
         runtime.close()
 
 
+_STYLES = "".join(f".rule-{n} {{ margin: {n}px; }}\n" for n in range(40))
+
+
+def _style_turn(tmp_path, old, new):
+    import sys
+    platform = Responses([
+        ModelResponse(tool_calls=(ToolCall("edit", "replace_workspace_text", {
+            "path": "src/panel.css", "old_text": old, "new_text": new}),)),
+        ModelResponse(tool_calls=(ToolCall("build", "exec", {
+            "argv": [sys.executable, "-c", "print('build passed')"], "verification": {
+                "case_id": "build", "expectation": "Build exits 0", "subject_paths": ["src/panel.css"]}}),)),
+        ModelResponse(text="Done"), ModelResponse(text="Still done"), ModelResponse(text="Done again")])
+    runtime, session, workspace = make_runtime(tmp_path, platform)
+    (workspace / "src").mkdir(exist_ok=True)
+    (workspace / "src" / "panel.css").write_text(_STYLES, encoding="utf-8")
+    return platform, runtime, session
+
+
+def test_small_style_edit_is_light_and_a_build_check_discharges_it(tmp_path):
+    # Field case (2026-10-29): two CSS values took 70 steps because only screenshots could close them.
+    platform, runtime, session = _style_turn(tmp_path, ".rule-3 { margin: 3px; }", ".rule-3 { margin: 4px; }")
+    try:
+        result = runtime.start_turn(session.session_id, "Nudge rule 3 down a pixel")
+        assert result.status is AgentStatus.COMPLETED
+        assert result.final_text == "Done"
+        assert len(platform.requests) == 3
+        subject = development(platform.requests[1])["subjects"][0]
+        assert subject["kind"] == "visual" and subject["light"] is True
+        assert any("marks such subjects light" in str(m.content) for m in platform.requests[1].messages)
+        assert development(platform.requests[2])["status"] == "passed"
+        events = runtime.store.events(session.session_id)
+        assert not any(e.kind is E.VERIFICATION_FINISH_REQUESTED for e in events)
+    finally:
+        runtime.close()
+
+
+def test_large_style_edit_still_needs_visual_evidence(tmp_path):
+    old = "".join(f".rule-{n} {{ margin: {n}px; }}\n" for n in range(20))
+    new = "".join(f".rule-{n} {{ margin: {n + 1}px; }}\n" for n in range(20))
+    platform, runtime, session = _style_turn(tmp_path, old, new)
+    try:
+        runtime.start_turn(session.session_id, "Rework every rule")
+        subject = development(platform.requests[2])["subjects"][0]
+        assert "light" not in subject
+        assert development(platform.requests[2])["unresolved"] == 1
+        events = runtime.store.events(session.session_id)
+        assert any(e.kind is E.VERIFICATION_FINISH_REQUESTED for e in events)
+    finally:
+        runtime.close()
+
+
 def test_visual_pass_rejects_files_only_and_unseen_images(tmp_path):
     runtime, session, workspace = make_runtime(tmp_path, object())
     (workspace / "Panel.tsx").write_text("export {}")

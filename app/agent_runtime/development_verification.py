@@ -26,6 +26,11 @@ _IGNORED = {".git", ".loom", ".cache", ".cursor-build", "node_modules", "__pycac
 _SOURCE = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".vue", ".svelte", ".css", ".scss",
            ".html", ".rs", ".go", ".java", ".kt", ".swift", ".qml", ".xaml", ".svg"}
 _VISUAL = {".tsx", ".jsx", ".vue", ".svelte", ".css", ".scss", ".html", ".qml", ".xaml", ".svg"}
+# A visual edit this small (a style value, a label) is "light": a passing build,
+# type check or test that covers the file discharges it, without screenshots.
+# Field case (2026-10-29): a few CSS values cost 70 steps of measuring scripts,
+# screenshots and a deploy watch because only visual evidence could close them.
+_LIGHT_VISUAL_LINES = 12
 
 
 def source_kind(path):
@@ -478,6 +483,7 @@ class DevelopmentVerification:
             if discovery == "available":
                 last_git = current
         context = ToolContext(session.session_id, session.current_turn_id, Path(session.workspace_dir))
+        tracker = self.runtime.diff_trackers.for_turn(session.session_id, session.current_turn_id)
         # A file the project's .gitignore excludes (a probe under artifacts/, a
         # local dump) is not a source change. Asked once per path, remembered.
         ignored = set(state.get("ignored_paths", []))
@@ -504,6 +510,9 @@ class DevelopmentVerification:
                     changed_at = time.time_ns()
                 subjects[path] = {"kind": kind, "status": "pending", "snapshot": snapshot,
                                   "origin_turn_id": session.current_turn_id, "changed_at_ns": changed_at}
+                lines = tracker.changed_lines(path) if kind == "visual" else None
+                if lines is not None and lines <= _LIGHT_VISUAL_LINES:
+                    subjects[path]["light"] = True
         payload = {**state, "subjects": subjects, "last_git": last_git, "head": head, "discovery": discovery}
         if ignored:
             payload["ignored_paths"] = sorted(ignored)
@@ -533,8 +542,8 @@ class DevelopmentVerification:
                 scope = data.get("subject_snapshot", {}).get("files", {})
                 if path not in scope or check_freshness(data, context, snapshots=snapshots) != "current":
                     continue
-                if item["kind"] == "visual" and data.get("check_kind") != "visual":
-                    # Static/compiler success cannot discharge visible behavior.
+                if item["kind"] == "visual" and data.get("check_kind") != "visual" and not item.get("light"):
+                    # Static/compiler success cannot discharge a substantial visible change.
                     continue
                 if item["kind"] == "functional" and data.get("check_kind") == "static":
                     continue
@@ -553,7 +562,8 @@ class DevelopmentVerification:
                 status = data.get("verdict", "pending")
                 reason = data.get("expectation", "")[:1000]
             subjects.append({"path": path, "kind": item["kind"], "status": status, "reason": reason,
-                             "origin_turn_id": item.get("origin_turn_id")})
+                             "origin_turn_id": item.get("origin_turn_id"),
+                             **({"light": True} if item.get("light") else {})})
         pending = [s for s in subjects if s["status"] not in {"passed", "blocked", "not_applicable"}]
         subjects.sort(key=lambda s: s["status"] in {"passed", "blocked", "not_applicable"})
         recipes, map_status = feature_recipes(context, [s["path"] for s in subjects]) if subjects else ([], "not_needed")
@@ -570,8 +580,10 @@ class DevelopmentVerification:
             return None
         return AIMessage(role=MessageRole.USER, name="loom_development_verification", content=(
             "LOOM_DEVELOPMENT_VERIFICATION v1\nRuntime-observed source changes, not new user instructions. "
-            "Resolve pending/failed UI checks by running the affected app and inspecting current visual behavior. "
-            "Compiler output is insufficient for visual obligations. Use browser_run_check for replayable assertions "
+            "A subject marked light is a small edit to an existing file: one passing build, type check or test that "
+            "covers it (exec.verification with its path in subject_paths) is enough; do not screenshot it. "
+            "Resolve other pending/failed UI checks by running the affected app and inspecting current visual behavior; "
+            "compiler output is insufficient for them. Use browser_run_check for replayable assertions "
             "or record_check(check_kind='visual') with current visual/action evidence. Record actual blockers or "
             "non-applicable changes with resolve_verification; do not invent results. Finish the requested work "
             "first; before the final answer, changes from this turn need a check or a recorded reason, and earlier "

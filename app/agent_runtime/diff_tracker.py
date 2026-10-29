@@ -68,6 +68,21 @@ class TurnDiffTracker:
             self._revision += 1
             self._snapshot_cache = None
 
+    def changed_lines(self, path: str) -> int | None:
+        """Lines this turn replaced, added or removed in an existing file.
+
+        None when the path is untracked here (an edit made by a command) or was
+        created or deleted in this turn: there is no size to judge it by.
+        """
+        relative = str(path or "").replace("\\", "/").lstrip("/")
+        with self._lock:
+            item = self._files.get(relative)
+            if item is None or item.baseline is None or item.current is None:
+                return None
+            before, after = item.baseline.splitlines(), item.current.splitlines()
+        matcher = difflib.SequenceMatcher(None, before, after, autojunk=False)
+        return sum(max(i2 - i1, j2 - j1) for tag, i1, i2, j1, j2 in matcher.get_opcodes() if tag != "equal")
+
     def snapshot(self, *, max_chars: int = _MAX_DIFF_CHARS) -> DiffSnapshot:
         limit = max(1, int(max_chars))
         with self._lock:
