@@ -202,22 +202,43 @@
 .settings-shell.settings-refined .general-update-mount .software-update-heading { margin: 0; }
 .settings-shell.settings-refined .general-system-details { margin-top: 20px; }
 
-/* Navigation shares the same quiet surfaces as the preference controls. */
-.settings-shell.settings-refined { grid-template-columns: 236px minmax(0, 1fr); }
-.settings-shell.settings-refined .settings-sidebar { padding: 16px 14px 12px; }
-.settings-shell.settings-refined .settings-sidebar-top { gap: 18px; }
-.settings-shell.settings-refined .settings-sidebar-title { padding: 6px 10px; gap: 12px; }
-.settings-shell.settings-refined .settings-sidebar-title strong { font-size: 20px; font-weight: 600; letter-spacing: -.025em; }
-.settings-shell.settings-refined .settings-brand-orb { width: 32px; height: 32px; border-radius: 10px; border-color: var(--sr-line-strong); color: var(--sr-ink-2); background: var(--sr-hover); }
-.settings-shell.settings-refined .settings-search { height: 34px; border-radius: 8px; background: transparent; }
-.settings-shell.settings-refined .settings-nav { margin-top: 18px; scrollbar-width: thin; }
-.settings-shell.settings-refined .settings-nav section { margin-bottom: 22px; }
-.settings-shell.settings-refined .settings-nav-label { padding-left: 12px; color: var(--sr-ink-3); font-size: 11px; }
-.settings-shell.settings-refined .settings-nav button { min-height: 34px; padding: 7px 12px; gap: 11px; font-weight: 400; }
-.settings-shell.settings-refined .settings-nav button.active { font-weight: 600; }
+/* Sidebar: one quiet column. A plain title (no badge), a filled search field with no
+   outline until focus, regular-weight rows on one 32px rhythm, groups set apart by
+   space alone, no visible scrollbar (the list fades at its foot instead), and the
+   runtime state as a single line. */
+.settings-shell.settings-refined { grid-template-columns: 232px minmax(0, 1fr); }
+.settings-shell.settings-refined .settings-sidebar { padding: 14px 10px 10px; }
+.settings-shell.settings-refined .settings-sidebar-top { gap: 10px; }
+.settings-shell.settings-refined .settings-back { min-height: 30px; padding: 0 10px; gap: 8px; color: var(--sr-ink-3); }
+.settings-shell.settings-refined .settings-sidebar-title { min-height: 0; padding: 8px 10px 6px; }
+.settings-shell.settings-refined .settings-sidebar-title strong { font-size: 18px; line-height: 1.2; font-weight: 600; letter-spacing: -.02em; }
+.settings-shell.settings-refined .settings-search { height: 32px; padding: 0 10px; border-color: transparent; border-radius: 8px; background: var(--sr-hover); box-shadow: none; }
+.settings-shell.settings-refined .settings-search:hover { border-color: transparent; background: color-mix(in srgb, var(--sr-ink) 6%, transparent); }
+.settings-shell.settings-refined .settings-search:focus-within { border-color: var(--sr-accent-line); background: transparent; box-shadow: var(--sr-ring); }
+.settings-shell.settings-refined .settings-nav {
+  margin-top: 6px;
+  padding: 10px 0 20px;
+  gap: 18px;
+  scrollbar-width: none;
+  scrollbar-gutter: auto;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+}
+.settings-shell.settings-refined .settings-nav::-webkit-scrollbar { display: none; }
+.settings-shell.settings-refined .settings-nav section { margin-bottom: 0; gap: 1px; }
+.settings-shell.settings-refined .settings-nav-label { padding: 0 10px 6px; color: var(--sr-ink-4); font-weight: 500; }
+.settings-shell.settings-refined .settings-nav button { min-height: 32px; padding: 0 10px; gap: 10px; border-radius: 8px; grid-template-columns: 18px minmax(0, 1fr); font-weight: 400; }
+.settings-shell.settings-refined .settings-nav button > span:not(.settings-nav-pip) { font-weight: 400; }
+.settings-shell.settings-refined .settings-nav button.active,
+.settings-shell.settings-refined .settings-nav button.active > span:not(.settings-nav-pip) { font-weight: 500; }
 .settings-shell.settings-refined .settings-nav button.active > svg { color: var(--sr-accent); }
-.settings-shell.settings-refined .settings-sidebar-footer { padding: 14px 10px 2px; border-top-color: var(--sr-line-soft); }
-.settings-shell.settings-refined .settings-sidebar-footer strong { font-weight: 500; }
+.settings-shell.settings-refined .settings-sidebar-footer { padding: 10px 10px 2px; gap: 8px; border-top-color: transparent; }
+.settings-shell.settings-refined .settings-sidebar-footer div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.settings-shell.settings-refined .settings-sidebar-footer strong { color: var(--sr-ink-3); font-weight: 400; }
+.settings-shell.settings-refined .settings-sidebar-footer span:last-child { color: var(--sr-ink-4); white-space: nowrap; }
+.settings-shell.settings-refined .settings-sidebar-footer span:last-child::before { content: "· "; }
+.settings-shell.settings-refined .settings-runtime-dot { width: 6px; height: 6px; box-shadow: none; }
+.settings-shell.settings-refined .settings-sidebar-footer[data-running="true"] .settings-runtime-dot { box-shadow: none; }
 .settings-shell.settings-refined .settings-main-scroll { scrollbar-width: thin; }
 
 /* Keep the feedback selector compact and its explanation aligned below it. */
