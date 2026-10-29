@@ -64,3 +64,42 @@ test("manual child creation is an action, not an automatic per-message card", ()
   assert.match(transcript, /onCreateSubtask=\{cardsReady/);
   assert.doesNotMatch(transcript, /className="loom-task-branch-new"/);
 });
+
+const transcriptPath = path.join(root, "src/components/Transcript.tsx");
+const transcriptAst = ts.createSourceFile(transcriptPath, fs.readFileSync(transcriptPath, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const pick = (name) => {
+  const node = transcriptAst.statements.find(s => ts.isFunctionDeclaration(s) && s.name?.text === name);
+  assert.ok(node, `${name} must exist`);
+  return node.getText(transcriptAst);
+};
+const reportContext = { exports: {}, isActivityItem: (item) => ["tool_call", "process", "file_edit"].includes(item.type) };
+vm.runInNewContext(ts.transpileModule(
+  [method.getText(ast), pick("splitReasoning"), pick("finalAssistantForTurn"), pick("finalReportForTurn"),
+    "globalThis.finalReport = (items) => finalReportForTurn(items, finalAssistantForTurn(items));"].join("\n"),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } },
+).outputText, reportContext);
+const fence = "\x60".repeat(3);
+const block = fence + "loom-task\n" + JSON.stringify(plan) + "\n" + fence;
+const say = (id, text, phase = "commentary") => ({ id, type: "assistant_message", phase, text, reasoning: "" });
+
+test("a final reply that is only a task block keeps the report written before it", () => {
+  // The ending of a real turn whose finish was sent back twice: full report, a summary with the block, the block alone.
+  const items = [{ id: "u", type: "user_message" }, { id: "t", type: "tool_call" },
+    say("report", "Full report."), say("summary", "Short summary.\n\n" + block), say("last", block, "final_answer")];
+  const { final, borrowedId } = reportContext.finalReport(items);
+  assert.equal(final.id, "last");
+  assert.equal(borrowedId, "summary");
+  const shown = parse(final.text);
+  assert.equal(shown.text, "Short summary.");
+  assert.equal(shown.proposal?.title, plan.title);
+  assert.equal(final.text.split("loom-task").length, 2, "one card, not the summary's copy as well");
+});
+
+test("a report is never borrowed across tool work, and a final with prose borrows nothing", () => {
+  const before = [say("old", "Report before more work."), { id: "t", type: "tool_call" }, say("last", block, "final_answer")];
+  assert.equal(reportContext.finalReport(before).borrowedId, "");
+  assert.equal(parse(reportContext.finalReport(before).final.text).text, "");
+  const own = [say("old", "Earlier."), say("last", "Done.\n\n" + block, "final_answer")];
+  assert.equal(reportContext.finalReport(own).borrowedId, "");
+  assert.equal(reportContext.finalReport(own).final, own[1]);
+});

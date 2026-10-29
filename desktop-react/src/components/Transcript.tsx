@@ -1200,6 +1200,29 @@ function finalAssistantForTurn(items: TranscriptItem[]): TranscriptItem | null {
   return fallback;
 }
 
+/**
+ * A final message that is only a loom-task block has no report of its own. It happens when the finish is sent
+ * back (verification asks again) and the model's last reply shrinks to the block. The report is then the latest
+ * prose written after the last tool, which would otherwise fold away with the process: draw it above the card
+ * and leave the message it came from out of the process.
+ */
+function finalReportForTurn(items: TranscriptItem[], final: TranscriptItem | null): { final: TranscriptItem | null; borrowedId: string } {
+  const none = { final, borrowedId: "" };
+  if (!final) return none;
+  const own = splitReasoning(final.text ?? "");
+  if (!own.answer.trim() || parseTaskBranchProposal(own.answer).text.trim()) return none;
+  for (let index = items.indexOf(final) - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.type === "user_message" || isActivityItem(item)) break;
+    if (item.type !== "assistant_message") continue;
+    const prose = parseTaskBranchProposal(splitReasoning(item.text ?? "").answer).text.trim();
+    if (!prose) continue;
+    const reasoning = String(final.reasoning ?? "").trim() || own.reasoning;
+    return { final: { ...final, text: `${prose}\n\n${own.answer.trim()}`, reasoning }, borrowedId: item.id };
+  }
+  return none;
+}
+
 function latestFileEdit(items: TranscriptItem[]): TranscriptItem | null {
   let fallback: TranscriptItem | null = null;
   for (let index = items.length - 1; index >= 0; index -= 1) {
@@ -1558,11 +1581,12 @@ const TurnView = memo(function TurnView({
       if (!active && item.type === "error") errorItems.push(item);
     }
 
-    const finalAssistant = active ? null : finalAssistantForTurn(orderedItems);
+    const { final: finalAssistant, borrowedId } = finalReportForTurn(orderedItems, active ? null : finalAssistantForTurn(orderedItems));
     const errorIds = new Set(errorItems.map((item) => item.id));
     const processItems = orderedItems.filter((item) => (
       item.id !== initialUser?.id
       && item.id !== finalAssistant?.id
+      && item.id !== borrowedId
       && !errorIds.has(item.id)
       && item.type !== "task_plan"
     ));
