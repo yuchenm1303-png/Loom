@@ -72,7 +72,7 @@ test("the introduction homepage keeps task entry inside the workspace", () => {
   const home = portal.slice(portal.indexOf('<main className="editorial-body">'), portal.indexOf('<footer className="editorial-footer'));
   assert.ok(home.includes('onClick={openWorkspace}'));
   assert.ok(home.includes('href={release.download}'));
-  assert.ok(home.includes('editorial-capabilities'));
+  assert.ok(home.includes('editorial-start'), "homepage retains the task-entry introduction even when the old capabilities section is removed");
   assert.ok(!/<(?:input|textarea|form)\b/.test(home), "homepage introduces Loom without a chat composer");
   assert.ok(!portal.includes('pendingPrompt && authenticated'), "connecting must not auto-submit a homepage task");
 });
@@ -299,4 +299,24 @@ test("release notes get a restrained one-shot magnetic spring without moving adj
   const css = readFileSync(new URL("../../src/components/portal-editorial.css", import.meta.url), "utf8");
   assert.match(css, /\.editorial-release a\[data-magnetic-bounce="true"\]\s*\{\s*display:\s*inline-block/,
     "The short inline release link needs a transformable box for visible wobble");
+});
+
+
+test("web login card uses Turnstile only when public sitekey is advertised", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const widget = readFileSync(new URL("../../src/components/TurnstileChallenge.tsx", import.meta.url), "utf8");
+  const bridge = readFileSync(new URL("../../src/webBridge.ts", import.meta.url), "utf8");
+  const compose = readFileSync(new URL("../../../services/loom_web_gateway/docker-compose.yml", import.meta.url), "utf8");
+  assert.ok(portal.includes("account.capabilities.turnstileSiteKey"));
+  assert.ok(portal.includes("turnstileRequired && !turnstileToken"));
+  assert.ok(portal.includes("account.login(submittedEmail, submittedPassword, turnstileToken)"));
+  assert.ok(portal.includes("account.registerStart(submittedEmail, submittedPassword, turnstileToken)"));
+  assert.ok(portal.includes("account.forgotPassword(submittedEmail, turnstileToken)"));
+  assert.ok(widget.includes('action: "loom_auth"'));
+  assert.ok(widget.includes('"expired-callback"'));
+  assert.ok(widget.includes('"error-callback"'));
+  assert.ok(widget.includes("turnstile.remove") || widget.includes("api.remove(widgetId)"));
+  assert.ok(bridge.includes("turnstile_token: turnstileToken ||"));
+  assert.ok(compose.includes("LOOM_TURNSTILE_SECRET_KEY"));
+  assert.ok(!portal.includes("TURNSTILE_SECRET_KEY"), "Never include the secret in the rendered component");
 });

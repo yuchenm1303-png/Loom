@@ -24,6 +24,8 @@ export interface LoomAuthCapabilities {
   google: boolean;
   github: boolean;
   legacyRegistration: boolean;
+  /** Public Cloudflare site key. Empty when Turnstile is not configured. */
+  turnstileSiteKey?: string;
 }
 
 export interface LoomAuthChallenge {

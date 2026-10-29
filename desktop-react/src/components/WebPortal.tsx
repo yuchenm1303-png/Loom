@@ -5,6 +5,8 @@ import "./portal-content.css";
 import "./portal-liquid-cursor.css";
 import "./portal-editorial.css";
 import "./portal-auth-dialog.css";
+import "./portal-turnstile.css";
+import { TurnstileChallenge } from "./TurnstileChallenge";
 import "./portal-home-icon.css";
 import type { CSSProperties, FormEvent, MouseEvent } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -355,6 +357,23 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   const [challengeEmail, setChallengeEmail] = useState("");
   const [resendWait, setResendWait] = useState(0);
   const [localError, setLocalError] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileRefresh, setTurnstileRefresh] = useState(0);
+  const turnstileSiteKey = account.capabilities.turnstileSiteKey || "";
+  const turnstileRequired = Boolean(turnstileSiteKey);
+  const resetTurnstile = () => {
+    setTurnstileToken("");
+    setTurnstileRefresh((value) => value + 1);
+  };
+  const turnstileWidget = turnstileRequired ? (
+    <TurnstileChallenge
+      siteKey={turnstileSiteKey}
+      theme={editorial && lightEditorial ? "light" : "dark"}
+      refreshKey={turnstileRefresh}
+      onToken={setTurnstileToken}
+      onError={() => setLocalError(zh ? "机器人验证加载失败，请刷新后重试。" : "Robot verification failed to load. Please retry.")}
+    />
+  ) : null;
   const [logoutNotice, setLogoutNotice] = useState("");
   const authenticated = Boolean(account.account.authenticated && account.account.user);
   const strength = passwordScore(password);
@@ -420,6 +439,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   }, []);
 
   function resetAuthFlow(nextMode: "login" | "register" = authMode) {
+    resetTurnstile();
     account.clearError();
     setLocalError("");
     setAuthMode(nextMode);
@@ -465,8 +485,13 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     setEmail(submittedEmail);
     setPassword(submittedPassword);
     if (authMode === "register") setConfirmPassword(submittedConfirm);
+    if (turnstileRequired && !turnstileToken) {
+      setLocalError(zh ? "请先完成人机验证。" : "Complete the robot verification first.");
+      return;
+    }
     if (authMode === "login") {
-      const ok = await account.login(submittedEmail, submittedPassword);
+      const ok = await account.login(submittedEmail, submittedPassword, turnstileToken);
+      resetTurnstile();
       if (ok) setPassword("");
       return;
     }
@@ -479,7 +504,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       return;
     }
     if (account.capabilities.emailVerification) {
-      const challenge = await account.registerStart(submittedEmail, submittedPassword);
+      const challenge = await account.registerStart(submittedEmail, submittedPassword, turnstileToken);
+      resetTurnstile();
       if (!challenge) return;
       setChallengeId(challenge.id);
       setChallengeEmail(challenge.email);
@@ -488,7 +514,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       setAuthStep("verify");
       return;
     }
-    const ok = await account.register(submittedEmail, submittedPassword);
+    const ok = await account.register(submittedEmail, submittedPassword, turnstileToken);
+    resetTurnstile();
     if (ok) {
       setPassword("");
       setConfirmPassword("");
@@ -519,7 +546,12 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     const form = new FormData(event.currentTarget);
     const submittedEmail = fieldValue(form, "email", email).trim();
     setEmail(submittedEmail);
-    const challenge = await account.forgotPassword(submittedEmail);
+    if (turnstileRequired && !turnstileToken) {
+      setLocalError(zh ? "请先完成人机验证。" : "Complete the robot verification first.");
+      return;
+    }
+    const challenge = await account.forgotPassword(submittedEmail, turnstileToken);
+    resetTurnstile();
     if (!challenge) return;
     setChallengeId(challenge.id);
     setChallengeEmail(challenge.email);
@@ -837,7 +869,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                     <div className="loom-password-strength" data-score={strength}><div className="loom-strength-copy"><span>{zh ? "密码强度" : "Password strength"}</span><span>{strengthLabel}</span></div><div className="loom-strength-bars">{[1,2,3,4].map((level) => <i key={level} className={strength >= level ? "is-active" : ""} />)}</div><small>{zh ? "建议至少 12 位，并混合大小写、数字和符号" : "12+ characters with mixed case, numbers and symbols is recommended"}</small></div>
                     <label><span>{zh ? "确认密码" : "Confirm password"}</span><div className="loom-input-shell"><KeyRound size={17} aria-hidden="true" /><input ref={confirmPasswordInputRef} name="confirmPassword" type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="••••••••" value={confirmPassword} onInput={(event) => setConfirmPassword(event.currentTarget.value)} onChange={(event) => setConfirmPassword(event.target.value)} required /><button className="loom-password-toggle" type="button" aria-pressed={showPassword} aria-label={showPassword ? (zh ? "隐藏密码" : "Hide password") : (zh ? "显示密码" : "Show password")} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></div></label>
                   </> : null}
-                  <button className="loom-form-submit" type="submit" disabled={!account.ready || account.busy}><span>{!account.ready ? (zh ? "加载中…" : "Loading…") : account.busy ? (zh ? "处理中…" : "Working…") : authMode === "login" ? (zh ? "登录" : "Sign in") : account.capabilities.emailVerification ? (zh ? "创建并验证邮箱" : "Create & verify email") : (zh ? "创建账户" : "Create account")}</span><span aria-hidden="true">→</span></button>
+                  {turnstileWidget}
+                   <button className="loom-form-submit" type="submit" disabled={!account.ready || account.busy || (turnstileRequired && !turnstileToken)}><span>{!account.ready ? (zh ? "加载中…" : "Loading…") : account.busy ? (zh ? "处理中…" : "Working…") : authMode === "login" ? (zh ? "登录" : "Sign in") : account.capabilities.emailVerification ? (zh ? "创建并验证邮箱" : "Create & verify email") : (zh ? "创建账户" : "Create account")}</span><span aria-hidden="true">→</span></button>
                 </form>
                 <button className="loom-account-switch" type="button" onClick={() => resetAuthFlow(authMode === "login" ? "register" : "login")}>{authMode === "login" ? (zh ? "没有账户？创建一个" : "New to Loom? Create an account") : (zh ? "已有账户？返回登录" : "Already have an account? Sign in")}</button>
               </> : authStep === "verify" ? <>
@@ -861,7 +894,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <p className="loom-control-copy">{zh ? "输入你的邮箱。若账户存在，我们会发送一次性验证码。" : "Enter your email. If the account exists, we'll send a one-time recovery code."}</p>
                 <form className="loom-account-form" onSubmit={submitForgot}>
                   <label><span>{zh ? "邮箱" : "Email"}</span><div className="loom-input-shell"><Mail size={17} aria-hidden="true" /><input ref={emailInputRef} id="emailInput" name="email" type="text" inputMode="email" pattern="[^@\s]+@[^@\s]+" autoComplete="email" autoCapitalize="none" spellCheck={false} placeholder="name@example.com" value={email} onInput={(event) => setEmail(event.currentTarget.value)} onChange={(event) => setEmail(event.target.value)} required /></div></label>
-                  <button className="loom-form-submit" type="submit" disabled={account.busy}><span>{account.busy ? (zh ? "发送中…" : "Sending…") : (zh ? "发送重置验证码" : "Send reset code")}</span><span aria-hidden="true">→</span></button>
+                  {turnstileWidget}
+                   <button className="loom-form-submit" type="submit" disabled={account.busy || (turnstileRequired && !turnstileToken)}><span>{account.busy ? (zh ? "发送中…" : "Sending…") : (zh ? "发送重置验证码" : "Send reset code")}</span><span aria-hidden="true">→</span></button>
                 </form>
                 <button className="loom-account-switch" type="button" onClick={() => resetAuthFlow("login")}>{zh ? "← 返回登录" : "← Back to sign in"}</button>
               </> : <>

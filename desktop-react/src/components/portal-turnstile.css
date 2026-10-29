@@ -1,0 +1,22 @@
+/* Cloudflare Turnstile remains subordinate to the login controls. */
+.loom-turnstile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 65px;
+  margin: 4px 0 0;
+}
+.loom-turnstile > div {
+  max-width: 100%;
+  min-width: 0;
+}
+.loom-turnstile iframe { max-width: 100%; }
+.loom-editorial .editorial-panel .loom-turnstile {
+  margin-top: 3px;
+  margin-bottom: 2px;
+}
+@media (max-width: 350px) {
+  .loom-turnstile { transform: scale(.86); transform-origin: center; }
+}
