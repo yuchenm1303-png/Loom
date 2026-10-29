@@ -11,6 +11,13 @@ try {
     await demo.waitFor();
     await page.waitForFunction(() => document.querySelector(".editorial-shell")?.dataset.typeReady === "true");
     const firstHeight = (await demo.boundingBox()).height;
+    if (width >= 1920) {
+      const grid = await page.locator(".editorial-hero-grid").boundingBox();
+      assert.ok(grid.width >= Math.min(width * .83, 1760) - 1, "large displays use an expanded page frame");
+      const text = await page.locator(".editorial-hero-text").boundingBox();
+      const picture = await page.locator(".editorial-session").boundingBox();
+      assert.ok(picture.x - (text.x + text.width) >= 80, "the two hero columns have a clear breathing space");
+    }
     for (let step = 0; step < 4; step++) {
       await demo.locator(".home-demo-playback button").nth(step).click();
       const rects = await page.evaluate(() => {
@@ -30,7 +37,7 @@ try {
         assert.ok(approve.y + approve.height <= rects.composer.top, "approval action is visible above the composer");
       }
     }
-    if (width === 1440 && process.env.LOOM_DEMO_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOOM_DEMO_SCREENSHOTS}/home-layout-desktop.png` });
+    if ((width === 1440 || width === 1920) && process.env.LOOM_DEMO_SCREENSHOTS) await page.screenshot({ path: `${process.env.LOOM_DEMO_SCREENSHOTS}/home-layout-${width}.png` });
     await page.locator("#loom-computer-use").evaluate(node => node.scrollIntoView({ block: "start" }));
     const computer = await page.locator(".computer-demo-window").boundingBox();
     assert.ok(computer.y >= 72 && computer.y + computer.height <= height - 8, `${width}×${height}: complete Computer Use window fits after section navigation`);

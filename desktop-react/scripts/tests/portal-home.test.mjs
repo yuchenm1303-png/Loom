@@ -69,7 +69,7 @@ test("the page keeps the reference's palette, type and links", () => {
 
 test("the page is laid on a wide frame and a 12-column grid; its prose keeps the reference's measure", () => {
   const root = rule(".loom-portal-page.loom-editorial");
-  assert.match(root, /--ed-wide:\s*clamp\(1280px,\s*58vw,\s*1440px\)/, "a frame of 1280 to 1440px");
+  assert.match(root, /--ed-wide:\s*clamp\(1280px,\s*84vw,\s*1760px\)/, "the frame expands across larger displays");
   assert.match(root, /--ed-edge:\s*max\(var\(--ed-gutter\),\s*calc\(\(100% - var\(--ed-wide\)\) \/ 2\)\)/, "never closer than the gutter to the window");
   const shell = rule(".loom-portal-page.loom-editorial .editorial-shell");
   assert.match(shell, /width:\s*100%/);

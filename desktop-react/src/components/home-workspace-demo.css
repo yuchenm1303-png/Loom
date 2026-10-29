@@ -8,7 +8,7 @@
 .home-demo-bar { border-bottom: 1px solid var(--demo-line); }
 .home-demo-brand { display: flex; align-items: center; gap: 7px; font-weight: 600; }
 .home-demo-badge { color: var(--demo-accent); font-size: 10px; border: 1px solid var(--demo-line); border-radius: 20px; padding: 2px 7px; white-space: nowrap; }
-.home-demo-workspace { display: grid; grid-template-columns: 132px minmax(0, 1fr) 34px; grid-template-rows: minmax(0, 1fr); height: clamp(302px, 39dvh, 385px); }
+.home-demo-workspace { display: grid; grid-template-columns: clamp(132px, 22%, 180px) minmax(0, 1fr) 34px; grid-template-rows: minmax(0, 1fr); height: clamp(302px, 39dvh, 385px); }
 .home-demo-sidebar { display: flex; flex-direction: column; gap: 5px; margin: 6px 0 6px 6px; padding: 10px 6px; border: 1px solid var(--demo-line); border-radius: 12px; background: color-mix(in srgb, var(--demo-canvas) 50%, var(--demo-panel)); }
 .home-demo-eyebrow { color: var(--demo-muted); font-size: 9px; letter-spacing: .08em; padding: 0 8px 7px; }
 .home-demo-project { display: flex; gap: 6px; align-items: center; padding: 0 5px 4px; color: var(--demo-secondary); font-size: 10px; font-weight: 600; }

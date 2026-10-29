@@ -36,9 +36,9 @@
   --ed-rule: #3d3d3a;
   --ed-rule-soft: #2f2e2b;
   --ed-accent: #99b7c5;
-  /* The frame: 1280px wide (a little more on a big window), never closer than the gutter to the window's edge, on a
-     12-column grid. The headline is set to the column it sits in: 72px at most, which is what five columns hold. */
-  --ed-wide: clamp(1280px, 58vw, 1440px);
+  /* Expand the shared twelve-column frame on larger displays; prose keeps its
+     own reading measure while navigation and previews use the available room. */
+  --ed-wide: clamp(1280px, 84vw, 1760px);
   --ed-gutter: clamp(20px, 4.4vw, 64px);
   --ed-edge: max(var(--ed-gutter), calc((100% - var(--ed-wide)) / 2));
   --ed-gap: clamp(16px, 2vw, 28px);
@@ -386,7 +386,7 @@
   column-gap: var(--ed-gap);
   align-items: start;
 }
-.loom-editorial .editorial-hero-text { grid-column: 1 / span 5; min-width: 0; }
+.loom-editorial .editorial-hero-text { grid-column: 1 / span 5; min-width: 0; max-width: 640px; }
 @media (min-width: 961px) {
   .loom-editorial .editorial-hero-text { padding-top: clamp(28px, 5vh, 64px); }
 }
