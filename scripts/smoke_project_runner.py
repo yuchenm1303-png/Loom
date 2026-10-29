@@ -85,6 +85,75 @@ def oracle(workspace):
     return results
 
 
+LEDGER_OBJECTIVE = """Build a standard-library-only Python package ledger (a ledger/ directory with
+__init__.py and __main__.py) run from the project root as
+python -m ledger FILE [--account NAME] [--since YYYY-MM-DD].
+FILE is UTF-8 text with one entry per line: DATE,ACCOUNT,AMOUNT. Blank lines and lines whose
+first non-space character is # are ignored; fields are trimmed of surrounding whitespace.
+- DATE is a real calendar date written YYYY-MM-DD (2026-02-30 is invalid).
+- ACCOUNT is nonempty and uses only letters, digits, _ and -.
+- AMOUNT is a decimal with an optional leading -, at most two fraction digits (12, -3.5, 0.25);
+  no exponent, no +, no thousands separators.
+Any invalid line: exit code 2, print a message containing "line N" (the 1-based physical line
+number in FILE) to stderr, and print nothing to stdout. A missing or unreadable FILE, an invalid
+--since date or other bad arguments: exit code 2 and nothing on stdout.
+On success exit 0 and print exactly one JSON object
+{"balances": {ACCOUNT: "D.DD", ...}, "total": "D.DD"}: per-account sums using exact decimal
+arithmetic, every amount formatted with exactly two decimals ("-3.50", "0.00"); --account keeps
+only that account (an absent account gives {} and "0.00"); --since keeps entries on or after that
+date; total is the sum of the balances shown. Include unittest tests under tests/ runnable with
+python -m unittest, and a README with usage. Work only on this project; do not install
+dependencies, access network, read credentials, or modify external files. Use the absolute Python
+executable in README for exec checks, with wait=true and functional verification records.
+Plan 3 to 5 tasks whose dependsOn reflects real dependencies (for example parsing and validation,
+aggregation, the command line, tests and README); give independent tasks disjoint fileScopes.
+Do not start servers.
+"""
+
+LEDGER_SAMPLE = "# sample\n2026-01-05,cash,12.50\n2026-01-06, bank ,100\n  \n2026-02-01,cash,-2.25\n2026-02-03,card-1,-40.10\n"
+
+
+def ledger_oracle(workspace):
+    """Fixed external checks of the ledger CLI; inputs live outside the workspace."""
+    def ok(balances, total):
+        return {"balances": balances, "total": total}
+    files = {"sample": LEDGER_SAMPLE, "empty": "", "bad_date": "2026-01-01,cash,1\n2026-02-30,cash,1\n",
+             "bad_amount": "# c\n2026-01-01,cash,1\n2026-01-02,cash,1.234\n", "missing_field": "2026-01-01,cash\n",
+             "exponent": "2026-01-01,cash,1e3\n", "bad_account": "2026-01-01,cash,1\n2026-01-02,ca sh,1\n",
+             # Binary floating point rounds this sum to ...9.95; exact decimals give ...9.94.
+             "large": "2026-01-01,cash,90071992547409.93\n2026-01-02,cash,0.01\n"}
+    cases = [(["sample"], ok({"cash": "10.25", "bank": "100.00", "card-1": "-40.10"}, "70.15")),
+             (["sample", "--account", "cash"], ok({"cash": "10.25"}, "10.25")),
+             (["sample", "--since", "2026-02-01"], ok({"cash": "-2.25", "card-1": "-40.10"}, "-42.35")),
+             (["sample", "--account", "nobody"], ok({}, "0.00")),
+             (["empty"], ok({}, "0.00")),
+             (["large"], ok({"cash": "90071992547409.94"}, "90071992547409.94")),
+             (["bad_date"], "line 2"), (["bad_amount"], "line 3"), (["missing_field"], "line 1"),
+             (["exponent"], "line 1"), (["bad_account"], "line 2"),
+             (["absent"], ""), (["sample", "--since", "2026-13-01"], "")]
+    results = []
+    with tempfile.TemporaryDirectory(prefix="loom-ledger-oracle-") as folder:
+        for name, text in files.items():
+            Path(folder, name + ".csv").write_text(text, encoding="utf-8")
+        for args, expected in cases:
+            argv = [str(Path(folder, args[0] + ".csv")), *args[1:]]
+            # -m resolves the package from cwd; -E/-s keep the environment and user site out.
+            result = subprocess.run([sys.executable, "-E", "-s", "-B", "-m", "ledger", *argv], cwd=workspace,
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
+            if isinstance(expected, dict):
+                try:
+                    passed = result.returncode == 0 and json.loads(result.stdout) == expected
+                except (ValueError, TypeError):
+                    passed = False
+            else:
+                passed = result.returncode == 2 and not result.stdout.strip() and expected in result.stderr
+            results.append({"input": " ".join(args), "passed": passed, "exitCode": result.returncode})
+    return results
+
+
+SCENARIOS = {"tally": (OBJECTIVE, oracle, "Tally"), "ledger": (LEDGER_OBJECTIVE, ledger_oracle, "Ledger")}
+
+
 def failure_kind(reason):
     """Bounded diagnostic categories; never print provider bodies or credentials."""
     text = str(reason).lower()
@@ -179,8 +248,10 @@ def main(argv=None):
     parser.add_argument("--max-episodes", type=int, default=12)
     parser.add_argument("--seconds", type=int, default=480)
     parser.add_argument("--max-workers", type=int, choices=(1, 2), default=1)
+    parser.add_argument("--scenario", choices=tuple(SCENARIOS), default="tally",
+                        help="tally: one small CLI; ledger: a multi-task package with a larger external oracle")
     args = parser.parse_args(argv)
-    if not 1 <= args.token_budget <= 1_000_000 or not 1 <= args.max_episodes <= 40 or not 1 <= args.seconds <= 1800:
+    if not 1 <= args.token_budget <= 3_000_000 or not 1 <= args.max_episodes <= 80 or not 1 <= args.seconds <= 7200:
         parser.error("Qualification limits exceed supported bounds")
     root = args.root.resolve()
     if root.exists():
@@ -196,7 +267,8 @@ def main(argv=None):
     root.mkdir(parents=True)
     workspace = root / "workspace"
     workspace.mkdir()
-    (workspace / "README.md").write_text("# Tally qualification\n\nPython executable for checks: " + sys.executable + "\n", encoding="utf-8")
+    objective_text, check, title = SCENARIOS[args.scenario]
+    (workspace / "README.md").write_text(f"# {title} qualification\n\nPython executable for checks: " + sys.executable + "\n", encoding="utf-8")
     (workspace / ".gitignore").write_text("__pycache__/\n.pytest_cache/\n", encoding="utf-8")
     git(workspace, "init", "-b", "main")
     git(workspace, "-c", "user.name=Loom Qualification", "-c", "user.email=qualification@localhost", "add", ".")
@@ -225,6 +297,7 @@ def main(argv=None):
     service = QualificationService(runtime=runtime, store=store, model=model, default_workspace=workspace)
     started = time.monotonic()
     report = {"model": entry.model, "provider": provider, "profileId": args.stored_model, "maxWorkers": args.max_workers,
+              "scenario": args.scenario,
               "tokenBudget": args.token_budget, "maxEpisodes": args.max_episodes, "wallLimitSeconds": args.seconds,
               "realModel": True, "sandbox": sandbox, "outcome": "not_started", "oracle": []}
     run = None
@@ -234,7 +307,7 @@ def main(argv=None):
         selected = {"list_workspace_files", "read_workspace_text", "write_workspace_text", "replace_workspace_text", "apply_patch", "exec"}
         session.tool_selection = [tool.name for tool in runtime.tools.definitions() if tool.name in selected]
         store.save(session)
-        objective = OBJECTIVE + ("\nFor this serial smoke, return exactly one task covering CLI, README and all acceptance cases."
+        objective = objective_text + ("" if args.scenario != "tally" else "\nFor this serial smoke, return exactly one task covering CLI, README and all acceptance cases."
             if args.max_workers == 1 else
             # Without this the planner reasonably orders README after tally.py, and
             # nothing runs concurrently: the parallel path is never exercised.
@@ -263,7 +336,7 @@ def main(argv=None):
                 report["outcome"] = "request_budget_reached"
                 break
             if run.get("workflowStatus") == "completed":
-                report["oracle"] = oracle(workspace)
+                report["oracle"] = check(workspace)
                 report["outcome"] = "passed" if all(item["passed"] for item in report["oracle"]) else "oracle_failed"
                 break
             if any(item["control"] == "budget_limited" for item in [run, *children]):

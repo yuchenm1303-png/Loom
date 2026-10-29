@@ -36,6 +36,87 @@ print(json.dumps({'sum':sum(values),'unique':len(set(values))}))
     assert all(item["passed"] for item in oracle(tmp_path))
 
 
+LEDGER_REFERENCE = r"""import argparse, datetime, decimal, json, re, sys
+
+AMOUNT = re.compile(r"-?[0-9]+(\.[0-9]{1,2})?")
+ACCOUNT = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def fail(message):
+    print(message, file=sys.stderr)
+    sys.exit(2)
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        fail(message)
+
+
+def main():
+    parser = Parser(prog="ledger")
+    parser.add_argument("file")
+    parser.add_argument("--account")
+    parser.add_argument("--since")
+    args = parser.parse_args()
+    since = None
+    if args.since is not None:
+        try:
+            since = datetime.date.fromisoformat(args.since)
+        except ValueError:
+            fail("invalid --since")
+    try:
+        lines = open(args.file, encoding="utf-8").read().splitlines()
+    except OSError as exc:
+        fail(f"cannot read file: {exc}")
+    balances = {}
+    for number, raw in enumerate(lines, 1):
+        if not raw.strip() or raw.strip().startswith("#"):
+            continue
+        fields = [field.strip() for field in raw.split(",")]
+        try:
+            if len(fields) != 3 or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", fields[0]):
+                raise ValueError
+            date = datetime.date.fromisoformat(fields[0])
+            if not ACCOUNT.fullmatch(fields[1]) or not AMOUNT.fullmatch(fields[2]):
+                raise ValueError
+        except ValueError:
+            fail(f"invalid entry on line {number}")
+        if (since is None or date >= since) and (args.account is None or fields[1] == args.account):
+            balances[fields[1]] = balances.get(fields[1], decimal.Decimal(0)) + decimal.Decimal(fields[2])
+    shown = {name: f"{value:.2f}" for name, value in balances.items()}
+    print(json.dumps({"balances": shown, "total": f"{sum(balances.values(), decimal.Decimal(0)):.2f}"}))
+
+
+main()
+"""
+
+
+def _ledger(tmp_path, source):
+    package = tmp_path / "ledger"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "__main__.py").write_text(source, encoding="utf-8")
+    return tmp_path
+
+
+def test_ledger_oracle_accepts_a_correct_package(tmp_path):
+    results = qualification.ledger_oracle(_ledger(tmp_path, LEDGER_REFERENCE))
+    assert len(results) == 13 and all(item["passed"] for item in results), results
+
+
+@pytest.mark.parametrize("mistake,old,new", [
+    # A worker that trusts the date shape, rounds long amounts or drops the line number must fail.
+    ("calendar", "date = datetime.date.fromisoformat(fields[0])", "date = datetime.date(2026, 1, 1)"),
+    ("precision", r'AMOUNT = re.compile(r"-?[0-9]+(\.[0-9]{1,2})?")', r'AMOUNT = re.compile(r"-?[0-9]+(\.[0-9]+)?")'),
+    ("line number", 'fail(f"invalid entry on line {number}")', 'fail("invalid entry")'),
+    ("float sums", "decimal.Decimal(fields[2])", "decimal.Decimal(float(fields[2]) + 1e-9)"),
+])
+def test_ledger_oracle_rejects_plausible_mistakes(tmp_path, mistake, old, new):
+    assert LEDGER_REFERENCE.count(old) == 1, mistake
+    results = qualification.ledger_oracle(_ledger(tmp_path, LEDGER_REFERENCE.replace(old, new)))
+    assert not all(item["passed"] for item in results), mistake
+
+
 @pytest.mark.parametrize("reason,expected", [
     ("AITransportError: Error 402 Insufficient Balance", "provider_balance"),
     ("HTTP 401 unauthorized", "provider_authentication"),
