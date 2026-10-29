@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
@@ -26,6 +26,16 @@ WEB_ORIGINS = tuple(
 )
 BUILD_SHA = os.environ.get("LOOM_BUILD_SHA", "unknown")
 TELEMETRY_SECRET = str(os.environ.get("LOOM_TELEMETRY_SECRET", "") or "").strip()
+# Both keys must be configured before enforcement is enabled. Never expose
+# the secret key to browsers or browser-readable capability responses.
+TURNSTILE_SITE_KEY = str(os.environ.get("LOOM_TURNSTILE_SITE_KEY", "") or "").strip()
+TURNSTILE_SECRET_KEY = str(os.environ.get("LOOM_TURNSTILE_SECRET_KEY", "") or "").strip()
+TURNSTILE_ENABLED = bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
+TURNSTILE_ACTION = "loom_auth"
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+TURNSTILE_PROTECTED_PATHS = frozenset({
+    "/auth/login", "/auth/register", "/auth/register/start", "/auth/forgot-password",
+})
 ACCESS_COOKIE = "loom_web_access"
 REFRESH_COOKIE = "loom_web_refresh"
 ACCESS_MAX_AGE = 15 * 60
@@ -429,6 +439,34 @@ def _request_origin(request: Request) -> str:
     return candidate if candidate in _allowed_origins() else WEB_ORIGIN
 
 
+async def _verify_turnstile(request: Request, token: Any) -> bool:
+    """Fail closed for protected Web authentication, without blocking Desktop.
+
+    Cloudflare tokens are single use and expire after 5 minutes. Check action
+    and expected hostname, not just success. Credentials never enter logs.
+    """
+    if not isinstance(token, str) or not 1 <= len(token) <= 2048:
+        return False
+    expected_hosts = {urlsplit(origin).hostname for origin in (WEB_ORIGIN, *WEB_ORIGINS)}
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.post(TURNSTILE_VERIFY_URL, json={
+                "secret": TURNSTILE_SECRET_KEY,
+                "response": token,
+            })
+            response.raise_for_status()
+            verdict = response.json()
+    except (httpx.HTTPError, ValueError):
+        logger.warning("Turnstile verification service unavailable")
+        return False
+    return bool(
+        isinstance(verdict, dict)
+        and verdict.get("success") is True
+        and verdict.get("action") == TURNSTILE_ACTION
+        and verdict.get("hostname") in expected_hosts
+    )
+
+
 async def _auth_form(endpoint: str, request: Request) -> Response:
     try:
         body = await request.json()
@@ -440,7 +478,15 @@ async def _auth_form(endpoint: str, request: Request) -> Response:
 
 
 async def _auth_action(endpoint: str, request: Request, body: dict[str, Any] | None = None) -> Response:
-    status, payload = await _account_request("POST", endpoint, json_body=body or {})
+    clean_body = dict(body or {})
+    token = clean_body.pop("turnstile_token", "")
+    if TURNSTILE_ENABLED and endpoint in TURNSTILE_PROTECTED_PATHS:
+        if not await _verify_turnstile(request, token):
+            return JSONResponse({
+                "ok": False,
+                "error": _error("TURNSTILE_FAILED", "Robot verification failed or expired. Please retry.", 403),
+            }, status_code=403)
+    status, payload = await _account_request("POST", endpoint, json_body=clean_body)
     if status != 200:
         error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
         return JSONResponse({"ok": False, "error": _error(
@@ -468,7 +514,10 @@ async def auth_capabilities() -> Response:
             str(error.get("message") or "Could not load sign-in methods."),
             status,
         )})
-    return JSONResponse({"ok": True, "capabilities": payload})
+    return JSONResponse({"ok": True, "capabilities": {
+        **payload,
+        "turnstileSiteKey": TURNSTILE_SITE_KEY if TURNSTILE_ENABLED else "",
+    }})
 
 
 @app.post("/api/auth/login")
