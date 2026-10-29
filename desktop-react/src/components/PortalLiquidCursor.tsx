@@ -187,6 +187,7 @@ export function PortalLiquidCursor() {
     let snappedRoiWidth = FREE_ROI_SIZE;
     let snappedRoiHeight = FREE_ROI_SIZE;
     let rasterDirty = true;
+    let caretVisible = true;
     // CSS ::after transitions do not mutate DOM attributes on every frame.
     // Keep sampling while the snapped control's visual thumb is animating.
     let refractionMotionUntil = 0;
@@ -600,7 +601,7 @@ export function PortalLiquidCursor() {
       lastRoiLeft = roiLeft;
       lastRoiTop = roiTop;
       rasterDirty = false;
-      if (!rasterizePortal(root, capture, scratch, wallpaper.complete ? wallpaper : null, roiLeft, roiTop, roiWidth, roiHeight, dpr)) return;
+      if (!rasterizePortal(root, capture, scratch, wallpaper.complete ? wallpaper : null, roiLeft, roiTop, roiWidth, roiHeight, dpr, caretVisible)) return;
       try {
         gl.bindTexture(gl.TEXTURE_2D, texture);
         if (!textureReady) {
@@ -794,8 +795,32 @@ export function PortalLiquidCursor() {
     };
     const handlePointerEnter = () => { pointerInside = true; snapDirty = true; wake(); };
     const handleScroll = () => { rasterDirty = true; snapDirty = true; wake(); };
-    // Editing changes input.value without mutating DOM text or attributes.
-    const handleInput = () => { rasterDirty = true; wake(); };
+    // Editing state (focus, keyboard selection, drag-select and Ctrl+A) lives
+    // inside the browser's native text control and is not observable through
+    // MutationObserver. Wake a capture whenever it changes.
+    const handleInput = () => { caretVisible = true; rasterDirty = true; wake(); };
+    const handleSelection = () => {
+      const field = document.activeElement;
+      if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+        if (!root.contains(field)) return;
+        caretVisible = true;
+        rasterDirty = true;
+        wake();
+      }
+    };
+    // Native caret blinking never mutates the DOM. A low-frequency tick redraws
+    // just while a focused field is under the active glass lens; it does not
+    // keep the full WebGL animation loop running elsewhere on the page.
+    const caretBlinkTimer = window.setInterval(() => {
+      const field = document.activeElement;
+      if (!pointerInside || !(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) ||
+          !root.contains(field) || !field.isConnected) return;
+      const distance = rectDistance(field.getBoundingClientRect(), lensX, lensY);
+      if (distance > 50 || field.selectionStart !== field.selectionEnd) return;
+      caretVisible = !caretVisible;
+      rasterDirty = true;
+      wake();
+    }, 530);
     const handleResize = () => {
       roiLeft = Number.NaN;
       roiTop = Number.NaN;
@@ -843,6 +868,11 @@ export function PortalLiquidCursor() {
     root.addEventListener("pointercancel", handlePointerUp);
     root.addEventListener("pointerleave", handlePointerLeave);
     root.addEventListener("pointerenter", handlePointerEnter);
+    root.addEventListener("focusin", handleSelection, true);
+    root.addEventListener("focusout", handleSelection, true);
+    root.addEventListener("keyup", handleSelection, true);
+    root.addEventListener("select", handleSelection, true);
+    document.addEventListener("selectionchange", handleSelection);
     root.addEventListener("input", handleInput, true);
     root.addEventListener("change", handleInput, true);
     root.addEventListener("load", handleInput, true);
@@ -857,6 +887,7 @@ export function PortalLiquidCursor() {
 
     return () => {
       window.cancelAnimationFrame(raf);
+      window.clearInterval(caretBlinkTimer);
       observer.disconnect();
       resizeObserver.disconnect();
       window.removeEventListener("click", handleSnappedClick, true);
@@ -868,6 +899,11 @@ export function PortalLiquidCursor() {
       root.removeEventListener("pointercancel", handlePointerUp);
       root.removeEventListener("pointerleave", handlePointerLeave);
       root.removeEventListener("pointerenter", handlePointerEnter);
+      root.removeEventListener("focusin", handleSelection, true);
+      root.removeEventListener("focusout", handleSelection, true);
+      root.removeEventListener("keyup", handleSelection, true);
+      root.removeEventListener("select", handleSelection, true);
+      document.removeEventListener("selectionchange", handleSelection);
       root.removeEventListener("input", handleInput, true);
       root.removeEventListener("change", handleInput, true);
       root.removeEventListener("load", handleInput, true);
