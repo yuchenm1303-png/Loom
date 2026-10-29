@@ -1,4 +1,4 @@
-# Real-model qualification: attempted, not passed
+# Real-model qualification: one bounded pass (run 9), no long-run proof yet
 
 The new opt-in `scripts/smoke_project_runner.py` creates a **new** isolated Git
 repository and separate Host state, using a selected configured model credential
@@ -143,4 +143,28 @@ Token figures are the production ledger's known usage (cached input included).
 The production budget held in every run (no run exceeded its cap; refusals
 happened at request boundaries). After compaction the largest request stayed
 at ~27k. Total known real usage across runs 1-8 plus the earlier attempts:
-3,255,314 tokens. No run has yet reached delivery, integration and the external oracle.
+3,255,314 tokens.
+
+## Run 9: first full pass (2026-10-29, at 08e1a462)
+
+`.cache/project-live-20261029-run9`, OpenCode `deepseek-v4.1-flash`, MXC
+sandbox (workspace + network isolation), cap 1,000,000 tokens / 40 episodes /
+1,800 s, one worker, `local_integrate`.
+
+* Plan -> implementation (3 episode bounds continued, 3 sessions compacted at
+  episode boundaries) -> independent task acceptance **passed** -> whole-project
+  acceptance **passed** -> local delivery branch -> isolated merge with the
+  source branch -> fresh whole-project review of the merged result **passed**
+  -> fast-forward of the source `main`. The source repository ends with exactly
+  one commit, "independently verified candidate", and a clean status.
+* The fixed external oracle passed 8/8 (4 valid, 4 invalid inputs); re-running
+  it by hand with an isolated interpreter gave the same results.
+* 569,725 known tokens, 8 episodes, 750 s. No unknown or refused requests;
+  largest request 26,589 tokens. Production budget accounting matched the
+  harness's independent count exactly.
+
+What this does and does not show: one small, single-worker project completed
+end to end with a real model under the production runner, sandbox and budget.
+It is not a parallel (two-worker) real qualification, not an installed-desktop
+acceptance, and not a multi-day run; none of those has been attempted yet. The
+cost is still high for the task size (three full reviews of ~100-180k each).
