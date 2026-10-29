@@ -168,17 +168,17 @@ export function useAccount() {
   );
 
   const login = useCallback(
-    (email: string, password: string) => run(() => window.loom.accountLogin(email, password)),
+    (email: string, password: string, turnstileToken?: string) => run(() => window.loom.accountLogin(email, password, turnstileToken)),
     [run],
   );
 
   const register = useCallback(
-    (email: string, password: string) => run(() => window.loom.accountRegister(email, password)),
+    (email: string, password: string, turnstileToken?: string) => run(() => window.loom.accountRegister(email, password, turnstileToken)),
     [run],
   );
 
   const registerStart = useCallback(
-    (email: string, password: string) => runChallenge(() => window.loom.accountRegisterStart(email, password)),
+    (email: string, password: string, turnstileToken?: string) => runChallenge(() => window.loom.accountRegisterStart(email, password, turnstileToken)),
     [runChallenge],
   );
 
@@ -193,7 +193,7 @@ export function useAccount() {
   );
 
   const forgotPassword = useCallback(
-    (email: string) => runChallenge(() => window.loom.accountForgotPassword(email)),
+    (email: string, turnstileToken?: string) => runChallenge(() => window.loom.accountForgotPassword(email, turnstileToken)),
     [runChallenge],
   );
 
