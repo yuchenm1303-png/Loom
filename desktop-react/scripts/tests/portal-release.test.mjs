@@ -163,3 +163,17 @@ test("the glass cursor keeps the control it is mounted on readable", () => {
   assert.ok(cursor.includes("Math.abs(baseCenterX - roiLockedBaseX) >= 1"),
     "the capture window follows the target when the page reflows");
 });
+
+
+test("adjacent OAuth actions stay stationary during liquid-lens handoff", () => {
+  const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
+  const cursor = readFileSync(new URL("../../src/components/PortalLiquidCursor.tsx", import.meta.url), "utf8");
+  for (const provider of ["google", "github"]) {
+    assert.match(portal, new RegExp('className="loom-oauth-button" data-magnetic-hover="false"[^>]*onClick=\\{\\(\\) => startOauth\\("'+provider+'"\\)\\}'),
+      provider + " must not magnetically drag its border into the neighboring OAuth button");
+  }
+  assert.ok(cursor.includes('".loom-oauth-button:not(:disabled)"'),
+    "both OAuth actions must remain liquid-lens snap targets");
+  assert.ok(cursor.includes('const MAGNETIC_OPT_OUT = "[data-magnetic-hover='),
+    "magnet opt-out should not disable lens capture or click forwarding");
+});
