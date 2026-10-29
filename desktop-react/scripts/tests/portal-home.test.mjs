@@ -215,7 +215,7 @@ test("the glass cursor can snap to every control, and what it redraws is made of
 
 test("reading mounts follow words rather than full layout rows", () => {
   assert.ok(cursor.includes("readingMount(element, pointerX, pointerY)"));
-  assert.ok(cursor.includes('candidate.dataset.liquidSnap === "false"'));
+  assert.ok(cursor.includes('element.dataset.liquidSnap === "false" && !element.matches(CLICKABLE_SELECTOR)'));
   assert.ok(portal.includes('<span data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6">{emphasize(row.text)}</span>'));
   assert.ok(!portal.includes('data-liquid-snap-pad="6" style={revealIndex(index)}'));
 });

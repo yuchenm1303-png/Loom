@@ -38,7 +38,11 @@ free lens instead of forming a ribbon. Short reading mounts reserve 24px
 horizontal / 16px vertical whitespace and a 64px minimum height so the rim
 does not pass through the glyphs. Layout-column whitespace never triggers a
 reading mount. Native controls retain their box geometry; explicit
-`data-liquid-snap="false"` is honoured. Optical parameters remain unchanged.
+`data-liquid-snap="false"` is honoured for non-actionable reading targets.
+Every native button/link/input/select/textarea, summary, associated label,
+actionable ARIA role, inline click handler and focusable custom control mounts
+without extra markers. Disabled, inert and hidden controls are excluded.
+Optical parameters remain unchanged.
 
 - `portalLiquidCapture.ts` reconstructs visible DOM content into a texture.
 - `portalLiquidMotion.ts` handles free/pinned/weight spring motion.

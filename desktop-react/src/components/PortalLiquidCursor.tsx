@@ -16,7 +16,14 @@ const ROI_DEADZONE = 35;
 // The lens samples the page it is drawn on. A separate wallpaper would show
 // through the refraction as a second, unrelated background.
 const WALLPAPER_URL = "";
+const CLICKABLE_SELECTOR = [
+  "button", "a[href]", "input:not([type='hidden'])", "textarea", "select",
+  "summary", "label", "[role='button']", "[role='link']", "[role='switch']",
+  "[role='checkbox']", "[role='radio']", "[role='tab']", "[role='menuitem']",
+  "[onclick]", "[tabindex]:not([tabindex='-1'])",
+].join(",");
 const SNAP_SELECTOR = [
+  CLICKABLE_SELECTOR,
   ".loom-portal-brand",
   ".loom-primary-action:not(:disabled)",
   ".loom-secondary-action",
@@ -309,9 +316,18 @@ export function PortalLiquidCursor() {
     const mountRect = (element: HTMLElement) => element.dataset.liquidLens === "read"
       ? readingMount(element, pointerX, pointerY)
       : element.getBoundingClientRect();
+    const canMount = (element: HTMLElement) => {
+      if (element.matches(":disabled, [aria-disabled='true'], input[type='hidden']") ||
+          element.closest("[inert], [aria-hidden='true']")) return false;
+      // Every actionable control mounts, including formerly opted-out links.
+      if (element.dataset.liquidSnap === "false" && !element.matches(CLICKABLE_SELECTOR)) return false;
+      if (element instanceof HTMLLabelElement && (!element.control || element.control.matches(":disabled"))) return false;
+      const style = getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden" && style.pointerEvents !== "none";
+    };
 
     const findSnapTarget = () => {
-      if (activeTarget?.isConnected && activeTarget.dataset.liquidSnap !== "false" && !activeTarget.closest("[inert], [aria-hidden='true']")) {
+      if (activeTarget?.isConnected && canMount(activeTarget)) {
         const rect = mountRect(activeTarget);
         const style = getComputedStyle(activeTarget);
         if (rect && rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.pointerEvents !== "none" &&
@@ -321,7 +337,7 @@ export function PortalLiquidCursor() {
       let closest = SNAP_DISTANCE + 0.001;
       for (const candidate of Array.from(root.querySelectorAll<HTMLElement>(SNAP_SELECTOR))) {
         if (candidate.dataset.loomLiquidCursor === "true") continue;
-        if (candidate.dataset.liquidSnap === "false") continue;
+        if (!canMount(candidate)) continue;
         if (candidate.closest("[inert], [aria-hidden='true']")) continue;
         const style = getComputedStyle(candidate);
         if (style.pointerEvents === "none" || style.visibility === "hidden" || style.display === "none") continue;
@@ -649,7 +665,7 @@ export function PortalLiquidCursor() {
       if (!candidate || !candidate.isConnected || candidate.closest("[inert], [aria-hidden='true']")) return;
       if (rectDistance(candidate.getBoundingClientRect(), event.clientX, event.clientY) > RELEASE_DISTANCE) return;
 
-      const actionSelector = "button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [role='button'], [role='link'], [role='switch']";
+      const actionSelector = CLICKABLE_SELECTOR;
       const action = candidate.matches(actionSelector)
         ? candidate
         : candidate.querySelector<HTMLElement>(actionSelector);
@@ -659,7 +675,7 @@ export function PortalLiquidCursor() {
       if (source instanceof Node && candidate.contains(source)) return;
       // A neighboring button, native label or modal must keep its own click.
       const nativeAction = source instanceof Element
-        ? source.closest("button, a[href], input, textarea, select, label, summary, [role='button'], [role='link'], [role='switch']")
+        ? source.closest(CLICKABLE_SELECTOR)
         : null;
       if (nativeAction && !candidate.contains(nativeAction)) return;
       if (source instanceof Element && source.closest("[role='dialog'], .auth-modal.is-open") &&
