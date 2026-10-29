@@ -6,7 +6,7 @@ import "./portal-liquid-cursor.css";
 import "./portal-editorial.css";
 import "./portal-auth-dialog.css";
 import "./portal-home-icon.css";
-import type { CSSProperties, FormEvent, MouseEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent, MouseEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Laptop, Download, UserRound, LogOut, Check, ArrowRight, Github, Google, Mail, KeyRound, ShieldCheck, Eye, EyeOff, FolderOpen, MessagesSquare } from "./icons";
 import { useI18n } from "../i18n";
@@ -15,6 +15,7 @@ import { HostSetupActions } from "./HostSetupActions";
 import { PortalLiquidCursor } from "./PortalLiquidCursor";
 import { FALLBACK_RELEASE, fetchPortalRelease, RELEASES_URL } from "../portalRelease";
 import { PORTAL_HOME_COPY } from "./portalHomeCopy";
+import { HomeWorkspaceDemo } from "./HomeWorkspaceDemo";
 
 export type PortalHostState = "idle" | "checking" | "online" | "offline" | "unbound" | "account-mismatch";
 type AccountController = ReturnType<typeof useAccount>;
@@ -71,11 +72,6 @@ function storedEditorialTheme(): "light" | "dark" | null {
 
 function prefersLightScheme(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: light)").matches;
-}
-
-// Words between asterisks are set in italic.
-function emphasize(text: string): ReactNode[] {
-  return text.split("*").map((part, index) => (index % 2 ? <em key={index}>{part}</em> : part));
 }
 
 // The home page's blocks arrive one after another; --i is a block's place in that order.
@@ -681,14 +677,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <figure ref={threadRef} className="editorial-session editorial-thread editorial-reveal" style={revealIndex(6)} data-state={threadState} aria-label={home.session.label}>
                   <p className="editorial-session-head" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{home.session.heading}</p>
                   <p className="editorial-session-ask" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">{home.session.ask}</p>
-                  <ol>
-                    {home.session.rows.map((row, index) => (
-                      <li key={row.text} className={index === home.session.rows.length - 1 ? "is-waiting" : undefined} style={revealIndex(index)}>
-                        <time dateTime={row.time}>{row.time}</time>
-                        <span data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6">{emphasize(row.text)}</span>
-                      </li>
-                    ))}
-                  </ol>
+                  <HomeWorkspaceDemo zh={zh} ready={typeReady && threadState === "in"} />
                   <figcaption>{home.session.note}</figcaption>
                 </figure>
               </div>

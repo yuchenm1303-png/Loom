@@ -177,7 +177,7 @@ test("the one picture is a task, start to finish, beside the words and opened by
   for (const part of ["{home.session.heading}", "{home.session.ask}", "{home.session.note}", "data-state={threadState}", "aria-label={home.session.label}"]) {
     assert.ok(grid.includes(part), part);
   }
-  assert.ok(grid.includes('index === home.session.rows.length - 1 ? "is-waiting"'), "the last step is the one waiting for you");
+  assert.ok(grid.includes('<HomeWorkspaceDemo zh={zh} ready={typeReady && threadState === "in"} />'), "the interactive preview begins once the page and session are visible");
   assert.equal((portal.match(/<figure\b/g) ?? []).length, 1);
   assert.equal((grid.match(/<h1\b/g) ?? []).length, 1);
   assert.match(rule(".loom-editorial .editorial-thread li.is-waiting::before"), /background:\s*var\(--ed-accent\)/);
@@ -220,7 +220,7 @@ test("the glass cursor can snap to every control, and what it redraws is made of
 test("reading mounts follow words rather than full layout rows", () => {
   assert.ok(cursor.includes("readingMount(element, pointerX, pointerY)"));
   assert.ok(cursor.includes('element.dataset.liquidSnap === "false" && !element.matches(CLICKABLE_SELECTOR)'));
-  assert.ok(portal.includes('<span data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6">{emphasize(row.text)}</span>'));
+  assert.ok(portal.includes('<p className="editorial-session-ask" data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="8">'));
   assert.ok(!portal.includes('data-liquid-snap-pad="6" style={revealIndex(index)}'));
 });
 
