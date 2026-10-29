@@ -34,3 +34,37 @@ export function magnetAmplitude(input: {
   if (input.height > 64 || input.width > 520) return 4;
   return input.active ? 7 : 10;
 }
+
+
+/**
+ * Keep independently spring-driven neighboring controls from pulling their
+ * borders through each other. Only the inward part of the horizontal motion
+ * is constrained, so each control still wobbles freely away from its neighbor
+ * and retains the full vertical spring.
+ *
+ * originalGap is the gap between the controls before their CSS translations.
+ */
+export function constrainAdjacentMagneticOffsets(
+  leftX: number,
+  rightX: number,
+  originalGap: number,
+  minimumGap = 6,
+) {
+  if (!Number.isFinite(originalGap) || originalGap <= 0) return { leftX, rightX };
+  const allowedClosure = Math.max(0, originalGap - Math.min(minimumGap, originalGap));
+  const closure = leftX - rightX;
+  if (closure <= allowedClosure) return { leftX, rightX };
+
+  const excess = closure - allowedClosure;
+  const leftInward = Math.max(0, leftX);
+  const rightInward = Math.max(0, -rightX);
+  const totalInward = leftInward + rightInward;
+  // Give the correction to whichever neighbor was moving into the gap.
+  // When both are moving inward, share it proportionally to their motion.
+  const leftCorrection = totalInward > 0 ? excess * leftInward / totalInward : excess / 2;
+  const rightCorrection = excess - leftCorrection;
+  return {
+    leftX: Math.floor((leftX - leftCorrection) * 2) / 2,
+    rightX: Math.ceil((rightX + rightCorrection) * 2) / 2,
+  };
+}
