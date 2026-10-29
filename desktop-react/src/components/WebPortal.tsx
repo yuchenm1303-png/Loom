@@ -845,9 +845,12 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <p className="loom-control-copy">{zh ? "登录后会自动连接本机 Loom Host，连接成功后点击进入工作区。" : "Sign in to automatically connect your local Host, then click Open workspace."}</p>
 
                 {(account.capabilities.google || account.capabilities.github) ? <>
+                  {/* Adjacent OAuth buttons share a narrow gap. Keep their DOM boxes stationary
+                      while the liquid lens snaps between them; dual magnetic translation
+                      pulled both borders together and created a false bright seam. */}
                   <div className="loom-oauth-grid">
-                    {account.capabilities.google ? <button className="loom-oauth-button" type="button" onClick={() => startOauth("google")} disabled={account.busy}><Google size={18} className="loom-google-mark" /><span>{zh ? "使用 Google 继续" : "Continue with Google"}</span></button> : null}
-                    {account.capabilities.github ? <button className="loom-oauth-button" type="button" onClick={() => startOauth("github")} disabled={account.busy}><Github size={17} aria-hidden="true" /><span>{zh ? "使用 GitHub 继续" : "Continue with GitHub"}</span></button> : null}
+                    {account.capabilities.google ? <button className="loom-oauth-button" data-magnetic-hover="false" type="button" onClick={() => startOauth("google")} disabled={account.busy}><Google size={18} className="loom-google-mark" /><span>{zh ? "使用 Google 继续" : "Continue with Google"}</span></button> : null}
+                    {account.capabilities.github ? <button className="loom-oauth-button" data-magnetic-hover="false" type="button" onClick={() => startOauth("github")} disabled={account.busy}><Github size={17} aria-hidden="true" /><span>{zh ? "使用 GitHub 继续" : "Continue with GitHub"}</span></button> : null}
                   </div>
                   <div className="loom-auth-divider"><span>{zh ? "或使用邮箱" : "or continue with email"}</span></div>
                 </> : null}
