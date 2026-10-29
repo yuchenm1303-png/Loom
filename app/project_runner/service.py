@@ -12,6 +12,11 @@ from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
 from . import delivery, integration, workflow, parallel
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
+from .store import encoded
+from app.agent_runtime.context_budget import estimate_tokens
+
+# History a continued episode may carry before the runner compacts it at the boundary.
+EPISODE_CARRY_TOKENS = 12000
 
 
 class ProjectExecutor:
@@ -45,6 +50,7 @@ class ProjectExecutor:
             expected = self.service.project_store.candidate(run)
             workspace = review_workspace(run, expected, workspace, self.home / "reviews" / run["id"] / expected["id"])
         if key in run["sessions"]:
+            self.compact_between_episodes(run, run["sessions"][key])
             return run["sessions"][key]
         source = self.service._load(run["sourceThreadId"])
         session = self.service.runtime.create_session(source.profile_id, workspace_dir=workspace,
@@ -61,6 +67,34 @@ class ProjectExecutor:
             library.write(session.session_id, {"title": f"Project {run['id'][:8]} · {key}",
                           "titleSource": "manual", "autoTitleDisabled": True, "projectRunId": run["id"]})
         return session.session_id
+
+    def compact_between_episodes(self, run, session_id):
+        """Start a continued episode from the run's own handoff, not the whole history.
+
+        Without this every episode re-sends all earlier ones: in a real run the
+        worker's requests grew from 8k to 60k tokens and cost grew quadratically.
+        The summary is built from durable run state, so no model call is spent;
+        recorded checks stay in the event log, where review evidence is read.
+        """
+        compact = getattr(self.service.runtime, "compact_context", None)
+        session = self.service._load(session_id)
+        if compact is None or estimate_tokens(session.messages) <= EPISODE_CARRY_TOKENS:
+            return
+        checks = {}
+        for event in self.service.store.events(session_id):
+            if event.kind is E.CHECK_RECORDED:
+                checks[str(event.data.get("case_id"))] = str(event.data.get("verdict"))
+        task = run["plan"][run["taskIndex"]] if run["phase"] == "working" and run["plan"] else None
+        summary = encoded({"note": "Earlier episodes of this session were compacted by the project runner at an "
+                                   "episode boundary. The workspace holds all file changes; re-read files instead of "
+                                   "relying on memory. Do not repeat checks already recorded unless the code changed.",
+                           "objective": run["objective"][:4000], "phase": run["phase"], "task": task,
+                           "handoff": run.get("handoff", "")[:6000], "reviewFeedback": run.get("feedback", []),
+                           "recordedChecks": checks})
+        try:
+            compact(session_id, summary)
+        except (ValueError, RuntimeError):
+            pass  # an uncompacted session costs more, but is not wrong
 
     def result_facts(self, run, episode, reply):
         source = self.home / "workspaces" / run["id"]

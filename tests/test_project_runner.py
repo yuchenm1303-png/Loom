@@ -438,3 +438,34 @@ def test_repeated_episode_limits_stop_for_review(tmp_path, monkeypatch):
         assert final["episodesUsed"] == 3
     finally:
         runtime.close()
+
+
+def test_continued_episode_starts_from_a_compacted_handoff_without_a_model_call(tmp_path, monkeypatch):
+    import test_app_server
+    from app.agent_runtime import ContextAgentRuntime
+    from app.agent_runtime.contracts import AgentLimits
+    from app.project_runner import service as service_module
+    # Production runtimes compose ContextAgentRuntime; the plain durable one cannot compact.
+    monkeypatch.setattr(test_app_server, "DurableAgentRuntime", ContextAgentRuntime)
+    monkeypatch.setattr(service_module, "EPISODE_CARRY_TOKENS", 0)
+    tool = AgentTool(name="save_part", description="Save part of the work", input_schema={"type": "object", "properties": {}},
+                     effect=ToolEffect.MUTATING, handler=lambda context, arguments: ToolResult(ok=True, content="saved part one " * 200))
+    service, runtime, platform, _, source = build(tmp_path, [reply(PLAN),
+        ModelResponse(tool_calls=(ToolCall(call_id="c1", name="save_part", arguments={}),), usage=ModelUsage(5, 0, 5)),
+        reply({"action": "candidate", "summary": "Finished after the bound"})], tools=(tool,))
+    runtime.limits = AgentLimits(max_model_steps=1)
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(4):
+            cycle(service)
+        final = service.project_store.get(run["id"])
+        assert final["state"] == "ready_for_review", final["reason"]
+        worker = final["sessions"]["worker-0"]
+        assert "context_checkpointed" in [event.kind.value for event in service.store.events(worker)]
+        last = str(platform.requests[-1].messages)
+        # The continued request carries the runner's summary, not the earlier tool output.
+        assert "compacted by the project runner" in last and "saved part one saved part one" not in last
+        assert len(platform.requests) == 3  # compaction itself never sampled the model
+        assert final["tokensUsed"] == 15
+    finally:
+        runtime.close()
