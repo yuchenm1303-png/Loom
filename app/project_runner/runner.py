@@ -208,6 +208,10 @@ class ProjectRunner:
     def prompt(self, run, kept=()):
         note = run.get("replyNote")
         text = self._prompt(run, list(kept))
+        if run["phase"] == "planning" and (run.get("milestone") or {}).get("index", 1) > 1:
+            # A later milestone of a program: the answer may also be "nothing left to build".
+            text += ('\nIf the integrated repository already achieves the entire objective, return instead only JSON '
+                     '{"complete":true,"summary":"what in the repository shows each part of the objective is done"}.')
         return (f"The runner could not accept your previous final reply: {note} End with only the required JSON object.\n" + text) if note else text
 
     def _prompt(self, run, kept):
@@ -289,6 +293,10 @@ class ProjectRunner:
             for run in runs:
                 if run["activeEpisode"]:
                     self._poll(run)
+            # A finished milestone starts the next one of its program.
+            advance_programs = getattr(self.executor, "advance_programs", None)
+            if advance_programs and advance_programs():
+                return
             for run in self.store.list():
                 advance_parallel = getattr(self.executor, "advance_parallel", None)
                 if advance_parallel and advance_parallel(run):
@@ -470,7 +478,16 @@ class ProjectRunner:
                     raise ValueError(result.get("error") or f"Episode ended with {state}")
                 reply = object_reply(result["text"])
                 checks.add_notes(db, current, reply.get("notes"))
-                if episode["phase"] == "planning":
+                if episode["phase"] == "planning" and (current.get("milestone") or {}).get("index", 1) > 1 \
+                        and reply.get("complete") is True and not reply.get("tasks"):
+                    # A later milestone's planner found the objective achieved in the
+                    # integrated repository: nothing to build, the program is done.
+                    summary = reply.get("summary")
+                    if not isinstance(summary, str) or not summary.strip():
+                        raise ReplyFormatError("a complete objective needs a summary of the evidence")
+                    current.update(state="integrated", workflowStatus="completed", workflowControl="paused",
+                                   objectiveComplete=True, plan=[], reason=summary[:2000])
+                elif episode["phase"] == "planning":
                     # Validate the whole plan before touching the run: a rejected plan
                     # goes back to the planner and must leave the run in planning.
                     plan = validate_plan(reply)

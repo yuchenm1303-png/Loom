@@ -36,7 +36,8 @@ from app.agent_runtime.context_runtime import ContextAgentRuntime  # noqa: E402
 from app.agent_runtime import ToolEffect, ToolRegistry, ToolResult  # noqa: E402
 from app.agent_runtime.process_tools import exec_tool  # noqa: E402
 from app.app_server import LoomAppServerService  # noqa: E402
-from app.project_runner import budget, checks, integration, janitor, parallel, runner, store as store_module  # noqa: E402
+from app.project_runner import budget, checks, integration, janitor, parallel, program, runner  # noqa: E402
+from app.project_runner import store as store_module  # noqa: E402
 from app.project_runner.service import EPISODE_CARRY_TOKENS, ProjectServiceMixin, git  # noqa: E402
 
 OBJECTIVE = "Build the soak project: one file per task under src/, each holding its task's content."
@@ -92,8 +93,9 @@ def _payload(prompt):
 class SimAgent:
     """Plays every project role; deterministic for a seed."""
 
-    def __init__(self, rng, tasks, workers, *, outage, malformed, rework, continues=0):
+    def __init__(self, rng, tasks, workers, *, outage, malformed, rework, continues=0, milestones=0):
         self.rng, self.tasks, self.workers, self.continues = rng, tasks, workers, continues
+        self.milestones = milestones  # program mode: report the objective complete after this many
         self.episodes = {}         # task id -> worker episodes that wrote
         self.outage, self.malformed, self.rework = outage, malformed, rework
         self.reported = 0          # tokens reported on returned responses
@@ -131,24 +133,32 @@ class SimAgent:
                              usage=ModelUsage(tokens, 20, tokens + 20))
 
     def planner(self, prompt, _after_tools):
+        found = re.search(r"This is milestone (\d+) of a long-running program", prompt)
+        milestone = int(found.group(1)) if found else 0
+        if self.milestones and milestone > self.milestones:
+            return ModelResponse(text=json.dumps({"complete": True, "summary": f"all {self.milestones} milestones' "
+                                                  "files are integrated under src/"}))
+        prefix = f"m{milestone}-" if milestone else ""
         tasks = []
         for index in range(1, self.tasks + 1):
-            task = {"instructions": f"Create src/task-{index}.txt holding 'task {index}'.",
-                    "acceptance": [f"src/task-{index}.txt holds the text 'task {index}'"]}
+            name = f"{prefix}task-{index}"
+            task = {"instructions": f"Create src/{name}.txt holding '{name}'.",
+                    "acceptance": [f"src/{name}.txt holds the text '{name}'"]}
             if self.workers > 1:
-                task.update(dependsOn=[], fileScopes=[f"src/task-{index}.txt"], sharedResources=[])
+                task.update(dependsOn=[], fileScopes=[f"src/{name}.txt"], sharedResources=[])
             tasks.append(task)
         return ModelResponse(text=json.dumps({"tasks": tasks}))
 
     def worker(self, prompt, after_tools):
         task = _payload(prompt).get("task") or {}
-        number = task.get("id", "task-0").split("-")[-1]
+        path, final = re.search(r"Create (src/\S+\.txt) holding '([^']*)'", task.get("instructions", "")).groups()
+        number = path
         if not after_tools:
             # A long task: each episode writes a slice of work before the file is final.
             done = self.episodes.get(number, 0)
-            content = f"task {number}" if done >= self.continues else f"task {number} part {done}\n" + "x" * 2000
+            content = final if done >= self.continues else f"{final} part {done}\n" + "x" * 2000
             return ModelResponse(tool_calls=(ToolCall(f"w-{uuid.uuid4().hex[:8]}", "sim_write",
-                {"path": f"src/task-{number}.txt", "content": content}),))
+                {"path": path, "content": content}),))
         done = self.episodes[number] = self.episodes.get(number, 0) + 1
         if done <= self.continues:
             return ModelResponse(text=json.dumps({"action": "continue", "summary": f"task {number}: part {done} of "
@@ -162,13 +172,12 @@ class SimAgent:
         if not after_tools:
             calls = []
             for item in wanted:
-                number = item["taskId"].split("-")[-1]
-                code = (f"from pathlib import Path; assert Path('src/task-{number}.txt').read_text(encoding='utf-8') "
-                        f"== 'task {number}'")
+                path, content = re.search(r"(src/\S+\.txt) holds the text '([^']*)'", item["expectation"]).groups()
+                code = f"from pathlib import Path; assert Path({path!r}).read_text(encoding='utf-8') == {content!r}"
                 calls.append(ToolCall(f"c-{uuid.uuid4().hex[:8]}", "exec", {
                     "argv": [sys.executable, "-B", "-c", code], "wait": True,
                     "verification": {"case_id": item["id"], "expectation": item["expectation"],
-                                     "subject_paths": [f"src/task-{number}.txt"], "check_kind": "functional"}}))
+                                     "subject_paths": [path], "check_kind": "functional"}}))
             return ModelResponse(tool_calls=tuple(calls))
         scope = (payload.get("scope"), tuple(item["id"] for item in wanted))
         if wanted and scope not in self.reworked and self.rng.random() < self.rework:
@@ -217,6 +226,8 @@ def main(argv=None):
     parser.add_argument("--malformed", type=float, default=0.1, help="Share of final replies that are not JSON")
     parser.add_argument("--rework", type=float, default=0.3, help="Share of review scopes rejected once")
     parser.add_argument("--continues", type=int, default=0, help="Episodes each task continues before its candidate")
+    parser.add_argument("--milestones", type=int, default=0,
+                        help="Run a program of this many milestones (then the planner reports the objective complete)")
     parser.add_argument("--restart-every", type=int, default=7, help="Ticks between Host restarts")
     parser.add_argument("--minutes-per-tick", type=float, default=10.0, help="Fake clock advance per tick")
     parser.add_argument("--max-ticks", type=int, default=3000)
@@ -234,18 +245,27 @@ def main(argv=None):
     git(workspace, "commit", "-m", "baseline")
 
     clock = Clock()
-    for module in (budget, checks, integration, janitor, parallel, runner, store_module):
+    for module in (budget, checks, integration, janitor, parallel, program, runner, store_module):
         module.time = clock
     agent = SimAgent(random.Random(args.seed), args.tasks, args.workers,
-                     outage=args.outage, malformed=args.malformed, rework=args.rework, continues=args.continues)
+                     outage=args.outage, malformed=args.malformed, rework=args.rework, continues=args.continues,
+                     milestones=args.milestones)
     service, runtime = open_host(home, workspace, agent)
     source = service.thread_start({"workspaceDir": str(workspace), "permissionMode": "workspace"})["thread"]["id"]
     runtime.set_permission_mode(source, PermissionMode.FULL_ACCESS)  # the simulated checks need exec; no sandbox here
-    run = service.project_run_create({"operationId": str(uuid.uuid4()), "threadId": source, "objective": OBJECTIVE,
-        "tokenBudget": 1_000_000_000, "maxEpisodes": 10000, "maxWorkers": args.workers, "maxReviewCycles": 3,
-        "reviewPolicy": "independent", "completionPolicy": "local_integrate"})
-    service.project_control({"operationId": str(uuid.uuid4()), "runId": run["id"], "expectedRevision": run["revision"]}, "start")
-    run_id = run["id"]
+    program_id = None
+    if args.milestones:
+        with service.project_runner.guard:
+            program_id = program.create(service, {"operationId": str(uuid.uuid4()), "threadId": source,
+                "objective": OBJECTIVE, "tokenBudget": 1_000_000_000, "maxEpisodes": 10000, "maxWorkers": args.workers,
+                "maxMilestones": args.milestones + 1})["id"]
+        run_id = program.get(service.project_store, program_id)["currentRunId"]
+    else:
+        run = service.project_run_create({"operationId": str(uuid.uuid4()), "threadId": source, "objective": OBJECTIVE,
+            "tokenBudget": 1_000_000_000, "maxEpisodes": 10000, "maxWorkers": args.workers, "maxReviewCycles": 3,
+            "reviewPolicy": "independent", "completionPolicy": "local_integrate"})
+        service.project_control({"operationId": str(uuid.uuid4()), "runId": run["id"], "expectedRevision": run["revision"]}, "start")
+        run_id = run["id"]
 
     samples, restarts, started = [], 0, real_time.monotonic()
     outcome = "max_ticks"
@@ -254,10 +274,16 @@ def main(argv=None):
         began = real_time.perf_counter()
         tick(service)
         elapsed = real_time.perf_counter() - began
+        if program_id:
+            state = program.get(service.project_store, program_id)
+            run_id = state["currentRunId"]
         run = service.project_store.get(run_id)
         samples.append({"tick": number, "ms": round(elapsed * 1000, 1), "episodes": run["episodesUsed"],
                         "requests": len(agent.requests)})
-        if run.get("workflowStatus") == "completed":
+        if program_id and state["state"] != "running":
+            outcome = "completed" if state["state"] == "completed" else "stopped"
+            break
+        if not program_id and run.get("workflowStatus") == "completed":
             outcome = "completed"
             break
         if run["state"] == "needs_review" or run.get("workflowStatus") == "blocked" or run["control"] == "budget_limited":
@@ -274,10 +300,24 @@ def main(argv=None):
         tick(service)
     run = service.project_store.get(run_id)
     everyone = [item for item in service.project_store.list()]
-    position = service.project_budget.report(run)
+    # Each top-level run (the one run, or every milestone) holds its whole usage in its
+    # ledger: its integration run's when it has one.
+    tops = ([item["runId"] for item in program.get(service.project_store, program_id)["milestones"]]
+            if program_id else [run_id])
+    if run_id not in tops:  # a program that stopped inside a milestone
+        tops.append(run_id)
+    positions = []
+    for top in tops:
+        item = service.project_store.get(top)
+        ledger = service.project_store.get(item["integrationRunId"]) if item.get("integrationRunId") else item
+        positions.append(service.project_budget.report(ledger))
+    position = {key: sum(item[key] for item in positions)
+                for key in ("knownTokens", "assumedUnknownTokens", "unknownRequests", "inFlightTokens")}
     files = {path.name: path.read_text(encoding="utf-8") for path in (workspace / "src").glob("*.txt")} \
         if (workspace / "src").is_dir() else {}
-    expected = {f"task-{n}.txt": f"task {n}" for n in range(1, args.tasks + 1)}
+    names = [f"m{m}-task-{n}" for m in range(1, args.milestones + 1) for n in range(1, args.tasks + 1)] \
+        if program_id else [f"task-{n}" for n in range(1, args.tasks + 1)]
+    expected = {f"{name}.txt": name for name in names}
     sizes = [item[0] for item in agent.requests if item[1] != "planner"]
     tenth = max(1, len(sizes) // 10)
     starts = {}
@@ -294,6 +334,7 @@ def main(argv=None):
         "outcome": outcome, "state": run["state"], "workflow": run.get("workflowStatus"), "reason": run.get("reason", "")[:500],
         "ticks": len(samples), "restarts": restarts, "simulatedDays": round(len(samples) * args.minutes_per_tick / 1440, 2),
         "episodes": run["episodesUsed"], "requests": len(agent.requests), "providerFailures": agent.raised,
+        "program": program.get(service.project_store, program_id) if program_id else None,
         "integratedFilesMatch": files == expected,
         "tokens": {"reportedBySimulatedProvider": agent.reported, "known": position["knownTokens"],
                    "assumedUnknown": position["assumedUnknownTokens"], "unknownRequests": position["unknownRequests"],

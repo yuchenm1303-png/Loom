@@ -10,7 +10,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
-from . import delivery, integration, workflow, parallel, checks
+from . import delivery, integration, workflow, parallel, checks, program
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
 from app.agent_runtime.context_budget import estimate_tokens
@@ -30,6 +30,9 @@ class ProjectExecutor:
 
     def advance_parallel(self, run):
         return parallel.advance(self.service, run)
+
+    def advance_programs(self):
+        return program.advance(self.service)
 
     @staticmethod
     def session_key(run):
@@ -503,6 +506,13 @@ class ProjectControllerMixin:
     def _dispatch(self, method, params):
         if method == "projectRun/create":
             return {"run": self.service.project_run_create(params)}
+        if method == "projectProgram/create":
+            with self.service.project_runner.guard:
+                return {"program": program.create(self.service, params)}
+        if method == "projectProgram/get":
+            return {"program": program.get(self.service.project_store, self.service._required_text(params, "programId"))}
+        if method == "projectProgram/list":
+            return {"programs": program.list_programs(self.service.project_store)}
         if method == "projectRun/get":
             return {"run": self.service.project_read(self.service._required_text(params, "runId"))}
         if method == "projectRun/list":

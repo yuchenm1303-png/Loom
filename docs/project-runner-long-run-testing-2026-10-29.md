@@ -53,11 +53,23 @@ with 3,233,479 known tokens equal to what was reported, and no worktree left.
    - A tick takes 1.7–5.5 s with parallel git work, without upward drift.
    - Worker prompts grow with the project's kept checks and notes, which are capped (24 and 30).
 
-### Open: plans are capped at 16 tasks
+### Programs: milestones beyond 16 tasks
 
-`validate_plan` accepts 1..16 tasks and nothing re-plans after them. A project meant
-to run for a week needs milestones: plan the next batch once a batch is integrated,
-from the objective and what exists.
+A run plans at most 16 tasks and ends when they are integrated. An objective meant to
+run for a week is larger, and nobody knows its whole plan up front.
+
+`app/project_runner/program.py` pursues one objective through successive milestones,
+each an ordinary project run (same review, integration, budget and recovery):
+
+- **Milestone 1:** the planner is told to plan only a first coherent batch.
+- **After each integration:** the next milestone starts from the new commit. Its read-only planner sees the integrated repository and the earlier milestones' summaries, and plans the next batch, or returns `{"complete": true, "summary": ...}`. Only a later milestone may say complete.
+- **Budget:** tokens and episodes are one budget across all milestones.
+- **Idempotency:** milestone runs are created under deterministic operation IDs, so a Host that dies between creating a run and recording it finds the same run again.
+- **Limit:** `maxMilestones` (≤ 50) bounds a program that never reports completion.
+
+API: `projectProgram/create|get|list`. Tests: `tests/test_project_program.py`.
+
+Soak `--milestones N` runs a program; the simulated planner reports completion after N milestones.
 
 ## Layer 2: chaos
 
