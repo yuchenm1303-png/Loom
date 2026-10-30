@@ -41,7 +41,8 @@ const words = {
         done: "目标已完成，结果已集成到本地分支。", cancelled: "项目已停止。", start: "描述一个大目标，它会被拆成阶段和任务，并行开发、独立复审后集成。",
         minutes: (m: number) => m < 1 ? "不到 1 分钟" : m < 60 ? `${m} 分钟` : `${Math.floor(m / 60)} 小时 ${m % 60} 分`,
         short: (m: number) => m < 1 ? "刚刚" : m < 60 ? `${m} 分` : `${Math.floor(m / 60)} 时`,
-        budget: "token 预算已用完。", episodes: "执行轮次已用完。", agent: (n: number) => `Agent ${n}`,
+        budget: "token 预算已用完。", episodes: "执行轮次已用完。",
+        access: "模型服务一直拒绝凭证（已自动重试约 3 小时）。重新登录账号或更新 API 密钥后，点继续。", agent: (n: number) => `Agent ${n}`,
         planning: "规划阶段任务", reviewingProject: "整体复审", reviewing: (t: string) => `复审 ${t}`,
         asks: (who: string, command: string, sandbox: boolean) => sandbox ? `${who} 想在沙箱外运行 \`${command}\`` : `${who} 想运行 \`${command}\`，等你允许`,
         waitsFor: (command: string) => `等你允许：${command}` },
@@ -50,7 +51,8 @@ const words = {
         start: "Describe a large objective. It is split into milestones and tasks, built in parallel, independently reviewed, then integrated.",
         minutes: (m: number) => m < 1 ? "under a minute" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`,
         short: (m: number) => m < 1 ? "now" : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h`,
-        budget: "The token budget is used up.", episodes: "The episode limit is reached.", agent: (n: number) => `Agent ${n}`,
+        budget: "The token budget is used up.", episodes: "The episode limit is reached.",
+        access: "The model provider kept refusing the credential (retried for about 3 hours). Sign in again or update the API key, then continue.", agent: (n: number) => `Agent ${n}`,
         planning: "Planning the milestone", reviewingProject: "Whole-project review", reviewing: (t: string) => `Reviewing ${t}`,
         asks: (who: string, command: string, sandbox: boolean) => sandbox ? `${who} wants to run \`${command}\` outside the sandbox` : `${who} wants to run \`${command}\``,
         waitsFor: (command: string) => `Waiting for you: ${command}` },
@@ -162,9 +164,11 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   // A team task refused at the budget blocks coordination; the remedy is still more budget, not a review.
   const budgetOut = run.control === "budget_limited" || program?.state === "budget_limited"
     || overview.children.some((child) => child.control === "budget_limited");
+  // Refused access (an expired sign-in, a revoked key) is not the work's fault: the work waits where it is.
+  const access = run.control === "credential_blocked" || overview.children.some((child) => child.control === "credential_blocked");
   // An unattended project has no one at its threads: an agent waiting for approval waits for the person here.
   const asking = overview.agents.findIndex((agent) => agent.approval);
-  const blocked = run.state === "needs_review" || run.workflowStatus === "blocked" || program?.state === "needs_review" || budgetOut || asking >= 0;
+  const blocked = run.state === "needs_review" || run.workflowStatus === "blocked" || program?.state === "needs_review" || budgetOut || asking >= 0 || access;
   const paused = !blocked && (run.state === "created" || run.workflowControl === "paused" && run.workflowStatus !== "completed" && run.control !== "active");
   const state: FlowData["state"] = finished ? "completed" : stopped ? "paused" : blocked ? "needs_you" : paused ? "paused" : "running";
   const started = (program?.createdAt || run.createdAt || now / 1000) * 1000;
@@ -199,6 +203,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     milestone: run.milestone?.index || (program ? program.milestones.length + 1 : 1),
     state,
     attention: state !== "needs_you" ? undefined : asking >= 0 ? approvalAttention(overview.agents[asking], t.agent(asking + 1), lang)
+      : access && !budgetOut ? { reason: t.access, action: "resume" }
       : { reason: humanReason(reason, lang) || (lang === "en" ? "The project stopped for inspection." : "项目停下等你检查。"),
           action: budgetOut ? "budget" : stoppedTask || (run.state === "needs_review" && !run.activeEpisode) ? "recover" : undefined },
     model,

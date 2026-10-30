@@ -537,7 +537,9 @@ def test_provider_outage_ends_the_episode_not_the_project(tmp_path):
         runtime.close()
 
 
-def test_permanent_provider_refusal_still_stops_the_project(tmp_path):
+def test_a_refused_credential_waits_minutes_instead_of_stopping_the_project(tmp_path):
+    # An expired sign-in or an empty balance is fixed outside the project (often by the app
+    # refreshing the sign-in): the work waits where it is, it is not stopped for inspection.
     from app.ai.errors import AITransportError
     from app.agent_runtime.contracts import AgentLimits
     service, runtime, platform, _, source = build(tmp_path, [reply(PLAN)])
@@ -548,8 +550,9 @@ def test_permanent_provider_refusal_still_stops_the_project(tmp_path):
         for _ in range(3):
             cycle(service)
         final = service.project_store.get(run["id"])
-        assert final["state"] == "needs_review" and "402" in final["reason"]
-        assert not final.get("retryAfter")
+        assert final["state"] == "running" and final["control"] == "active"
+        assert final["credentialStreak"] == 1
+        assert final["retryAfter"] > __import__("time").time() + 200  # about five minutes, not at once
     finally:
         runtime.close()
 
@@ -616,8 +619,9 @@ def test_repeated_malformed_replies_stop_for_review(tmp_path):
     ("limit_reached", {"limit": None, "error": "tool call limit reached"}, False, "episode_bound"),  # pre-field event
     ("failed", {"providerFailure": True, "retryable": True, "providerStatus": None}, False, "provider_transient"),
     ("failed", {"providerFailure": True, "retryable": True, "providerStatus": 503}, False, "provider_transient"),
-    ("failed", {"providerFailure": True, "retryable": False, "providerStatus": 402}, False, None),
-    ("failed", {"providerFailure": True, "retryable": True, "providerStatus": 401}, False, None),
+    ("failed", {"providerFailure": True, "retryable": False, "providerStatus": 402}, False, "credential"),
+    ("failed", {"providerFailure": True, "retryable": True, "providerStatus": 401}, False, "credential"),
+    ("failed", {"providerFailure": True, "retryable": False, "providerStatus": 404}, False, None),
     # The field decides, not the text: a tool error that mentions a timeout is the work's own.
     ("failed", {"providerFailure": False, "error": "AITransportError: APITimeoutError: timed out"}, False, None),
     ("failed", {"providerFailure": None, "error": "AITransportError: APIConnectionError: Connection error."}, False, "provider_transient"),
@@ -713,3 +717,18 @@ def test_project_sessions_compact_at_a_working_context_not_near_the_model_window
         assert resolve_context_limits(runtime, project).working_context_source == "runtime_env"
     finally:
         runtime.close()
+
+
+def test_a_refused_credential_waits_long_then_asks_the_person_never_for_inspection():
+    from app.project_runner.runner import MAX_CREDENTIAL_RETRIES, ProjectRunner, episode_outcome
+    refused = {"providerFailure": True, "providerStatus": 401, "retryable": False, "error": "401 Unauthorized"}
+    assert episode_outcome("failed", refused, False) == "credential"
+    assert episode_outcome("failed", {"error": "AITransportError: insufficient balance"}, False) == "credential"  # older events
+    assert episode_outcome("failed", {**refused, "providerStatus": 400}, False) is None  # a bad request is the work's
+    run, waits = {"id": "r", "handoff": ""}, []
+    for _ in range(MAX_CREDENTIAL_RETRIES):
+        assert ProjectRunner._recover(run, "credential", "401 Unauthorized") == "credential_retry"
+        waits.append(round(run["retryAfter"] - __import__("time").time()))
+    assert [round(wait / 60) for wait in waits] == [5, 10, 20, 40, 60, 60]
+    assert ProjectRunner._recover(run, "credential", "401 Unauthorized") == "credential_blocked"
+    assert run["control"] == "credential_blocked" and run.get("state") != "needs_review" and run["retryAfter"] == 0

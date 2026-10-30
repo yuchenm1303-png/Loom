@@ -159,7 +159,7 @@ def test_janitor_keeps_the_current_review_and_anything_in_flight(tmp_path):
     run = {"id": "r1", "repository": str(tmp_path), "activeEpisode": None, "state": "running",
            "reviewCandidate": {"id": "current"}}
     for name in ("old", "current"):
-        (home / "reviews" / f"r1--{name}").mkdir(parents=True)
+        (home / "reviews" / f"r1--{name}").mkdir(parents=True)  # review_folder keeps a prefix of the candidate
     (home / "reviews" / "r1" / "older").mkdir(parents=True)  # the layout before reviews were one level deep
     (home / "workspaces" / "r1").mkdir(parents=True)
     store = SimpleNamespace(home=home, list=lambda: [run])

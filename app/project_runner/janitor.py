@@ -39,7 +39,7 @@ class Janitor:
             finished = run["state"] == "integrated" or run["id"] in merged
             current = (run.get("reviewCandidate") or {}).get("id")
             for folder, candidate in _reviews(store.home / "reviews", run["id"]):
-                if finished or candidate != current:
+                if finished or not current or not current.startswith(candidate):
                     removed += _remove(run, folder)
             for folder in _children(store.home / "deliveries" / run["id"]):
                 removed += _remove(run, folder)  # only built a commit; the commit stays in the repository
@@ -56,9 +56,14 @@ class Janitor:
         return removed
 
 
+# Git for Windows refuses a worktree whose path is much over 200 characters ("'$GIT_DIR' too
+# big", core.longpaths does not lift it), so the folders checkouts live in keep short leaf names.
+SHORT = 12
+
+
 def review_folder(run_id: str, candidate_id: str) -> str:
     """A review checkout's folder name under reviews/: one level, so its parents exist up front."""
-    return f"{run_id}--{candidate_id}"
+    return f"{run_id}--{candidate_id[:SHORT]}"
 
 
 def _reviews(root: Path, run_id: str):
