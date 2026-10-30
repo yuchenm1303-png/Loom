@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
-import { toFlowData, type ProjectOverview } from "./projectOverview";
+import { raisedBudget, toFlowData, type ProjectOverview } from "./projectOverview";
 
 const LIVE_POLL_MS = 2000;
 const REST_POLL_MS = 12000;
@@ -87,7 +87,7 @@ export function ProjectMode({ threadId, workspace, model }: { threadId: string; 
       onAttention: (choice) => run && (data.attention?.action === "approval"
         ? act(() => window.loom.call("projectRun/approval", { runId: run.id, sessionId: data.attention!.agentId, decision: choice }))
         : data.attention?.action === "budget"
-        ? control("resume", { tokenBudget: Math.round(run.tokenBudget * 1.5), maxEpisodes: Math.round(run.maxEpisodes * 1.5) })
+        ? control("resume", raisedBudget(run, overview.program))
         : act(() => window.loom.call("projectRun/recover", { operationId: crypto.randomUUID(), runId: run.id }))),
     }} />
   );

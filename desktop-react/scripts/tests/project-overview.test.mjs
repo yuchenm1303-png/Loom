@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../src/components/projectOverview.ts", i
 const module = { exports: {} };
 new Function("module", "exports", "require", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(
   module, module.exports, () => ({}));
-const { toFlowData, eventText, activityText, humanReason } = module.exports;
+const { toFlowData, eventText, activityText, humanReason, raisedBudget } = module.exports;
 
 const now = Date.parse("2026-10-30T10:00:00Z");
 const run = (extra = {}) => ({
@@ -123,4 +123,11 @@ test("an agent waiting for approval asks the person, naming the command", () => 
                                      detail: approval.reason, action: "approval", agentId: "s3" });
   assert.equal(data.agents[0].waiting, true);
   assert.equal(data.agents[0].activity, "等你允许：git -c safe.directory=* log --oneline -5");
+});
+
+test("adding budget to a milestone near the end of its program adds a real share of the program", () => {
+  // Live numbers: the program had 25.7M; its fourth milestone started with the 0.8M that was left.
+  assert.deepEqual(raisedBudget({ tokenBudget: 802090, maxEpisodes: 40 }, { tokenBudget: 25722279, maxEpisodes: 600 }),
+                   { tokenBudget: 802090 + 6430570, maxEpisodes: 40 + 150 });
+  assert.deepEqual(raisedBudget({ tokenBudget: 4000, maxEpisodes: 200 }, null), { tokenBudget: 6000, maxEpisodes: 300 });
 });

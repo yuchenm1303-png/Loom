@@ -212,3 +212,12 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     }),
   };
 }
+
+/** "Add budget" on a stopped milestone: a quarter of the whole program more, or half the milestone's own if there is no program.
+ * The milestone's own budget is what the program had left when it started, often a sliver near the end, so
+ * half again of that stopped the next milestone at once in a live run. The Host adds the raise to the program too. */
+export function raisedBudget(run: { tokenBudget: number; maxEpisodes: number }, program?: { tokenBudget: number; maxEpisodes: number } | null) {
+  const tokens = Math.max(Math.round(run.tokenBudget * 0.5), Math.round((program?.tokenBudget || 0) * 0.25));
+  const episodes = Math.max(Math.round(run.maxEpisodes * 0.5), Math.round((program?.maxEpisodes || 0) * 0.25));
+  return { tokenBudget: run.tokenBudget + tokens, maxEpisodes: run.maxEpisodes + episodes };
+}
