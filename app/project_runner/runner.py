@@ -329,20 +329,22 @@ class ProjectRunner:
             except Exception:
                 pass  # cleanup is never worth stopping the scheduler for
             self.budget.apply_late()
-            runs = self.store.list()
             # Reconcile even while paused/cancelled; never drop late usage/results.
-            for run in runs:
-                if run["activeEpisode"]:
-                    self._poll(run)
+            for run in self.store.running():
+                self._poll(run)
             # A finished milestone starts the next one of its program.
             advance_programs = getattr(self.executor, "advance_programs", None)
             if advance_programs and advance_programs():
                 return
-            for run in self.store.list():
+            # Every list here re-read all runs once per run: over a multi-day program (tens of
+            # milestones, hundreds of finished runs) a tick took seconds and grew with the square.
+            def counted():
+                return [r for r in self.store.running() if r["activeEpisode"]["state"] != "outcome_unknown"]
+            active = counted()  # read again only after this tick starts an episode
+            for run in self.store.live():
                 advance_parallel = getattr(self.executor, "advance_parallel", None)
                 if advance_parallel and advance_parallel(run):
                     return
-                active = [r for r in self.store.list() if r["activeEpisode"] and r["activeEpisode"]["state"] != "outcome_unknown"]
                 if run["activeEpisode"] or not parallel.eligible(self.store, run, active):
                     continue
                 advance = getattr(self.executor, "advance_workflow", None)
@@ -357,6 +359,7 @@ class ProjectRunner:
                     self._dispatch(run)
                     if not run.get("teamOwnerId"):
                         return
+                    active = counted()
 
     def _dispatch(self, run):
         if run.get("retryAfter", 0) > time.time():

@@ -112,6 +112,22 @@ class ProjectStore:
         with self.lock:
             return [json.loads(r[0]) for r in self.db.execute("SELECT data FROM project_runs ORDER BY rowid")]
 
+    # A finished run (integrated or cancelled, nothing in flight) has nothing left to schedule. A
+    # program of many milestones keeps every finished run; the scheduler reads only the rest.
+    _LIVE = ("json_extract(data,'$.state') NOT IN ('integrated','cancelled') "
+             "OR json_extract(data,'$.activeEpisode') IS NOT NULL")
+
+    def live(self):
+        """The runs the scheduler can still act on, in creation order."""
+        with self.lock:
+            return [json.loads(r[0]) for r in self.db.execute(f"SELECT data FROM project_runs WHERE {self._LIVE} ORDER BY rowid")]
+
+    def running(self):
+        """The runs with an episode out (the parallel limit counts them), without reading the others."""
+        with self.lock:
+            return [json.loads(r[0]) for r in self.db.execute(
+                "SELECT data FROM project_runs WHERE json_extract(data,'$.activeEpisode') IS NOT NULL ORDER BY rowid")]
+
     def save(self, db, run, kind):
         run["revision"] += 1
         run["updatedAt"] = time.time()
