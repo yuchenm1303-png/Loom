@@ -92,11 +92,12 @@ const verbs = {
 /** "read_workspace_text README.md" as "读取 README.md"; a command line ("python.exe -m unittest") as "运行 python -m unittest". */
 export function activityText(activity: string, lang: Lang = "zh"): string {
   // An absolute path says where, not what: keep its last part (probe_readme.py, not C:\Users\...).
-  const short = (word: string) => /^([A-Za-z]:)?[\\/]/.test(word) ? word.split(/[\\/]/).filter(Boolean).pop() || word : word;
+  // A switch like cmd's /c has no folder above it and stays as it is.
+  const short = (word: string) => /^([A-Za-z]:)?[\\/][^\\/]+[\\/]/.test(word) ? word.split(/[\\/]/).filter(Boolean).pop() || word : word;
   const [first, ...rest] = activity.split(" ").map(short);
   const verb = verbs[lang][first];
   if (verb) return rest.length ? `${verb} ${rest.join(" ")}` : verb;
-  if (/\.exe$/i.test(first) || /^(python|node|npm|git|pytest|py)$/i.test(first)) {
+  if (/\.exe$/i.test(first) || /^(python|node|npm|git|pytest|py|cmd|pwsh|powershell)$/i.test(first)) {
     return `${verbs[lang].exec} ${[first.replace(/\.exe$/i, ""), ...rest].join(" ")}`;
   }
   return activity;

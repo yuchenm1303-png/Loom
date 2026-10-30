@@ -45,6 +45,7 @@ def test_tool_calls_read_as_a_short_line():
     assert _describe_tool("write_workspace_text", {"path": "scratch:probe.py"}) == "write_workspace_text probe.py"
     assert _describe_tool("exec", {"argv": ["C:\\Python\\python.exe", "-m", "unittest"]}) == "python.exe -m unittest"
     assert _describe_tool("exec", {}) == "exec"
+    assert _describe_tool("exec", {"argv": ["cmd", "/c", "git status"]}) == "cmd /c git status"
 
 
 def test_guidance_reaches_the_next_prompt_and_later_milestones(tmp_path):

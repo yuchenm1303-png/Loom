@@ -31,7 +31,9 @@ def _describe_tool(tool, arguments):
     argv = arguments.get("argv")
     if isinstance(argv, list) and argv:
         # An absolute path says where, not what: its file name, before the line is cut to length.
-        words = [Path(str(item)).name if Path(str(item)).is_absolute() else str(item) for item in argv]
+        # A switch like cmd's /c is not a path: it has no folder above its name.
+        words = [Path(str(item)).name if Path(str(item)).is_absolute() and len(Path(str(item)).parts) > 2 else str(item)
+                 for item in argv]
         return " ".join(words)[:120]
     return str(tool or "")[:120]
 
