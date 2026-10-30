@@ -527,7 +527,31 @@ html[data-loom-theme="light"] .pf-stage {
 
 .pf-empty { margin: 0; padding: 6px 4px 4px; color: var(--pl-faint); font-size: 12px; }
 .pf-agents-empty { align-self: flex-start; padding-left: 4px; }
-.pf-loading { min-height: 100%; }
+.pf-loading { display: grid; place-items: center; min-height: 100%; }
+/* Before the first read: one quiet line once it takes a while, or why it failed and a way to try again. */
+.pf-loading-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--pl-faint);
+  font-size: 13px;
+  animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
+}
+.pf-loading-note button {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--loom-workspace-hover);
+  color: var(--pl-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-loading-note button:hover { color: var(--pl-ink); }
+.pf-loading-note button:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 2px; }
 
 /* The model card: the model every agent thinks with, its provider's mark, and a few to switch to.
    It is a branch like the context cards: the chip in the hub's footer grows its cable out of the

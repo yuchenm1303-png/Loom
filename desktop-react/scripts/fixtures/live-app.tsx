@@ -37,6 +37,7 @@ const english = params.get("lang") === "en";
 const scenario = params.get("scenario") || "code";
 const speed = Number(params.get("speed") || 1) || 1;
 const latency = Math.max(0, Number(params.get("latency") || 0) || 0);
+const overviewLatency = Math.max(0, Number(params.get("overviewLatency") || 0) || 0);
 localStorage.removeItem("loom.inspector.open");
 localStorage.setItem("loom.settings.language", english ? "en" : "zh-CN");
 localStorage.setItem("loom.settings.desktop.v2", JSON.stringify({ appearance: {
@@ -904,6 +905,9 @@ const bridge: Record<string, unknown> = {
   call: async (method: string, args: Record<string, unknown> = {}) => {
     // The Host answers a send only after its account check and the runtime's request preparation.
     if (latency && (method === "turn/start" || method === "thread/start")) await new Promise((resolve) => window.setTimeout(resolve, latency));
+    // &overviewLatency=ms: a busy Host, slower than the hub's poll; &overviewFail=1: it cannot answer at all.
+    if (method === "projectRun/overview" && overviewLatency) await new Promise((resolve) => window.setTimeout(resolve, overviewLatency));
+    if (method === "projectRun/overview" && params.has("overviewFail")) throw new Error("Host unavailable");
     return structuredClone(handlers[method]?.(args) || {});
   },
   listModels: async () => models,

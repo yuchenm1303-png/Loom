@@ -146,6 +146,7 @@ def test_usage_insights_run_beside_the_control_worker_not_in_front_of_it():
 def test_only_read_only_requests_are_taken_off_the_control_worker():
     observational = JsonRpcStdioServer._is_observational
     assert observational({"method": "profile/insights", "params": {}})
+    assert observational({"method": "projectRun/overview", "params": {"threadId": "t"}})
     assert observational({"method": "thread/read", "params": {"presentationOnly": True}})
     assert observational({"method": "thread/read", "params": {"threadOnly": True}})
     # A full read, and anything that changes state, keeps its ordering.

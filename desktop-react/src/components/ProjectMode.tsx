@@ -30,9 +30,17 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   const [offline, setOffline] = useState(false);
   const alive = useRef(true);
   const serial = useRef(0);
+  const reading = useRef(false);
+  // The first read can take a while on a busy Host; after a moment the empty view says so.
+  const [slow, setSlow] = useState(false);
 
-  const load = useCallback(async () => {
+  // One read at a time. A poll or a refocus while one is out waits for the next tick: when a read
+  // took longer than the poll, every answer was overtaken by a newer request and dropped, and the
+  // hub never appeared. A read after an action (`fresh`) still supersedes the one in flight.
+  const load = useCallback(async (fresh = false) => {
+    if (reading.current && !fresh) return;
     const ticket = ++serial.current;
+    reading.current = true;
     try {
       const result = await window.loom.call<ProjectOverview>("projectRun/overview", { threadId });
       if (alive.current && ticket === serial.current) {
@@ -42,14 +50,17 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
         setOffline(false);
       }
     } catch {
-      if (alive.current) setOffline(true);
+      if (alive.current && ticket === serial.current) setOffline(true);
+    } finally {
+      if (ticket === serial.current) reading.current = false;
     }
   }, [threadId]);
 
   useEffect(() => {
     alive.current = true;
     setOverview(lastOverview.get(threadId) ?? null);
-    void load();
+    reading.current = false;
+    void load(true);
     return () => { alive.current = false; };
   }, [load]);
   // Back from a terminal or an editor (a commit made there, say): read again at once.
@@ -65,13 +76,20 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     const timer = window.setInterval(() => { if (!document.hidden) void load(); }, resting ? REST_POLL_MS : LIVE_POLL_MS);
     return () => window.clearInterval(timer);
   }, [load, resting]);
+  const waiting = !overview;
+  useEffect(() => {
+    setSlow(false);
+    if (!waiting) return;
+    const timer = window.setTimeout(() => setSlow(true), 1500);
+    return () => window.clearTimeout(timer);
+  }, [waiting]);
 
   const act = useCallback(async (command: () => Promise<unknown>) => {
     setBusy(true);
     setError("");
     try {
       await command();
-      await load();
+      await load(true);
     } catch (cause) {
       setError(readableError(cause instanceof Error ? cause.message : String(cause), lang));
     } finally {
@@ -79,7 +97,18 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     }
   }, [load, lang]);
 
-  if (!overview) return <div className="pf-loading" aria-busy="true" />;
+  if (!overview) {
+    return (
+      <div className="pf-loading" aria-busy={!offline}>
+        {offline ? (
+          <p className="pf-loading-note" role="alert">
+            {lang === "en" ? "Could not read this project from the Host." : "没能从 Host 读取这个项目。"}
+            <button type="button" onClick={() => void load(true)}>{lang === "en" ? "Try again" : "重试"}</button>
+          </p>
+        ) : slow ? <p className="pf-loading-note">{lang === "en" ? "Reading the project…" : "正在读取项目…"}</p> : null}
+      </div>
+    );
+  }
   const run = overview.run;
   const control = (action: "pause" | "resume" | "cancel", extra: Record<string, unknown> = {}) => act(() =>
     window.loom.call(`projectRun/${action}`, { operationId: crypto.randomUUID(), runId: run!.id, expectedRevision: run!.revision, ...extra }));

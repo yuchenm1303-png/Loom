@@ -2197,7 +2197,10 @@ class JsonRpcStdioServer:
         if not isinstance(payload, dict):
             return False
         method = payload.get("method")
-        if method == "profile/insights":
+        # ``projectRun/overview`` is Weave's view, re-read every few seconds: queued behind
+        # the control worker it took up to a minute, longer than the view's poll, and the
+        # hub stayed blank.
+        if method in {"profile/insights", "projectRun/overview"}:
             return True
         params = payload.get("params")
         return (

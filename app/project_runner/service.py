@@ -542,7 +542,9 @@ class ProjectServiceMixin:
             return {"git": False, "changes": [], "changeCount": 0}
         if top != folder:
             return {"git": False, "changes": [], "changeCount": 0}
-        lines = [line for line in git(folder, "-c", "core.quotepath=false", "status", "--porcelain=v1", raw=True).splitlines() if line.strip()]
+        # A read beside other requests: without optional locks, status never takes the index lock a commit needs.
+        lines = [line for line in git(folder, "--no-optional-locks", "-c", "core.quotepath=false", "status", "--porcelain=v1",
+                                      raw=True).splitlines() if line.strip()]
         try:
             branch = git(folder, "symbolic-ref", "--short", "HEAD")
         except ValueError:
