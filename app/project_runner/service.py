@@ -13,6 +13,7 @@ from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
 from . import delivery, integration, workflow, parallel, checks, program
+from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
 from app.agent_runtime.context_budget import estimate_tokens
@@ -70,7 +71,9 @@ class ProjectExecutor:
         git(workspace, "merge-base", "--is-ancestor", run["baseCommit"], "HEAD")
         if run["phase"] == "verifying":
             expected = self.service.project_store.candidate(run)
-            workspace = review_workspace(run, expected, workspace, self.home / "reviews" / run["id"] / expected["id"])
+            # One level under reviews/: the Windows sandbox needs every folder above a checkout
+            # listable, and its one-time preparation can only open folders that already exist.
+            workspace = review_workspace(run, expected, workspace, self.home / "reviews" / review_folder(run["id"], expected["id"]))
         if key in run["sessions"]:
             self.compact_between_episodes(run, run["sessions"][key])
             return run["sessions"][key]

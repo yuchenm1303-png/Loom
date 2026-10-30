@@ -38,8 +38,8 @@ class Janitor:
                 continue
             finished = run["state"] == "integrated" or run["id"] in merged
             current = (run.get("reviewCandidate") or {}).get("id")
-            for folder in _children(store.home / "reviews" / run["id"]):
-                if finished or folder.name != current:
+            for folder, candidate in _reviews(store.home / "reviews", run["id"]):
+                if finished or candidate != current:
                     removed += _remove(run, folder)
             for folder in _children(store.home / "deliveries" / run["id"]):
                 removed += _remove(run, folder)  # only built a commit; the commit stays in the repository
@@ -54,6 +54,17 @@ class Janitor:
                 except ValueError:
                     pass
         return removed
+
+
+def review_folder(run_id: str, candidate_id: str) -> str:
+    """A review checkout's folder name under reviews/: one level, so its parents exist up front."""
+    return f"{run_id}--{candidate_id}"
+
+
+def _reviews(root: Path, run_id: str):
+    """A run's review checkouts with their candidate: reviews/<run>--<candidate>, and the older reviews/<run>/<candidate>."""
+    flat = [(item, item.name[len(run_id) + 2:]) for item in _children(root) if item.name.startswith(f"{run_id}--")]
+    return flat + [(item, item.name) for item in _children(root / run_id)]
 
 
 def _children(folder: Path):

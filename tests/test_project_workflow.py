@@ -145,7 +145,8 @@ def test_finished_project_leaves_no_runner_worktrees_behind(automatic):
     removed = service.project_runner.janitor.sweep(service.project_store, now=10**12)
     assert removed >= 1
     assert len(git(root, "worktree", "list").splitlines()) == 1
-    for name in ("reviews", "deliveries", "delivery-checks"):
+    assert not any((home / "reviews").iterdir())
+    for name in ("deliveries", "delivery-checks"):
         assert not any((home / name).glob("*/*")), name
     assert not (home / "workspaces" / final["id"]).exists()
     assert (root / "app.txt").read_text() == "fixed"  # the user's source is untouched
@@ -158,7 +159,8 @@ def test_janitor_keeps_the_current_review_and_anything_in_flight(tmp_path):
     run = {"id": "r1", "repository": str(tmp_path), "activeEpisode": None, "state": "running",
            "reviewCandidate": {"id": "current"}}
     for name in ("old", "current"):
-        (home / "reviews" / "r1" / name).mkdir(parents=True)
+        (home / "reviews" / f"r1--{name}").mkdir(parents=True)
+    (home / "reviews" / "r1" / "older").mkdir(parents=True)  # the layout before reviews were one level deep
     (home / "workspaces" / "r1").mkdir(parents=True)
     store = SimpleNamespace(home=home, list=lambda: [run])
     janitor = Janitor()
@@ -166,8 +168,9 @@ def test_janitor_keeps_the_current_review_and_anything_in_flight(tmp_path):
     assert janitor.sweep(store, now=10**12) == 0                  # an episode is in flight
     run["activeEpisode"] = None
     assert janitor.sweep(store, now=10**12) == 0                  # rate-limited
-    assert janitor.sweep(store, now=10**13) == 1
-    assert not (home / "reviews" / "r1" / "old").exists() and (home / "reviews" / "r1" / "current").exists()
+    assert janitor.sweep(store, now=10**13) == 2
+    assert not (home / "reviews" / "r1--old").exists() and not (home / "reviews" / "r1" / "older").exists()
+    assert (home / "reviews" / "r1--current").exists()
     run["state"] = "cancelled"
     janitor.sweep(store, now=10**14)
     assert (home / "workspaces" / "r1").exists()                   # kept for inspection
