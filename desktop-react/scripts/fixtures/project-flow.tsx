@@ -99,7 +99,12 @@ function play(count: number, workers: number) {
 // ?draft=1: nothing started yet; ?attention=1: stopped at the budget and waiting.
 function variant(data: FlowData): FlowData {
   if (params.has("draft")) return { ...data, phase: "draft", objective: "", narration: { summary: "", text: "描述一个大目标，它会被拆成阶段和任务，并行开发、独立复审后集成。" },
-    tasks: [], agents: [], scope: [], knowledge: { checks: 0, notes: 0, latest: "" }, controls: { pause: false, resume: false, cancel: false } };
+    tasks: [], agents: [], scope: [], knowledge: { checks: 0, notes: 0, latest: "" }, controls: { pause: false, resume: false, cancel: false },
+    // &dirty=1: the repository has uncommitted changes, so the start waits for a commit.
+    workspace: params.has("dirty") ? { changeCount: 11, head: "0a1d215", branch: "main",
+      changes: [{ status: "M", path: "src/relay/server.py" }, { status: "M", path: "src/relay/client.py" }, { status: "A", path: "src/relay/auth.py" },
+              { status: "D", path: "docs/old-setup.md" }, { status: "??", path: "scratch/" }, { status: "M", path: "README.md" },
+              { status: "M", path: "pyproject.toml" }, { status: "??", path: "notes 笔记.txt" }, { status: "M", path: "tests/test_relay.py" }] } : undefined };
   if (params.has("attention")) return { ...data, state: "needs_you", attention: { reason: "token 预算已用完。", action: "budget" },
     controls: { pause: false, resume: false, cancel: true }, agents: data.agents.filter((agent) => agent.done) };
   return data;

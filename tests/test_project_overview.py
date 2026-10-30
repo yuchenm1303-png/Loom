@@ -4,7 +4,7 @@ import uuid
 
 from app.ai import ModelResponse, ToolCall
 from app.project_runner import program
-from app.project_runner.service import _describe_tool
+from app.project_runner.service import _describe_tool, git
 from test_project_review import setup_review, writing, checking, PLAN, CANDIDATE, PASSED
 from test_project_runner import build, control, create, cycle, reply
 
@@ -12,8 +12,10 @@ from test_project_runner import build, control, create, cycle, reply
 def test_a_conversation_without_a_project_reads_as_empty(tmp_path):
     service, runtime, platform, _, source = build(tmp_path, [])
     try:
-        assert service.project_overview({"threadId": source}) == {
+        overview = service.project_overview({"threadId": source})
+        assert {key: overview[key] for key in ("run", "program", "children", "agents", "events")} == {
             "run": None, "program": None, "children": [], "agents": [], "events": []}
+        assert overview["workspace"]["git"] is True and overview["workspace"]["changeCount"] == 0
     finally:
         runtime.close()
 
@@ -152,5 +154,26 @@ def test_an_approval_asked_before_a_restart_ends_the_episode_and_work_continues(
         assert current.get("interruptionStreak") == 1  # continued as an interruption, not counted as a failure
         [closed] = [event for event in service.store.events(agent["id"]) if event.turn_id == asked and event.kind.value == "turn_interrupted"]
         assert "did not run" in closed.data["error"] and "declined" in closed.data["error"]
+    finally:
+        runtime.close()
+
+
+def test_uncommitted_changes_show_before_a_start_and_commit_all_at_once(tmp_path):
+    import pytest
+    service, runtime, platform, workspace, source = build(tmp_path, [])
+    try:
+        (workspace / "README.md").write_text("edited\n")
+        (workspace / "notes 笔记.txt").write_text("new\n", encoding="utf-8")
+        state = service.project_overview({"threadId": source})["workspace"]
+        assert state["changeCount"] == 2 and state["branch"]
+        assert sorted(item["path"] for item in state["changes"]) == ["README.md", "notes 笔记.txt"]  # not quoted
+        with pytest.raises(ValueError, match="uncommitted|commit or separate"):
+            create(service, source)
+        with pytest.raises(ValueError, match="moved"):
+            service.project_commit_workspace({"threadId": source, "message": "Save", "expectedCount": 1})
+        after = service.project_commit_workspace({"threadId": source, "message": "  Save work   before Weave ", "expectedCount": 2})
+        assert after["changeCount"] == 0 and after["head"] != state["head"]
+        assert git(workspace, "log", "-1", "--format=%s") == "Save work before Weave"
+        create(service, source)  # starts now
     finally:
         runtime.close()

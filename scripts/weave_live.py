@@ -228,6 +228,7 @@ def serve(service, root: Path, thread_id: str, model: str, token: str, port: int
         "projectRun/cancel": lambda p: {"run": service.project_control(p, "cancel")},
         "projectRun/recover": lambda p: service.project_recover(p),
         "projectRun/approval": lambda p: service.project_approval(p),
+        "projectRun/commitWorkspace": lambda p: service.project_commit_workspace(p),
         "projectProgram/attach": lambda p: {"program": _attach(service, p)},
     }
     def create(params):

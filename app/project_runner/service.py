@@ -510,7 +510,9 @@ class ProjectServiceMixin:
         else:
             root = max(roots, key=lambda run: run.get("createdAt", 0)) if roots else None
         if root is None:
-            return {"run": None, "program": current, "children": [], "agents": [], "events": []}
+            # Nothing started yet: what would stop a start (uncommitted changes) is shown before it is tried.
+            return {"run": None, "program": current, "children": [], "agents": [], "events": [],
+                    "workspace": self._project_workspace_state(thread_id)}
         children = [run for run in runs if run.get("teamOwnerId") == root["id"]]
         integration = store.get(root["integrationRunId"]) if root.get("integrationRunId") else None
         ledger = integration or root
@@ -530,6 +532,48 @@ class ProjectServiceMixin:
                 "ledgerEpisodes": ledger["episodesUsed"], "guidance": list(root.get("guidance") or [])}
         return {"run": view, "program": current, "children": children, "integration": integration,
                 "agents": agents, "events": events, "timeline": self._project_timeline(root, family)}
+
+    def _project_workspace_state(self, thread_id):
+        """The conversation's repository as a project would start from it: branch, commit, uncommitted changes."""
+        try:
+            folder = Path(self._load(thread_id).workspace_dir).resolve()
+            top = Path(git(folder, "rev-parse", "--show-toplevel")).resolve()
+        except (OSError, ValueError, TypeError):
+            return {"git": False, "changes": [], "changeCount": 0}
+        if top != folder:
+            return {"git": False, "changes": [], "changeCount": 0}
+        lines = [line for line in git(folder, "-c", "core.quotepath=false", "status", "--porcelain=v1", raw=True).splitlines() if line.strip()]
+        try:
+            branch = git(folder, "symbolic-ref", "--short", "HEAD")
+        except ValueError:
+            branch = ""
+        try:
+            head = git(folder, "rev-parse", "--short", "HEAD")
+        except ValueError:
+            head = ""  # a repository without a commit yet
+        return {"git": True, "branch": branch, "head": head, "changeCount": len(lines),
+                "changes": [{"status": line[:2].strip() or "?", "path": line[3:].strip().strip('"')} for line in lines[:40]]}
+
+    def project_commit_workspace(self, params):
+        """Commit every uncommitted change of the conversation's repository, so a project can start from it.
+
+        All or nothing: a project needs a clean checkout to start and to merge back into at the
+        end, so committing part of the changes would leave it blocked. The person asks for this
+        from the hub, with the message they typed; hooks run as for any commit.
+        """
+        thread_id = self._required_text(params, "threadId")
+        message = " ".join(self._required_text(params, "message").split())[:200]
+        state = self._project_workspace_state(thread_id)
+        if not state["git"]:
+            raise ValueError("This conversation's folder is not the root of a Git repository")
+        if not state["changeCount"]:
+            return state
+        if params.get("expectedCount") != state["changeCount"]:
+            raise ValueError("The changes moved since they were shown; look at them again before committing")
+        folder = Path(self._load(thread_id).workspace_dir).resolve()
+        git(folder, "add", "--all")
+        git(folder, "commit", "-m", message)
+        return self._project_workspace_state(thread_id)
 
     def _project_timeline(self, root, family):
         """Every episode of this milestone as a span on a clock: who, on what, from when to when, what it cost.
@@ -797,6 +841,8 @@ class ProjectControllerMixin:
             return {"run": self.service.project_steer(params)}
         if method == "projectRun/recover":
             return self.service.project_recover(params)
+        if method == "projectRun/commitWorkspace":
+            return self.service.project_commit_workspace(params)
         if method == "projectRun/approval":
             return self.service.project_approval(params)
         if method == "projectProgram/create":

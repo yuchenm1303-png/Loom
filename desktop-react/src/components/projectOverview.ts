@@ -26,6 +26,8 @@ export interface ProjectOverview {
   integration?: ProjectRun | null;
   agents: OverviewAgent[];
   events: OverviewEvent[];
+  /** Before a start: the repository a project would start from (uncommitted changes block it). */
+  workspace?: { git: boolean; branch?: string; head?: string; changeCount: number; changes: { status: string; path: string }[] };
   /** The milestone's episodes on a clock (seconds since the epoch; end null while running). */
   timeline?: OverviewSpan[];
 }
@@ -146,7 +148,10 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   if (!run) {
     return {
       phase: "draft", objective: "", narration: { summary: "", text: t.start }, milestone: 1, state: "paused", model,
-      repository: { name: workspaceName || "workspace", commit: "", subject: "", branch: "main" }, scope: [],
+      repository: { name: workspaceName || "workspace", commit: overview.workspace?.head || "", subject: "",
+                    branch: overview.workspace?.branch || "main" }, scope: [],
+      workspace: overview.workspace?.git ? { changeCount: overview.workspace.changeCount, changes: overview.workspace.changes,
+                                             head: overview.workspace.head || "", branch: overview.workspace.branch || "" } : undefined,
       knowledge: { checks: 0, notes: 0, latest: "" }, tasks: [], budget: { tokens: 0, tokenLimit: 1 }, workers: 2, maxWorkers: 2,
       controls: { pause: false, resume: false, cancel: false }, agents: [],
     };
@@ -284,6 +289,20 @@ export function toModelChoice(snapshot: ModelSnapshot | null | undefined): FlowD
   const reasoning = current.reasoning?.options.find((item) => item.value === current.reasoning?.value)?.label || current.reasoning?.value;
   return { current: { ...option(current), reasoning: reasoning || undefined, vision: current.vision === true },
            options: [...recent, ...nearby].slice(0, 3).map(option) };
+}
+
+// The Host's reasons a person can act on, said plainly; anything else keeps its own words.
+const REASONS: [RegExp, Record<Lang, string>][] = [
+  [/commit or separate existing workspace changes/i, { zh: "仓库里有未提交的改动，先提交它们再开始。", en: "The repository has uncommitted changes; commit them before starting." }],
+  [/requires a Git repository root/i, { zh: "织造需要在 Git 仓库的根目录里运行。", en: "Weave runs at the root of a Git repository." }],
+  [/changes moved since they were shown/i, { zh: "改动在显示之后又变了，请再看一眼后提交。", en: "The changes moved since they were shown; look again before committing." }],
+  [/project budget exhausted/i, { zh: "token 预算已用完。", en: "The token budget is used up." }],
+];
+
+/** An error from the Host as a sentence: without the IPC wrapper ("Error invoking remote method 'loom:call': Error: "). */
+export function readableError(message: string, lang: Lang = "zh"): string {
+  const text = message.replace(/^Error invoking remote method '[^']*':\s*/, "").replace(/^(Error|ValueError|RuntimeError):\s*/, "").trim();
+  return REASONS.find(([pattern]) => pattern.test(text))?.[1][lang] || text;
 }
 
 /** "Add budget" on a stopped milestone: a quarter of the whole program more, or half the milestone's own if there is no program.

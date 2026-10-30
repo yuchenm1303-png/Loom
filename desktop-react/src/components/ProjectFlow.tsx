@@ -54,6 +54,8 @@ export interface FlowData {
   tasks: { id: string; title: string; state: FlowTaskState; detail?: string; agentId?: string; agentName?: string }[];
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
   models?: { current: ModelOption & { reasoning?: string; vision?: boolean }; options: ModelOption[] };
+  /** Before a start: the repository's uncommitted changes, which a start must not leave behind. */
+  workspace?: { changeCount: number; changes: { status: string; path: string }[]; head: string; branch: string };
   /** Files the person attached; every episode reads copies of them. */
   references?: { name: string; bytes?: number }[];
   /** A finished program: why its last planner found the objective met, and what each milestone took. */
@@ -83,6 +85,8 @@ export interface FlowActions {
   /** Files added while the program runs. */
   onAttach?(paths: string[]): void;
   onModel?(selection: string): void;
+  /** Commit every uncommitted change with this message; `count` is how many were shown. */
+  onCommitWorkspace?(message: string, count: number): void;
   onSteer?(text: string): void;
   onWorkers?(count: number): void;
   onPause?(): void;
@@ -107,6 +111,10 @@ const zhText = {
   loomStats: (s: { episodes: number; trouble: number; perHour: number }) => `${s.episodes} 轮 · 重试 ${s.trouble} · ${compact(s.perHour)}/时`,
   spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
     `${phase} · ${minutes} 分 · ${compact(tokens)} token${trouble ? " · 未正常结束，已重试" : ""}`,
+  dirty: (n: number) => `仓库里有 ${n} 个未提交的改动`,
+  dirtyWhy: (head: string, branch: string) => `织造从最后一次提交${head ? `（${head}）` : ""}开始，完成后合并回 ${branch || "当前分支"}；未提交的改动会挡住这一步，所以先提交它们。`,
+  dirtyShow: "查看并提交", dirtyHide: "收起", dirtyMore: (n: number) => `还有 ${n} 个`, commitAll: "全部提交",
+  commitMessage: "保存改动，准备开始织造", commitHint: "不想提交的文件，先加入 .gitignore 或移出仓库。", startBlocked: "先提交未提交的改动",
   now: "现在", files: "参考文件", filesEmpty: "需求文档、规格或样例数据，每一轮的 agent 都能读到", addFiles: "添加文件",
   remove: "移除", modelCard: "模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "织造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
@@ -122,6 +130,11 @@ const enText: typeof zhText = {
   loomStats: (s: { episodes: number; trouble: number; perHour: number }) => `${s.episodes} episodes · ${s.trouble} retried · ${compact(s.perHour)}/h`,
   spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
     `${phase} · ${minutes} min · ${compact(tokens)} tokens${trouble ? " · did not settle; retried" : ""}`,
+  dirty: (n: number) => `The repository has ${n} uncommitted change${n === 1 ? "" : "s"}`,
+  dirtyWhy: (head: string, branch: string) => `Weave starts from the last commit${head ? ` (${head})` : ""} and merges back into ${branch || "the current branch"} when done; uncommitted changes would block that, so commit them first.`,
+  dirtyShow: "Review and commit", dirtyHide: "Hide", dirtyMore: (n: number) => `${n} more`, commitAll: "Commit all",
+  commitMessage: "Save work before Weave", commitHint: "Add files you do not want committed to .gitignore, or move them out of the repository.",
+  startBlocked: "Commit the uncommitted changes first",
   now: "now", files: "Reference files", filesEmpty: "Specs, documents or sample data; every episode can read them",
   addFiles: "Add files", remove: "Remove", modelCard: "Model", vision: "vision",
   modelHint: "Agents already started keep their model; new ones use the choice", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
@@ -289,6 +302,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const [hot, setHot] = useState("");
   const [draft, setDraft] = useState("");
   const [objectiveOpen, setObjectiveOpen] = useState(false);
+  const [dirtyOpen, setDirtyOpen] = useState(false);
+  const [commitMessage, setCommitMessage] = useState("");
   const modelPanel = useComposerPanel("model");
   // The plan scrolls; keep the task in progress in view as work moves down it, unless the person is reading it.
   const plan = useRef<HTMLDivElement>(null);
@@ -335,9 +350,11 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const slot = (id: string) => ({ "data-leaving": leaving.has(id) || undefined });
   const hover = (id: string) => ({ onPointerEnter: () => setHot(id), onPointerLeave: () => setHot("") });
   const shownWorkers = draftMode ? workers : data.workers;
+  // Uncommitted changes would stop the Host at the start (and at the merge back): the start waits for them.
+  const blocked = draftMode && Boolean(data.workspace?.changeCount);
   const submit = () => {
     const value = draft.trim();
-    if (!value || actions.busy) return;
+    if (!value || actions.busy || blocked) return;
     if (draftMode) { actions.onStart?.(value, workers, tokens, picked); setPicked([]); } else actions.onSteer?.(value);
     setDraft("");
   };
@@ -457,6 +474,40 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               ) : null}
             </div>
           ) : null}
+          {draftMode && data.workspace?.changeCount ? (
+            // What would stop a start, shown before it is tried, with the one way through it.
+            <div className="pf-attention pf-dirty" role="status" data-open={dirtyOpen || undefined}>
+              <div className="pf-dirty-line">
+                <span className="pf-attention-dot" />
+                <span className="pf-attention-text">{text.dirty(data.workspace.changeCount)}</span>
+                <button type="button" className="pf-attention-quiet" onClick={() => setDirtyOpen((value) => !value)}>
+                  {dirtyOpen ? text.dirtyHide : text.dirtyShow}
+                </button>
+              </div>
+              <p className="pf-dirty-why">{text.dirtyWhy(data.workspace.head, data.workspace.branch)}</p>
+              {dirtyOpen ? (
+                <div className="pf-dirty-body">
+                  <ul className="pf-dirty-files">
+                    {data.workspace.changes.slice(0, 8).map((change) => (
+                      <li key={change.path} title={change.path}>
+                        <code data-status={change.status}>{change.status}</code><span>{change.path}</span>
+                      </li>
+                    ))}
+                    {data.workspace.changeCount > 8 ? <li className="pf-dirty-more">{text.dirtyMore(data.workspace.changeCount - 8)}</li> : null}
+                  </ul>
+                  <div className="pf-dirty-commit">
+                    <input value={commitMessage} placeholder={text.commitMessage} aria-label={text.commitMessage}
+                           onChange={(event) => setCommitMessage(event.target.value)} />
+                    <button type="button" disabled={actions.busy || !actions.onCommitWorkspace}
+                            onClick={() => actions.onCommitWorkspace?.(commitMessage.trim() || text.commitMessage, data.workspace!.changeCount)}>
+                      {text.commitAll}
+                    </button>
+                  </div>
+                  <p className="pf-dirty-hint">{text.commitHint}</p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <section className="pf-composer" ref={hub} aria-label={text.hub} data-hot={hot.startsWith("agent:") || undefined}>
@@ -536,7 +587,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 </ComposerPanel>
               </div>
             ) : null}
-            <button type="button" className="pf-send" disabled={!draft.trim() || actions.busy} aria-label={draftMode ? text.start : text.send}
+            <button type="button" className="pf-send" disabled={!draft.trim() || actions.busy || blocked} aria-label={draftMode ? text.start : text.send}
+                    title={blocked ? text.startBlocked : undefined}
                     onClick={submit}>{actions.busy ? <LoaderCircle size={15} className="pf-busy" /> : <ArrowUp size={15} />}</button>
           </footer>
         </section>

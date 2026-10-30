@@ -343,6 +343,9 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-chip-value { color: var(--pl-ink); font-variant-numeric: tabular-nums; animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards; }
 
 .pf-stepper { padding: 0 4px; gap: 5px; }
+/* The footer's chips keep their words on one line; the model chip is the one that gives way. */
+.pf-composer-foot > .pf-chip,
+.pf-composer-foot > .pf-stepper { flex: none; white-space: nowrap; }
 .pf-stepper svg { color: var(--pl-muted); }
 
 .pf-stepper-value {
@@ -435,6 +438,33 @@ html[data-loom-theme="light"] .pf-stage {
 }
 
 .pf-attention-text { flex: 1; min-width: 0; }
+
+/* Uncommitted changes before a start: the attention line, opened into the files and one commit. */
+.pf-dirty { display: grid; gap: 4px; align-items: stretch; }
+.pf-dirty-line { display: flex; align-items: center; gap: 10px; }
+.pf-dirty-why { margin: 0; padding-left: 16px; color: var(--pl-muted); font-size: 11.5px; }
+.pf-dirty-hint { margin: 0; color: var(--pl-faint); font-size: 11.5px; }
+.pf-dirty-body { display: grid; gap: 8px; margin: 6px 0 2px 16px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.pf-dirty-files { display: grid; gap: 2px; margin: 0; padding: 6px 8px; border-radius: 8px; background: var(--pf-well); list-style: none; }
+.pf-dirty-files li { display: flex; gap: 8px; min-width: 0; color: var(--pl-secondary); font-size: 12px; }
+.pf-dirty-files li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-dirty-files code { flex: none; width: 18px; color: var(--pf-warn); font-family: var(--loom-font-mono, ui-monospace, Consolas, monospace); font-size: 11.5px; }
+.pf-dirty-files code[data-status="??"] { color: var(--pl-faint); }
+.pf-dirty-more { color: var(--pl-faint); }
+.pf-dirty-commit { display: flex; gap: 6px; }
+.pf-dirty-commit input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--pf-well);
+  color: var(--pl-ink);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+.pf-dirty-commit input:focus-visible { box-shadow: 0 0 0 1px color-mix(in srgb, var(--pf-warn) 60%, transparent); }
 
 .pf-attention button {
   padding: 4px 11px;
@@ -847,6 +877,7 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   .pf-model-pop,
   .pf-model-chip > span:not(.cp-mark),
   .pf-file,
+  .pf-dirty-body,
   .pf-loom,
   .pf-loom-span,
   .pf-attention-dot,

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
-import { raisedBudget, toFlowData, toModelChoice, type ProjectOverview } from "./projectOverview";
+import { raisedBudget, readableError, toFlowData, toModelChoice, type ProjectOverview } from "./projectOverview";
 import type { ModelSnapshot } from "../types/loom";
 
 const LIVE_POLL_MS = 2000;
@@ -48,6 +48,12 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel 
     void load();
     return () => { alive.current = false; };
   }, [load]);
+  // Back from a terminal or an editor (a commit made there, say): read again at once.
+  useEffect(() => {
+    const again = () => { if (!document.hidden) void load(); };
+    window.addEventListener("focus", again);
+    return () => window.removeEventListener("focus", again);
+  }, [load]);
 
   const resting = !overview?.run || ["integrated", "cancelled"].includes(overview.run.state) ||
     overview.run.state === "needs_review" || overview.run.control === "budget_limited";
@@ -63,11 +69,11 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel 
       await command();
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(readableError(cause instanceof Error ? cause.message : String(cause), lang));
     } finally {
       if (alive.current) setBusy(false);
     }
-  }, [load]);
+  }, [load, lang]);
 
   if (!overview) return <div className="pf-loading" aria-busy="true" />;
   const run = overview.run;
@@ -84,6 +90,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel 
       onPickFiles: window.loom.pickFiles ? () => window.loom.pickFiles() : undefined,
       onAttach: programId ? (paths) => act(() => window.loom.call("projectProgram/attach", { programId, attachments: paths })) : undefined,
       onModel: onSwitchModel ? (selection) => act(() => onSwitchModel(selection)) : undefined,
+      onCommitWorkspace: (message, count) => act(() => window.loom.call("projectRun/commitWorkspace", { threadId, message, expectedCount: count })),
       onStart: (objective, workers, tokens, attachments) => act(() => window.loom.call("projectProgram/create", {
         attachments,
         operationId: crypto.randomUUID(), threadId, objective, tokenBudget: tokens, maxEpisodes: START_EPISODES,

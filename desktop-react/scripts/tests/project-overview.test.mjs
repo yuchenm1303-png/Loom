@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../src/components/projectOverview.ts", i
 const module = { exports: {} };
 new Function("module", "exports", "require", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(
   module, module.exports, () => ({}));
-const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice } = module.exports;
+const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice, readableError } = module.exports;
 
 const now = Date.parse("2026-10-30T10:00:00Z");
 const run = (extra = {}) => ({
@@ -181,4 +181,21 @@ test("a program's attached files reach the files card", () => {
   const data = toFlowData({ ...overview(), program: { id: "p", objective: "Build ledger", state: "running", tokenBudget: 9000, maxEpisodes: 200,
     milestones: [], references: [{ name: "spec.md", bytes: 1800, source: "C:/x/spec.md" }] } }, now, "zh");
   assert.deepEqual(data.references, [{ name: "spec.md", bytes: 1800 }]);  // where it came from stays on the Host
+});
+
+test("before a start: the repository's branch, commit and uncommitted changes", () => {
+  const workspace = { git: true, branch: "dev", head: "a1b2c3d", changeCount: 2,
+                      changes: [{ status: "M", path: "src/app.py" }, { status: "??", path: "notes.txt" }] };
+  const data = toFlowData({ run: null, program: null, children: [], agents: [], events: [], workspace }, now, "zh", "m", "termrelay");
+  assert.deepEqual(data.repository, { name: "termrelay", commit: "a1b2c3d", subject: "", branch: "dev" });
+  assert.deepEqual(data.workspace, { changeCount: 2, changes: workspace.changes, head: "a1b2c3d", branch: "dev" });
+  const outside = toFlowData({ run: null, program: null, children: [], agents: [], events: [], workspace: { git: false, changeCount: 0, changes: [] } }, now);
+  assert.equal(outside.workspace, undefined);
+});
+
+test("Host errors read as sentences, without the IPC wrapper", () => {
+  const raw = "Error invoking remote method 'loom:call': Error: commit or separate existing workspace changes before creating a project run";
+  assert.equal(readableError(raw), "仓库里有未提交的改动，先提交它们再开始。");
+  assert.equal(readableError(raw, "en"), "The repository has uncommitted changes; commit them before starting.");
+  assert.equal(readableError("Error invoking remote method 'loom:call': Error: something new"), "something new");
 });
