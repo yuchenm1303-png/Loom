@@ -18,10 +18,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import {
   ArrowUp, Bot, BookMarked, ChartGantt, Check, ChevronDown, Circle, CircleDot, Compass, File, FileCode, FileImage,
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldCheck,
-  Sparkles, Square, X,
+  History, Search, Sparkles, Square, X,
 } from "lucide-react";
 import { ProviderMark } from "./ModelPanel";
 import { useGlide } from "./projectArrange";
+import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
+import type { ModelReasoningState } from "../types/loom";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./project-flow.css";
@@ -54,7 +56,8 @@ export interface FlowData {
   knowledge: { checks: number; notes: number; latest: string };
   tasks: { id: string; title: string; state: FlowTaskState; detail?: string; agentId?: string; agentName?: string }[];
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
-  models?: { current: ModelOption & { reasoning?: string; vision?: boolean }; options: ModelOption[] };
+  models?: { current: ModelOption & { reasoning?: ModelReasoningState; vision?: boolean }; recent: ModelOption[];
+             groups: { id: string; name: string; options: ModelOption[] }[] };
   /** Before a start: the repository's uncommitted changes, which a start must not leave behind. */
   workspace?: { changeCount: number; changes: { status: string; path: string }[]; head: string; branch: string };
   /** Files the person attached; every episode reads copies of them. */
@@ -86,6 +89,8 @@ export interface FlowActions {
   /** Files added while the program runs. */
   onAttach?(paths: string[]): void;
   onModel?(selection: string): void;
+  /** The reasoning level of the model the agents use, as the app's model card sets it. */
+  onReasoning?(kind: string, value: string): Promise<void> | void;
   /** Commit every uncommitted change with this message; `count` is how many were shown. */
   onCommitWorkspace?(message: string, count: number): void;
   onSteer?(text: string): void;
@@ -99,6 +104,8 @@ export interface FlowActions {
   error?: string;
 }
 
+// The model card's tab for the recently used models; provider ids never take this form.
+const RECENT = "@recent";
 const roleIcon = { planner: Compass, worker: Hammer, reviewer: ShieldCheck };
 /** Budgets a new program can start with; the chip cycles through them. The Host enforces it at every request. */
 const START_BUDGETS = [2_000_000, 4_000_000, 8_000_000, 16_000_000];
@@ -117,7 +124,7 @@ const zhText = {
   dirtyShow: "查看并提交", dirtyHide: "收起", dirtyMore: (n: number) => `还有 ${n} 个`, commitAll: "全部提交",
   commitMessage: "保存改动，准备开始建造", commitHint: "不想提交的文件，先加入 .gitignore 或移出仓库。", startBlocked: "先提交未提交的改动",
   now: "现在", files: "参考文件", filesEmpty: "需求文档、规格或样例数据，每一轮的 agent 都能读到", addFiles: "添加文件",
-  remove: "移除", modelCard: "模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "建造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
+  remove: "移除", modelCard: "模型", modelSearch: "搜索模型", modelGroups: "模型来源", modelRecent: "最近", modelNone: "没有匹配的模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "建造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
   review: "独立复审", reviewHint: "每个任务合入前都由另一个 agent 独立复审", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "建造",
@@ -137,7 +144,7 @@ const enText: typeof zhText = {
   commitMessage: "Save work before Weave", commitHint: "Add files you do not want committed to .gitignore, or move them out of the repository.",
   startBlocked: "Commit the uncommitted changes first",
   now: "now", files: "Reference files", filesEmpty: "Specs, documents or sample data; every episode can read them",
-  addFiles: "Add files", remove: "Remove", modelCard: "Model", vision: "vision",
+  addFiles: "Add files", remove: "Remove", modelCard: "Model", modelSearch: "Search models", modelGroups: "Model sources", modelRecent: "Recent", modelNone: "No matching models", vision: "vision",
   modelHint: "Agents already started keep their model; new ones use the choice", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
   draftPlaceholder: "Describe an objective to pursue; it is split into milestones and tasks, independently reviewed, then integrated",
   steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
@@ -307,6 +314,25 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const [commitMessage, setCommitMessage] = useState("");
   // The model card is a branch like the others: the chip in the footer plugs it into the hub and unplugs it.
   const [modelOpen, setModelOpen] = useState(false);
+  // Inside it: which provider (or the recent ones) the list shows, a search over all of them, and the one being switched to.
+  const [modelTab, setModelTab] = useState("");
+  const [modelQuery, setModelQuery] = useState("");
+  const [switching, setSwitching] = useState("");
+  const models = data.models;
+  useEffect(() => setSwitching(""), [models?.current.selection, actions.error]);
+  useEffect(() => { if (!modelOpen) { setModelTab(""); setModelQuery(""); } }, [modelOpen]);
+  const modelTotal = models ? models.groups.reduce((sum, group) => sum + group.options.length, 0) : 0;
+  const query = modelQuery.trim().toLowerCase();
+  // Opened, the list starts on the current model's provider; a tab that is gone falls back there too.
+  const modelView = modelTab === RECENT && models?.recent.length ? RECENT
+    : models?.groups.some((group) => group.id === modelTab) ? modelTab : models?.current.groupId ?? "";
+  const modelList = !models ? [] : query
+    ? models.groups.flatMap((group) => group.options).filter((option) => `${option.name} ${option.group}`.toLowerCase().includes(query))
+    : modelView === RECENT ? models.recent
+    : models.groups.find((group) => group.id === modelView)?.options ?? models.groups[0]?.options ?? [];
+  const mixed = Boolean(query) || modelView === RECENT;
+  const reasoningState = models?.current.reasoning;
+  const reasoningText = reasoningState ? reasoningLabel(reasoningState, lang === "zh") : "";
   // The plan scrolls; keep the task in progress in view as work moves down it, unless the person is reading it.
   const plan = useRef<HTMLDivElement>(null);
   const current = data.tasks.find((task) => task.state === "working" || task.state === "review" || task.state === "rework")?.id;
@@ -342,7 +368,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                        ...(data.knowledge.checks + data.knowledge.notes ? [{ id: "knowledge" }] : [])];
   const context = useDeparting(contextList);
   const layout = [context.map((item) => item.id).join(","), branches.map((item) => item.id).join(","), agents.map((agent) => agent.id).join(","), files.length,
-                  data.models?.options.length ?? -1,
+                  modelTotal, modelView, query, reasoningState?.value ?? "",
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase].join("|");
   const { cables, measure } = useCables(stage, hub, cards, layout);
   useGlide(stage, layout, measure);
@@ -629,7 +655,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           <div className="pf-slot pf-model-slot" id="pf-model-card" data-glide="model" {...hover("model")} {...slot("model")}
                onKeyDown={(event) => { if (event.key === "Escape") setModelOpen(false); }}>
             <Card id="model" side="right" className="pf-model-card" icon={<Sparkles size={12} />} label={text.modelCard}
-                  count={data.models.current.reasoning || undefined} register={register}>
+                  count={reasoningText || undefined} register={register}>
               <div className="pf-well pf-model-now" key={data.models.current.selection}>
                 <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="large" />
                 <span className="pf-model-copy">
@@ -637,15 +663,51 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                   <span>{data.models.current.group}{data.models.current.vision ? <em>{text.vision}</em> : null}</span>
                 </span>
               </div>
-              {data.models.options.length && actions.onModel ? (
-                <div className="pf-model-options">
-                  {data.models.options.map((option) => (
-                    <button key={option.selection} type="button" className="pf-model-option" disabled={actions.busy}
-                            title={option.name} onClick={() => actions.onModel?.(option.selection)}>
-                      <ProviderMark id={option.groupId} name={option.group} size="small" />
-                      <span>{option.name}</span>
-                    </button>
-                  ))}
+              {data.models.current.reasoning && actions.onReasoning ? (
+                <div className="cp-tokens pf-model-reasoning">
+                  <ReasoningControl reasoning={data.models.current.reasoning} busy={actions.busy} onChange={actions.onReasoning} />
+                </div>
+              ) : null}
+              {modelTotal > 1 && actions.onModel ? (
+                <div className="pf-model-pick">
+                  {modelTotal > 8 ? (
+                    <label className="pf-model-search">
+                      <Search size={12} />
+                      <input type="search" value={modelQuery} placeholder={text.modelSearch} aria-label={text.modelSearch}
+                             onChange={(event) => setModelQuery(event.target.value)}
+                             onKeyDown={(event) => { if (event.key === "Escape" && modelQuery) { event.stopPropagation(); setModelQuery(""); } }} />
+                    </label>
+                  ) : null}
+                  {!query ? (
+                    // Where to look: the recent ones, then each provider. The tab only chooses what the list shows.
+                    <div className="pf-model-tabs" role="tablist" aria-label={text.modelGroups}>
+                      {data.models.recent.length ? (
+                        <button type="button" role="tab" className="pf-model-tab" aria-selected={modelView === RECENT}
+                                onClick={() => setModelTab(RECENT)}><History size={12} /><span>{text.modelRecent}</span></button>
+                      ) : null}
+                      {data.models.groups.map((group) => (
+                        <button key={group.id} type="button" role="tab" className="pf-model-tab" aria-selected={modelView === group.id}
+                                title={`${group.name} · ${group.options.length}`} onClick={() => setModelTab(group.id)}>
+                          <ProviderMark id={group.id} name={group.name} size="small" /><span>{group.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="pf-model-options" role={query ? undefined : "tabpanel"} key={query ? "search" : modelView}>
+                    {modelList.length ? modelList.map((option) => {
+                      const chosen = option.selection === data.models!.current.selection;
+                      return (
+                        <button key={option.selection} type="button" className="pf-model-option" aria-pressed={chosen}
+                                disabled={actions.busy || Boolean(switching)} title={`${option.name} · ${option.group}`}
+                                onClick={() => { if (!chosen) { setSwitching(option.selection); actions.onModel?.(option.selection); } }}>
+                          {mixed ? <ProviderMark id={option.groupId} name={option.group} size="small" /> : null}
+                          <span>{option.name}</span>
+                          {switching === option.selection ? <LoaderCircle size={12} className="pf-busy" />
+                            : chosen ? <Check size={12} strokeWidth={2.4} /> : null}
+                        </button>
+                      );
+                    }) : <p className="pf-empty">{text.modelNone}</p>}
+                  </div>
                 </div>
               ) : null}
               {data.phase === "live" && data.state === "running" ? <p className="pf-model-hint">{text.modelHint}</p> : null}

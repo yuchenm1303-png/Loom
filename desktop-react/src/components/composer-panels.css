@@ -21,7 +21,9 @@
 
    No :has() (css-has-invalidation), weights from UI_FONT_WEIGHTS, sizes on the ladder (11.5 and up). */
 
-.cp {
+/* The tokens also go on .cp-tokens, for a control of this family drawn outside a panel (the Weave hub's model card). */
+.cp,
+.cp-tokens {
   --cp-surface: var(--loom-workspace-panel, #191c22);
   --cp-line: var(--loom-workspace-line, rgba(224, 230, 242, .09));
   --cp-line-strong: rgba(224, 230, 242, .17);
@@ -50,7 +52,8 @@
   --cp-inset: 16px;
 }
 
-html[data-loom-theme="light"] .cp {
+html[data-loom-theme="light"] .cp,
+html[data-loom-theme="light"] .cp-tokens {
   --cp-line-strong: rgba(28, 32, 42, .2);
   --cp-divider: rgba(28, 32, 42, .075);
   --cp-field: rgba(28, 32, 42, .04);

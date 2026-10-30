@@ -163,7 +163,7 @@ test("the timeline: a lane per task in plan order, spans as shares of the clock,
   assert.equal(toTimeline(overview(), now, "zh"), undefined);  // no episodes yet, no timeline
 });
 
-test("the model card: the current model, then recent ones, then its provider's; never unusable ones", () => {
+test("the model card: the current model, recent ones, every usable one by provider; never unusable ones", () => {
   const profile = (model, groupId, extra = {}) => ({ selection: `${groupId}:${model}`, id: model, kind: "builtin", name: model, adapter: "openai",
     baseUrl: "", model, groupId, groupName: groupId.toUpperCase(), ...extra });
   const current = { ...profile("flash", "go"), provider: "go", vision: true,
@@ -172,8 +172,12 @@ test("the model card: the current model, then recent ones, then its provider's; 
     profiles: [current, profile("pro", "go"), profile("m3", "minimax"), profile("gone", "x", { available: false }),
                profile("setup", "go", { setupOnly: true }), profile("lite", "go"), profile("other", "kimi")] };
   const choice = toModelChoice(snapshot);
-  assert.deepEqual(choice.current, { selection: "go:flash", name: "flash", group: "GO", groupId: "go", reasoning: "高", vision: true });
-  assert.deepEqual(choice.options.map((item) => item.selection), ["minimax:m3", "go:pro", "go:lite"]);
+  assert.deepEqual(choice.current, { selection: "go:flash", name: "flash", group: "GO", groupId: "go", reasoning: current.reasoning, vision: true });
+  assert.deepEqual(choice.recent.map((item) => item.selection), ["minimax:m3"]);
+  // Every usable model by provider in the app's order; the current model stays in its list.
+  assert.deepEqual(choice.groups.map((group) => [group.id, group.options.map((item) => item.selection)]),
+                   [["go", ["go:flash", "go:pro", "go:lite"]], ["minimax", ["minimax:m3"]], ["kimi", ["kimi:other"]]]);
+  assert.equal(toModelChoice({ ...snapshot, current: { ...current, reasoning: null } }).current.reasoning, undefined);
   assert.equal(toModelChoice(null), undefined);
 });
 

@@ -561,7 +561,7 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-model-chip:hover,
 .pf-model-chip[data-open] { background: var(--pf-raise); color: var(--pl-ink); }
 .pf-model-chip[data-open] > svg { rotate: 180deg; }
-.pf-model-card { width: 260px; }
+.pf-model-card { width: 280px; }
 .pf-model-card .pf-card-icon { color: #f2c76b; }
 .pf-model-card .pf-count { font-variant-numeric: normal; }
 .pf-model-now { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px 10px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
@@ -570,13 +570,63 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-model-copy strong { overflow: hidden; color: var(--pl-ink); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .pf-model-copy > span { display: flex; align-items: center; gap: 6px; overflow: hidden; color: var(--pl-faint); font-size: 11.5px; white-space: nowrap; }
 .pf-model-copy em { padding: 0 5px; border-radius: 4px; background: var(--pf-raise); color: var(--pl-muted); font-style: normal; }
-.pf-model-options { display: grid; gap: 3px; }
+/* The reasoning scale is the app model card's own control; its needle's ring takes this card's colour. */
+.pf-model-reasoning { --cp-surface: var(--pf-card); margin: 0 -10px; }
+/* Choosing: a search once there are many, tabs for where to look, then that source's models. */
+.pf-model-pick { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--loom-workspace-hover); }
+.pf-model-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: var(--pf-well);
+  color: var(--pl-faint);
+  transition: box-shadow var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-model-search:focus-within { box-shadow: inset 0 0 0 1px var(--pl-focus); }
+.pf-model-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--pl-ink); font: inherit; font-size: 12px; }
+.pf-model-search input::placeholder { color: var(--pl-faint); }
+.pf-model-search input::-webkit-search-cancel-button { display: none; }
+.pf-model-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.pf-model-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 24px;
+  padding: 0 8px 0 5px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--pl-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-model-tab > svg { flex: none; margin-left: 2px; }
+.pf-model-tab > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-model-tab:hover { background: var(--pf-well); color: var(--pl-secondary); }
+.pf-model-tab[aria-selected="true"] { background: var(--pf-raise); color: var(--pl-ink); }
+.pf-model-options {
+  display: grid;
+  gap: 2px;
+  max-height: 216px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards;
+}
 .pf-model-option {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 5px 8px;
+  height: 30px;
+  padding: 0 8px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -587,9 +637,11 @@ html[data-loom-theme="light"] .pf-stage {
   cursor: pointer;
   transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
 }
-.pf-model-option > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pf-model-option:hover { background: var(--pf-well); color: var(--pl-ink); }
-.pf-model-option:disabled { opacity: .5; cursor: default; }
+.pf-model-option > span:not(.cp-mark) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-model-option > svg { flex: none; color: var(--pl-accent); }
+.pf-model-option:hover:not(:disabled) { background: var(--pf-well); color: var(--pl-ink); }
+.pf-model-option[aria-pressed="true"] { color: var(--pl-ink); cursor: default; }
+.pf-model-option:disabled:not([aria-pressed="true"]) { opacity: .5; cursor: default; }
 .pf-model-hint { margin: 0; padding: 2px 4px 0; color: var(--pl-faint); font-size: 11.5px; }
 
 /* Reference files: one row per file, its kind as a tinted mark; the add button is a dashed well,
@@ -877,6 +929,8 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 .pf-add:focus-visible,
 .pf-control:focus-visible,
 .pf-chip-button:focus-visible,
+.pf-model-tab:focus-visible,
+.pf-model-option:focus-visible,
 .pf-bubble-more:focus-visible,
 .pf-attention button:focus-visible,
 .pf-stepper button:focus-visible,

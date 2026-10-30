@@ -275,20 +275,29 @@ export function toTimeline(overview: ProjectOverview, now: number, lang: Lang = 
   };
 }
 
-/** The model the project's agents run on, and a few to switch to: recent ones first, then its provider's. */
+/** The model the project's agents run on, every usable one by provider (in the app's order, which a switch never
+ *  reshuffles), and the recent ones to get back to; never one that is unavailable, unconfigured or setup-only. */
 export function toModelChoice(snapshot: ModelSnapshot | null | undefined): FlowData["models"] {
   const current = snapshot?.current;
   if (!snapshot || !current) return undefined;
   const option = (profile: ModelProfile) => ({ selection: profile.selection, name: profile.name || profile.model,
     group: profile.groupName || profile.adapter, groupId: profile.groupId || profile.adapter });
   const usable = snapshot.profiles.filter((profile) => !profile.setupOnly && profile.available !== false
-    && profile.configured !== false && profile.model !== current.model);
-  const recent = (snapshot.recentModels || []).map((model) => usable.find((profile) => profile.model === model))
-    .filter((profile): profile is ModelProfile => Boolean(profile));
-  const nearby = usable.filter((profile) => profile.groupId === current.groupId && !recent.includes(profile));
-  const reasoning = current.reasoning?.options.find((item) => item.value === current.reasoning?.value)?.label || current.reasoning?.value;
-  return { current: { ...option(current), reasoning: reasoning || undefined, vision: current.vision === true },
-           options: [...recent, ...nearby].slice(0, 3).map(option) };
+    && profile.configured !== false);
+  const groups = new Map<string, { id: string; name: string; order: number; options: ReturnType<typeof option>[] }>();
+  for (const profile of usable) {
+    const item = option(profile);
+    const group = groups.get(item.groupId) ?? { id: item.groupId, name: item.group, order: profile.groupOrder ?? 1000, options: [] };
+    if (!group.options.some((known) => known.selection === item.selection)) group.options.push(item);
+    groups.set(item.groupId, group);
+  }
+  const recent = (snapshot.recentModels || []).filter((model) => model !== current.model)
+    .map((model) => usable.find((profile) => profile.model === model))
+    .filter((profile): profile is ModelProfile => Boolean(profile)).slice(0, 4).map(option);
+  const reasoning = current.reasoning?.options.length ? current.reasoning : undefined;
+  return { current: { ...option(current), reasoning, vision: current.vision === true }, recent,
+           groups: [...groups.values()].sort((a, b) => a.order - b.order)
+             .map(({ id, name, options }) => ({ id, name, options })) };
 }
 
 // The Host's reasons a person can act on, said plainly; anything else keeps its own words.

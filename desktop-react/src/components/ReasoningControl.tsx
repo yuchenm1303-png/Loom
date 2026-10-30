@@ -29,6 +29,12 @@ const ZH_DESCRIPTIONS: Record<string, string> = {
   ultra: "使用模型最高的扩展推理模式。",
 };
 
+/** The chosen level's short name, as the scale writes it (the Weave hub's model card heads with it). */
+export function reasoningLabel(reasoning: ModelReasoningState, zh: boolean): string {
+  const option = reasoning.options.find((item) => item.value === reasoning.value);
+  return option ? optionText(option, zh).label : reasoning.value;
+}
+
 function optionText(option: ModelReasoningOption, zh: boolean) {
   return {
     label: zh ? ZH_LABELS[option.value] ?? option.label : option.label,

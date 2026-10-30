@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import { ProjectFlow, type FlowAgent, type FlowData, type ModelOption } from "../../src/components/ProjectFlow";
 import { ProjectModeToggle } from "../../src/components/ProjectModeToggle";
 import { applyThemePreference } from "../../src/theme";
+import { I18nProvider } from "../../src/i18n";
 import "../../src/renderer-styles";
 
 const params = new URLSearchParams(location.search);
@@ -64,7 +65,11 @@ const MODELS: ModelOption[] = [
   { selection: "deepseek:deepseek-v4.1", name: "deepseek-v4.1", group: "DeepSeek", groupId: "deepseek" },
   { selection: "minimax:MiniMax-M3", name: "MiniMax-M3", group: "MiniMax", groupId: "minimax" },
   { selection: "kimi:kimi-k3", name: "kimi-k3", group: "Kimi", groupId: "kimi" },
+  // ?many=1: a long catalogue, so the card searches and its list scrolls.
+  ...(params.has("many") ? ["qwen3.6-plus", "glm-5.1", "kimi-k3-turbo", "MiniMax-M3-fast", "gpt-oss-240b", "deepseek-v4.1-pro", "mimo-v3", "ling-2"]
+    .map((name) => ({ selection: `opencode-go:${name}`, name, group: "OpenCode Go", groupId: "opencode-go" })) : []),
 ];
+const LEVELS = ["low", "medium", "high", "xhigh"].map((value) => ({ value, label: value, description: "", advanced: value === "xhigh" }));
 const REFERENCES = [{ name: "ledger-spec.md", bytes: 18_400 }, { name: "sample-2026-01.csv", bytes: 4_210 }, { name: "budgets.json", bytes: 612 }];
 // Pretend file dialog: ?files=1 starts the draft with picks.
 const PICKS = ["C:/Users/me/Desktop/ledger-spec.md", "C:/Users/me/Desktop/sample-2026-01.csv", "C:/Users/me/Desktop/screens/flow.png"];
@@ -118,8 +123,14 @@ function Preview() {
   const [model, setModel] = useState(MODELS[0].selection);
   const [picks, setPicks] = useState(0);
   const current = MODELS.find((item) => item.selection === model)!;
-  const models = { current: { ...current, reasoning: "高", vision: current.groupId !== "deepseek" },
-                   options: MODELS.filter((item) => item !== current).slice(0, 3) };
+  const [effort, setEffort] = useState("high");
+  const [recent, setRecent] = useState<string[]>([MODELS[2].selection]);
+  const groups = [...new Set(MODELS.map((item) => item.groupId))]
+    .map((id) => ({ id, name: MODELS.find((item) => item.groupId === id)!.group, options: MODELS.filter((item) => item.groupId === id) }));
+  const models = { current: { ...current, vision: current.groupId !== "deepseek",
+                              reasoning: { kind: "openai-effort", value: effort, defaultValue: "medium", source: "", options: LEVELS } },
+                   recent: recent.filter((item) => item !== model).map((item) => MODELS.find((option) => option.selection === item)!), groups };
+  const switchModel = (selection: string) => setTimeout(() => { setRecent((list) => [model, ...list.filter((item) => item !== model)].slice(0, 4)); setModel(selection); }, 500);
   useEffect(() => {
     if (frozen != null) return;
     const timer = setInterval(() => setCount((value) => (value >= steps.length ? 0 : value + 1)), 2400);
@@ -134,11 +145,11 @@ function Preview() {
       </header>
       {mode === "project"
         ? <ProjectFlow data={{ ...variant(play(count, workers)), models, references: REFERENCES }}
-                       actions={{ onWorkers: setWorkers, onModel: setModel, onAttach: () => {},
+                       actions={{ onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {},
                                   onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
         : <div style={{ display: "grid", placeItems: "center", height: "70vh", color: "var(--pl-faint)", fontSize: 13 }}>（这里是普通对话）</div>}
     </div>
   );
 }
 
-createRoot(document.getElementById("root")!).render(<Preview />);
+createRoot(document.getElementById("root")!).render(<I18nProvider><Preview /></I18nProvider>);

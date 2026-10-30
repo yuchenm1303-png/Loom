@@ -12,10 +12,10 @@ const REST_POLL_MS = 12000;
 /** Episodes for a new program: generous, since tokens are the budget a person chooses. */
 const START_EPISODES = 400;
 
-export function ProjectMode({ threadId, workspace, model, models, onSwitchModel }: {
+export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning }: {
   threadId: string; workspace?: string; model?: string;
   /** The app's model snapshot and switch: a project's agents take the conversation's model. */
-  models?: ModelSnapshot | null; onSwitchModel?(selection: string): Promise<unknown>;
+  models?: ModelSnapshot | null; onSwitchModel?(selection: string): Promise<unknown>; onReasoning?(kind: string, value: string): Promise<unknown>;
 }) {
   const { language } = useI18n();
   const lang = language === "zh-CN" ? "zh" : "en";
@@ -90,6 +90,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel 
       onPickFiles: window.loom.pickFiles ? () => window.loom.pickFiles() : undefined,
       onAttach: programId ? (paths) => act(() => window.loom.call("projectProgram/attach", { programId, attachments: paths })) : undefined,
       onModel: onSwitchModel ? (selection) => act(() => onSwitchModel(selection)) : undefined,
+      // Its own errors show on the scale; the hub's busy state is for the run, not this.
+      onReasoning: onReasoning ? async (kind, value) => { await onReasoning(kind, value); } : undefined,
       onCommitWorkspace: (message, count) => act(() => window.loom.call("projectRun/commitWorkspace", { threadId, message, expectedCount: count })),
       onStart: (objective, workers, tokens, attachments) => act(() => window.loom.call("projectProgram/create", {
         attachments,
