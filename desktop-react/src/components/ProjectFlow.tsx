@@ -20,6 +20,7 @@ import {
   Sparkles, Square, X,
 } from "lucide-react";
 import { ProviderMark } from "./ModelPanel";
+import { ComposerPanel, useComposerPanel } from "./composerPanel";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./project-flow.css";
@@ -288,6 +289,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const [hot, setHot] = useState("");
   const [draft, setDraft] = useState("");
   const [objectiveOpen, setObjectiveOpen] = useState(false);
+  const modelPanel = useComposerPanel("model");
   // The plan scrolls; keep the task in progress in view as work moves down it, unless the person is reading it.
   const plan = useRef<HTMLDivElement>(null);
   const current = data.tasks.find((task) => task.state === "working" || task.state === "review" || task.state === "rework")?.id;
@@ -463,7 +465,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               <span className="pf-mode-dot" data-state={data.state} />
               {text.mode} · {draftMode ? text.notStarted : `${text.stage(data.milestone)} · ${stateWord[lang][data.state]}`}
             </span>
-            {data.model ? <span className="pf-model">{data.model}</span> : null}
+            {!data.models && data.model ? <span className="pf-model">{data.model}</span> : null}
             {!draftMode ? (
               <span className="pf-budget" title={`${data.budget.tokens.toLocaleString()} / ${data.budget.tokenLimit.toLocaleString()} token`}>
                 <span>{compact(data.budget.tokens)} / {compact(data.budget.tokenLimit)}</span>
@@ -497,6 +499,43 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               <button type="button" aria-label={text.more} disabled={!draftMode || shownWorkers >= data.maxWorkers}
                       onClick={() => setWorkers((count) => Math.min(data.maxWorkers, count + 1))}><Plus size={10} strokeWidth={2.6} /></button>
             </span>
+            {data.models ? (
+              // The model the agents think with. Its card unfolds out of this name and folds back into it.
+              <div className="cp-anchor pf-model-anchor" ref={modelPanel.anchorRef}
+                   style={{ "--pf-chip": `${modelPanel.triggerRef.current?.offsetWidth ?? 120}px` } as React.CSSProperties}>
+                <button ref={modelPanel.triggerRef} type="button" className="pf-model pf-model-chip" data-open={modelPanel.open || undefined}
+                        aria-haspopup="dialog" aria-expanded={modelPanel.open} title={data.models.current.name} onClick={modelPanel.toggle}>
+                  <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="small" />
+                  <span key={data.models.current.selection}>{data.models.current.name}</span>
+                  <ChevronDown size={11} />
+                </button>
+                <ComposerPanel panel={modelPanel} label={text.modelCard} size="s" className="pf-model-pop">
+                  <div className="pf-model-pop-body">
+                    <div className="pf-model-pop-head"><Sparkles size={12} /><span>{text.modelCard}</span>
+                      {data.models.current.reasoning ? <em className="pf-count">{data.models.current.reasoning}</em> : null}</div>
+                    <div className="pf-well pf-model-now" key={data.models.current.selection}>
+                      <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="large" />
+                      <span className="pf-model-copy">
+                        <strong title={data.models.current.name}>{data.models.current.name}</strong>
+                        <span>{data.models.current.group}{data.models.current.vision ? <em>{text.vision}</em> : null}</span>
+                      </span>
+                    </div>
+                    {data.models.options.length && actions.onModel ? (
+                      <div className="pf-model-options">
+                        {data.models.options.map((option) => (
+                          <button key={option.selection} type="button" className="pf-model-option" data-cp-item="" disabled={actions.busy}
+                                  title={option.name} onClick={() => { actions.onModel?.(option.selection); modelPanel.close(true); }}>
+                            <ProviderMark id={option.groupId} name={option.group} size="small" />
+                            <span>{option.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {data.phase === "live" && data.state === "running" ? <p className="pf-model-hint">{text.modelHint}</p> : null}
+                  </div>
+                </ComposerPanel>
+              </div>
+            ) : null}
             <button type="button" className="pf-send" disabled={!draft.trim() || actions.busy} aria-label={draftMode ? text.start : text.send}
                     onClick={submit}>{actions.busy ? <LoaderCircle size={15} className="pf-busy" /> : <ArrowUp size={15} />}</button>
           </footer>
@@ -548,33 +587,6 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
       </div>
 
       <div className="pf-col pf-right">
-        {data.models ? (
-          // What every agent of the project thinks with: the model, its provider, how hard it reasons.
-          <div className="pf-slot pf-model-slot" {...hover("model")}>
-            <Card id="model" side="right" className="pf-model-card" icon={<Sparkles size={12} />} label={text.modelCard}
-                  count={data.models.current.reasoning} register={register}>
-              <div className="pf-well pf-model-now" key={data.models.current.selection}>
-                <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="large" />
-                <span className="pf-model-copy">
-                  <strong title={data.models.current.name}>{data.models.current.name}</strong>
-                  <span>{data.models.current.group}{data.models.current.vision ? <em>{text.vision}</em> : null}</span>
-                </span>
-              </div>
-              {data.models.options.length && actions.onModel ? (
-                <div className="pf-model-options">
-                  {data.models.options.map((option) => (
-                    <button key={option.selection} type="button" className="pf-model-option" disabled={actions.busy}
-                            title={option.name} onClick={() => actions.onModel?.(option.selection)}>
-                      <ProviderMark id={option.groupId} name={option.group} size="small" />
-                      <span>{option.name}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {data.phase === "live" && data.state === "running" ? <p className="pf-model-hint">{text.modelHint}</p> : null}
-            </Card>
-          </div>
-        ) : null}
         {agents.map((agent, index) => {
           const Icon = roleIcon[agent.role];
           return (

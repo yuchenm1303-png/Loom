@@ -402,7 +402,8 @@ html[data-loom-theme="light"] .pf-stage {
 
 .pf-control:hover { background: var(--loom-workspace-hover); color: var(--pl-ink); }
 .pf-control:disabled { opacity: .45; cursor: default; }
-.pf-budget + .pf-control,
+/* The budget takes the free space before it; the controls follow it, or take it themselves when there is no budget. */
+.pf-budget + .pf-control { margin-left: 4px; }
 .pf-model + .pf-control,
 .pf-mode + .pf-control { margin-left: auto; }
 
@@ -459,8 +460,41 @@ html[data-loom-theme="light"] .pf-stage {
 /* The model card: the model every agent thinks with, its provider's mark, and a few to switch to.
    A switch re-mounts the current well (keyed by the model): its text fades in and the mark
    lands with the hub's mark-in; nothing else moves. */
-.pf-model-card .pf-card-icon { color: #f2c76b; }
-.pf-model-card .pf-count { font-variant-numeric: normal; }
+/* The model card unfolds out of the model's name in the hub's header and folds back into it.
+   The app's popover shell (composer-panels.css) places it above the name and fades it; here
+   its clip opens from a strip the width of the name, at the name, to the whole card, so the
+   card grows out of where the model is shown. The words never move: the clip only uncovers them. */
+/* In the footer, as in the app's own composer: after the review and agents chips, before send. */
+.pf-model-anchor { display: flex; flex: 0 1 auto; min-width: 0; margin-right: auto; }
+.pf-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: 30px;
+  padding: 0 9px 0 6px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--pf-well);
+  color: var(--pl-secondary);
+  font-size: 12px;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-model-chip > span:not(.cp-mark) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.pf-model-chip > svg { flex: none; color: var(--pl-faint); transition: rotate var(--loom-dur-fast) var(--loom-ease-out); }
+.pf-model-chip:hover,
+.pf-model-chip[data-open] { background: var(--pf-raise); color: var(--pl-ink); }
+.pf-model-chip[data-open] > svg { rotate: 180deg; }
+.pf-model-pop { bottom: calc(100% + 8px); }
+.pf-model-pop:not([data-motion-phase="exiting"]) { animation: pf-unfold var(--loom-dur-base) var(--loom-ease-move) backwards; }
+.pf-model-pop[data-motion-phase="exiting"] { animation: pf-fold var(--loom-dur-fast-out) var(--loom-ease-exit) forwards; }
+.pf-model-pop-body { display: grid; gap: 6px; padding: 8px; }
+.pf-model-pop-head { display: flex; align-items: center; gap: 7px; padding: 1px 3px 3px; color: var(--pl-muted); font-size: 12px; }
+.pf-model-pop-head > svg { color: #f2c76b; }
+.pf-model-pop-head .pf-count { margin-left: auto; font-variant-numeric: normal; }
 .pf-model-now { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px 10px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 .pf-model-now .cp-mark { animation: pf-mark-in var(--loom-dur-base) var(--loom-ease-move) backwards; }
 .pf-model-copy { display: grid; min-width: 0; }
@@ -790,6 +824,16 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 @keyframes pf-glint { from { transform: translateX(-100%); } }
 @keyframes pf-fill { from { transform: scaleX(0); } }
 @keyframes pf-meter-in { from { transform: scaleX(0); } }
+/* Out of the model's name (a strip as wide as it, at the card's lower left) to the whole card, and back. */
+/* Both ends are insets: from an inset to `none` a clip does not interpolate, it jumps. */
+@keyframes pf-unfold {
+  from { clip-path: inset(calc(100% - 30px) calc(100% - var(--pf-chip, 120px)) 0 0 round 9px); }
+  to { clip-path: inset(0 0 0 0 round var(--cp-radius, 14px)); }
+}
+@keyframes pf-fold {
+  from { clip-path: inset(0 0 0 0 round var(--cp-radius, 14px)); }
+  to { clip-path: inset(calc(100% - 30px) calc(100% - var(--pf-chip, 120px)) 0 0 round 9px); opacity: 0; }
+}
 @keyframes pf-wash { from { transform: translateX(-100%); } }
 @keyframes pf-spin { to { rotate: 360deg; } }
 @keyframes pf-breathe { 0%, 100% { opacity: .45; scale: .8; } 50% { opacity: 1; scale: 1; } }
@@ -800,6 +844,8 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   .pf-task-wash,
   .pf-model-now,
   .pf-model-now .cp-mark,
+  .pf-model-pop,
+  .pf-model-chip > span:not(.cp-mark),
   .pf-file,
   .pf-loom,
   .pf-loom-span,
