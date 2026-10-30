@@ -83,7 +83,10 @@ export function ProjectMode({ threadId, workspace, model }: { threadId: string; 
       onResume: () => run && control("resume"),
       onCancel: () => run && control("cancel"),
       // Out of budget: add half again, the same step the panel offers; otherwise review the stopped work again and resume.
-      onAttention: () => run && (data.attention?.action === "budget"
+      // An agent waiting for approval: the person allows that one call or declines it.
+      onAttention: (choice) => run && (data.attention?.action === "approval"
+        ? act(() => window.loom.call("projectRun/approval", { runId: run.id, sessionId: data.attention!.agentId, decision: choice }))
+        : data.attention?.action === "budget"
         ? control("resume", { tokenBudget: Math.round(run.tokenBudget * 1.5), maxEpisodes: Math.round(run.maxEpisodes * 1.5) })
         : act(() => window.loom.call("projectRun/recover", { operationId: crypto.randomUUID(), runId: run.id }))),
     }} />

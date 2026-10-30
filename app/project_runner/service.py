@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.agent_runtime import PermissionMode
 from app.agent_runtime.contracts import AgentEventKind as E
+from app.app_server_protocol import pending_approval_record
 from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
@@ -490,7 +491,7 @@ class ProjectServiceMixin:
         plan = run.get("plan") or []
         index = episode.get("taskIndex", 0)
         task = plan[index] if role == "worker" and index < len(plan) else None
-        steps, activity, started = 0, "", None
+        steps, activity, started, approval = 0, "", None, None
         try:
             # Only the current turn: a long session's log is megabytes, and this runs every refresh.
             reader = getattr(self.store, "turn_events", None)
@@ -502,12 +503,56 @@ class ProjectServiceMixin:
                     steps += 1
                 elif event.kind is E.TOOL_REQUESTED:
                     activity = _describe_tool(event.data.get("tool"), event.data.get("arguments") or {})
+            if episode.get("state") == "waiting_approval":
+                approval = self._project_pending_approval(episode, events)
         except (OSError, ValueError, KeyError):
             pass
         return {"id": episode["sessionId"], "runId": run["id"], "role": role, "state": episode.get("state"),
                 "taskId": task["id"] if task else None, "taskTitle": (task or {}).get("instructions", "")[:120],
                 "scope": run.get("reviewScope") if role == "reviewer" else None,
-                "step": steps, "activity": activity, "startedAt": started}
+                "step": steps, "activity": activity, "startedAt": started, "approval": approval}
+
+    def _project_pending_approval(self, episode, events):
+        """What an agent of an unattended project waits for a person to allow, if anything.
+
+        A project runs without anyone watching its threads, so a request for approval (a
+        command the sandbox could not start, say) would otherwise stall it with no sign.
+        """
+        session = self._load(episode["sessionId"])
+        if session.status.value != "waiting_approval" or session.current_turn_id != episode.get("turnId"):
+            return None
+        record = pending_approval_record(session, events)
+        if not record or not record.get("requestId"):
+            return None
+        return {"callId": record["callId"], "requestId": record["requestId"], "tool": record.get("toolName") or "",
+                "command": _describe_tool(record.get("toolName"), record.get("arguments") or {}),
+                "reason": str(record.get("retryReason") or record.get("reason") or "")[:300],
+                "kind": (record.get("sandboxDenial") and "sandbox") or record.get("effect") or ""}
+
+    def project_approval(self, params):
+        """A person's answer to what a project agent waits for: allow that one call, or decline it.
+
+        Only the two one-call answers: a wider grant (a saved rule, a session-wide
+        allowance) is a decision for the conversation's own approval card, not the hub.
+        """
+        run_id, session_id = self._required_text(params, "runId"), self._required_text(params, "sessionId")
+        decision = self._required_text(params, "decision")
+        if decision not in {"accept", "decline"}:
+            raise ValueError("decision must be accept or decline")
+        root = self.project_store.get(run_id)
+        family = [root, *(self.project_store.get(item["runId"]) for item in root.get("teamChildren", []))]
+        if root.get("integrationRunId"):
+            family.append(self.project_store.get(root["integrationRunId"]))
+        episode = next((run["activeEpisode"] for run in family
+                        if run.get("activeEpisode") and run["activeEpisode"]["sessionId"] == session_id), None)
+        if episode is None:
+            raise ValueError("That agent is no longer waiting in this project")
+        events = [event for event in self.store.events(session_id) if event.turn_id == episode.get("turnId")]
+        pending = self._project_pending_approval({**episode, "state": "waiting_approval"}, events)
+        if pending is None:
+            raise ValueError("That agent is no longer waiting for approval")
+        return self.approval_respond({"threadId": session_id, "turnId": episode["turnId"], "requestId": pending["requestId"],
+                                      "callId": pending["callId"], "decision": decision})
 
     def project_recover(self, params):
         """One step back to work after a team task stopped for inspection: review it again, resume.
@@ -649,6 +694,8 @@ class ProjectControllerMixin:
             return {"run": self.service.project_steer(params)}
         if method == "projectRun/recover":
             return self.service.project_recover(params)
+        if method == "projectRun/approval":
+            return self.service.project_approval(params)
         if method == "projectProgram/create":
             with self.service.project_runner.guard:
                 return {"program": program.create(self.service, params)}

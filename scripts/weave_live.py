@@ -222,6 +222,7 @@ def serve(service, root: Path, thread_id: str, model: str, token: str, port: int
         "projectRun/resume": lambda p: {"run": service.project_control(p, "resume")},
         "projectRun/cancel": lambda p: {"run": service.project_control(p, "cancel")},
         "projectRun/recover": lambda p: service.project_recover(p),
+        "projectRun/approval": lambda p: service.project_approval(p),
     }
     def create(params):
         with service.project_runner.guard:

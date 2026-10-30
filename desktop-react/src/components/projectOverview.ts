@@ -6,6 +6,8 @@ import type { ProjectRun } from "./projectRuns";
 export interface OverviewAgent {
   id: string; runId: string; role: FlowAgent["role"]; state?: string; taskId?: string | null; taskTitle?: string;
   scope?: string | null; step: number; activity: string; startedAt?: string | null;
+  /** A call this agent waits for a person to allow (the sandbox could not start it, say). */
+  approval?: { callId: string; requestId: string; tool: string; command: string; reason: string; kind: string } | null;
 }
 export interface OverviewEvent { sequence: number; runId: string; kind: string; at?: number | null; reason?: string; taskId?: string | null }
 export interface ProjectProgram {
@@ -31,15 +33,26 @@ const words = {
         minutes: (m: number) => m < 1 ? "不到 1 分钟" : m < 60 ? `${m} 分钟` : `${Math.floor(m / 60)} 小时 ${m % 60} 分`,
         short: (m: number) => m < 1 ? "刚刚" : m < 60 ? `${m} 分` : `${Math.floor(m / 60)} 时`,
         budget: "token 预算已用完。", episodes: "执行轮次已用完。", agent: (n: number) => `Agent ${n}`,
-        planning: "规划阶段任务", reviewingProject: "整体复审", reviewing: (t: string) => `复审 ${t}` },
+        planning: "规划阶段任务", reviewingProject: "整体复审", reviewing: (t: string) => `复审 ${t}`,
+        asks: (who: string, command: string, sandbox: boolean) => sandbox ? `${who} 想在沙箱外运行 ${command}` : `${who} 想运行 ${command}，等你允许`,
+        waitsFor: (command: string) => `等你允许：${command}` },
   en: { worked: (span: string, n: number) => `Worked ${span} · ${n} episodes`, wholeRepo: "Whole repository", waiting: "Waiting to schedule",
         done: "Objective complete; the result is integrated into the local branch.", cancelled: "The project was stopped.",
         start: "Describe a large objective. It is split into milestones and tasks, built in parallel, independently reviewed, then integrated.",
         minutes: (m: number) => m < 1 ? "under a minute" : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`,
         short: (m: number) => m < 1 ? "now" : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h`,
         budget: "The token budget is used up.", episodes: "The episode limit is reached.", agent: (n: number) => `Agent ${n}`,
-        planning: "Planning the milestone", reviewingProject: "Whole-project review", reviewing: (t: string) => `Reviewing ${t}` },
+        planning: "Planning the milestone", reviewingProject: "Whole-project review", reviewing: (t: string) => `Reviewing ${t}`,
+        asks: (who: string, command: string, sandbox: boolean) => sandbox ? `${who} wants to run ${command} outside the sandbox` : `${who} wants to run ${command}`,
+        waitsFor: (command: string) => `Waiting for you: ${command}` },
 };
+
+/** What the person decides for an agent waiting on approval: allow that one call, or decline it. */
+function approvalAttention(agent: OverviewAgent, who: string, lang: Lang): NonNullable<FlowData["attention"]> {
+  const approval = agent.approval!;
+  const command = activityText(approval.command, lang).replace(/^(运行|Running) /, "");
+  return { reason: words[lang].asks(who, command, approval.kind === "sandbox"), detail: approval.reason, action: "approval", agentId: agent.id };
+}
 
 /** One project event as a sentence, or "" for bookkeeping a person does not need to read. */
 export function eventText(event: OverviewEvent, lang: Lang = "zh"): string {
@@ -134,7 +147,9 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   // A team task refused at the budget blocks coordination; the remedy is still more budget, not a review.
   const budgetOut = run.control === "budget_limited" || program?.state === "budget_limited"
     || overview.children.some((child) => child.control === "budget_limited");
-  const blocked = run.state === "needs_review" || run.workflowStatus === "blocked" || program?.state === "needs_review" || budgetOut;
+  // An unattended project has no one at its threads: an agent waiting for approval waits for the person here.
+  const asking = overview.agents.findIndex((agent) => agent.approval);
+  const blocked = run.state === "needs_review" || run.workflowStatus === "blocked" || program?.state === "needs_review" || budgetOut || asking >= 0;
   const paused = !blocked && (run.state === "created" || run.workflowControl === "paused" && run.workflowStatus !== "completed" && run.control !== "active");
   const state: FlowData["state"] = finished ? "completed" : stopped ? "paused" : blocked ? "needs_you" : paused ? "paused" : "running";
   const started = (program?.createdAt || run.createdAt || now / 1000) * 1000;
@@ -163,8 +178,9 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     narration: { summary: t.worked(t.minutes(minutes), episodes), text: finished ? t.done : stopped ? t.cancelled : latest },
     milestone: run.milestone?.index || (program ? program.milestones.length + 1 : 1),
     state,
-    attention: state === "needs_you" ? { reason: humanReason(reason, lang) || (lang === "en" ? "The project stopped for inspection." : "项目停下等你检查。"),
-                                         action: budgetOut ? "budget" : stoppedTask || (run.state === "needs_review" && !run.activeEpisode) ? "recover" : undefined } : undefined,
+    attention: state !== "needs_you" ? undefined : asking >= 0 ? approvalAttention(overview.agents[asking], t.agent(asking + 1), lang)
+      : { reason: humanReason(reason, lang) || (lang === "en" ? "The project stopped for inspection." : "项目停下等你检查。"),
+          action: budgetOut ? "budget" : stoppedTask || (run.state === "needs_review" && !run.activeEpisode) ? "recover" : undefined },
     model,
     repository: { name: (run.repository || "").split(/[\\/]/).filter(Boolean).pop() || workspaceName, commit: (integration?.baseCommit || run.baseCommit || "").slice(0, 7),
                   subject: "", branch: branchName(run.completionRef) },
@@ -187,8 +203,9 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
         : agent.role === "reviewer" ? (agent.runId !== run.id && childTask(agent.runId) ? t.reviewing(childTask(agent.runId) || "")
                                        : agent.scope === "project" ? t.reviewingProject : t.reviewing(agent.taskId || ""))
         : titleOf(agent.taskId).split(/[.。\n]/)[0];
-      return { id: agent.id, role: agent.role, name: t.agent(index + 1), step: agent.step,
-               activity: agent.activity ? activityText(agent.activity, lang) : title || t.waiting, elapsed: t.short(Math.max(0, Math.round((now - startedAt) / 60000))) };
+      return { id: agent.id, role: agent.role, name: t.agent(index + 1), step: agent.step, waiting: !!agent.approval,
+               activity: agent.approval ? t.waitsFor(activityText(agent.approval.command, lang).replace(/^(运行|Running) /, ""))
+                 : agent.activity ? activityText(agent.activity, lang) : title || t.waiting, elapsed: t.short(Math.max(0, Math.round((now - startedAt) / 60000))) };
     }),
   };
 }

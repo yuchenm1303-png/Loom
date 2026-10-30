@@ -86,3 +86,32 @@ def test_budget_added_to_a_milestone_is_added_to_its_program(tmp_path):
         assert (after["tokenBudget"], after["maxEpisodes"]) == (15000, 60)
     finally:
         runtime.close()
+
+
+def test_an_agent_waiting_for_approval_asks_the_person_in_the_hub(tmp_path):
+    import pytest
+    from app.agent_runtime import AgentTool, ToolEffect, ToolResult
+    from test_app_server import _wait_until
+    calls = []
+    tool = AgentTool(name="sensitive_project_test", description="Sensitive operation",
+        input_schema={"type": "object", "properties": {}}, effect=ToolEffect.SENSITIVE,
+        handler=lambda context, arguments: calls.append(True) or ToolResult(ok=True, content="ran"))
+    service, runtime, platform, _, source = build(tmp_path, [reply(PLAN),
+        ModelResponse(tool_calls=(ToolCall(call_id="sensitive", name=tool.name, arguments={}),)),
+        ModelResponse(text="done")], tools=(tool,))
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(4):
+            cycle(service)
+        [agent] = service.project_overview({"threadId": source})["agents"]
+        assert agent["approval"]["command"] == "sensitive_project_test" and agent["approval"]["requestId"]
+        with pytest.raises(ValueError, match="accept or decline"):
+            service.project_approval({"runId": run["id"], "sessionId": agent["id"], "decision": "acceptForSession"})
+        with pytest.raises(ValueError, match="no longer waiting in this project"):
+            service.project_approval({"runId": run["id"], "sessionId": "someone-else", "decision": "accept"})
+        assert service.project_approval({"runId": run["id"], "sessionId": agent["id"], "decision": "accept"})["accepted"]
+        _wait_until(lambda: calls)  # the one call ran, and only after the person allowed it
+        _wait_until(lambda: runtime.get_session(agent["id"]).status.value != "waiting_approval")
+        assert service.project_overview({"threadId": source})["agents"][0]["approval"] is None
+    finally:
+        runtime.close()

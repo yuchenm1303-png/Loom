@@ -32,6 +32,8 @@ export interface FlowAgent {
   step: number;
   elapsed: string;
   done?: boolean;
+  /** Waits for the person to allow a call. */
+  waiting?: boolean;
 }
 
 export interface FlowData {
@@ -41,7 +43,7 @@ export interface FlowData {
   narration: { summary: string; text: string };
   milestone: number;
   state: "running" | "paused" | "needs_you" | "completed" | "starting";
-  attention?: { reason: string; action?: "recover" | "budget" };
+  attention?: { reason: string; detail?: string; action?: "recover" | "budget" | "approval"; agentId?: string };
   model: string;
   repository: { name: string; commit: string; subject: string; branch: string };
   scope: { path: string; count: number }[];
@@ -61,7 +63,8 @@ export interface FlowActions {
   onPause?(): void;
   onResume?(): void;
   onCancel?(): void;
-  onAttention?(): void;
+  /** The attention line's action; an approval also has "decline". */
+  onAttention?(choice: "accept" | "decline"): void;
   busy?: boolean;
   error?: string;
 }
@@ -78,7 +81,7 @@ const zhText = {
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
   review: "独立复审", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "织造",
-  attention: { recover: "重新复审并继续", budget: "追加预算" }, noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
+  attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
@@ -87,7 +90,7 @@ const enText: typeof zhText = {
   steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
   review: "Independent review", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
-  attention: { recover: "Re-review and continue", budget: "Add budget" }, noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
+  attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
 };
 const stateWord = {
   zh: { running: "运行中", paused: "已暂停", needs_you: "等你处理", completed: "已完成", starting: "启动中" },
@@ -345,9 +348,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           {data.attention ? (
             <div className="pf-attention" role="status">
               <span className="pf-attention-dot" />
-              <span className="pf-attention-text">{data.attention.reason}</span>
+              <span className="pf-attention-text" title={data.attention.detail || undefined}>{data.attention.reason}</span>
+              {data.attention.action === "approval" ? (
+                <button type="button" className="pf-attention-quiet" disabled={actions.busy} onClick={() => actions.onAttention?.("decline")}>{text.decline}</button>
+              ) : null}
               {data.attention.action ? (
-                <button type="button" disabled={actions.busy} onClick={actions.onAttention}>{text.attention[data.attention.action]}</button>
+                <button type="button" disabled={actions.busy} onClick={() => actions.onAttention?.("accept")}>{text.attention[data.attention.action]}</button>
               ) : null}
             </div>
           ) : null}
@@ -437,7 +443,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                   <div className="pf-agent-copy">
                     <div className="pf-agent-line">
                       <strong>{text.roles[agent.role]}</strong>
-                      {agent.done ? <span className="pf-agent-check"><Check size={8} strokeWidth={3.2} /></span> : <span className="pf-agent-live" />}
+                      {agent.done ? <span className="pf-agent-check"><Check size={8} strokeWidth={3.2} /></span> : <span className="pf-agent-live" data-waiting={agent.waiting || undefined} />}
                       <span className="pf-agent-time">{agent.elapsed}</span>
                     </div>
                     <span className="pf-agent-activity" key={`${agent.step}:${agent.activity}`} title={agent.activity}>{agent.activity}</span>
