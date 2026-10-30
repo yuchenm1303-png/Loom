@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ProjectFlow, type FlowAgent, type FlowData } from "../../src/components/ProjectFlow";
+import { ProjectFlow, type FlowAgent, type FlowData, type ModelOption } from "../../src/components/ProjectFlow";
 import { ProjectModeToggle } from "../../src/components/ProjectModeToggle";
 import { applyThemePreference } from "../../src/theme";
 import "../../src/renderer-styles";
@@ -58,6 +58,17 @@ function timeline(minute: number): FlowData["timeline"] {
            stats: { episodes: spans.length, trouble: 1, perHour: 3_380_000 } };
 }
 
+// The model card's choices, as the app's snapshot gives them (ids pick the provider marks).
+const MODELS: ModelOption[] = [
+  { selection: "opencode-go:deepseek-v4.1-flash", name: "deepseek-v4.1-flash", group: "OpenCode Go", groupId: "opencode-go" },
+  { selection: "deepseek:deepseek-v4.1", name: "deepseek-v4.1", group: "DeepSeek", groupId: "deepseek" },
+  { selection: "minimax:MiniMax-M3", name: "MiniMax-M3", group: "MiniMax", groupId: "minimax" },
+  { selection: "kimi:kimi-k3", name: "kimi-k3", group: "Kimi", groupId: "kimi" },
+];
+const REFERENCES = [{ name: "ledger-spec.md", bytes: 18_400 }, { name: "sample-2026-01.csv", bytes: 4_210 }, { name: "budgets.json", bytes: 612 }];
+// Pretend file dialog: ?files=1 starts the draft with picks.
+const PICKS = ["C:/Users/me/Desktop/ledger-spec.md", "C:/Users/me/Desktop/sample-2026-01.csv", "C:/Users/me/Desktop/screens/flow.png"];
+
 type Step = (data: FlowData) => FlowData;
 const agent = (d: FlowData, id: string, change: Partial<FlowAgent>) => ({ ...d, agents: d.agents.map((a) => a.id === id ? { ...a, ...change } : a) });
 const task = (d: FlowData, id: string, state: FlowData["tasks"][number]["state"]) => ({ ...d, tasks: d.tasks.map((t) => t.id === id ? { ...t, state } : t) });
@@ -99,6 +110,11 @@ function Preview() {
   const [mode, setMode] = useState<"chat" | "project">(params.get("mode") === "chat" ? "chat" : "project");
   const [count, setCount] = useState(frozen ?? 0);
   const [workers, setWorkers] = useState(Number(params.get("workers") || 2));
+  const [model, setModel] = useState(MODELS[0].selection);
+  const [picks, setPicks] = useState(0);
+  const current = MODELS.find((item) => item.selection === model)!;
+  const models = { current: { ...current, reasoning: "高", vision: current.groupId !== "deepseek" },
+                   options: MODELS.filter((item) => item !== current).slice(0, 3) };
   useEffect(() => {
     if (frozen != null) return;
     const timer = setInterval(() => setCount((value) => (value >= steps.length ? 0 : value + 1)), 2400);
@@ -112,7 +128,9 @@ function Preview() {
         <span style={{ marginLeft: "auto" }}><ProjectModeToggle value={mode} onChange={setMode} /></span>
       </header>
       {mode === "project"
-        ? <ProjectFlow data={variant(play(count, workers))} actions={{ onWorkers: setWorkers }} />
+        ? <ProjectFlow data={{ ...variant(play(count, workers)), models, references: REFERENCES }}
+                       actions={{ onWorkers: setWorkers, onModel: setModel, onAttach: () => {},
+                                  onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
         : <div style={{ display: "grid", placeItems: "center", height: "70vh", color: "var(--pl-faint)", fontSize: 13 }}>（这里是普通对话）</div>}
     </div>
   );

@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../src/components/projectOverview.ts", i
 const module = { exports: {} };
 new Function("module", "exports", "require", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(
   module, module.exports, () => ({}));
-const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline } = module.exports;
+const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice } = module.exports;
 
 const now = Date.parse("2026-10-30T10:00:00Z");
 const run = (extra = {}) => ({
@@ -161,4 +161,24 @@ test("the timeline: a lane per task in plan order, spans as shares of the clock,
   assert.deepEqual(data.ticks.map((tick) => tick.label), ["10m", "20m", "30m"]);
   assert.deepEqual(data.stats, { episodes: 5, trouble: 1, perHour: 450000 });
   assert.equal(toTimeline(overview(), now, "zh"), undefined);  // no episodes yet, no timeline
+});
+
+test("the model card: the current model, then recent ones, then its provider's; never unusable ones", () => {
+  const profile = (model, groupId, extra = {}) => ({ selection: `${groupId}:${model}`, id: model, kind: "builtin", name: model, adapter: "openai",
+    baseUrl: "", model, groupId, groupName: groupId.toUpperCase(), ...extra });
+  const current = { ...profile("flash", "go"), provider: "go", vision: true,
+    reasoning: { kind: "openai-effort", value: "high", defaultValue: "medium", source: "", options: [{ value: "high", label: "高", description: "", advanced: false }] } };
+  const snapshot = { primary: current, current, activeModelId: null, recentModels: ["m3", "gone", "flash"],
+    profiles: [current, profile("pro", "go"), profile("m3", "minimax"), profile("gone", "x", { available: false }),
+               profile("setup", "go", { setupOnly: true }), profile("lite", "go"), profile("other", "kimi")] };
+  const choice = toModelChoice(snapshot);
+  assert.deepEqual(choice.current, { selection: "go:flash", name: "flash", group: "GO", groupId: "go", reasoning: "高", vision: true });
+  assert.deepEqual(choice.options.map((item) => item.selection), ["minimax:m3", "go:pro", "go:lite"]);
+  assert.equal(toModelChoice(null), undefined);
+});
+
+test("a program's attached files reach the files card", () => {
+  const data = toFlowData({ ...overview(), program: { id: "p", objective: "Build ledger", state: "running", tokenBudget: 9000, maxEpisodes: 200,
+    milestones: [], references: [{ name: "spec.md", bytes: 1800, source: "C:/x/spec.md" }] } }, now, "zh");
+  assert.deepEqual(data.references, [{ name: "spec.md", bytes: 1800 }]);  // where it came from stays on the Host
 });

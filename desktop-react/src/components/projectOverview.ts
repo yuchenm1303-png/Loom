@@ -2,6 +2,7 @@
  * Pure functions, so the mapping is tested without a Host (scripts/tests/project-overview.test.mjs). */
 import type { FlowAgent, FlowData, FlowTaskState } from "./ProjectFlow";
 import type { ProjectRun } from "./projectRuns";
+import type { ModelProfile, ModelSnapshot } from "../types/loom";
 
 export interface OverviewAgent {
   id: string; runId: string; role: FlowAgent["role"]; state?: string; taskId?: string | null; taskTitle?: string;
@@ -14,6 +15,7 @@ export interface ProjectProgram {
   id: string; objective: string; state: string; reason?: string; maxWorkers?: number; createdAt?: number;
   milestones: { index: number; runId: string; complete: boolean; tokens: number; episodes: number; summary: string }[];
   tokenBudget: number; maxEpisodes: number; currentRunId?: string | null;
+  references?: { name: string; bytes: number }[];
 }
 export interface ProjectOverview {
   run: (ProjectRun & { ledgerPosition?: { chargedTokens: number }; ledgerTokens?: number; ledgerEpisodes?: number;
@@ -184,6 +186,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     phase: "live",
     // The last milestone's planner found the objective met: its evidence, and what each milestone took.
     timeline: toTimeline(overview, now, lang),
+    references: (program?.references || []).map(({ name, bytes }) => ({ name, bytes })),
     outcome: finished && program ? { summary: run.objectiveComplete ? run.reason || "" : "",
       milestones: program.milestones.map(({ index, tokens, episodes }) => ({ index, tokens, episodes })) } : undefined,
     objective: program?.objective || run.objective.split("\n\nThis is milestone")[0],
@@ -265,6 +268,22 @@ export function toTimeline(overview: ProjectOverview, now: number, lang: Lang = 
     stats: { episodes: spans.length, trouble: spans.filter((span) => TROUBLE.has(span.outcome)).length,
              perHour: Math.round(tokens / hours) },
   };
+}
+
+/** The model the project's agents run on, and a few to switch to: recent ones first, then its provider's. */
+export function toModelChoice(snapshot: ModelSnapshot | null | undefined): FlowData["models"] {
+  const current = snapshot?.current;
+  if (!snapshot || !current) return undefined;
+  const option = (profile: ModelProfile) => ({ selection: profile.selection, name: profile.name || profile.model,
+    group: profile.groupName || profile.adapter, groupId: profile.groupId || profile.adapter });
+  const usable = snapshot.profiles.filter((profile) => !profile.setupOnly && profile.available !== false
+    && profile.configured !== false && profile.model !== current.model);
+  const recent = (snapshot.recentModels || []).map((model) => usable.find((profile) => profile.model === model))
+    .filter((profile): profile is ModelProfile => Boolean(profile));
+  const nearby = usable.filter((profile) => profile.groupId === current.groupId && !recent.includes(profile));
+  const reasoning = current.reasoning?.options.find((item) => item.value === current.reasoning?.value)?.label || current.reasoning?.value;
+  return { current: { ...option(current), reasoning: reasoning || undefined, vision: current.vision === true },
+           options: [...recent, ...nearby].slice(0, 3).map(option) };
 }
 
 /** "Add budget" on a stopped milestone: a quarter of the whole program more, or half the milestone's own if there is no program.

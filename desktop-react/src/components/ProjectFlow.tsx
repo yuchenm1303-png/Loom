@@ -15,9 +15,11 @@
  * The data comes from projectOverview.ts (projectRun/overview); this file only draws it. */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowUp, Bot, BookMarked, ChartGantt, Check, ChevronDown, Circle, CircleDot, Compass, FolderOpen, GitBranch, Hammer,
-  LoaderCircle, Minus, Pause, Play, Plus, ShieldCheck, Square,
+  ArrowUp, Bot, BookMarked, ChartGantt, Check, ChevronDown, Circle, CircleDot, Compass, File, FileCode, FileImage,
+  FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldCheck,
+  Sparkles, Square, X,
 } from "lucide-react";
+import { ProviderMark } from "./ModelPanel";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./project-flow.css";
@@ -49,6 +51,10 @@ export interface FlowData {
   scope: { path: string; count: number }[];
   knowledge: { checks: number; notes: number; latest: string };
   tasks: { id: string; title: string; state: FlowTaskState; detail?: string; agentId?: string; agentName?: string }[];
+  /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
+  models?: { current: ModelOption & { reasoning?: string; vision?: boolean }; options: ModelOption[] };
+  /** Files the person attached; every episode reads copies of them. */
+  references?: { name: string; bytes?: number }[];
   /** A finished program: why its last planner found the objective met, and what each milestone took. */
   outcome?: { summary: string; milestones: { index: number; tokens: number; episodes: number }[] };
   /** The milestone woven so far: a lane per task, a span per episode, positions as shares of the time axis. */
@@ -67,8 +73,15 @@ export interface FlowData {
   agents: FlowAgent[];
 }
 
+export interface ModelOption { selection: string; name: string; group: string; groupId: string }
+
 export interface FlowActions {
-  onStart?(objective: string, workers: number, tokens: number): void;
+  onStart?(objective: string, workers: number, tokens: number, attachments: string[]): void;
+  /** The system file dialog; resolves to the chosen paths (none when cancelled). */
+  onPickFiles?(): Promise<string[]>;
+  /** Files added while the program runs. */
+  onAttach?(paths: string[]): void;
+  onModel?(selection: string): void;
   onSteer?(text: string): void;
   onWorkers?(count: number): void;
   onPause?(): void;
@@ -93,7 +106,8 @@ const zhText = {
   loomStats: (s: { episodes: number; trouble: number; perHour: number }) => `${s.episodes} 轮 · 重试 ${s.trouble} · ${compact(s.perHour)}/时`,
   spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
     `${phase} · ${minutes} 分 · ${compact(tokens)} token${trouble ? " · 未正常结束，已重试" : ""}`,
-  now: "现在", mode: "织造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
+  now: "现在", files: "参考文件", filesEmpty: "需求文档、规格或样例数据，每一轮的 agent 都能读到", addFiles: "添加文件",
+  remove: "移除", modelCard: "模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "织造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
   review: "独立复审", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "织造",
@@ -107,7 +121,9 @@ const enText: typeof zhText = {
   loomStats: (s: { episodes: number; trouble: number; perHour: number }) => `${s.episodes} episodes · ${s.trouble} retried · ${compact(s.perHour)}/h`,
   spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
     `${phase} · ${minutes} min · ${compact(tokens)} tokens${trouble ? " · did not settle; retried" : ""}`,
-  now: "now", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
+  now: "now", files: "Reference files", filesEmpty: "Specs, documents or sample data; every episode can read them",
+  addFiles: "Add files", remove: "Remove", modelCard: "Model", vision: "vision",
+  modelHint: "Agents already started keep their model; new ones use the choice", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
   draftPlaceholder: "Describe an objective to pursue; it is split into milestones and tasks, independently reviewed, then integrated",
   steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
   review: "Independent review", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
@@ -234,6 +250,19 @@ function Card({ id, side, icon, label, count, under, register, className = "", c
   );
 }
 
+const FILE_KINDS: [RegExp, string][] = [[/\.(md|txt|rst|pdf|docx?)$/i, "doc"], [/\.(csv|tsv|xlsx?|json|ya?ml|toml)$/i, "data"],
+  [/\.(png|jpe?g|gif|webp|svg)$/i, "image"], [/\.(py|[cm]?[jt]sx?|go|rs|java|c|cpp|h|cs|rb|sh|ps1|sql|html|css)$/i, "code"]];
+function fileKind(name: string) {
+  return FILE_KINDS.find(([pattern]) => pattern.test(name))?.[1] || "other";
+}
+const fileIcons: Record<string, typeof File> = { doc: FileText, data: FileSpreadsheet, image: FileImage, code: FileCode, other: File };
+function fileIcon(name: string) {
+  return fileIcons[fileKind(name)];
+}
+function bytes(value: number) {
+  return value < 1024 * 1024 ? `${Math.max(1, Math.round(value / 1024))} KB` : `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
 /** Text with `code` spans drawn as code: plans and objectives are written in Markdown habits. */
 function Inline({ text }: { text: string }) {
   const parts = text.split("`");
@@ -284,10 +313,16 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   }, []);
   const draftMode = data.phase === "draft";
   const agents = useDeparting(data.agents);
-  const contextList = [{ id: "repo" }, ...(data.scope.length ? [{ id: "scope" }] : []),
+  // Files the person picked before starting; once started, the Host's copies are what count.
+  const [picked, setPicked] = useState<string[]>([]);
+  const files = draftMode ? picked.map((path) => ({ name: path.split(/[\\/]/).pop() || path, bytes: undefined as number | undefined, path }))
+    : (data.references || []).map((item) => ({ ...item, path: item.name }));
+  const filesShown = draftMode ? Boolean(actions.onPickFiles) : files.length > 0 || Boolean(actions.onAttach);
+  const contextList = [{ id: "repo" }, ...(data.scope.length ? [{ id: "scope" }] : []), ...(filesShown ? [{ id: "files" }] : []),
                        ...(data.knowledge.checks + data.knowledge.notes ? [{ id: "knowledge" }] : [])];
   const context = useDeparting(contextList);
-  const layout = [context.map((item) => item.id).join(","), agents.map((agent) => agent.id).join(","),
+  const layout = [context.map((item) => item.id).join(","), agents.map((agent) => agent.id).join(","), files.length,
+                  data.models?.options.length ?? -1,
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase].join("|");
   const cables = useCables(stage, hub, cards, layout);
   const share = Math.min(1, data.budget.tokens / Math.max(1, data.budget.tokenLimit));
@@ -301,8 +336,14 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const submit = () => {
     const value = draft.trim();
     if (!value || actions.busy) return;
-    if (draftMode) actions.onStart?.(value, workers, tokens); else actions.onSteer?.(value);
+    if (draftMode) { actions.onStart?.(value, workers, tokens, picked); setPicked([]); } else actions.onSteer?.(value);
     setDraft("");
+  };
+  const addFiles = async () => {
+    const paths = await actions.onPickFiles?.() || [];
+    if (!paths.length) return;
+    if (draftMode) setPicked((list) => [...list, ...paths.filter((path) => !list.includes(path))]);
+    else actions.onAttach?.(paths);
   };
 
   return (
@@ -344,6 +385,32 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               {data.scope.map((item) => (
                 <div key={item.path} className="pf-well pf-row"><FolderOpen size={12} /><span>{item.path}</span><em className="pf-count">{item.count}</em></div>
               ))}
+            </Card>
+          </div>
+        ) : null}
+        {shown("files") ? (
+          // What the person handed the project: copies every episode can read, never the originals.
+          <div className="pf-slot" {...hover("files")} {...slot("files")}>
+            <Card id="files" side="left" className="pf-files" icon={<Paperclip size={12} />} label={text.files}
+                  count={files.length || undefined} register={register}>
+              {files.map((file) => {
+                const Icon = fileIcon(file.name);
+                return (
+                  <div key={file.path} className="pf-well pf-row pf-file" title={file.name}>
+                    <span className="pf-file-mark" data-kind={fileKind(file.name)}><Icon size={12} /></span>
+                    <span className="pf-file-name">{file.name}</span>
+                    {file.bytes != null ? <em className="pf-file-size">{bytes(file.bytes)}</em> : null}
+                    {draftMode ? (
+                      <button type="button" className="pf-file-remove" aria-label={`${text.remove} ${file.name}`}
+                              onClick={() => setPicked((list) => list.filter((path) => path !== file.path))}><X size={11} /></button>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {!files.length ? <p className="pf-empty">{text.filesEmpty}</p> : null}
+              {(draftMode ? actions.onPickFiles : actions.onAttach && actions.onPickFiles) ? (
+                <button type="button" className="pf-add" disabled={actions.busy} onClick={addFiles}><Plus size={12} />{text.addFiles}</button>
+              ) : null}
             </Card>
           </div>
         ) : null}
@@ -481,6 +548,33 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
       </div>
 
       <div className="pf-col pf-right">
+        {data.models ? (
+          // What every agent of the project thinks with: the model, its provider, how hard it reasons.
+          <div className="pf-slot pf-model-slot" {...hover("model")}>
+            <Card id="model" side="right" className="pf-model-card" icon={<Sparkles size={12} />} label={text.modelCard}
+                  count={data.models.current.reasoning} register={register}>
+              <div className="pf-well pf-model-now" key={data.models.current.selection}>
+                <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="large" />
+                <span className="pf-model-copy">
+                  <strong title={data.models.current.name}>{data.models.current.name}</strong>
+                  <span>{data.models.current.group}{data.models.current.vision ? <em>{text.vision}</em> : null}</span>
+                </span>
+              </div>
+              {data.models.options.length && actions.onModel ? (
+                <div className="pf-model-options">
+                  {data.models.options.map((option) => (
+                    <button key={option.selection} type="button" className="pf-model-option" disabled={actions.busy}
+                            title={option.name} onClick={() => actions.onModel?.(option.selection)}>
+                      <ProviderMark id={option.groupId} name={option.group} size="small" />
+                      <span>{option.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {data.phase === "live" && data.state === "running" ? <p className="pf-model-hint">{text.modelHint}</p> : null}
+            </Card>
+          </div>
+        ) : null}
         {agents.map((agent, index) => {
           const Icon = roleIcon[agent.role];
           return (

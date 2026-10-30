@@ -4,14 +4,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
-import { raisedBudget, toFlowData, type ProjectOverview } from "./projectOverview";
+import { raisedBudget, toFlowData, toModelChoice, type ProjectOverview } from "./projectOverview";
+import type { ModelSnapshot } from "../types/loom";
 
 const LIVE_POLL_MS = 2000;
 const REST_POLL_MS = 12000;
 /** Episodes for a new program: generous, since tokens are the budget a person chooses. */
 const START_EPISODES = 400;
 
-export function ProjectMode({ threadId, workspace, model }: { threadId: string; workspace?: string; model?: string }) {
+export function ProjectMode({ threadId, workspace, model, models, onSwitchModel }: {
+  threadId: string; workspace?: string; model?: string;
+  /** The app's model snapshot and switch: a project's agents take the conversation's model. */
+  models?: ModelSnapshot | null; onSwitchModel?(selection: string): Promise<unknown>;
+}) {
   const { language } = useI18n();
   const lang = language === "zh-CN" ? "zh" : "en";
   const [overview, setOverview] = useState<ProjectOverview | null>(null);
@@ -69,13 +74,18 @@ export function ProjectMode({ threadId, workspace, model }: { threadId: string; 
   const control = (action: "pause" | "resume" | "cancel", extra: Record<string, unknown> = {}) => act(() =>
     window.loom.call(`projectRun/${action}`, { operationId: crypto.randomUUID(), runId: run!.id, expectedRevision: run!.revision, ...extra }));
   const workspaceName = (workspace || "").split(/[\\/]/).filter(Boolean).pop() || "";
-  const data = toFlowData(overview, now, lang, model || "", workspaceName);
+  const data = { ...toFlowData(overview, now, lang, model || "", workspaceName), models: toModelChoice(models) };
+  const programId = overview.program?.id;
 
   return (
     <ProjectFlow lang={lang} data={data} actions={{
       busy,
       error: error || (offline ? (lang === "en" ? "Lost the Host; reconnecting…" : "与 Host 的连接中断，正在重连…") : ""),
-      onStart: (objective, workers, tokens) => act(() => window.loom.call("projectProgram/create", {
+      onPickFiles: window.loom.pickFiles ? () => window.loom.pickFiles() : undefined,
+      onAttach: programId ? (paths) => act(() => window.loom.call("projectProgram/attach", { programId, attachments: paths })) : undefined,
+      onModel: onSwitchModel ? (selection) => act(() => onSwitchModel(selection)) : undefined,
+      onStart: (objective, workers, tokens, attachments) => act(() => window.loom.call("projectProgram/create", {
+        attachments,
         operationId: crypto.randomUUID(), threadId, objective, tokenBudget: tokens, maxEpisodes: START_EPISODES,
         maxWorkers: workers, maxMilestones: 20 })),
       onSteer: (text) => run && act(() => window.loom.call("projectRun/steer", { runId: run.id, text })),

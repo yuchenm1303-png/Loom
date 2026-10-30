@@ -162,7 +162,7 @@ function markClass(size: MarkSize): string {
   return size === "small" ? "cp-mark is-small" : size === "large" ? "cp-mark is-large" : "cp-mark";
 }
 
-function ProviderMark({ id, name, size = "default" }: { id: string; name: string; size?: MarkSize }) {
+export function ProviderMark({ id, name, size = "default" }: { id: string; name: string; size?: MarkSize }) {
   const [hue, chroma] = providerTint(id);
   const logo = PROVIDER_LOGOS[id] ?? (name === "OpenAI" ? openaiLogo : undefined);
   const initial = name.trim().match(/[\p{L}\p{N}]/u)?.[0]?.toUpperCase() ?? "?";

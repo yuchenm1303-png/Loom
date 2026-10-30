@@ -1687,7 +1687,8 @@ export default function App() {
         {projectMode && thread ? (
           <div className="project-mode-stage" inert={threadSwitching}>
             <Suspense fallback={null}>
-              <ProjectMode key={thread.id} threadId={thread.id} workspace={selectedThread?.workspace || workspace} model={currentModel} />
+              <ProjectMode key={thread.id} threadId={thread.id} workspace={selectedThread?.workspace || workspace} model={currentModel}
+                           models={loom.models} onSwitchModel={loom.switchModelProfile} />
             </Suspense>
           </div>
         ) : (<>

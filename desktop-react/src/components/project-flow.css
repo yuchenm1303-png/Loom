@@ -161,7 +161,8 @@ html[data-loom-theme="light"] .pf-stage {
 }
 
 .pf-row > span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.pf-row > .pf-task-mark { flex: none; }
+.pf-row > .pf-task-mark,
+.pf-row > .pf-file-mark { flex: none; }
 .pf-row > svg { flex: none; color: var(--pl-muted); }
 .pf-row .pf-count { background: var(--pf-raise); }
 
@@ -455,6 +456,89 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-agents-empty { align-self: flex-start; padding-left: 4px; }
 .pf-loading { min-height: 100%; }
 
+/* The model card: the model every agent thinks with, its provider's mark, and a few to switch to.
+   A switch re-mounts the current well (keyed by the model): its text fades in and the mark
+   lands with the hub's mark-in; nothing else moves. */
+.pf-model-card .pf-card-icon { color: #f2c76b; }
+.pf-model-card .pf-count { font-variant-numeric: normal; }
+.pf-model-now { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px 10px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.pf-model-now .cp-mark { animation: pf-mark-in var(--loom-dur-base) var(--loom-ease-move) backwards; }
+.pf-model-copy { display: grid; min-width: 0; }
+.pf-model-copy strong { overflow: hidden; color: var(--pl-ink); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.pf-model-copy > span { display: flex; align-items: center; gap: 6px; overflow: hidden; color: var(--pl-faint); font-size: 11.5px; white-space: nowrap; }
+.pf-model-copy em { padding: 0 5px; border-radius: 4px; background: var(--pf-raise); color: var(--pl-muted); font-style: normal; }
+.pf-model-options { display: grid; gap: 3px; }
+.pf-model-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pl-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-model-option > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-model-option:hover { background: var(--pf-well); color: var(--pl-ink); }
+.pf-model-option:disabled { opacity: .5; cursor: default; }
+.pf-model-hint { margin: 0; padding: 2px 4px 0; color: var(--pl-faint); font-size: 11.5px; }
+
+/* Reference files: one row per file, its kind as a tinted mark; the add button is a dashed well,
+   the one surface here that invites a drop of new material. */
+.pf-files .pf-card-icon { color: #9fd0a8; }
+.pf-file { position: relative; gap: 8px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.pf-file-mark { display: inline-grid; flex: none; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--pf-raise); color: var(--pl-muted); }
+.pf-file-mark[data-kind="doc"] { color: #8fb8f2; }
+.pf-file-mark[data-kind="data"] { color: #9fd0a8; }
+.pf-file-mark[data-kind="image"] { color: #f2a6cf; }
+.pf-file-mark[data-kind="code"] { color: #c3a6f5; }
+html[data-loom-theme="light"] .pf-file-mark[data-kind="doc"] { color: #2f6fc4; }
+html[data-loom-theme="light"] .pf-file-mark[data-kind="data"] { color: #2f8a4c; }
+html[data-loom-theme="light"] .pf-file-mark[data-kind="image"] { color: #b8467f; }
+html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; }
+.pf-file-name { flex: 1; min-width: 0; overflow: hidden; color: var(--pl-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.pf-file-size { flex: none; color: var(--pl-faint); font-size: 11.5px; font-style: normal; font-variant-numeric: tabular-nums; }
+.pf-file-remove {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--pl-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out), background-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-file:hover .pf-file-remove,
+.pf-file-remove:focus-visible { opacity: 1; }
+.pf-file-remove:hover { background: var(--pf-raise); color: var(--pl-ink); }
+.pf-add {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px dashed color-mix(in srgb, var(--loom-workspace-ink) 16%, transparent);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--pl-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out), background-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-add:hover { border-color: color-mix(in srgb, var(--loom-workspace-ink) 32%, transparent); background: var(--pf-well); color: var(--pl-ink); }
+.pf-add:disabled { opacity: .5; cursor: default; }
+
 /* The timeline under the hub, across all three columns: the milestone as a loom. Each lane is
    a warp thread (a task, the planner, the project review); each episode a weft span on it,
    coloured by what it did. Spans arrive by growing from their start; nothing else moves but
@@ -714,6 +798,9 @@ html[data-loom-theme="light"] .pf-stage {
   .pf-agent-live,
   .pf-task[data-state="working"] .pf-task-mark svg,
   .pf-task-wash,
+  .pf-model-now,
+  .pf-model-now .cp-mark,
+  .pf-file,
   .pf-loom,
   .pf-loom-span,
   .pf-attention-dot,
