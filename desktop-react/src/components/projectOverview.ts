@@ -18,7 +18,7 @@ export interface ProjectProgram {
 export interface ProjectOverview {
   run: (ProjectRun & { ledgerPosition?: { chargedTokens: number }; ledgerTokens?: number; ledgerEpisodes?: number;
          createdAt?: number; milestone?: { index: number; programId: string }; completionRef?: string | null;
-         baseCommit?: string; guidance?: string[] }) | null;
+         baseCommit?: string; guidance?: string[]; objectiveComplete?: boolean }) | null;
   program: ProjectProgram | null;
   children: ProjectRun[];
   integration?: ProjectRun | null;
@@ -177,6 +177,9 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   const childTask = (runId: string) => (run.teamChildren || []).find((item) => item.runId === runId)?.taskId;
   return {
     phase: "live",
+    // The last milestone's planner found the objective met: its evidence, and what each milestone took.
+    outcome: finished && program ? { summary: run.objectiveComplete ? run.reason || "" : "",
+      milestones: program.milestones.map(({ index, tokens, episodes }) => ({ index, tokens, episodes })) } : undefined,
     objective: program?.objective || run.objective.split("\n\nThis is milestone")[0],
     narration: { summary: t.worked(t.minutes(minutes), episodes), text: finished ? t.done : stopped ? t.cancelled : latest },
     milestone: run.milestone?.index || (program ? program.milestones.length + 1 : 1),

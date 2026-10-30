@@ -49,6 +49,8 @@ export interface FlowData {
   scope: { path: string; count: number }[];
   knowledge: { checks: number; notes: number; latest: string };
   tasks: { id: string; title: string; state: FlowTaskState; detail?: string; agentId?: string; agentName?: string }[];
+  /** A finished program: why its last planner found the objective met, and what each milestone took. */
+  outcome?: { summary: string; milestones: { index: number; tokens: number; episodes: number }[] };
   budget: { tokens: number; tokenLimit: number };
   workers: number;
   maxWorkers: number;
@@ -77,7 +79,8 @@ const taskIcon: Record<FlowTaskState, typeof Check> = { pending: Circle, working
 
 const zhText = {
   repository: "仓库", scope: "工作范围", knowledge: "项目知识", checks: "条检查", notes: "条笔记", plan: (n: number) => `阶段 ${n} 计划`,
-  planEmpty: "规划完成后在这里显示任务", mode: "织造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
+  planEmpty: "规划完成后在这里显示任务", outcome: "已完成", outcomeCount: (n: number) => `${n} 个阶段`, episodes: (n: number) => `${n} 轮`,
+  donePlaceholder: "目标已完成", mode: "织造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
   review: "独立复审", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "织造",
@@ -85,7 +88,8 @@ const zhText = {
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
-  planEmpty: "Tasks appear here once the plan is made", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
+  planEmpty: "Tasks appear here once the plan is made", outcome: "Complete", outcomeCount: (n: number) => `${n} milestones`,
+  episodes: (n: number) => `${n} episodes`, donePlaceholder: "The objective is complete", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
   draftPlaceholder: "Describe an objective to pursue; it is split into milestones and tasks, independently reviewed, then integrated",
   steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
   review: "Independent review", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
@@ -380,7 +384,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             <textarea ref={input} value={draft} rows={draftMode ? 3 : 2} disabled={data.state === "completed"}
                       onChange={(event) => setDraft(event.target.value)}
                       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}
-                      placeholder={draftMode ? text.draftPlaceholder : text.steerPlaceholder}
+                      placeholder={draftMode ? text.draftPlaceholder : data.state === "completed" ? text.donePlaceholder : text.steerPlaceholder}
                       aria-label={draftMode ? text.objective : text.guidance} />
           </div>
           {actions.error ? <p className="pf-error" role="alert">{actions.error}</p> : null}
@@ -405,6 +409,23 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         </section>
 
         <div className="pf-slot pf-below" ref={plan} {...hover("plan")}>
+          {data.outcome ? (
+            <Card id="plan" side="below" className="pf-outcome" icon={<Check size={12} />} label={text.outcome}
+                  count={text.outcomeCount(data.outcome.milestones.length)} register={register}>
+              {data.outcome.summary ? (
+                <p className="pf-well pf-note pf-outcome-summary" title={data.outcome.summary}><Inline text={data.outcome.summary} /></p>
+              ) : null}
+              {data.outcome.milestones.map((item) => (
+                // What each milestone took, as a share of the largest: where the work went at a glance.
+                <div key={item.index} className="pf-well pf-row pf-milestone"
+                     style={{ "--pf-share": item.tokens / Math.max(1, ...data.outcome!.milestones.map((other) => other.tokens)) } as React.CSSProperties}>
+                  <span className="pf-milestone-name">{text.stage(item.index)}</span>
+                  <span className="pf-milestone-bar" aria-hidden="true"><span /></span>
+                  <em>{text.episodes(item.episodes)} · {compact(item.tokens)}</em>
+                </div>
+              ))}
+            </Card>
+          ) : (
           <Card id="plan" side="below" icon={<Compass size={12} />} label={text.plan(data.milestone)}
                 count={data.tasks.length ? `${done}/${data.tasks.length}` : undefined}
                 under={data.tasks.length ? (
@@ -428,6 +449,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               );
             }) : <p className="pf-empty">{text.planEmpty}</p>}
           </Card>
+          )}
         </div>
       </div>
 

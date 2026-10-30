@@ -131,3 +131,14 @@ test("adding budget to a milestone near the end of its program adds a real share
                    { tokenBudget: 802090 + 6430570, maxEpisodes: 40 + 150 });
   assert.deepEqual(raisedBudget({ tokenBudget: 4000, maxEpisodes: 200 }, null), { tokenBudget: 6000, maxEpisodes: 300 });
 });
+
+test("a program its planner found complete shows the evidence and what each milestone took", () => {
+  const data = toFlowData({ ...overview({ state: "integrated", workflowStatus: "completed", objectiveComplete: true, reason: "All five commands work; `python -m unittest` ran 215 tests OK." }),
+    program: { id: "p", objective: "Build ledger", state: "completed", tokenBudget: 9000, maxEpisodes: 200, createdAt: now / 1000 - 600,
+               milestones: [{ index: 1, runId: "r1", complete: false, tokens: 3000, episodes: 20, summary: "" },
+                            { index: 2, runId: "r2", complete: true, tokens: 100, episodes: 1, summary: "" }] } }, now, "zh");
+  assert.equal(data.state, "completed");
+  assert.deepEqual(data.outcome, { summary: "All five commands work; `python -m unittest` ran 215 tests OK.",
+    milestones: [{ index: 1, tokens: 3000, episodes: 20 }, { index: 2, tokens: 100, episodes: 1 }] });
+  assert.equal(toFlowData(overview(), now, "zh").outcome, undefined);  // a running project has no outcome yet
+});

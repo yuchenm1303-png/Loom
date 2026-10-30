@@ -237,3 +237,44 @@ workers in isolated worktrees, each task independently reviewed, merged, the who
 project reviewed once more, delivered and integrated, then judged by the external
 13-case oracle. It stayed under the 6M cap the two previous runs hit. This is still a
 bounded run of about half an hour, not a multi-day run.
+
+## weave-live1: a multi-milestone program driven from the Weave hub (2026-10-30)
+
+The first real run of a program (milestones) end to end, started and steered only through
+the Weave UI (`scripts/weave_live.py` bridge + `scripts/fixtures/weave-live.html`), real model
+(deepseek-v4.1-flash via opencode-go), Windows MXC sandbox, 2 workers, independent review.
+Objective: the larger `ledger` (5 subcommands, exact money, errors, README); external oracle
+of 21 hand-computed cases (`weave_live.py --judge`).
+
+| Milestone | Tokens | Episodes | What it did | Oracle after |
+|---|---|---|---|---|
+| 1 | 18.06M | 46 | planned 12 tasks, built them in parallel, reviewed, merged, project review | 21/21 |
+| 2 | 2.50M | 5 | one task: fix the README "Running the tests" section (from the person's guidance) | 21/21 |
+| 3 | 4.36M | 13 | 4 tasks: example inputs, README rewritten so every example runs, tests/test_readme.py | 21/21 |
+| 4 | 5.10M | 15 | 4 tasks: integer-cents money module, commands rewritten on it, tests/test_exactness.py | 21/21 |
+| 5 | 0.18M | 1 | planner found the objective met and said why; program completed | **21/21** |
+
+Total 30.2M tokens, 80 episodes, 7 h 14 min wall clock (including stops below). The final
+repository's own suite: `python -m unittest` ran 215 tests OK (rerun outside the runner).
+Guidance typed into the hub after 20 minutes reached every later prompt and drove
+milestones 2-3. Host restarted six times for code updates during the run; every
+interrupted episode continued.
+
+What the run exposed, each fixed and pushed during it:
+
+| Seen | Fix |
+|---|---|
+| A team task refused at the budget read as "review failed" with a re-review button | hub offers "add budget" when any team task is budget-limited (8eb3e612) |
+| A reviewer's sandbox-denied `git` became an approval request; the run stalled an hour while the hub said "running" | hub shows pending approvals with allow once / decline; `projectRun/approval` (870c75e4, 8d655bab) |
+| After a Host restart the pending approval could not be answered ("captured step context is unavailable") | the turn closes interrupted (the call never ran) and a new episode continues (985ae19a) |
+| The same question returned at every review that reached for git | unattended (project) sessions get a sandbox startup denial back, as under Codex (ec44ec54) |
+| git never ran in any project checkout: review checkouts two folders deep (prep cannot open folders that do not exist yet), and linked worktrees' git directories outside the container | reviews one level deep (8092c66d); a worktree's git dirs are read-only container paths (21c50f55); measured: status/log work, update-ref blocked |
+| "Add budget" added half of a milestone's sliver, so milestone 4 stopped again at once | a quarter of the program (60584033) |
+| Provider connection errors for ~4 minutes | retried automatically (no change needed) |
+
+UI detail added from watching it: plan progress strip, follow the task in progress, agent per
+task with linked hover, inline code, landing wash (a0dfffb0); a finished program shows the
+planner's evidence and each milestone's share instead of an empty plan (this commit).
+
+Still not shown: a multi-day run, and the installed app (this ran the Host from a worktree
+with a bridge, not Electron).

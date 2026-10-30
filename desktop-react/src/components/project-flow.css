@@ -448,6 +448,22 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-agents-empty { align-self: flex-start; padding-left: 4px; }
 .pf-loading { min-height: 100%; }
 
+/* A finished program: the planner's evidence, then one row per milestone with its share of the tokens. */
+.pf-outcome .pf-card-icon { color: var(--pf-ok); }
+.pf-outcome-summary { -webkit-line-clamp: 6; }
+.pf-milestone { gap: 10px; }
+.pf-milestone-name { flex: none; width: 52px; color: var(--pl-secondary); }
+.pf-milestone-bar { flex: 1; height: 4px; overflow: hidden; border-radius: 2px; background: var(--pf-well); }
+.pf-milestone-bar > span {
+  display: block;
+  height: 100%;
+  background: color-mix(in srgb, var(--pf-ok) 70%, transparent);
+  transform: scaleX(var(--pf-share, 0));
+  transform-origin: left center;
+}
+/* A fixed column, so every bar starts and ends at the same place and the shares compare. */
+.pf-milestone > em { flex: none; width: 92px; color: var(--pl-faint); font-size: 11.5px; font-style: normal; font-variant-numeric: tabular-nums; text-align: right; }
+
 /* Inline code in plans and objectives. */
 .pf-code {
   padding: 0 4px;
