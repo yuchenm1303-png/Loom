@@ -176,3 +176,31 @@ def test_missing_additional_write_path_fails_closed(tmp_path):
 
     assert raised.value.kind is SandboxFailureKind.CONFIGURATION
     assert raised.value.escalatable is False
+
+
+def test_windows_linked_worktree_reads_its_git_directory_but_cannot_write_it(tmp_path):
+    # A project's worker and review checkouts are linked worktrees: .git is a file naming a
+    # folder in the main repository, outside the workspace. Without it git says "not a git repository".
+    from app.agent_runtime.sandbox import linked_git_dirs
+
+    common = (tmp_path / "repo" / ".git").resolve()
+    gitdir = common / "worktrees" / "w1"
+    gitdir.mkdir(parents=True)
+    (gitdir / "commondir").write_text("../..\n")
+    workspace = (tmp_path / "w1").resolve()
+    workspace.mkdir()
+    (workspace / ".git").write_text(f"gitdir: {gitdir}\n")
+
+    assert linked_git_dirs(workspace) == [gitdir, common]
+    prepared = _windows_manager().prepare(argv=("git", "status"), cwd=workspace, workspace=workspace,
+                                          permission_mode=PermissionMode.WORKSPACE, environment={"PATH": r"C:\Git\cmd"})
+    filesystem = _decode_mxc(prepared.argv)["filesystem"]
+    assert {str(gitdir), str(common)} <= set(filesystem["readonlyPaths"])
+    assert not {str(gitdir), str(common)} & set(filesystem["readwritePaths"])
+
+    (workspace / ".git").unlink()
+    (workspace / ".git").mkdir()  # an ordinary repository: nothing outside the workspace
+    assert linked_git_dirs(workspace) == []
+    (workspace / ".git").rmdir()
+    (workspace / ".git").write_text("not a pointer\n")
+    assert linked_git_dirs(workspace) == []

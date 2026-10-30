@@ -519,6 +519,9 @@ class SandboxManager:
         python_hook = hook_directory() if python_hook_enabled() else None
         if python_hook is not None:
             readonly_paths.append(str(python_hook))
+        # A linked worktree's .git is a file naming its git directory in the main repository,
+        # outside the workspace: git can read neither without it ("not a git repository").
+        readonly_paths.extend(str(path) for path in linked_git_dirs(workspace))
         if mode is SandboxMode.READ_ONLY:
             readonly_paths.insert(0, str(workspace))
             readwrite_paths: list[str] = []
@@ -675,6 +678,36 @@ class SandboxManager:
 def _windows_ui_access_from_environment() -> bool:
     value = str(os.environ.get("LOOM_WINDOWS_SANDBOX_UI") or "").strip().casefold()
     return value not in {"locked", "lockdown", "off", "disabled", "0", "false", "no"}
+
+
+def linked_git_dirs(workspace: Path) -> list[Path]:
+    """The git directory and common directory a linked worktree's ``.git`` file points to.
+
+    Empty for an ordinary repository (its ``.git`` is a folder inside the workspace) and for
+    anything that does not read as a worktree pointer.
+    """
+    marker = Path(workspace) / ".git"
+    try:
+        if not marker.is_file():
+            return []
+        line = marker.read_text(encoding="utf-8", errors="replace").strip().splitlines()[0]
+    except (OSError, IndexError):
+        return []
+    if not line.startswith("gitdir:"):
+        return []
+    gitdir = Path(line[len("gitdir:"):].strip())
+    gitdir = (gitdir if gitdir.is_absolute() else Path(workspace) / gitdir).resolve()
+    if not gitdir.is_dir():
+        return []
+    found = [gitdir]
+    try:
+        common = Path((gitdir / "commondir").read_text(encoding="utf-8", errors="replace").strip())
+        common = (common if common.is_absolute() else gitdir / common).resolve()
+        if common.is_dir() and common != gitdir:
+            found.append(common)
+    except OSError:
+        pass
+    return found
 
 
 def _windows_git_compat_from_environment() -> bool:
