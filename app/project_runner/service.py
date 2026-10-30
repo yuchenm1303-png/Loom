@@ -324,6 +324,10 @@ class ProjectServiceMixin:
         # A project task spans many episodes (turns); its scratch must too. A
         # reviewer lost nine episodes to scripts that vanished at each boundary.
         self.runtime.session_scoped_scratch = self._project_session_ids
+        # Nobody sits at a project's threads: a command the sandbox cannot start goes back to the
+        # agent as a failure (Codex's model) instead of asking to run it unsandboxed, which
+        # stalled a live review for an hour. Approvals a tool itself asks for still wait in the hub.
+        self.runtime.unattended_sessions = self._project_session_ids
         # Compact inside long episodes too, not only near the model's window.
         self.runtime.session_working_context_tokens = (
             lambda session_id: PROJECT_WORKING_CONTEXT_TOKENS if session_id in self._project_session_ids else None)

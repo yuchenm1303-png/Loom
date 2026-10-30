@@ -663,8 +663,12 @@ class ToolOrchestrator:
         already_approved: bool,
         strict_auto_review: bool = False,
         network_approval_context: object | None = None,
+        unattended: bool = False,
     ) -> SandboxRetryPlan:
         """Resolve Codex's one retry after a typed sandbox denial.
+
+        ``unattended``: no person watches the session (a persistent project), so Loom's
+        startup-denial question below is not asked; the denial goes back to the model.
 
         Ordinary stderr/non-zero exit is never sufficient: callers must provide
         the typed sandbox-denied result produced by a platform adapter or by the
@@ -704,7 +708,7 @@ class ToolOrchestrator:
         # answer is the same question an unavailable backend asks. Codex's
         # on-request model would hand a bare exit code back to the model.
         denial = sandbox_denial_of(result) or {}
-        if policy is ApprovalPolicy.ON_REQUEST and denial.get("startup") is True:
+        if policy is ApprovalPolicy.ON_REQUEST and denial.get("startup") is True and not unattended:
             wants_no_sandbox_approval = True
         if not wants_no_sandbox_approval:
             return SandboxRetryPlan(SandboxRetryDisposition.NONE)

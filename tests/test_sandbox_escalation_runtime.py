@@ -447,6 +447,30 @@ def test_on_request_windows_startup_denial_asks_to_run_once_outside_the_sandbox(
         runtime.close()
 
 
+def test_an_unattended_session_gets_a_startup_denial_back_instead_of_asking(tmp_path, monkeypatch):
+    # A persistent project: nobody watches its threads, so the question would stall it.
+    from app.agent_runtime import sandbox_denial
+
+    monkeypatch.setattr(sandbox_denial, "_default_prep_command", lambda _denial: "")
+    attempts = []
+
+    def handler(_context, _arguments):
+        attempts.append(current_sandbox_attempt())
+        return _windows_failure(["git.exe", "status"], returncode=3221225794)
+
+    runtime = _runtime(tmp_path, handler, "reported")
+    try:
+        session = _session(runtime, tmp_path)
+        runtime.unattended_sessions = {session.session_id}
+        completed = runtime.start_turn(session.session_id, "Run the action.")
+
+        assert completed.status is AgentStatus.COMPLETED
+        assert len(attempts) == 1  # never retried outside the sandbox
+        assert "Sandbox denied: git.exe could not start inside the Windows sandbox" in _tool_result_text(runtime, session.session_id)
+    finally:
+        runtime.close()
+
+
 def test_never_policy_explains_a_windows_startup_denial_without_retrying(tmp_path, monkeypatch):
     from app.agent_runtime import sandbox_denial
 

@@ -580,6 +580,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 prepared,
                 result,
                 already_approved=approval_granted,
+                unattended=session.session_id in getattr(self, "unattended_sessions", ()),
             )
             if plan.disposition is not SandboxRetryDisposition.WITHOUT_SANDBOX:
                 result = self.orchestrator.explain_unretried_denial(step, prepared, result)
