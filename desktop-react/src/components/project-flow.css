@@ -321,35 +321,72 @@ html[data-loom-theme="light"] .pf-stage {
 
 .pf-input textarea::placeholder { color: var(--pl-faint); }
 
-.pf-composer-foot { display: flex; align-items: center; gap: 6px; }
+.pf-composer-foot { display: flex; align-items: center; gap: 8px; padding: 1px 1px 0; }
 
-.pf-tool,
-.pf-chip,
-.pf-stepper {
+.pf-tool {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  width: 28px;
   height: 28px;
-  padding: 0 9px;
+  padding: 0;
   border: 0;
   border-radius: 8px;
   background: var(--pf-well);
   color: var(--pl-secondary);
-  font: inherit;
-  font-size: 12px;
+  cursor: pointer;
 }
 
-.pf-tool { width: 28px; padding: 0; justify-content: center; cursor: pointer; }
-.pf-chip svg { color: var(--pl-muted); }
-.pf-chip-button { cursor: pointer; transition: background-color var(--loom-dur-fast) var(--loom-ease-out); }
+/* One well for the run's settings; its parts sit flat inside it, split by hairlines. */
+.pf-settings {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 30px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--pf-well);
+  white-space: nowrap;
+}
+
+.pf-settings > * + * { position: relative; margin-left: 1px; }
+
+.pf-settings > * + *::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: -1px;
+  width: 1px;
+  background: var(--loom-workspace-hover);
+}
+
+.pf-chip,
+.pf-stepper {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--pl-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.pf-chip svg,
+.pf-stepper > svg { flex: none; color: var(--pl-muted); }
+.pf-chip-button { gap: 4px; cursor: pointer; transition: background-color var(--loom-dur-fast) var(--loom-ease-out); }
 .pf-chip-button:hover { background: var(--pf-raise); }
 .pf-chip-value { color: var(--pl-ink); font-variant-numeric: tabular-nums; animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards; }
+.pf-chip-unit { color: var(--pl-muted); }
 
-.pf-stepper { padding: 0 4px; gap: 5px; }
-/* The footer's chips keep their words on one line; the model chip is the one that gives way. */
-.pf-composer-foot > .pf-chip,
-.pf-composer-foot > .pf-stepper { flex: none; white-space: nowrap; }
-.pf-stepper svg { color: var(--pl-muted); }
+.pf-stepper { gap: 6px; padding: 0 8px; }
+.pf-stepper[data-editable] { padding: 0 3px; }
 
 .pf-stepper-value {
   min-width: 10px;
@@ -362,21 +399,23 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-stepper button {
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: var(--pf-raise);
-  color: var(--pl-secondary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pl-muted);
   cursor: pointer;
-  transition: background-color var(--loom-dur-fast) var(--loom-ease-out);
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
 }
 
-.pf-stepper button:disabled { opacity: .4; cursor: default; }
+.pf-stepper button:hover:not(:disabled) { background: var(--pf-raise); color: var(--pl-ink); }
+.pf-stepper button:disabled { opacity: .35; cursor: default; }
 
 .pf-send {
   display: grid;
+  flex: none;
   place-items: center;
   width: 30px;
   height: 30px;
@@ -386,10 +425,12 @@ html[data-loom-theme="light"] .pf-stage {
   background: var(--pl-ink);
   color: var(--pl-surface);
   cursor: pointer;
-  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out), background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
 }
 
-.pf-send:disabled { opacity: .35; cursor: default; }
+.pf-send:hover:not(:disabled) { opacity: .88; }
+/* Nothing to send: a quiet well, not a faded ink square that still reads as a button. */
+.pf-send:disabled { background: var(--pf-well); color: var(--pl-faint); cursor: default; }
 
 /* The composer's own controls: pause, resume, stop. */
 .pf-control {

@@ -117,7 +117,7 @@ const zhText = {
   now: "现在", files: "参考文件", filesEmpty: "需求文档、规格或样例数据，每一轮的 agent 都能读到", addFiles: "添加文件",
   remove: "移除", modelCard: "模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "建造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
-  review: "独立复审", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
+  review: "独立复审", reviewHint: "每个任务合入前都由另一个 agent 独立复审", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "建造",
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
 };
@@ -139,7 +139,7 @@ const enText: typeof zhText = {
   modelHint: "Agents already started keep their model; new ones use the choice", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
   draftPlaceholder: "Describe an objective to pursue; it is split into milestones and tasks, independently reviewed, then integrated",
   steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
-  review: "Independent review", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
+  review: "Reviewed", reviewHint: "Every task is reviewed by a separate agent before it is integrated", settings: "Run settings", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
 };
@@ -538,19 +538,26 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           </div>
           {actions.error ? <p className="pf-error" role="alert">{actions.error}</p> : null}
           <footer className="pf-composer-foot">
-            <span className="pf-chip"><ShieldCheck size={13} />{text.review}</span>
-            {draftMode ? (
-              <button type="button" className="pf-chip pf-chip-button" title={text.budgetHint}
-                      onClick={() => setTokens((value) => START_BUDGETS[(START_BUDGETS.indexOf(value) + 1) % START_BUDGETS.length])}>
-                <span className="pf-chip-value" key={tokens}>{compact(tokens)}</span> token
-              </button>
-            ) : null}
-            <span className="pf-stepper" aria-label={text.agents} title={text.agents}>
-              <button type="button" aria-label={text.fewer} disabled={!draftMode || shownWorkers <= 1}
-                      onClick={() => setWorkers((count) => Math.max(1, count - 1))}><Minus size={10} strokeWidth={2.6} /></button>
-              <Bot size={13} /><span className="pf-stepper-value" key={shownWorkers}>{shownWorkers}</span>
-              <button type="button" aria-label={text.more} disabled={!draftMode || shownWorkers >= data.maxWorkers}
-                      onClick={() => setWorkers((count) => Math.min(data.maxWorkers, count + 1))}><Plus size={10} strokeWidth={2.6} /></button>
+            {/* The run's settings as one bar: review is a fact, budget and agents are set before the start. */}
+            <span className="pf-settings" role="group" aria-label={text.settings}>
+              <span className="pf-chip" title={text.reviewHint}><ShieldCheck size={13} /><span className="pf-chip-label">{text.review}</span></span>
+              {draftMode ? (
+                <button type="button" className="pf-chip pf-chip-button" title={text.budgetHint}
+                        onClick={() => setTokens((value) => START_BUDGETS[(START_BUDGETS.indexOf(value) + 1) % START_BUDGETS.length])}>
+                  <span className="pf-chip-value" key={tokens}>{compact(tokens)}</span><span className="pf-chip-unit">token</span>
+                </button>
+              ) : null}
+              <span className="pf-stepper" role="group" aria-label={text.agents} title={text.agents} data-editable={draftMode || undefined}>
+                {draftMode ? (
+                  <button type="button" aria-label={text.fewer} disabled={shownWorkers <= 1}
+                          onClick={() => setWorkers((count) => Math.max(1, count - 1))}><Minus size={10} strokeWidth={2.4} /></button>
+                ) : null}
+                <Bot size={13} /><span className="pf-stepper-value" key={shownWorkers}>{shownWorkers}</span>
+                {draftMode ? (
+                  <button type="button" aria-label={text.more} disabled={shownWorkers >= data.maxWorkers}
+                          onClick={() => setWorkers((count) => Math.min(data.maxWorkers, count + 1))}><Plus size={10} strokeWidth={2.4} /></button>
+                ) : null}
+              </span>
             </span>
             {data.models ? (
               // The model the agents think with. The chip grows its card out of the hub on a cable, and takes it back.
