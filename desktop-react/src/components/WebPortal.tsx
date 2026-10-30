@@ -650,7 +650,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <nav className="editorial-nav" aria-label={home.nav.label}>
               <a href="#loom-computer-use" onClick={(event) => goToSection(event, "loom-computer-use")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.doing}</a>
               <a href="#loom-start" onClick={(event) => goToSection(event, "loom-start")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.start}</a>
-              <a href="#loom-download" onClick={(event) => goToSection(event, "loom-download")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
+              <a href={release.download} onClick={() => setMenuOpen(false)} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
             </nav>
             <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
               <button className="editorial-language" type="button" onClick={toggleLanguage} aria-label={zh ? "Switch to English" : "切换到中文"} title={zh ? "Switch to English" : "切换到中文"} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "EN" : "中文"}</button>
@@ -670,7 +670,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <nav aria-label={home.nav.label}>
               <a href="#loom-computer-use" onClick={(event) => goToSection(event, "loom-computer-use")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.doing}</a>
               <a href="#loom-start" onClick={(event) => goToSection(event, "loom-start")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.start}</a>
-              <a href="#loom-download" onClick={(event) => goToSection(event, "loom-download")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
+              <a href={release.download} onClick={() => setMenuOpen(false)} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
               <a href={release.download} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "下载 Windows 版" : "Download for Windows"}<span aria-hidden="true">↓</span></a>
             </nav>
             <div className="editorial-mobile-menu-actions">
@@ -717,23 +717,6 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
               </div>
             </section>
             <HomeComputerDemo zh={zh} />
-            <section id="loom-download" className="editorial-section editorial-download" aria-labelledby="editorial-download-title">
-              <div className="editorial-download-lead" data-reveal>
-                <h2 id="editorial-download-title">{home.downloadSection.heading}</h2>
-                <p>{home.downloadSection.lead}</p>
-              </div>
-              <div className="editorial-download-panel" data-reveal>
-                <dl>
-                  <div data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6"><dt>{home.downloadSection.platformLabel}</dt><dd>{home.downloadSection.platform}</dd></div>
-                  <div data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6"><dt>{home.downloadSection.versionLabel}</dt><dd>{release.version ? `${release.version} · Stable` : (zh ? "最新稳定版" : "Latest stable")}</dd></div>
-                  <div data-liquid-snap="true" data-liquid-lens="read" data-liquid-snap-pad="6"><dt>{home.downloadSection.installerLabel}</dt><dd>{release.package || "Windows x64"}</dd></div>
-                </dl>
-                <div className="editorial-actions">
-                  <a className="editorial-primary" href={release.download} data-liquid-snap="true" data-magnetic-hover="true">{home.download}<Download size={16} aria-hidden="true" /></a>
-                  <a className="editorial-download" href={release.notes} target="_blank" rel="noopener noreferrer" data-liquid-snap="true" data-liquid-snap-min-width="158" data-liquid-snap-min-height="54" data-magnetic-bounce="true">{home.notes}<span aria-hidden="true"> ↗</span></a>
-                </div>
-              </div>
-            </section>
             <section id="loom-start" className="editorial-section editorial-start" aria-label={home.start.heading}>
               <ol className="editorial-steps">
                 {home.start.steps.map((step, index) => (
@@ -749,7 +732,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           <footer className="editorial-footer editorial-reveal" style={revealIndex(8)}>
             <p>{home.madeBy[0]}<a className="editorial-signature" href="https://smirel.com/" target="_blank" rel="noopener noreferrer" data-liquid-snap="false">Smirel</a>{home.madeBy[1]}</p>
             <nav aria-label={zh ? "资源" : "Resources"}>
-              <a href="#loom-download" onClick={(event) => goToSection(event, "loom-download")}>{home.links.download}</a>
+              <a href={release.download} onClick={() => setMenuOpen(false)}>{home.links.download}</a>
               <a href={`${RELEASES_URL}#readme`} target="_blank" rel="noopener noreferrer">{home.links.documentation}</a>
               <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer">{home.links.github}</a>
               <a href={release.notes} target="_blank" rel="noopener noreferrer">{home.updates}</a>

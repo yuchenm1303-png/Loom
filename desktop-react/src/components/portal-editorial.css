@@ -637,57 +637,6 @@
   text-wrap: balance;
 }
 
-/* Download: the one file, named, with the release it belongs to. */
-.loom-editorial .editorial-section.editorial-download {
-  grid-template-columns: minmax(0, 1fr);
-  margin-top: clamp(112px, 12vh, 192px);
-  padding: clamp(28px, 4vw, 64px);
-  border: 1px solid var(--ed-rule);
-  border-radius: 16px;
-  background: var(--ed-paper-soft);
-  row-gap: 36px;
-}
-.loom-editorial .editorial-download-lead { grid-column: 1 / -1; min-width: 0; }
-.loom-editorial .editorial-download-lead h2 { margin-bottom: 16px; font-size: clamp(30px, 3vw, 44px); }
-.loom-editorial .editorial-download-lead > p {
-  max-width: 60ch;
-  margin: 0;
-  color: var(--ed-ink-muted);
-  font-size: 18px;
-  line-height: 1.5;
-  text-wrap: pretty;
-}
-.loom-editorial .editorial-download-panel {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 36px;
-  min-width: 0;
-  padding: 32px 0 0;
-  border-top: 1px solid var(--ed-rule);
-}
-.loom-editorial .editorial-download-panel dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; min-width: 0; margin: 0; }
-.loom-editorial .editorial-download-panel dl > div {
-  min-width: 0;
-  padding: 0;
-}
-.loom-editorial .editorial-download-panel dl > div + div { padding-left: clamp(24px, 3vw, 48px); border-left: 1px solid var(--ed-rule); }
-.loom-editorial .editorial-download-panel dt {
-  color: var(--ed-ink-faint);
-  font-size: 13px;
-  letter-spacing: .08em;
-  line-height: 1.5;
-  text-transform: uppercase;
-  margin-bottom: 12px;
-}
-.loom-editorial .editorial-download-panel dd { margin: 0; color: var(--ed-ink); font-size: 16px; line-height: 1.5; }
-.loom-editorial .editorial-download-panel .editorial-actions { margin: 0; gap: 20px 32px; }
-.loom-editorial .editorial-download-panel .editorial-actions > .editorial-download { font-size: 16px; }
-.loom-editorial .editorial-download-panel .editorial-primary {
-  color: var(--ed-paper);
-  text-decoration: none;
-}
-
 /* Three steps into the workspace. */
 .loom-editorial .editorial-start { margin-top: clamp(96px, 10vh, 160px); }
 .loom-editorial .editorial-steps {
@@ -808,19 +757,13 @@
   .loom-editorial .editorial-hero { min-height: 0; padding-top: clamp(32px, 7vh, 72px); }
   .loom-editorial .editorial-hero-grid { display: block; }
   .loom-editorial .editorial-session { margin-top: 56px; }
-  .loom-editorial .editorial-start .editorial-steps,
-  .loom-editorial .editorial-download-lead,
-  .loom-editorial .editorial-download-panel { grid-column: 1 / -1; }
+  .loom-editorial .editorial-start .editorial-steps { grid-column: 1 / -1; }
   .loom-editorial .editorial-start .editorial-steps { margin-top: 0; }
-  .loom-editorial .editorial-download-panel { margin-top: 0; }
-  .loom-editorial .editorial-download-panel { flex-direction: column; align-items: flex-start; gap: 24px; }
-  .loom-editorial .editorial-download-panel dl { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
   .loom-editorial .editorial-language { display: none; }
   .loom-editorial .editorial-meta { gap: 8px; }
   .loom-editorial .editorial-list { grid-template-columns: minmax(0, 1fr); row-gap: 36px; }
-  .loom-editorial .editorial-section.editorial-download { margin-top: 80px; row-gap: 28px; }
   .loom-editorial .editorial-start { margin-top: 64px; }
   .loom-editorial .editorial-steps { grid-template-columns: minmax(0, 1fr); gap: 32px; }
 }
@@ -834,11 +777,6 @@
   .loom-editorial .editorial-brand-rule { height: 18px; }
   .loom-portal-page.loom-editorial { --ed-title: clamp(40px, 11.4vw, 52px); }
   .loom-editorial .editorial-footer { flex-direction: column; }
-  .loom-editorial .editorial-download-panel dl { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .loom-editorial .editorial-download-panel dl > div { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--ed-rule); }
-  .loom-editorial .editorial-download-panel dl > div + div { padding-left: 0; border-left: 0; }
-  .loom-editorial .editorial-download-panel dt { margin-bottom: 0; }
-  .loom-editorial .editorial-download-panel .editorial-actions { align-items: flex-start; flex-direction: column; }
 }
 @media (max-width: 430px) {
   /* The corner is the name on a phone; the house mark would crowd the account and the menu. */

@@ -115,7 +115,7 @@ test("the header is a nav: sections by scrolling, a hairline once the page has m
   const header = portal.slice(portal.indexOf('<header className="editorial-header'), portal.indexOf("</header>"));
   assert.ok(header.includes('data-stuck={stuck ? "true" : "false"}'));
   assert.ok(header.indexOf("editorial-brand") < header.indexOf("editorial-nav") && header.indexOf("editorial-nav") < header.indexOf("editorial-meta"));
-  for (const target of ["loom-computer-use", "loom-start", "loom-download"]) {
+  for (const target of ["loom-computer-use", "loom-start"]) {
     assert.ok(header.includes(`href="#${target}"`) && header.includes(`goToSection(event, "${target}")`), `${target} is a link that scrolls`);
     assert.ok(target === "loom-computer-use" ? portal.includes("<HomeComputerDemo zh={zh} />") : portal.includes(`id="${target}"`), `${target} exists`);
   }
@@ -156,18 +156,15 @@ test("the header offers a visible account entry, a language switch and a mobile 
   assert.match(css, /@media \(max-width: 430px\)\s*\{[^@]*\.loom-editorial \.editorial-shell \.editorial-smirel-mark[^{]*\{[^}]*display:\s*none/);
 });
 
-test("the download section names the release, and the footer points at the project", () => {
-  const section = portal.slice(portal.indexOf('<section id="loom-download"'), portal.indexOf('<section id="loom-start"'));
-  for (const part of ["{home.downloadSection.heading}", "{home.downloadSection.lead}", "{home.downloadSection.platform}", "{release.version", "{release.package", "href={release.download}", "href={release.notes}"]) {
-    assert.ok(section.includes(part), part);
-  }
-  assert.ok(portal.includes('href={`${RELEASES_URL}#readme`}'), "documentation points at the repository readme");
-  assert.ok(portal.includes("href={RELEASES_URL}") && portal.includes("{home.links.github}"), "the footer points at the repository");
-  assert.ok(portal.includes('id="loom-download"') && portal.includes('goToSection(event, "loom-download")'), "the nav's Download reaches the section");
-  const panel = rule(".loom-editorial .editorial-section.editorial-download");
-  assert.match(panel, /border:\s*1px solid var\(--ed-rule\)/, "one shared download panel groups its copy, release details and action");
-  // The installer is a link, so it needs its own foreground: the global link colour would paint it ink on ink.
-  assert.match(rule(".loom-editorial .editorial-download-panel .editorial-primary"), /color:\s*var\(--ed-paper\)/);
+test("the removed download card stays absent and download links remain available", () => {
+  assert.ok(!portal.includes('id="loom-download"'));
+  assert.ok(!portal.includes('href="#loom-download"'));
+  const header = portal.slice(portal.indexOf('<header className="editorial-header'), portal.indexOf("</header>"));
+  assert.ok(header.includes('href={release.download}'));
+  const footer = portal.slice(portal.indexOf('<footer className="editorial-footer'), portal.indexOf('</footer>'));
+  assert.ok(footer.includes('href={release.download}'));
+  assert.ok(portal.includes('href={release.notes}'));
+  assert.ok(portal.includes('RELEASES_URL}#readme'));
 });
 
 test("the one picture is a task, start to finish, beside the words without the removed heading or hairline", () => {
@@ -200,7 +197,7 @@ test("below the first screen each block is shown as it comes into view, and ever
   assert.ok(portal.includes("(entry.target as HTMLElement).dataset.seen = \"true\";") && portal.includes("observer.unobserve(entry.target)"), "seen once, for good");
   assert.ok(/typeof IntersectionObserver !== "function"\) \{\n\s*blocks\.forEach\(\(block\) => \{ block\.dataset\.seen = "true"; \}\);/.test(portal), "without an observer everything is shown");
   assert.ok(portal.includes("if (!editorial || !typeReady || !page) return;"), "nothing is hidden before the page itself is shown");
-  assert.ok((portal.match(/data-reveal/g) ?? []).length >= 4, "headings, items and steps carry the mark");
+  assert.ok(portal.includes('<li key={step.lead} data-reveal'), "the remaining steps carry the reveal mark");
   // With motion reduced, nothing waits to be seen and nothing is drawn.
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*\[data-reveal\]:not\(\[data-seen\]\)\s*\{\s*opacity:\s*1;/);
   assert.match(css, /@keyframes editorial-rule-draw\s*\{\s*from\s*\{\s*transform:\s*scaleX\(0\)/, "the hairline of an item is the only thing drawn");

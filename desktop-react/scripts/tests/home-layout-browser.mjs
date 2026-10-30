@@ -7,6 +7,7 @@ try {
     const page = await browser.newPage({ viewport: { width, height }, reducedMotion: "reduce", colorScheme: "dark" });
     await page.addInitScript(lang => localStorage.setItem("loom.settings.language", lang), language);
     await page.goto(origin);
+    assert.equal(await page.locator("#loom-download").count(), 0, "download card has been removed");
     const demo = page.locator(".home-demo");
     await demo.waitFor();
     await page.waitForFunction(() => document.querySelector(".editorial-shell")?.dataset.typeReady === "true");
@@ -44,7 +45,7 @@ try {
     await page.locator("#loom-computer-use").evaluate(node => node.scrollIntoView({ block: "start" }));
     const computer = await page.locator(".computer-demo-window").boundingBox();
     assert.ok(computer.y >= 72 && computer.y + computer.height <= height - 8, `${width}×${height}: complete Computer Use window fits after section navigation`);
-    for (const selector of [".editorial-session", "#loom-computer-use", "#loom-download", "#loom-start"]) {
+    for (const selector of [".editorial-session", "#loom-computer-use", "#loom-start"]) {
       const box = await page.locator(selector).boundingBox();
       assert.ok(box.x >= 0 && box.x + box.width <= width + 1, `${selector} fits the page width`);
     }
@@ -58,14 +59,14 @@ try {
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce", colorScheme: "light" });
   await mobile.addInitScript(() => localStorage.setItem("loom.settings.language", "zh-CN"));
   await mobile.goto(origin);
-  await mobile.locator("#loom-download").scrollIntoViewIfNeeded();
-  for (const selector of ["#loom-download", "#loom-start", ".editorial-download-panel .editorial-actions", ".editorial-steps"]) {
+  await mobile.locator("#loom-start").scrollIntoViewIfNeeded();
+  for (const selector of ["#loom-start", ".editorial-steps"]) {
     const box = await mobile.locator(selector).boundingBox();
     assert.ok(box.x >= 0 && box.x + box.width <= 391, `${selector} fits the phone width`);
   }
   const mobileSteps = await mobile.locator(".editorial-steps > li").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().y));
   assert.ok(mobileSteps[0] < mobileSteps[1] && mobileSteps[1] < mobileSteps[2], "phone steps stack in reading order");
-  if (process.env.LOOM_DEMO_SCREENSHOTS) await mobile.locator("#loom-download").screenshot({ path: `${process.env.LOOM_DEMO_SCREENSHOTS}/home-download-mobile.png` });
+  if (process.env.LOOM_DEMO_SCREENSHOTS) await mobile.locator("#loom-start").screenshot({ path: `${process.env.LOOM_DEMO_SCREENSHOTS}/home-steps-mobile.png` });
   await mobile.close();
   console.log("Home layout: full hero and controls fit at six desktop sizes; stable demo height, Chinese copy, sidebar containment and complete Computer Use section passed.");
 } finally { await browser.close(); }
