@@ -734,14 +734,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 </div>
               </div>
             </section>
-            <section id="loom-start" className="editorial-section editorial-start" aria-labelledby="editorial-start-title">
-              <div className="editorial-start-lead" data-reveal>
-                <h2 id="editorial-start-title">{home.start.heading}</h2>
-                <p>{home.start.lead}</p>
-                <div className="editorial-actions">
-                  <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{home.open}<ArrowRight size={16} aria-hidden="true" /></button>
-                </div>
-              </div>
+            <section id="loom-start" className="editorial-section editorial-start" aria-label={home.start.heading}>
               <ol className="editorial-steps">
                 {home.start.steps.map((step, index) => (
                   <li key={step.lead} data-reveal style={revealIndex(index)}>
