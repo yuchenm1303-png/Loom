@@ -224,11 +224,12 @@ external oracle. No run has passed yet. Each run found the next limit:
 | ledger10 | 0b11f95e | 5,940,399 | all 5 merged; whole-project review | 6M cap: two project reviews rejected (2M); a kept check named a fixture in the first reviewer's private scratch, the sandbox denied it, the rewritten check was a same-episode redefinition; requests grew to 85k inside an episode | kept checks carry their fixtures; the rejection says why and what to do; project sessions compact at 48k |
 | ledger11 | 351858a2 | 5,909,128 | all 5 merged; project review found a README defect, fixed; re-review | 6M cap: the re-review rewrote a too-strict kept README check and learned only at the end (714k) that a same-episode redefinition is not evidence; largest request 54k (was 85k), 81% cached input | the runtime says so in the tool result the moment it happens |
 | **ledger12** | 324db604 | 4,806,847 | **passed: oracle 13/13, integrated** | - | 16 episodes, 36 min, two workers in parallel, one review-evidence rejection recovered, 15 kept checks, 67 notes, largest request 47.5k, 85% cached input, nothing unknown or refused |
+| **chaos-ledger1** | 75ea7621 | 4,334,515 | **passed: oracle 13/13, integrated, Host killed 6 times** | - | 19 episodes, 53 min; every kill continued automatically (one with two sandboxed commands in flight); see project-runner-long-run-testing-2026-10-29.md |
 
 After the consolidation (from ledger7) no run stopped on a protocol, format or
 transient failure; the remaining limit was cost, cut each time. Reviews fell from
 9 episodes and 1.6M tokens per task (ledger7) to 3 episodes and about 340k
-(ledger8). Total known real usage across all attempts: about 44.5M tokens (about
+(ledger8). Total known real usage across all attempts: about 48.9M tokens (about
 84% cached input).
 
 ledger12 is the first pass of the 5-task scenario: planned, built by two parallel

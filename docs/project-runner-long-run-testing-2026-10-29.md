@@ -82,3 +82,20 @@ Only the Host's own Python process is killed. Sandboxed children it started fini
 their own: killing a sandbox helper mid-run leaves access-control entries behind on
 this machine. The pass criterion is the qualification's external oracle. The report
 in `<root>-chaos/chaos-report.json` lists every kill and each Host life.
+
+### Results
+
+| Run | Commit | Kills | Outcome | Tokens | Episodes | Time |
+|---|---|---|---|---|---|---|
+| chaos-tally1 | 75ea7621 | 2 | passed, oracle 8/8 | 243,772 | 4 | 6.5 min |
+| chaos-ledger1 | 75ea7621 | 6 | **passed, oracle 13/13, integrated** | 4,334,515 | 19 | 53 min |
+
+How chaos-ledger1's six kills were handled; all continued without a person:
+
+- **Kill 1:** two sandboxed `exec` calls were mid-run. The next episode was told they may have partly run.
+- **Kills 2, 4, 5 and 6:** tools had run in the episode earlier, but none was running.
+- **Kill 3:** no tool had run yet.
+
+Before 75ea7621 only kill 3's case continued automatically; the other five would each have stopped the run for a person.
+
+Nothing was charged twice or left unknown: 4,334,515 known tokens, 0 unknown requests.
