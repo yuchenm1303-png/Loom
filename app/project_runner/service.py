@@ -231,7 +231,10 @@ class ProjectExecutor:
                 return {"state": "outcome_unknown", "error": service._task_errors.get(session.session_id)
                         or "No matching durable terminal turn; execution must not be replayed"}
             if terminal.kind is E.TURN_INTERRUPTED:
+                # Closed durably (a restart, or an approval that could not be resumed): it
+                # continues on the same terms as above, judged by what was still in flight.
                 return {"state": "interrupted", "interrupted": True, "sideEffectFree": no_tools,
+                        "confined": no_tools or confined_in_flight(events) is not None,
                         "error": session.error or "Turn interrupted", "tokens": sum(tokens for _, tokens in usage), "usage": usage}
             error = session.error or (terminal.data.get("reason", "Runtime limit reached") if terminal.kind is E.LIMIT_REACHED else "")
             # The outcome as the runtime recorded it, so the runner decides on fields,
@@ -557,6 +560,13 @@ class ProjectServiceMixin:
         # (credentials, per-thread model), which a restarted Host has not set up for this session.
         call_id = pending["callId"]
         def resume():
+            if not self.runtime.can_resume_approval(session_id):
+                # Asked before the Host restarted: the call never ran and cannot be resumed.
+                # The episode ends interrupted and the runner continues with a new one, told why.
+                self.runtime.abandon_pending_approval(session_id, (
+                    f"The Host restarted while {pending['command']} waited for approval; it did not run. "
+                    + ("The person declined it." if decision == "decline" else "The person allowed it; ask again if it is still needed.")))
+                return
             self._prepare_turn(self._load(session_id))
             self.runtime.resume_approval(session_id, call_id, approved=decision == "accept")
         with self._guard:

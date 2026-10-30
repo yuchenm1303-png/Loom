@@ -621,6 +621,37 @@ class AgentRuntime:
                 self._emit_event(session, AgentEventKind.TURN_INTERRUPTED, data={"error": session.error})
             return self._result(session)
 
+    def can_resume_approval(self, session_id: str) -> bool:
+        """Whether this process still holds the step a pending approval was captured in."""
+        session = self.store.load(session_id)
+        if session.status is not AgentStatus.WAITING_APPROVAL or session.pending_approval is None:
+            return False
+        try:
+            self._captured_step_context(session, step_id=session.pending_step_id or None)
+        except RuntimeError:
+            return False
+        return True
+
+    def abandon_pending_approval(self, session_id: str, reason: str) -> AgentRunResult:
+        """Close a turn whose pending approval this process can no longer resume.
+
+        The step an approval was captured in lives in memory, so after a restart neither
+        answer can be carried out. The pending call never ran; the turn ends interrupted
+        (as a stopped process would leave it) so its owner can start a new one.
+        """
+        lock = self._session_lock(session_id)
+        with lock:
+            session = self.store.load(session_id)
+            if session.status is AgentStatus.WAITING_APPROVAL:
+                session.status = AgentStatus.INTERRUPTED
+                session.pending_approval = None
+                session.pending_tool_calls.clear()
+                session.pending_step_id = ""
+                self._release_turn_steps(session)
+                session.error = reason
+                self._emit_event(session, AgentEventKind.TURN_INTERRUPTED, data={"error": session.error})
+            return self._result(session)
+
     def _drive(self, session: AgentSession, token: CancellationToken) -> AgentRunResult:
         from .turn_runner import TurnRunner
         return TurnRunner(self).run(session, token)

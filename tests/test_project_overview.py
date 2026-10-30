@@ -115,3 +115,35 @@ def test_an_agent_waiting_for_approval_asks_the_person_in_the_hub(tmp_path):
         assert service.project_overview({"threadId": source})["agents"][0]["approval"] is None
     finally:
         runtime.close()
+
+
+def test_an_approval_asked_before_a_restart_ends_the_episode_and_work_continues(tmp_path):
+    from app.agent_runtime import AgentTool, ToolEffect, ToolResult
+    from test_app_server import _wait_until
+    calls = []
+    tool = AgentTool(name="sensitive_project_test", description="Sensitive operation",
+        input_schema={"type": "object", "properties": {}}, effect=ToolEffect.SENSITIVE,
+        handler=lambda context, arguments: calls.append(True) or ToolResult(ok=True, content="ran"))
+    service, runtime, platform, _, source = build(tmp_path, [reply(PLAN),
+        ModelResponse(tool_calls=(ToolCall(call_id="sensitive", name=tool.name, arguments={}),)),
+        reply({"action": "continue", "summary": "checked the app without that call"})], tools=(tool,))
+    try:
+        run = control(service, create(service, source), "start")
+        for _ in range(4):
+            cycle(service)
+        [agent] = service.project_overview({"threadId": source})["agents"]
+        asked = service.project_store.get(run["id"])["activeEpisode"]["turnId"]
+        with runtime._captured_steps_guard:
+            runtime._captured_steps.clear()  # what a Host restart leaves: the step is gone
+        assert not runtime.can_resume_approval(agent["id"])
+        service.project_approval({"runId": run["id"], "sessionId": agent["id"], "decision": "decline"})
+        _wait_until(lambda: runtime.get_session(agent["id"]).status.value == "interrupted" and not service._is_active(agent["id"]))
+        cycle(service)
+        current = service.project_store.get(run["id"])
+        assert current["activeEpisode"]["turnId"] != asked  # the asking episode settled; a new one carries on
+        assert current["state"] == "running" and not calls  # not stopped for inspection; the call never ran
+        assert current.get("interruptionStreak") == 1  # continued as an interruption, not counted as a failure
+        [closed] = [event for event in service.store.events(agent["id"]) if event.turn_id == asked and event.kind.value == "turn_interrupted"]
+        assert "did not run" in closed.data["error"] and "declined" in closed.data["error"]
+    finally:
+        runtime.close()
