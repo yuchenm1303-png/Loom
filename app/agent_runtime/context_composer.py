@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+from collections import OrderedDict
 from dataclasses import replace
 from time import perf_counter
 
@@ -30,10 +32,27 @@ CONTEXT_PROTOCOL = (
 )
 
 
+# The system message of the last request per session. Built anew each step, an identical prompt was a new object,
+# so the per-message memos (token estimates, identities) never hit it and filled with copies of it: a long-lived
+# Host kept tens of MB of the same system prompt. The same text now gives back the same message.
+_PREFIXES: "OrderedDict[str, AIMessage]" = OrderedDict()
+_PREFIXES_KEPT = 64
+_PREFIXES_LOCK = threading.Lock()  # sessions build requests on their own threads
+
+
 def stable_prefix(runtime, session, step):
     contracts = runtime._request_stable_contracts()
-    return [AIMessage(role=MessageRole.SYSTEM, content="\n\n".join(
-        (runtime._model_system_prompt(session, step), CONTEXT_PROTOCOL, *contracts)))]
+    text = "\n\n".join((runtime._model_system_prompt(session, step), CONTEXT_PROTOCOL, *contracts))
+    key = str(getattr(session, "session_id", "") or "")
+    with _PREFIXES_LOCK:
+        kept = _PREFIXES.get(key)
+        if kept is None or kept.content != text:
+            kept = AIMessage(role=MessageRole.SYSTEM, content=text)
+            _PREFIXES[key] = kept
+        _PREFIXES.move_to_end(key)
+        while len(_PREFIXES) > _PREFIXES_KEPT:
+            _PREFIXES.popitem(last=False)
+    return [kept]
 
 
 def _text_only(message):
