@@ -187,7 +187,8 @@ html[data-loom-theme="light"] .pf-stage {
 
 .pf-facts { display: flex; gap: 12px; padding: 0 3px; color: var(--pl-muted); white-space: nowrap; }
 .pf-facts strong { color: var(--pl-ink); font-weight: 500; font-variant-numeric: tabular-nums; }
-.pf-note { display: -webkit-box; overflow: hidden; margin: 0; padding: 8px 10px; color: var(--pl-secondary); font-size: 11.5px; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+/* The clamp hides overflow at the padding edge; a transparent border keeps the next line out of the bottom inset. */
+.pf-note { display: -webkit-box; overflow: hidden; margin: 0; padding: 8px 10px 0; border-bottom: 8px solid transparent; color: var(--pl-secondary); font-size: 11.5px; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 
 /* The conversation above the hub. */
 .pf-thread { display: grid; gap: 6px; margin-bottom: 18px; }
@@ -443,12 +444,65 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-agents-empty { align-self: flex-start; padding-left: 4px; }
 .pf-loading { min-height: 100%; }
 
+/* Inline code in plans and objectives. */
+.pf-code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--pf-raise);
+  color: inherit;
+  font-family: var(--loom-font-mono, ui-monospace, "Cascadia Mono", Consolas, monospace);
+  font-size: .88em;
+  font-weight: 400;
+}
+
+/* The stage at a glance: one segment per task. A segment fills from the left when its task
+   reaches a new state (transform only), so landing work reads as the strip filling up. */
+.pf-strip {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 3px;
+  padding: 0 3px 4px;
+}
+
+.pf-strip-cell { height: 4px; overflow: hidden; border-radius: 2px; background: var(--pf-well); }
+.pf-strip-cell > span {
+  display: block;
+  height: 100%;
+  background: transparent;
+  transform-origin: left center;
+  animation: pf-fill var(--loom-dur-slow) var(--loom-ease-move) backwards;
+}
+.pf-strip-cell[data-state="integrated"] > span { background: var(--pf-ok); }
+.pf-strip-cell[data-state="review"] > span { background: color-mix(in srgb, var(--pf-live) 75%, transparent); }
+.pf-strip-cell[data-state="working"] > span { background: color-mix(in srgb, var(--pl-accent) 70%, transparent); }
+.pf-strip-cell[data-state="rework"] > span { background: var(--pf-warn); }
+
 /* The plan hangs below the hub. */
 .pf-below { width: 300px; max-width: 100%; margin-top: 24px; }
 /* A long plan scrolls inside its card, so the hub keeps its shape at sixteen tasks. */
 .pf-below .pf-card { max-height: 360px; overflow: auto; overscroll-behavior: contain; }
-.pf-task > span:last-child { color: var(--pl-secondary); }
-.pf-task[data-state="integrated"] > span:last-child { color: var(--pl-muted); }
+/* The plan's title and strip stay put while its rows scroll beneath them. */
+.pf-below .pf-card-head { position: sticky; z-index: 1; top: -9px; margin: -9px -9px 0; padding: 10px 12px 3px; background: var(--pf-card); }
+.pf-below .pf-strip { position: sticky; z-index: 1; top: 22px; margin: -6px -9px 0; padding: 4px 12px 6px; background: var(--pf-card); }
+.pf-task { position: relative; overflow: hidden; transition: background-color var(--loom-dur-fast) var(--loom-ease-out); }
+.pf-task-title { color: var(--pl-secondary); }
+.pf-task[data-state="integrated"] .pf-task-title { color: var(--pl-muted); }
+.pf-task[data-hot] { background: var(--pf-raise); }
+.pf-task-agent { flex: none; color: var(--pl-faint); font-size: 11.5px; font-style: normal; }
+.pf-task[data-state="working"] .pf-task-agent,
+.pf-task[data-state="review"] .pf-task-agent { color: var(--pf-live); }
+.pf-agent-slot[data-hot] .pf-card { box-shadow: 0 0 0 1px color-mix(in srgb, var(--pf-live) 45%, transparent), 0 14px 30px -22px rgba(0, 0, 0, .6); }
+
+/* A task that lands: one soft green wash passes along its row. */
+.pf-task-wash {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pf-ok) 16%, transparent), transparent);
+  transform: translateX(100%);
+  pointer-events: none;
+  animation: pf-wash var(--loom-dur-slow) var(--loom-ease-glide) backwards;
+}
 
 .pf-task-mark {
   flex: none;
@@ -466,6 +520,8 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-task[data-state="working"] .pf-task-mark,
 .pf-task[data-state="review"] .pf-task-mark { background: color-mix(in srgb, var(--pf-live) 18%, transparent); color: var(--pf-live); }
 .pf-task[data-state="rework"] .pf-task-mark { color: var(--pf-warn); }
+/* The one loop on a task: a working task's mark turns. */
+.pf-task[data-state="working"] .pf-task-mark svg { animation: pf-spin var(--loom-period-spin) linear infinite; }
 
 /* Agents. */
 .pf-agent { width: 212px; }
@@ -554,11 +610,15 @@ html[data-loom-theme="light"] .pf-stage {
 @keyframes pf-pulse { from { stroke-dashoffset: 7; } to { stroke-dashoffset: -100; } }
 @keyframes pf-mark-in { from { opacity: 0; scale: .5; } }
 @keyframes pf-glint { from { transform: translateX(-100%); } }
+@keyframes pf-fill { from { transform: scaleX(0); } }
+@keyframes pf-wash { from { transform: translateX(-100%); } }
 @keyframes pf-spin { to { rotate: 360deg; } }
 @keyframes pf-breathe { 0%, 100% { opacity: .45; scale: .8; } 50% { opacity: 1; scale: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
   .pf-agent-live,
+  .pf-task[data-state="working"] .pf-task-mark svg,
+  .pf-task-wash,
   .pf-attention-dot,
   .pf-busy,
   .pf-pulse,

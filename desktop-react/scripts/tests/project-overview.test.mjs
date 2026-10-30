@@ -41,6 +41,7 @@ test("a running project: tasks from the plan and its team, agents from active ep
   ]), now, "zh", "deepseek", "");
   assert.equal(data.objective, "Build ledger");  // the milestone stance is the runner's, not the person's
   assert.deepEqual(data.tasks.map((task) => task.state), ["integrated", "working", "review"]);
+  assert.deepEqual(data.tasks.map((task) => task.agentName), [undefined, "Agent 1", "Agent 2"]);  // who is on each task
   assert.deepEqual(data.scope, [{ path: "ledger/", count: 1 }, { path: "tests/", count: 1 }, { path: "README.md", count: 1 }]);
   assert.equal(data.state, "running");
   assert.deepEqual(data.controls, { pause: true, resume: false, cancel: true });

@@ -139,7 +139,9 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   const minutes = Math.max(0, Math.round((now - started) / 60000));
   const episodes = (program ? program.milestones.reduce((sum, item) => sum + item.episodes, 0) : 0) + (run.ledgerEpisodes ?? run.episodesUsed);
   const tokens = (program ? program.milestones.reduce((sum, item) => sum + item.tokens, 0) : 0) + (run.ledgerPosition?.chargedTokens ?? run.tokensUsed);
-  const latest = overview.events.map((event) => eventText(event, lang)).find(Boolean) || "";
+  // While the project waits for a person the amber line says why; the narration keeps the last thing that happened.
+  const latest = overview.events.filter((event) => !["needs_review", "budget_limited", "parallel_blocked"].includes(event.kind))
+    .map((event) => eventText(event, lang)).find(Boolean) || "";
   const reason = budgetOut ? (run.episodesUsed >= run.maxEpisodes ? t.episodes : t.budget) : (run.workflowError || run.reason || program?.reason || "");
   const scopes = new Map<string, number>();
   for (const task of run.plan) for (const scope of task.fileScopes || []) {
@@ -167,7 +169,11 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     scope: [...scopes.entries()].map(([path, count]) => ({ path, count })),
     knowledge: { checks: run.knowledge?.acceptedChecks || 0, notes: run.knowledge?.notes.length || 0,
                  latest: run.knowledge?.notes[run.knowledge.notes.length - 1] || "" },
-    tasks: run.plan.map((task) => ({ id: task.id, title: task.instructions.split(/[.。\n]/)[0].slice(0, 80) || task.id, state: states[task.id] })),
+    tasks: run.plan.map((task) => {
+      const at = overview.agents.findIndex((agent) => (agent.taskId || childTask(agent.runId)) === task.id);
+      return { id: task.id, title: task.instructions.split(/\.(?:\s|$)|[。\n]/)[0].slice(0, 80) || task.id, state: states[task.id],
+               detail: task.instructions, agentId: at >= 0 ? overview.agents[at].id : undefined, agentName: at >= 0 ? t.agent(at + 1) : undefined };
+    }),
     budget: { tokens, tokenLimit: program?.tokenBudget || run.tokenBudget },
     workers: program?.maxWorkers || run.maxWorkers || 1,
     maxWorkers: 2,

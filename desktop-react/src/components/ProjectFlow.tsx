@@ -19,7 +19,7 @@ import {
   LoaderCircle, Minus, Pause, Play, Plus, ShieldCheck, Square,
 } from "lucide-react";
 import { RETAIN } from "../motion/tokens";
-import { useReducedMotion } from "../motion/useReducedMotion";
+import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./project-flow.css";
 
 export type FlowTaskState = "pending" | "working" | "review" | "rework" | "integrated";
@@ -46,7 +46,7 @@ export interface FlowData {
   repository: { name: string; commit: string; subject: string; branch: string };
   scope: { path: string; count: number }[];
   knowledge: { checks: number; notes: number; latest: string };
-  tasks: { id: string; title: string; state: FlowTaskState }[];
+  tasks: { id: string; title: string; state: FlowTaskState; detail?: string; agentId?: string; agentName?: string }[];
   budget: { tokens: number; tokenLimit: number };
   workers: number;
   maxWorkers: number;
@@ -193,8 +193,8 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
   return cables;
 }
 
-function Card({ id, side, icon, label, count, register, className = "", children }: {
-  id: string; side: Side; icon: ReactNode; label: string; count?: ReactNode;
+function Card({ id, side, icon, label, count, under, register, className = "", children }: {
+  id: string; side: Side; icon: ReactNode; label: string; count?: ReactNode; under?: ReactNode;
   register(id: string, side: Side, node: HTMLElement | null): void; className?: string; children: ReactNode;
 }) {
   return (
@@ -203,9 +203,16 @@ function Card({ id, side, icon, label, count, register, className = "", children
         <span className="pf-card-icon">{icon}</span><span>{label}</span>
         {count != null ? <em className="pf-count">{count}</em> : null}
       </header>
+      {under}
       {children}
     </section>
   );
+}
+
+/** Text with `code` spans drawn as code: plans and objectives are written in Markdown habits. */
+function Inline({ text }: { text: string }) {
+  const parts = text.split("`");
+  return <>{parts.map((part, index) => index % 2 ? <code key={index} className="pf-code">{part}</code> : part)}</>;
 }
 
 function Pulse({ d, step }: { d: string; step: number }) {
@@ -221,6 +228,16 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const [hot, setHot] = useState("");
   const [draft, setDraft] = useState("");
   const [objectiveOpen, setObjectiveOpen] = useState(false);
+  // The plan scrolls; keep the task in progress in view as work moves down it, unless the person is reading it.
+  const plan = useRef<HTMLDivElement>(null);
+  const current = data.tasks.find((task) => task.state === "working" || task.state === "review" || task.state === "rework")?.id;
+  useEffect(() => {
+    const box = plan.current?.querySelector<HTMLElement>(".pf-card");
+    const row = box?.querySelector<HTMLElement>(`[data-task="${current}"]`);
+    if (!box || !row || hot === "plan") return;
+    const top = row.offsetTop - box.clientHeight / 2 + row.offsetHeight / 2;
+    box.scrollTo({ top: Math.max(0, top), behavior: prefersReducedMotionNow() ? "auto" : "smooth" });
+  }, [current]);  // eslint-disable-line react-hooks/exhaustive-deps
   const input = useRef<HTMLTextAreaElement>(null);
   // The field grows with what is typed (an objective is often a page), up to a cap, then scrolls.
   useLayoutEffect(() => {
@@ -261,7 +278,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     <div className="pf-stage" ref={stage} data-state={data.state} data-phase={data.phase}>
       <svg className="pf-cables" aria-hidden="true">
         {cables.map((cable) => (
-          <g key={cable.id} className="pf-cable" data-side={cable.side} data-hot={hot === cable.id || undefined}
+          <g key={cable.id} className="pf-cable" data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || undefined}
              data-leaving={leaving.has(cable.id) || undefined}>
             <path className="pf-cable-body" d={cable.d} pathLength={100} />
             <rect className="pf-socket" rx={4}
@@ -301,7 +318,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             <Card id="knowledge" side="left" icon={<BookMarked size={12} />} label={text.knowledge}
                   count={data.knowledge.checks + data.knowledge.notes} register={register}>
               <div className="pf-facts"><span><strong>{data.knowledge.checks}</strong> {text.checks}</span><span><strong>{data.knowledge.notes}</strong> {text.notes}</span></div>
-              {data.knowledge.latest ? <p className="pf-well pf-note" title={data.knowledge.latest}>{data.knowledge.latest}</p> : null}
+              {data.knowledge.latest ? <p className="pf-well pf-note" title={data.knowledge.latest}><Inline text={data.knowledge.latest} /></p> : null}
             </Card>
           </div>
         ) : null}
@@ -313,7 +330,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             <>
               {/* An objective is often a page of spec: three lines, and the rest on request, so the hub stays in view. */}
               <div className="pf-bubble" data-open={objectiveOpen || undefined}>
-                <span className="pf-bubble-text">{data.objective}</span>
+                <span className="pf-bubble-text"><Inline text={data.objective} /></span>
                 {data.objective.length > 160 ? (
                   <button type="button" className="pf-bubble-more" onClick={() => setObjectiveOpen((value) => !value)}>
                     {objectiveOpen ? text.collapse : text.expand}
@@ -381,15 +398,26 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           </footer>
         </section>
 
-        <div className="pf-slot pf-below" {...hover("plan")}>
+        <div className="pf-slot pf-below" ref={plan} {...hover("plan")}>
           <Card id="plan" side="below" icon={<Compass size={12} />} label={text.plan(data.milestone)}
-                count={data.tasks.length ? `${done}/${data.tasks.length}` : undefined} register={register}>
+                count={data.tasks.length ? `${done}/${data.tasks.length}` : undefined}
+                under={data.tasks.length ? (
+                  // The stage at a glance: one segment per task, coloured by its state; a segment fills as its task lands.
+                  <div className="pf-strip" aria-hidden="true">
+                    {data.tasks.map((task) => <span key={task.id} className="pf-strip-cell" data-state={task.state}><span key={task.state} /></span>)}
+                  </div>
+                ) : undefined} register={register}>
             {data.tasks.length ? data.tasks.map((task) => {
               const Icon = taskIcon[task.state];
+              const linked = task.agentId && hot === `agent:${task.agentId}`;
               return (
-                <div key={task.id} className="pf-well pf-row pf-task" data-state={task.state} title={task.title}>
+                <div key={task.id} className="pf-well pf-row pf-task" data-task={task.id} data-state={task.state} data-hot={linked || undefined}
+                     title={task.detail || task.title}
+                     onPointerEnter={() => task.agentId && setHot(`task:${task.agentId}`)} onPointerLeave={() => task.agentId && setHot("")}>
                   <span className="pf-task-mark" key={task.state}><Icon size={11} strokeWidth={2.4} /></span>
-                  <span>{task.title}</span>
+                  <span className="pf-task-title"><Inline text={task.title} /></span>
+                  {task.agentName ? <em className="pf-task-agent">{task.agentName}</em> : null}
+                  {task.state === "integrated" ? <span className="pf-task-wash" key={`wash-${task.state}`} aria-hidden="true" /> : null}
                 </div>
               );
             }) : <p className="pf-empty">{text.planEmpty}</p>}
@@ -401,7 +429,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         {agents.map((agent, index) => {
           const Icon = roleIcon[agent.role];
           return (
-            <div key={agent.id} className={`pf-slot pf-agent-slot${index % 2 ? " pf-offset-3" : ""}`} {...hover(`agent:${agent.id}`)} {...slot(`agent:${agent.id}`)}>
+            <div key={agent.id} className={`pf-slot pf-agent-slot${index % 2 ? " pf-offset-3" : ""}`} {...hover(`agent:${agent.id}`)} {...slot(`agent:${agent.id}`)}
+                 data-hot={hot === `task:${agent.id}` || undefined}>
               <Card id={`agent:${agent.id}`} side="right" className="pf-agent" icon={<Bot size={12} />} label={agent.name} register={register}>
                 <div className="pf-well pf-agent-well" data-done={agent.done || undefined}>
                   <span className="pf-agent-mark"><Icon size={15} /></span>
