@@ -22,7 +22,8 @@ from .janitor import Janitor
 #   kind                what happened                               next
 #   budget              a request was refused at the token budget   budget_limited (add budget)
 #   episode_bound       the episode hit its step/tool limit         next episode continues
-#   interrupted         the Host stopped mid-episode, no tool ran   next episode continues (no replay)
+#   interrupted         the Host stopped mid-episode; nothing in    next episode continues (no replay)
+#                       flight could reach past its checkout
 #   no_progress         it kept repeating one failing operation     next episode, told to change approach
 #   provider_transient  provider/network failed, retryable          wait 30 s .. 30 min, continue
 #   review_evidence     a review verdict lacked accepted evidence   back to the reviewer, with why
@@ -38,8 +39,8 @@ MAX_INTERRUPTIONS = 5
 MAX_REVIEW_REJECTIONS = 2
 RECOVERY = {
     "episode_bound": ("episodeLimitStreak", lambda: MAX_EPISODE_BOUND_RETRIES, "episode_limit_reached"),
-    # A Host update, sleep or crash mid-episode with only model requests in flight. A tool
-    # in flight is still an uncertain side effect and stops the run for reconciliation.
+    # A Host update, sleep or crash mid-episode with nothing in flight that could reach past
+    # the episode's own checkout. Anything else in flight stops the run for reconciliation.
     "interrupted": ("interruptionStreak", lambda: MAX_INTERRUPTIONS, "interrupted_episode_continued"),
     # The runtime's loop guard (like OpenHands' stuck detector) ends a turn that keeps
     # repeating a failing operation; the corrective step is a new approach, not a halt.
@@ -78,7 +79,7 @@ def provider_transient(result):
 def episode_outcome(state, result, refused):
     if state != "completed" and refused:
         return "budget"
-    if result.get("interrupted") and result.get("sideEffectFree"):
+    if result.get("interrupted") and (result.get("sideEffectFree") or result.get("confined")):
         return "interrupted"
     if state == "limit_reached" and (result.get("limit") in CONTINUABLE_LIMITS or (
             result.get("limit") is None and result.get("error") in LEGACY_EPISODE_LIMITS)):
@@ -526,8 +527,9 @@ class ProjectRunner:
             run["handoff"] = (f"The previous episode ended at its per-episode bound ({error}); "
                               "continue from the workspace and session state.\n" + run.get("handoff", ""))[:12000]
         elif kind == "interrupted":
-            run["handoff"] = ("The previous episode was interrupted (the Host stopped) before it finished; no tool had "
-                              "run in it. Continue from the workspace and session state.\n" + run.get("handoff", ""))[:12000]
+            run["handoff"] = (f"The previous episode was interrupted (the Host stopped) before it finished; "
+                              f"{error or 'no tool had run'}. Continue from the workspace and session state.\n"
+                              + run.get("handoff", ""))[:12000]
         elif kind == "no_progress":
             run["handoff"] = ("The previous episode was stopped for repeating the same failing operation without "
                               "progress. Do not retry it as before: read the error, change the approach or the "

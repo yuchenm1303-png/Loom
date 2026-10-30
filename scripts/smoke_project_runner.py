@@ -240,21 +240,8 @@ def probe_workspace_sandbox(workspace):
     return {"backend": snapshot.backend.value, "enforced": snapshot.enforced, "networkIsolated": snapshot.network_isolated}
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, required=True, help="New directory; never reuses a repository")
-    parser.add_argument("--stored-model", required=True, help="Configured model ID, resolved through the OS credential store")
-    parser.add_argument("--provider", choices=("openai", "openai-compatible", "opencode-go"), help="Explicit transport override for the configured endpoint")
-    parser.add_argument("--token-budget", type=int, default=80000)
-    parser.add_argument("--max-episodes", type=int, default=12)
-    parser.add_argument("--seconds", type=int, default=480)
-    parser.add_argument("--max-workers", type=int, choices=(1, 2), default=1)
-    parser.add_argument("--scenario", choices=tuple(SCENARIOS), default="tally",
-                        help="tally: one small CLI; ledger: a multi-task package with a larger external oracle")
-    args = parser.parse_args(argv)
-    if not 1 <= args.token_budget <= 8_000_000 or not 1 <= args.max_episodes <= 80 or not 1 <= args.seconds <= 7200:
-        parser.error("Qualification limits exceed supported bounds")
-    root = args.root.resolve()
+def prepare(parser, root, args, title):
+    """A new root: probe the sandbox, run the compatibility suite, create the repository."""
     if root.exists():
         parser.error("--root must not exist")
     try:
@@ -270,18 +257,74 @@ def main(argv=None):
     (root / "sandbox-compat.json").write_text(json.dumps(compat, ensure_ascii=False, indent=2), encoding="utf-8")
     if sandbox["compatibility"]["failures"]:
         parser.error("Sandbox compatibility failed before any model call: " + ", ".join(sandbox["compatibility"]["failures"]))
-    models = ModelConfigStore()
-    entry = models.get(args.stored_model)
-    # Resolve exactly the selected configured credential; never print or copy it.
-    secret = models.secret_for(entry)
     workspace = root / "workspace"
     workspace.mkdir()
-    objective_text, check, title = SCENARIOS[args.scenario]
     (workspace / "README.md").write_text(f"# {title} qualification\n\nPython executable for checks: " + sys.executable + "\n", encoding="utf-8")
     (workspace / ".gitignore").write_text("__pycache__/\n.pytest_cache/\n", encoding="utf-8")
     git(workspace, "init", "-b", "main")
     git(workspace, "-c", "user.name=Loom Qualification", "-c", "user.email=qualification@localhost", "add", ".")
     git(workspace, "-c", "user.name=Loom Qualification", "-c", "user.email=qualification@localhost", "commit", "-m", "Qualification baseline")
+    (root / "settings.json").write_text(json.dumps({"token_budget": args.token_budget, "max_episodes": args.max_episodes,
+        "max_workers": args.max_workers, "scenario": args.scenario, "sandbox": sandbox}), encoding="utf-8")
+    return sandbox
+
+
+def start_run(service, runtime, store, workspace, args, objective_text):
+    source = service.thread_start({"workspaceDir": str(workspace), "permissionMode": PermissionMode.WORKSPACE.value})["thread"]["id"]
+    session = runtime.get_session(source)
+    selected = {"list_workspace_files", "read_workspace_text", "write_workspace_text", "replace_workspace_text", "apply_patch", "exec"}
+    session.tool_selection = [tool.name for tool in runtime.tools.definitions() if tool.name in selected]
+    store.save(session)
+    objective = objective_text + ("" if args.scenario != "tally" else "\nFor this serial smoke, return exactly one task covering CLI, README and all acceptance cases."
+        if args.max_workers == 1 else
+        # Without this the planner reasonably orders README after tally.py, and
+        # nothing runs concurrently: the parallel path is never exercised.
+        "\nFor this parallel smoke, return exactly two independent tasks with dependsOn [] and no shared resources: "
+        "task-1 owns only tally.py (the CLI and its behavioral checks); task-2 owns only README.md, written from the "
+        "specification above rather than from tally.py, and checked by inspecting README.md itself.")
+    objective += "\nRuntime Python executable (use this exact argv[0], not python/py or interpreter discovery): " + json.dumps(sys.executable)
+    objective += "\nDo not execute Git commands; the Host owns Git delivery and integration for this qualification."
+    run = service.project_run_create({"operationId": str(uuid.uuid4()), "threadId": source, "objective": objective,
+        "tokenBudget": args.token_budget, "maxEpisodes": args.max_episodes, "maxWorkers": args.max_workers,
+        "reviewPolicy": "independent", "completionPolicy": "local_integrate"})
+    service.project_control({"operationId": str(uuid.uuid4()), "runId": run["id"], "expectedRevision": run["revision"]}, "start")
+    return run
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, required=True, help="New directory; never reuses a repository")
+    parser.add_argument("--stored-model", required=True, help="Configured model ID, resolved through the OS credential store")
+    parser.add_argument("--provider", choices=("openai", "openai-compatible", "opencode-go"), help="Explicit transport override for the configured endpoint")
+    parser.add_argument("--token-budget", type=int, default=80000)
+    parser.add_argument("--max-episodes", type=int, default=12)
+    parser.add_argument("--seconds", type=int, default=480)
+    parser.add_argument("--max-workers", type=int, choices=(1, 2), default=1)
+    parser.add_argument("--scenario", choices=tuple(SCENARIOS), default="tally",
+                        help="tally: one small CLI; ledger: a multi-task package with a larger external oracle")
+    parser.add_argument("--resume", action="store_true",
+                        help="Reopen an existing --root after its Host process was killed and keep watching the same "
+                             "run; the settings of the first start apply")
+    args = parser.parse_args(argv)
+    root = args.root.resolve()
+    if args.resume:
+        if not (root / "settings.json").is_file() or not (root / "run.json").is_file():
+            parser.error("--resume needs a --root whose run this script started")
+        saved = json.loads((root / "settings.json").read_text(encoding="utf-8"))
+        for key in ("token_budget", "max_episodes", "max_workers", "scenario"):
+            setattr(args, key, saved[key])
+    if not 1 <= args.token_budget <= 8_000_000 or not 1 <= args.max_episodes <= 80 or not 1 <= args.seconds <= 7200:
+        parser.error("Qualification limits exceed supported bounds")
+    workspace = root / "workspace"
+    objective_text, check, title = SCENARIOS[args.scenario]
+    if args.resume:
+        sandbox = saved["sandbox"]
+    else:
+        sandbox = prepare(parser, root, args, title)
+    models = ModelConfigStore()
+    entry = models.get(args.stored_model)
+    # Resolve exactly the selected configured credential; never print or copy it.
+    secret = models.secret_for(entry)
     provider = args.provider or entry.adapter.value
     runtime_args = build_parser().parse_args(["--provider", provider, "--base-url", entry.base_url,
         "--model", entry.model, "--home", str(root / "state"), "--no-vision", "--timeout", "60"])
@@ -310,27 +353,17 @@ def main(argv=None):
     report = {"model": entry.model, "provider": provider, "profileId": args.stored_model, "maxWorkers": args.max_workers,
               "scenario": args.scenario,
               "tokenBudget": args.token_budget, "maxEpisodes": args.max_episodes, "wallLimitSeconds": args.seconds,
-              "realModel": True, "sandbox": sandbox, "outcome": "not_started", "oracle": []}
+              "realModel": True, "sandbox": sandbox, "outcome": "not_started", "oracle": [], "resumed": args.resume}
     run = None
     try:
-        source = service.thread_start({"workspaceDir": str(workspace), "permissionMode": PermissionMode.WORKSPACE.value})["thread"]["id"]
-        session = runtime.get_session(source)
-        selected = {"list_workspace_files", "read_workspace_text", "write_workspace_text", "replace_workspace_text", "apply_patch", "exec"}
-        session.tool_selection = [tool.name for tool in runtime.tools.definitions() if tool.name in selected]
-        store.save(session)
-        objective = objective_text + ("" if args.scenario != "tally" else "\nFor this serial smoke, return exactly one task covering CLI, README and all acceptance cases."
-            if args.max_workers == 1 else
-            # Without this the planner reasonably orders README after tally.py, and
-            # nothing runs concurrently: the parallel path is never exercised.
-            "\nFor this parallel smoke, return exactly two independent tasks with dependsOn [] and no shared resources: "
-            "task-1 owns only tally.py (the CLI and its behavioral checks); task-2 owns only README.md, written from the "
-            "specification above rather than from tally.py, and checked by inspecting README.md itself.")
-        objective += "\nRuntime Python executable (use this exact argv[0], not python/py or interpreter discovery): " + json.dumps(sys.executable)
-        objective += "\nDo not execute Git commands; the Host owns Git delivery and integration for this qualification."
-        run = service.project_run_create({"operationId": str(uuid.uuid4()), "threadId": source, "objective": objective,
-            "tokenBudget": args.token_budget, "maxEpisodes": args.max_episodes, "maxWorkers": args.max_workers,
-            "reviewPolicy": "independent", "completionPolicy": "local_integrate"})
-        service.project_control({"operationId": str(uuid.uuid4()), "runId": run["id"], "expectedRevision": run["revision"]}, "start")
+        if args.resume:
+            # The Host process was killed. Building the service above restarted the project
+            # scheduler from durable state; this process only watches the same run again.
+            run = service.project_store.get(json.loads((root / "run.json").read_text(encoding="utf-8"))["runId"])
+            budget_guard.tokens = service.project_budget.report(run)["chargedTokens"]
+        else:
+            run = start_run(service, runtime, store, workspace, args, objective_text)
+            (root / "run.json").write_text(json.dumps({"runId": run["id"]}), encoding="utf-8")
         previous = None
         report["peakActiveWorkers"] = 0
         while True:

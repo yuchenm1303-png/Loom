@@ -79,3 +79,29 @@ def test_one_project_survives_every_recorded_real_failure_mode(tmp_path, monkeyp
         assert len(platform.requests) == len(responses) + 1  # every response used, plus the failed request
     finally:
         runtime.close()
+
+
+def test_only_tools_confined_to_the_checkout_let_an_interrupted_episode_continue():
+    from types import SimpleNamespace
+    from app.agent_runtime.contracts import AgentEventKind as Kind
+    from app.project_runner.service import confined_in_flight
+
+    def event(kind, **data):
+        return SimpleNamespace(kind=kind, data=data)
+    workspace = {"enforced": True, "mode": "workspace", "network_isolated": True}
+    def turn(tool, sandbox=None, effect="sensitive", finished=False):
+        events = [event(Kind.TOOL_STARTED, call_id="c", tool=tool, effect=effect)]
+        if sandbox is not None:
+            events.append(event(Kind.PROCESS_STARTED, sandbox=sandbox))
+        if finished:
+            events.append(event(Kind.TOOL_COMPLETED, call_id="c"))
+        return events
+    assert confined_in_flight(turn("exec", workspace)) == ["exec"]
+    assert confined_in_flight(turn("exec")) == ["exec"]  # no process was launched yet
+    assert confined_in_flight(turn("exec", {**workspace, "network_isolated": False})) is None
+    assert confined_in_flight(turn("exec", {**workspace, "enforced": False})) is None
+    assert confined_in_flight(turn("exec", {**workspace, "mode": "full-access"})) is None
+    assert confined_in_flight(turn("apply_patch", effect="mutating")) == ["apply_patch"]
+    assert confined_in_flight(turn("mcp_issue_tracker_write", effect="mutating")) is None
+    assert confined_in_flight(turn("web_search", effect="read_only")) == ["web_search"]
+    assert confined_in_flight(turn("mcp_issue_tracker_write", effect="mutating", finished=True)) == []

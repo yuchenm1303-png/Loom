@@ -29,7 +29,10 @@ def _child(root, boundary):
         context.resolve_workspace_path("partial.txt").write_text("written once", encoding="utf-8")
         checkpoint()
 
-    tool = AgentTool(name="persist_partial", description="Persist partial work",
+    # A built-in workspace file tool can only touch the episode's own checkout; any
+    # other tool may reach elsewhere.
+    name = "write_workspace_text" if boundary == "workspace_tool_in_flight" else "persist_partial"
+    tool = AgentTool(name=name, description="Persist partial work",
                      input_schema={"type": "object", "properties": {}},
                      effect=ToolEffect.MUTATING, handler=side_effect)
     service, _, platform, workspace, source = build(root, [reply(PLAN),
@@ -138,6 +141,31 @@ def test_killed_host_continues_an_episode_in_which_no_tool_had_run(tmp_path, mon
         assert position["unknownRequests"] == (1 if boundary == "model_in_flight" else 0)
         worker = runtime.get_session(run["sessions"]["worker-0"])
         assert worker.status.value == "completed"
+    finally:
+        runtime.close()
+
+
+def test_killed_host_continues_when_the_tool_in_flight_was_confined_to_the_checkout(tmp_path, monkeypatch):
+    # On a multi-day run the Host most often dies while a tool runs. A tool that can only
+    # write the episode's own checkout leaves at worst unfinished work there, which the
+    # independent review judges anyway: continue with a new episode, told what may have
+    # partly run, and never replay the tool.
+    manifest = _kill_at(tmp_path / "workspace_tool_in_flight", "workspace_tool_in_flight")
+    monkeypatch.setattr(ProjectRunner, "start", lambda self: None)
+    service, runtime, platform = _reopen(manifest)
+    try:
+        for _ in range(4):
+            cycle(service)
+        run = service.project_store.get(manifest["runId"])
+        assert run["state"] == "ready_for_review", run["reason"]
+        assert run["episodesUsed"] == 3 and len(platform.requests) == 1  # one new episode, the tool not replayed
+        workspace = service.project_store.home / "workspaces" / run["id"]
+        assert (workspace / "partial.txt").read_text(encoding="utf-8") == "written once"
+        kinds = [item["kind"] for item in service.project_store.events(run["id"], limit=200)]
+        assert kinds.count("interrupted_episode_continued") == 1 and "needs_review" not in kinds
+        prompt = str(platform.requests[0].messages)
+        assert "may have partly run: write_workspace_text" in prompt
+        assert service.project_budget.report(run)["knownTokens"] == 17  # 5 planner + 7 interrupted + 5 new episode
     finally:
         runtime.close()
 

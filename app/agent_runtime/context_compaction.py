@@ -144,20 +144,25 @@ def build_compacted_history(
     summary: str,
     *,
     token_counter: Callable[[Sequence[AIMessage]], int],
+    user_message_tokens: int = COMPACT_USER_MESSAGE_MAX_TOKENS,
 ) -> tuple[AIMessage, ...]:
     """Return Codex's replacement model history shape.
 
     Keep only genuine user messages, newest-first under a shared 20k-token
     budget, then append one contextual-user compaction summary. Assistant/tool
     items are intentionally not replayed from the pre-compaction window.
+    A caller whose summary already carries what its user messages said (the
+    project runner's episode prompts) may lower the budget, to 0 for none.
     """
     text = str(summary or "").strip()
     if not text:
         raise ValueError("context summary must not be empty")
 
     selected_reversed: list[AIMessage] = []
-    remaining = COMPACT_USER_MESSAGE_MAX_TOKENS
+    remaining = max(0, int(user_message_tokens))
     for message in reversed(tuple(history)):
+        if remaining <= 0:
+            break
         # A stopped-turn note stays beside the message it precedes; a summary
         # alone would read the unfinished work as still wanted.
         if not is_real_user_message(message) and str(getattr(message, "name", "") or "") != STOPPED_TURN_MESSAGE_NAME:

@@ -470,6 +470,11 @@ def test_continued_episode_starts_from_a_compacted_handoff_without_a_model_call(
         # The continued request carries the runner's summary, not the earlier tool output.
         assert "compacted by the project runner" in last and "saved part one saved part one" not in last
         assert "workspaceFiles" in last and "README.md" in last  # the layout, so no re-listing
+        # Earlier episode prompts are not carried: the summary holds them, and a soak showed
+        # chat compaction re-sending every one of them on each request of a long session.
+        prompts = [m for m in platform.requests[-1].messages
+                   if "Continue this persistent project" in str(m.content)]
+        assert len(prompts) == 1
         assert len(platform.requests) == 3  # compaction itself never sampled the model
         assert final["tokensUsed"] == 15
     finally:

@@ -258,6 +258,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         summary: str,
         *,
         keep_recent: int = 24,
+        user_message_tokens: int | None = None,
     ) -> ContextCheckpoint:
         lock = self._session_lock(session_id)
         with lock:
@@ -268,6 +269,12 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 session,
                 keep_recent=keep_recent,
             )
+            override = None
+            if user_message_tokens is not None:
+                from app.agent_runtime.context_budget import estimate_tokens
+                override = build_compacted_history((*archived, *retained), summary,
+                                                   token_counter=lambda messages: estimate_tokens(messages),
+                                                   user_message_tokens=user_message_tokens)
             return self._commit_compaction_locked(
                 session,
                 summary=summary,
@@ -275,6 +282,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 archived=archived,
                 retained=retained,
                 summary_source="caller",
+                replacement_override=override,
             )
 
     def _compact_context_model_attempt(

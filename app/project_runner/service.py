@@ -115,7 +115,11 @@ class ProjectExecutor:
                            "handoff": run.get("handoff", "")[:6000], "reviewFeedback": run.get("feedback", []),
                            "recordedChecks": recorded, "workspaceFiles": files})
         try:
-            compact(session_id, summary)
+            # Carry no earlier episode prompts: the summary holds the task, handoff and
+            # feedback, and every episode sends its own prompt. Chat compaction keeps up
+            # to 20k tokens of user messages; a soak of 42 episodes showed every one of
+            # them carried, re-sent on each request of a multi-day session.
+            compact(session_id, summary, user_message_tokens=0)
         except (ValueError, RuntimeError):
             pass  # an uncompacted session costs more, but is not wrong
 
@@ -191,13 +195,20 @@ class ProjectExecutor:
             # Without a tool call there is no side effect to replay or reconcile.
             no_tools = not any(e.kind in {E.TOOL_REQUESTED, E.TOOL_STARTED} for e in events)
             if terminal is None or session.current_turn_id != episode["turnId"]:
-                if no_tools:
-                    # The Host stopped (update, sleep, crash) before the turn ended and
-                    # before any tool ran. Close the turn durably; a new episode continues.
+                unfinished = None if no_tools else confined_in_flight(events)
+                if no_tools or unfinished is not None:
+                    # The Host stopped (update, sleep, crash) before the turn ended, and
+                    # nothing in flight could reach past this episode's own checkout. Close
+                    # the turn durably (in-flight tools read as aborted, never replayed); a
+                    # new episode continues and is told what may have partly run.
                     if session.current_turn_id == episode["turnId"] and session.status.value == "running":
                         service.runtime.recover_interrupted(session.session_id)
-                    return {"state": "interrupted", "interrupted": True, "sideEffectFree": True,
-                            "error": "Host stopped before the episode ended; no tool had run",
+                    detail = ("no tool had run" if no_tools else
+                              "no tool was running" if not unfinished else
+                              "these tools were still running and may have partly run: " + ", ".join(unfinished)
+                              + "; their effects are confined to your workspace, so check the files they touch first")
+                    return {"state": "interrupted", "interrupted": True, "sideEffectFree": no_tools,
+                            "confined": True, "error": detail,
                             "tokens": sum(tokens for _, tokens in usage), "usage": usage}
                 return {"state": "outcome_unknown", "error": service._task_errors.get(session.session_id)
                         or "No matching durable terminal turn; execution must not be replayed"}
@@ -235,6 +246,35 @@ class ProjectExecutor:
                     if event:
                         waits.append(event)
         return waits
+
+
+# Built-in tools whose effects stay inside the session's workspace or scratch folder.
+WORKSPACE_TOOLS = {"read_workspace_text", "list_workspace_files", "write_workspace_text",
+                   "replace_workspace_text", "apply_patch"}
+
+
+def confined_in_flight(events):
+    """Names of tools left running in a turn, or None if any could reach past its checkout.
+
+    A Host crash, update or sleep most often lands while a tool runs; on a multi-day run
+    stopping every such project for a person made autonomy impossible. A project
+    episode works in its own isolated checkout and its result is independently
+    reviewed, so a partial edit there is ordinary unfinished work. Only effects that
+    could reach elsewhere (an unsandboxed or networked process, any other tool) still
+    need reconciliation.
+    """
+    finished = {e.data.get("call_id") for e in events if e.kind in {E.TOOL_COMPLETED, E.TOOL_FAILED}}
+    running = [e.data for e in events if e.kind is E.TOOL_STARTED and e.data.get("call_id") not in finished]
+    processes = [e.data.get("sandbox") or {} for e in events if e.kind is E.PROCESS_STARTED]
+    sandboxed = all(item.get("enforced") is True and item.get("mode") == "workspace"
+                    and item.get("network_isolated") is True for item in processes)
+    for call in running:
+        if call.get("effect") == "read_only" or call.get("tool") in WORKSPACE_TOOLS:
+            continue
+        if call.get("tool") == "exec" and sandboxed:
+            continue
+        return None
+    return [str(call.get("tool")) for call in running]
 
 
 class ProjectServiceMixin:
