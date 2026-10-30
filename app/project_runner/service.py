@@ -21,6 +21,18 @@ EPISODE_CARRY_TOKENS = 12000
 PROJECT_WORKING_CONTEXT_TOKENS = 48000
 
 
+def _describe_tool(tool, arguments):
+    """One short line for what a tool call is doing, in the words of its arguments."""
+    path = arguments.get("path")
+    if isinstance(path, str) and path:
+        return f"{tool} {path.replace('scratch:', '')}"[:120]
+    argv = arguments.get("argv")
+    if isinstance(argv, list) and argv:
+        words = [Path(str(argv[0])).name, *(str(item) for item in argv[1:])]
+        return " ".join(words)[:120]
+    return str(tool or "")[:120]
+
+
 class ProjectExecutor:
     def __init__(self, service, home):
         self.service, self.home = service, home
@@ -417,6 +429,84 @@ class ProjectServiceMixin:
                                     (checks.registry_root(run),)).fetchone()[0]
         return {"notes": checks.notes_for(store, run), "acceptedChecks": kept, "recoveries": recoveries}
 
+    def project_overview(self, params):
+        """Everything persistent-project mode shows for one conversation, in one read.
+
+        The project is the conversation's newest program (its current milestone) or else
+        its newest root run. Agents are the runs' active episodes with what each is doing
+        now, read from its current turn; events are the project's recent history.
+        """
+        thread_id = self._required_text(params, "threadId")
+        store = self.project_store
+        current = program.for_thread(store, thread_id)
+        runs = store.list()
+        roots = [run for run in runs if run.get("sourceThreadId") == thread_id
+                 and not run.get("teamOwnerId") and not run.get("integrationTarget")]
+        if current and current.get("currentRunId"):
+            root = store.get(current["currentRunId"])
+        else:
+            root = max(roots, key=lambda run: run.get("createdAt", 0)) if roots else None
+        if root is None:
+            return {"run": None, "program": current, "children": [], "agents": [], "events": []}
+        children = [run for run in runs if run.get("teamOwnerId") == root["id"]]
+        integration = store.get(root["integrationRunId"]) if root.get("integrationRunId") else None
+        ledger = integration or root
+        family = [root, *children, *([integration] if integration else [])]
+        agents = [self._agent_view(run, run["activeEpisode"]) for run in family if run.get("activeEpisode")]
+        ids = [run["id"] for run in family]
+        with store.lock:
+            marks = ",".join("?" * len(ids))
+            rows = store.db.execute(
+                f"SELECT sequence, run_id, kind, json_extract(data,'$.updatedAt'), json_extract(data,'$.reason') "
+                f"FROM project_events WHERE run_id IN ({marks}) ORDER BY sequence DESC LIMIT 14", ids).fetchall()
+        events = [{"sequence": seq, "runId": run_id, "kind": kind, "at": at, "reason": (reason or "")[:300],
+                   "taskId": next((item["taskId"] for item in root.get("teamChildren", []) if item["runId"] == run_id), None)}
+                  for seq, run_id, kind, at, reason in rows]
+        view = {**self.project_budget_position(root), "knowledge": self.project_knowledge(root),
+                "ledgerPosition": self.project_budget.report(ledger), "ledgerTokens": ledger["tokensUsed"],
+                "ledgerEpisodes": ledger["episodesUsed"], "guidance": list(root.get("guidance") or [])}
+        return {"run": view, "program": current, "children": children, "integration": integration,
+                "agents": agents, "events": events}
+
+    def _agent_view(self, run, episode):
+        """An active episode as a person reads it: who, on what, how far, doing what."""
+        role = "planner" if episode.get("phase") == "planning" else "reviewer" if episode.get("phase") == "verifying" else "worker"
+        plan = run.get("plan") or []
+        index = episode.get("taskIndex", 0)
+        task = plan[index] if role == "worker" and index < len(plan) else None
+        steps, activity, started = 0, "", None
+        try:
+            # Only the current turn: a long session's log is megabytes, and this runs every refresh.
+            reader = getattr(self.store, "turn_events", None)
+            events = (reader(episode["sessionId"], episode.get("turnId") or "") if callable(reader)
+                      else [event for event in self.store.events(episode["sessionId"]) if event.turn_id == episode.get("turnId")])
+            for event in events:
+                started = started or event.created_at
+                if event.kind is E.MODEL_RESPONSE:
+                    steps += 1
+                elif event.kind is E.TOOL_REQUESTED:
+                    activity = _describe_tool(event.data.get("tool"), event.data.get("arguments") or {})
+        except (OSError, ValueError, KeyError):
+            pass
+        return {"id": episode["sessionId"], "runId": run["id"], "role": role, "state": episode.get("state"),
+                "taskId": task["id"] if task else None, "taskTitle": (task or {}).get("instructions", "")[:120],
+                "scope": run.get("reviewScope") if role == "reviewer" else None,
+                "step": steps, "activity": activity, "startedAt": started}
+
+    def project_steer(self, params):
+        """Guidance from the person for the rest of the project; it reaches every later prompt."""
+        text = " ".join(self._required_text(params, "text").split())[:program.MAX_GUIDANCE_CHARS]
+        run_id = self._required_text(params, "runId")
+        with self.project_store.transaction() as db:
+            run = self.project_store._read(db, run_id)
+            if run is None:
+                raise ValueError("Unknown project run")
+            run["guidance"] = [*(run.get("guidance") or []), text][-program.MAX_GUIDANCE:]
+            self.project_store.save(db, run, "guidance_added")
+        if (run.get("milestone") or {}).get("programId"):
+            program.add_guidance(self.project_store, run["milestone"]["programId"], text)
+        return self.project_store.get(run_id)
+
     def project_read(self, run_id):
         run = self.project_budget_position(self.project_store.get(run_id))
         run["knowledge"] = self.project_knowledge(run)
@@ -506,6 +596,10 @@ class ProjectControllerMixin:
     def _dispatch(self, method, params):
         if method == "projectRun/create":
             return {"run": self.service.project_run_create(params)}
+        if method == "projectRun/overview":
+            return self.service.project_overview(params)
+        if method == "projectRun/steer":
+            return {"run": self.service.project_steer(params)}
         if method == "projectProgram/create":
             with self.service.project_runner.guard:
                 return {"program": program.create(self.service, params)}

@@ -208,11 +208,27 @@ class ProjectRunner:
     def prompt(self, run, kept=()):
         note = run.get("replyNote")
         text = self._prompt(run, list(kept))
+        guidance = self._guidance(run)
+        if guidance:
+            # What the person added while the project ran (projectRun/steer): it outranks the
+            # plan where they conflict, and later notes outrank earlier ones.
+            text = ("The person directing this project added guidance (newest last; where it conflicts with the plan "
+                    "or earlier guidance, follow the newest):\n" + "\n".join(f"- {item}" for item in guidance) + "\n" + text)
         if run["phase"] == "planning" and (run.get("milestone") or {}).get("index", 1) > 1:
             # A later milestone of a program: the answer may also be "nothing left to build".
             text += ('\nIf the integrated repository already achieves the entire objective, return instead only JSON '
                      '{"complete":true,"summary":"what in the repository shows each part of the objective is done"}.')
         return (f"The runner could not accept your previous final reply: {note} End with only the required JSON object.\n" + text) if note else text
+
+    def _guidance(self, run):
+        """Guidance is kept on the project's root run; team tasks and the integration run read it there."""
+        owner = checks.registry_root(run)
+        if owner == run["id"]:
+            return list(run.get("guidance") or [])
+        try:
+            return list(self.store.get(owner).get("guidance") or [])
+        except ValueError:
+            return []
 
     def _prompt(self, run, kept):
         if run["phase"] == "planning":

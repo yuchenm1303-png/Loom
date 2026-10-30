@@ -725,6 +725,55 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "approval/respond": () => ({}),
 };
 
+// ?project=draft|live: persistent-project mode (ProjectMode.tsx) over a scripted project. The header's
+// switch opens it; "live" answers projectRun/overview like the Host does, advancing one event per read.
+const projectFixture = params.get("project");
+let projectReads = 0;
+let projectStarted = projectFixture === "live";
+const projectGuidance: string[] = [];
+function projectOverview() {
+  if (!projectStarted) return { run: null, program: null, children: [], agents: [], events: [] };
+  projectReads += 1;
+  const step = 6 + Math.floor(projectReads / 2);
+  const reviewing = projectReads > 8;
+  const plan = [
+    { id: "task-1", instructions: "解析器与逐行校验。", acceptance: [], state: "verified", fileScopes: ["ledger/parser.py"] },
+    { id: "task-2", instructions: "按账户汇总（Decimal）。", acceptance: [], state: "verified", fileScopes: ["ledger/aggregate.py"] },
+    { id: "task-3", instructions: "命令行 python -m ledger。", acceptance: [], state: "verified", fileScopes: ["ledger/cli.py"] },
+    { id: "task-4", instructions: "unittest 测试套件。", acceptance: [], state: "pending", fileScopes: ["tests"] },
+    { id: "task-5", instructions: "README 与使用说明。", acceptance: [], state: reviewing ? "candidate" : "pending", fileScopes: ["README.md"] },
+  ];
+  const started = new Date(Date.now() - 5 * 60_000).toISOString();
+  return {
+    run: { id: "run-1", revision: projectReads, objective: "做一个只用标准库的 Python 记账汇总工具：解析 CSV，按账户精确汇总，非法行报行号并以 2 退出，附测试和说明。\n\nThis is milestone 1",
+      repository: workspace, sourceThreadId: "thread-1", state: "running", control: "active", phase: "parallel", completionPolicy: "local_integrate",
+      workflowControl: "active", workflowStatus: "active", tokensUsed: 2_310_000 + projectReads * 40_000, tokenBudget: 4_000_000,
+      episodesUsed: 11, maxEpisodes: 200, maxWorkers: 2, plan, createdAt: Date.now() / 1000 - 41 * 60, baseCommit: "0a1d215c", completionRef: "refs/heads/main",
+      milestone: { index: 1, programId: "program-1" }, guidance: projectGuidance,
+      teamChildren: [{ runId: "child-4", taskId: "task-4", state: "running" }, { runId: "child-5", taskId: "task-5", state: "running" }],
+      knowledge: { notes: ["调用 python 用绝对路径，不要经 cmd /c。"], acceptedChecks: 11, recoveries: {} },
+      ledgerPosition: { chargedTokens: 2_310_000 + projectReads * 40_000 }, ledgerEpisodes: 11 + Math.floor(projectReads / 3) },
+    program: { id: "program-1", objective: "做一个只用标准库的 Python 记账汇总工具：解析 CSV，按账户精确汇总，非法行报行号并以 2 退出，附测试和说明。",
+      state: "running", maxWorkers: 2, createdAt: Date.now() / 1000 - 41 * 60, milestones: [], tokenBudget: 4_000_000, maxEpisodes: 200, currentRunId: "run-1" },
+    children: [], integration: null,
+    agents: [
+      { id: "s-4", runId: "child-4", role: "worker", taskId: "task-4", step, activity: step % 2 ? "python.exe -m unittest" : "write_workspace_text tests/test_cli.py", startedAt: started },
+      reviewing ? { id: "s-5r", runId: "child-5", role: "reviewer", taskId: null, step: projectReads - 8, activity: "python.exe probe_readme.py", startedAt: started }
+                : { id: "s-5", runId: "child-5", role: "worker", taskId: "task-5", step: step - 3, activity: "read_workspace_text README.md", startedAt: started },
+    ],
+    events: [
+      ...(reviewing ? [{ sequence: 30, runId: "child-5", kind: "parallel_task_started", taskId: "task-5" }] : []),
+      ...projectGuidance.map((_, index) => ({ sequence: 40 + index, runId: "run-1", kind: "guidance_added" })),
+      { sequence: 20, runId: "run-1", kind: "parallel_task_merged", taskId: "task-3" },
+    ].sort((a, b) => b.sequence - a.sequence),
+  };
+}
+Object.assign(handlers, {
+  "projectRun/overview": () => projectOverview(),
+  "projectProgram/create": () => { projectStarted = true; return { program: { id: "program-1" } }; },
+  "projectRun/steer": (args: Record<string, unknown>) => { projectGuidance.push(String(args.text)); return { run: {} }; },
+});
+
 // The desktop's embedded browser is a native view; the fixture keeps the tab strip in memory so the browser panel renders and answers.
 type BrowserTab = { id: string; url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; aiAllowed?: boolean; agentOwned?: boolean };
 type BrowserState = { tabs: BrowserTab[]; activeId: string | null };

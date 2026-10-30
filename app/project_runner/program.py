@@ -32,6 +32,7 @@ SCHEMA = """
     INSERT OR IGNORE INTO project_runner_schema_versions VALUES(6);
 """
 MAX_MILESTONES = 50
+MAX_GUIDANCE, MAX_GUIDANCE_CHARS = 20, 2000
 HISTORY_IN_OBJECTIVE = 12
 
 
@@ -48,7 +49,10 @@ def objective_for(program, index):
                   f"integrated in this repository:{history}\nRead the repository to see what exists. Plan only the next "
                   "coherent batch (at most 16 tasks) toward the whole objective; never redo integrated work. If the "
                   "repository already achieves the entire objective, report it complete instead of planning.")
-    return (program["objective"][:16000] + "\n\n" + stance)[:20000]
+    guidance = "".join(f"\n- {item}" for item in program.get("guidance", [])[-MAX_GUIDANCE:])
+    if guidance:
+        stance += "\nGuidance the person added while the program ran (newest last):" + guidance
+    return (program["objective"][:14000] + "\n\n" + stance)[:20000]
 
 
 def create(service, params):
@@ -162,3 +166,15 @@ def advance(service):
         _save(store, program)
         changed = True
     return changed
+
+
+def for_thread(store, thread_id):
+    """The newest program started from a conversation, or None."""
+    owned = [item for item in list_programs(store) if item["sourceThreadId"] == thread_id]
+    return max(owned, key=lambda item: item.get("createdAt", 0)) if owned else None
+
+
+def add_guidance(store, program_id, text):
+    program = get(store, program_id)
+    program["guidance"] = [*program.get("guidance", []), text][-MAX_GUIDANCE:]
+    _save(store, program)

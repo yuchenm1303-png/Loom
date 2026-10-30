@@ -266,7 +266,7 @@ def test_a_fold_takes_a_fold_s_time() -> None:
 # Entrances that move: the docks (a61), the marks (a glyph, a bead, a ring, a bar being drawn, a tick) and the send
 # hand-off. Whatever carries words fades in; space is made by layout.
 TRAVELLING = re.compile(
-    r"^(loom-sticker-pop$|wv-(glyph|bead|rail|halo|ring)|run-progress-mark-in$|"
+    r"^(loom-sticker-pop$|wv-(glyph|bead|rail|halo|ring)|pf-(node|meter|mark)-in$|run-progress-mark-in$|"
     r"profile-(bar|hour)-grow$|loom-task-icon-spring$|loom-reasoning-chevron-in$|task-plan-mark$|settings-eyebrow-draw$|"
     r"loom-user-|loom-flight-|li-|rt-|sidebar-brand|empty-loom|loom-pet|loom-hud|tg-|status-breathe|streaming-glow|dot-wave|"
     r"orbit-rotate|spark-float|ambient-drift|compact-thread-pulse|context-meter-|home-token-pulse|general-status-breathe|"

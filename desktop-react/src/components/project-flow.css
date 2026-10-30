@@ -1,0 +1,538 @@
+/* Persistent-project mode (ProjectFlow.tsx). Single owner of .pf-*.
+
+   Three layers of one material: the stage, the cards (and the cables, which are cards
+   stretched into a band), and the wells inside them. No borders: layers are told apart
+   by tone. Time and curves only from motion-tokens.css. Rules:
+   - Motion means an event. One-shots are bound to an element's birth (React keys) with
+     fill `backwards`; the only loop is the dot of an agent at work (breathe period).
+   - Text only fades. Cables, pulses, marks and the toggle's thumb move.
+   - No :has(), no nesting. */
+
+.pf-stage {
+  --pf-card: color-mix(in srgb, var(--pl-ink) 8%, var(--pl-surface));
+  --pf-well: color-mix(in srgb, var(--pl-ink) 12.5%, var(--pl-surface));
+  --pf-raise: color-mix(in srgb, var(--pl-ink) 17%, var(--pl-surface));
+  --pf-ok: var(--semantic-success-strong);
+  --pf-warn: #e0b45a;
+  --pf-live: #8fd3e8;
+  position: relative;
+  display: grid;
+  grid-template-columns: 228px minmax(380px, 448px) 228px;
+  justify-content: center;
+  align-items: end;
+  column-gap: 72px;
+  padding: 40px 32px 48px;
+  color: var(--pl-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+html[data-loom-theme="light"] .pf-stage {
+  --pf-card: #fff;
+  --pf-well: color-mix(in srgb, var(--pl-ink) 4.5%, #fff);
+  --pf-raise: color-mix(in srgb, var(--pl-ink) 9%, #fff);
+  --pf-warn: #9a6b0f;
+  --pf-live: #2f8fae;
+}
+
+.pf-cables {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pf-cable-body {
+  fill: none;
+  stroke: var(--pf-card);
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 100;
+  transition: stroke var(--loom-dur-fast) var(--loom-ease-out);
+  animation: pf-cable-draw var(--loom-dur-flow) var(--loom-ease-move) backwards;
+}
+
+.pf-socket { fill: var(--pf-card); transition: fill var(--loom-dur-fast) var(--loom-ease-out); }
+
+.pf-cable[data-hot] .pf-cable-body { stroke: var(--pf-raise); }
+.pf-cable[data-hot] .pf-socket { fill: var(--pf-raise); }
+
+/* One step done: a bead of light runs down the agent's cable into the composer. */
+.pf-pulse {
+  fill: none;
+  stroke: var(--pf-live);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 7 100;
+  stroke-dashoffset: -100;
+  animation: pf-pulse var(--loom-dur-slow) var(--loom-ease-glide);
+}
+
+.pf-col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 12px; }
+.pf-left { align-self: end; padding-bottom: 6px; }
+.pf-right { align-self: end; padding-bottom: 150px; gap: 14px; }
+.pf-center { gap: 0; }
+
+.pf-slot { animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+
+/* Leaving: the card fades and its cable unplugs from the hub, on the shorter exit step. */
+.pf-slot[data-leaving] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit);
+}
+
+.pf-cable[data-leaving] .pf-cable-body {
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset var(--loom-dur-base-out) var(--loom-ease-exit);
+}
+
+.pf-cable[data-leaving] .pf-socket {
+  opacity: 0;
+  transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit);
+}
+.pf-offset-2 { margin-left: 46px; }
+.pf-offset-3 { margin-left: 48px; margin-right: -48px; }
+
+/* Cards. */
+.pf-card {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+  border-radius: 14px;
+  background: var(--pf-card);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .12), 0 14px 30px -22px rgba(0, 0, 0, .6);
+}
+
+.pf-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 1px 3px 3px;
+  color: var(--pl-muted);
+  font-size: 12px;
+}
+
+.pf-card-icon { display: inline-grid; place-items: center; color: var(--pl-muted); }
+.pf-left .pf-slot:nth-child(1) .pf-card-icon { color: #ef8fa0; }
+.pf-left .pf-slot:nth-child(2) .pf-card-icon { color: #e9c46a; }
+.pf-left .pf-slot:nth-child(3) .pf-card-icon { color: #b49cf6; }
+.pf-left .pf-slot:nth-child(4) .pf-card-icon { color: #f2a6cf; }
+.pf-below .pf-card-icon { color: #85b8f2; }
+.pf-agent .pf-card-icon { color: #8fc9e8; }
+
+.pf-count {
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--pf-well);
+  color: var(--pl-muted);
+  font-size: 11.5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.pf-well { border-radius: 9px; background: var(--pf-well); }
+
+.pf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 9px;
+  color: var(--pl-ink);
+}
+
+.pf-row > span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pf-row > .pf-task-mark { flex: none; }
+.pf-row > svg { flex: none; color: var(--pl-muted); }
+.pf-row .pf-count { background: var(--pf-raise); }
+
+.pf-repo { display: grid; gap: 1px; padding: 8px 10px; }
+.pf-repo strong { color: var(--pl-ink); font-weight: 500; }
+.pf-repo span { overflow: hidden; color: var(--pl-muted); font-size: 11.5px; white-space: nowrap; text-overflow: ellipsis; }
+
+.pf-branch { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 10px; color: var(--pl-ink); }
+.pf-branch svg:first-child { color: var(--pf-ok); }
+.pf-branch span { flex: 1; }
+.pf-branch svg:last-child { color: var(--pl-muted); }
+
+.pf-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px 2px;
+  border: 0;
+  background: none;
+  color: var(--pl-muted);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.pf-add:hover { color: var(--pl-ink); }
+
+.pf-facts { display: flex; gap: 12px; padding: 0 3px; color: var(--pl-muted); white-space: nowrap; }
+.pf-facts strong { color: var(--pl-ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+.pf-note { margin: 0; padding: 8px 10px; color: var(--pl-secondary); font-size: 11.5px; }
+
+/* The conversation above the hub. */
+.pf-thread { display: grid; gap: 6px; margin-bottom: 18px; }
+
+.pf-bubble {
+  justify-self: end;
+  max-width: 88%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--pf-card);
+  color: var(--pl-ink);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.pf-tag { justify-self: end; display: flex; align-items: center; gap: 5px; color: var(--pl-faint); font-size: 11.5px; }
+
+.pf-summary {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pl-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: default;
+}
+
+.pf-narration {
+  margin: 0;
+  color: var(--pl-ink);
+  font-size: 13px;
+  line-height: 21px;
+  animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
+}
+
+/* The hub. */
+.pf-composer {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 6px;
+  padding: 7px;
+  border-radius: 16px;
+  background: var(--pf-card);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .14), 0 22px 44px -26px rgba(0, 0, 0, .7);
+}
+
+.pf-composer-head { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 6px 0 8px; }
+
+.pf-mode { display: inline-flex; align-items: center; gap: 7px; color: var(--pl-ink); font-size: 12px; }
+.pf-mode-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pl-faint); }
+.pf-mode-dot[data-state="running"] { background: var(--pf-ok); }
+.pf-mode-dot[data-state="needs_you"] { background: var(--pf-warn); }
+.pf-model { color: var(--pl-muted); font-size: 12px; }
+
+.pf-budget { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; color: var(--pl-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+.pf-budget-track {
+  position: relative;
+  width: 64px;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--pf-well);
+}
+
+.pf-budget-track span {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, var(--pl-accent) 0 2px, transparent 2px 4px);
+  opacity: .8;
+  transform-origin: left center;
+  transition: transform var(--loom-dur-slow) var(--loom-ease-move);
+}
+
+.pf-budget-track[data-high] span { background: repeating-linear-gradient(90deg, var(--pf-warn) 0 2px, transparent 2px 4px); }
+
+.pf-input { padding: 10px 12px; }
+
+.pf-input textarea {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--pl-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.pf-input textarea::placeholder { color: var(--pl-faint); }
+
+.pf-composer-foot { display: flex; align-items: center; gap: 6px; }
+
+.pf-tool,
+.pf-chip,
+.pf-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--pf-well);
+  color: var(--pl-secondary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.pf-tool { width: 28px; padding: 0; justify-content: center; cursor: pointer; }
+.pf-chip svg { color: var(--pl-muted); }
+
+.pf-stepper { padding: 0 4px; gap: 5px; }
+.pf-stepper svg { color: var(--pl-muted); }
+
+.pf-stepper-value {
+  min-width: 10px;
+  color: var(--pl-ink);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards;
+}
+
+.pf-stepper button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--pf-raise);
+  color: var(--pl-secondary);
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.pf-stepper button:disabled { opacity: .4; cursor: default; }
+
+.pf-send {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 9px;
+  background: var(--pl-ink);
+  color: var(--pl-surface);
+  cursor: pointer;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.pf-send:disabled { opacity: .35; cursor: default; }
+
+/* The composer's own controls: pause, resume, stop. */
+.pf-control {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: var(--pf-well);
+  color: var(--pl-secondary);
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.pf-control:hover { background: var(--pf-raise); color: var(--pl-ink); }
+.pf-control:disabled { opacity: .45; cursor: default; }
+.pf-budget + .pf-control,
+.pf-model + .pf-control,
+.pf-mode + .pf-control { margin-left: auto; }
+
+.pf-error { margin: 0; padding: 0 8px; color: var(--semantic-danger-text); font-size: 12px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+
+.pf-busy { animation: pf-spin var(--loom-period-spin) linear infinite; }
+
+/* Needs you: one calm line under the narration, with the action that resolves it. */
+.pf-attention {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--pf-warn) 10%, var(--pf-card));
+  color: var(--pl-ink);
+  font-size: 12px;
+  animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
+}
+
+.pf-attention-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pf-warn);
+  animation: pf-breathe var(--loom-period-breathe) var(--loom-ease-inout) infinite;
+}
+
+.pf-attention-text { flex: 1; min-width: 0; }
+
+.pf-attention button {
+  padding: 4px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--pl-ink);
+  color: var(--pl-surface);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pf-attention button:disabled { opacity: .5; cursor: default; }
+
+.pf-empty { margin: 0; padding: 6px 4px 4px; color: var(--pl-faint); font-size: 12px; }
+.pf-agents-empty { align-self: flex-start; padding-left: 4px; }
+.pf-loading { min-height: 100%; }
+
+/* The plan hangs below the hub. */
+.pf-below { width: 236px; margin-top: 24px; }
+.pf-task > span:last-child { color: var(--pl-secondary); }
+.pf-task[data-state="integrated"] > span:last-child { color: var(--pl-muted); }
+
+.pf-task-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--pf-raise);
+  color: var(--pl-muted);
+  animation: pf-mark-in var(--loom-dur-flow) var(--loom-spring-pop) backwards;
+}
+
+.pf-task[data-state="integrated"] .pf-task-mark { background: color-mix(in srgb, var(--pf-ok) 20%, transparent); color: var(--pf-ok); }
+.pf-task[data-state="working"] .pf-task-mark,
+.pf-task[data-state="review"] .pf-task-mark { background: color-mix(in srgb, var(--pf-live) 18%, transparent); color: var(--pf-live); }
+.pf-task[data-state="rework"] .pf-task-mark { color: var(--pf-warn); }
+
+/* Agents. */
+.pf-agent { width: 212px; }
+.pf-agent-well { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 9px; padding: 8px 10px 9px 8px; }
+
+.pf-agent-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--pf-raise);
+  color: var(--pl-secondary);
+}
+
+.pf-agent-copy { display: grid; min-width: 0; }
+.pf-agent-line { display: flex; align-items: center; gap: 6px; }
+.pf-agent-line strong { color: var(--pl-ink); font-size: 12px; font-weight: 500; }
+.pf-agent-time { margin-left: auto; color: var(--pl-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+.pf-agent-live {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pf-live);
+  animation: pf-breathe var(--loom-period-breathe) var(--loom-ease-inout) infinite;
+}
+
+.pf-agent-check {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--pf-live);
+  color: var(--pl-surface);
+}
+
+.pf-agent-activity {
+  overflow: hidden;
+  color: var(--pl-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards;
+}
+
+/* Progress dashes; a glint runs across them once per finished step. */
+.pf-dashes {
+  position: relative;
+  grid-column: 1 / -1;
+  height: 3px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--pf-live) 55%, transparent) 0 9px, transparent 9px 14px);
+}
+
+.pf-agent-well[data-done] .pf-dashes { background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--pl-muted) 40%, transparent) 0 9px, transparent 9px 14px); }
+
+.pf-dashes-glint {
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: repeating-linear-gradient(90deg, var(--pf-live) 0 9px, transparent 9px 14px);
+  transform: translateX(240%);
+  animation: pf-glint var(--loom-dur-slow) var(--loom-ease-glide) backwards;
+}
+
+.pf-agent-well[data-done] .pf-dashes-glint { display: none; }
+
+/* Keyboard: the panels' quiet ring. */
+.pf-add:focus-visible,
+.pf-control:focus-visible,
+.pf-attention button:focus-visible,
+.pf-stepper button:focus-visible,
+.pf-send:focus-visible {
+  outline: 2px solid var(--pl-focus);
+  outline-offset: 2px;
+}
+
+@keyframes pf-fade { from { opacity: 0; } }
+@keyframes pf-cable-draw { from { stroke-dashoffset: 100; } }
+@keyframes pf-pulse { from { stroke-dashoffset: 7; } to { stroke-dashoffset: -100; } }
+@keyframes pf-mark-in { from { opacity: 0; scale: .5; } }
+@keyframes pf-glint { from { transform: translateX(-100%); } }
+@keyframes pf-spin { to { rotate: 360deg; } }
+@keyframes pf-breathe { 0%, 100% { opacity: .45; scale: .8; } 50% { opacity: 1; scale: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-agent-live,
+  .pf-attention-dot,
+  .pf-busy,
+  .pf-pulse,
+  .pf-dashes-glint { animation: none; }
+}
+
+@media (max-width: 1080px) {
+  .pf-stage { grid-template-columns: minmax(0, 1fr); row-gap: 20px; padding: 24px 16px; }
+  .pf-cables { display: none; }
+  .pf-center { order: -1; }
+  .pf-left, .pf-right { padding-bottom: 0; }
+  .pf-offset-2, .pf-offset-3 { margin: 0; }
+  .pf-agent, .pf-below { width: auto; }
+}

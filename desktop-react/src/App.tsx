@@ -108,6 +108,7 @@ type LayoutMotionIntent =
   | "right-swap"
   | "neutral";
 const TerminalPanel = lazy(() => import("./components/TerminalPanel"));
+const ProjectMode = lazy(() => import("./components/ProjectMode").then((module) => ({ default: module.ProjectMode })));
 
 type LayoutMotionAnchorKind =
   | "header-copy"
@@ -621,6 +622,20 @@ export default function App() {
     : t("app.newConversation"));
   const workspace = thread?.workspace || loom.runtime.defaultWorkspace || "";
   const currentModel = loom.models?.current?.name || loom.models?.current?.model || loom.runtime.model;
+  // Persistent-project mode is a per-conversation choice, remembered on this machine.
+  const [projectModeIds, setProjectModeIds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("loom.projectMode") || "[]"); } catch { return []; }
+  });
+  const projectMode = Boolean(thread?.id && projectModeIds.includes(thread.id));
+  const setProjectMode = useCallback((mode: "chat" | "project") => {
+    if (!thread?.id) return;
+    const id = thread.id;
+    setProjectModeIds((ids) => {
+      const next = mode === "project" ? [...ids.filter((item) => item !== id), id].slice(-50) : ids.filter((item) => item !== id);
+      try { localStorage.setItem("loom.projectMode", JSON.stringify(next)); } catch { /* private window */ }
+      return next;
+    });
+  }, [thread?.id]);
   const permissionMode = thread?.permissionMode || loom.draftPermissionMode || loom.runtime.defaultPermissionMode;
   const capabilitySettings = loom.runtime.settings?.capabilities ?? {};
   const attachmentsEnabled = capabilitySettings.attachments !== false;
@@ -1634,6 +1649,8 @@ export default function App() {
           compacting={!threadSwitching && loom.compacting}
           compactionProgress={threadSwitching ? null : loom.compactionProgress}
           onCompactContext={() => void loom.compactContext()}
+          mode={thread ? (projectMode ? "project" : "chat") : undefined}
+          onModeChange={setProjectMode}
         />
 
         {terminalMounted && <Suspense fallback={null}><TerminalPanel
@@ -1667,6 +1684,13 @@ export default function App() {
           onSplit={openInSplit}
         />
 
+        {projectMode && thread ? (
+          <div className="project-mode-stage" inert={threadSwitching}>
+            <Suspense fallback={null}>
+              <ProjectMode key={thread.id} threadId={thread.id} workspace={selectedThread?.workspace || workspace} model={currentModel} />
+            </Suspense>
+          </div>
+        ) : (<>
         <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>
           {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
           {thread?.parentThreadId ? (
@@ -1770,6 +1794,7 @@ export default function App() {
             onPausedChange={typeof thread?.paused === "boolean" ? loom.setPaused : undefined}
           />
         </div>
+        </>)}
       </section>
       <SplitConversationPane
         threadId={splitThreadId}

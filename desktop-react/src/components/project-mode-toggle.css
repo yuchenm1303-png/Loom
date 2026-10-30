@@ -1,0 +1,61 @@
+/* The header's conversation / persistent-project switch (ProjectModeToggle.tsx). Owner of .pf-toggle*.
+   Time and curves from motion-tokens.css; the thumb moves, the words stay. */
+
+.pf-toggle {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--pl-card);
+}
+
+.pf-toggle button {
+  position: relative;
+  z-index: 1;
+  min-width: 48px;
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--pl-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.pf-toggle button[data-on] { color: var(--pl-ink); }
+
+.pf-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  border-radius: 999px;
+  background: var(--pl-slab);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .18);
+  transition: transform var(--loom-dur-flow) var(--loom-ease-move);
+}
+
+.pf-toggle[data-at="project"] .pf-toggle-thumb { transform: translateX(100%); }
+
+.pf-toggle button:focus-visible {
+  outline: 2px solid var(--pl-focus);
+  outline-offset: 2px;
+}
+
+/* Where the mode replaces the transcript and composer: rows 2.. of the workspace grid.
+   The hub sits in the middle of the free height and the stage scrolls when it does not fit. */
+.project-mode-stage {
+  position: relative;
+  grid-row: 2 / -1;
+  display: grid;
+  align-content: safe center;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  animation: pf-mode-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
+}
+
+@keyframes pf-mode-fade { from { opacity: 0; } }

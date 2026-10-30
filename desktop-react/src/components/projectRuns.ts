@@ -10,7 +10,7 @@ export interface ProjectRun {
   plan: { id: string; instructions: string; acceptance: string[]; state: string; dependsOn?: string[]; fileScopes?: string[] }[];
   activeEpisode?: { sessionId: string; state: string } | null;
   verificationStatus?: string; verificationFreshness?: string;
-  maxWorkers?: number; teamOwnerId?: string; parallelStatus?: string;
+  maxWorkers?: number; teamOwnerId?: string; parallelStatus?: string; baseCommit?: string;
   teamChildren?: { runId: string; taskId: string; state: string }[];
   deliveryReceipt?: { commit: string; ref: string; integration?: string; publication?: string; status: string };
 }

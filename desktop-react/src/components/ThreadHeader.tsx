@@ -4,6 +4,7 @@ import { useI18n } from "../i18n";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
 import { ContextMeter } from "./ContextMeter";
 import { AnimatedThreadTitle } from "./AnimatedThreadTitle";
+import { ProjectModeToggle } from "./ProjectModeToggle";
 import "./thread-header.css";
 import "./thread-review-entry.css";
 
@@ -25,6 +26,9 @@ interface ThreadHeaderProps {
   compacting?: boolean;
   compactionProgress?: ContextCompactionProgress | null;
   onCompactContext?(): void;
+  /** The conversation, or the persistent project behind it (ProjectMode.tsx); omitted where there is none to switch to. */
+  mode?: "chat" | "project";
+  onModeChange?(mode: "chat" | "project"): void;
 }
 
 function workspaceName(workspace: string, fallback: string): string {
@@ -64,6 +68,8 @@ export function ThreadHeader({
   compacting = false,
   compactionProgress = null,
   onCompactContext,
+  mode,
+  onModeChange,
 }: ThreadHeaderProps) {
   const { language, t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -123,6 +129,7 @@ export function ThreadHeader({
       </div>
 
       <div className="thread-header-actions polished-thread-header-actions">
+        {mode && onModeChange ? <ProjectModeToggle value={mode} onChange={onModeChange} lang={language === "zh-CN" ? "zh" : "en"} /> : null}
         <span className={`thread-status-chip ${state.tone}`} title={`Conversation status: ${state.label}`}>
           {archived ? <Archive size={12.5} strokeWidth={1.8} /> : <span className="thread-status-orb" aria-hidden="true" />}
           <span className="thread-status-label">{state.label}</span>
