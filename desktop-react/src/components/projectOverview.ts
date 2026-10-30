@@ -131,7 +131,9 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   const integration = overview.integration;
   const finished = (program ? program.state === "completed" : run.state === "integrated" && run.workflowStatus === "completed");
   const stopped = run.state === "cancelled" || program?.state === "cancelled";
-  const budgetOut = run.control === "budget_limited" || program?.state === "budget_limited";
+  // A team task refused at the budget blocks coordination; the remedy is still more budget, not a review.
+  const budgetOut = run.control === "budget_limited" || program?.state === "budget_limited"
+    || overview.children.some((child) => child.control === "budget_limited");
   const blocked = run.state === "needs_review" || run.workflowStatus === "blocked" || program?.state === "needs_review" || budgetOut;
   const paused = !blocked && (run.state === "created" || run.workflowControl === "paused" && run.workflowStatus !== "completed" && run.control !== "active");
   const state: FlowData["state"] = finished ? "completed" : stopped ? "paused" : blocked ? "needs_you" : paused ? "paused" : "running";

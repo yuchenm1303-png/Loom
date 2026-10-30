@@ -105,3 +105,10 @@ test("a blocked team task offers one way back, and its reason reads as a sentenc
   assert.equal(data.attention.reason, "有任务的复审未通过：Check for task-9:3 records a different expectation");
   assert.equal(humanReason("plain reason"), "plain reason");
 });
+
+test("a team task stopped at the budget asks for budget, not a review", () => {
+  const data = toFlowData({ ...overview({ control: "paused", workflowStatus: "blocked",
+    reason: "Parallel coordination stopped: Parallel task needs inspection: Project token budget: 15961829 charged + up to 59719 for the next request would exceed 16000000" }),
+    children: [{ id: "c12", state: "running", control: "budget_limited", activeEpisode: null }] }, now, "zh");
+  assert.deepEqual(data.attention, { reason: "token 预算已用完。", action: "budget" });
+});
