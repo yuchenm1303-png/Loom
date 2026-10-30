@@ -20,7 +20,6 @@ import {
   Sparkles, Square, X,
 } from "lucide-react";
 import { ProviderMark } from "./ModelPanel";
-import { ComposerPanel, useComposerPanel } from "./composerPanel";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./project-flow.css";
@@ -304,7 +303,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const [objectiveOpen, setObjectiveOpen] = useState(false);
   const [dirtyOpen, setDirtyOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
-  const modelPanel = useComposerPanel("model");
+  // The model card is a branch like the others: the chip in the footer plugs it into the hub and unplugs it.
+  const [modelOpen, setModelOpen] = useState(false);
   // The plan scrolls; keep the task in progress in view as work moves down it, unless the person is reading it.
   const plan = useRef<HTMLDivElement>(null);
   const current = data.tasks.find((task) => task.state === "working" || task.state === "review" || task.state === "rework")?.id;
@@ -330,6 +330,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   }, []);
   const draftMode = data.phase === "draft";
   const agents = useDeparting(data.agents);
+  const branches = useDeparting(modelOpen && data.models ? [{ id: "model" }] : []);
   // Files the person picked before starting; once started, the Host's copies are what count.
   const [picked, setPicked] = useState<string[]>([]);
   const files = draftMode ? picked.map((path) => ({ name: path.split(/[\\/]/).pop() || path, bytes: undefined as number | undefined, path }))
@@ -338,13 +339,14 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const contextList = [{ id: "repo" }, ...(data.scope.length ? [{ id: "scope" }] : []), ...(filesShown ? [{ id: "files" }] : []),
                        ...(data.knowledge.checks + data.knowledge.notes ? [{ id: "knowledge" }] : [])];
   const context = useDeparting(contextList);
-  const layout = [context.map((item) => item.id).join(","), agents.map((agent) => agent.id).join(","), files.length,
+  const layout = [context.map((item) => item.id).join(","), branches.map((item) => item.id).join(","), agents.map((agent) => agent.id).join(","), files.length,
                   data.models?.options.length ?? -1,
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase].join("|");
   const cables = useCables(stage, hub, cards, layout);
   const share = Math.min(1, data.budget.tokens / Math.max(1, data.budget.tokenLimit));
   const done = data.tasks.filter((task) => task.state === "integrated").length;
   const leaving = new Set([...context.filter((item) => item.leaving).map((item) => item.id),
+                           ...branches.filter((item) => item.leaving).map((item) => item.id),
                            ...agents.filter((item) => item.leaving).map((item) => `agent:${item.id}`)]);
   const shown = (id: string) => context.some((item) => item.id === id);
   const slot = (id: string) => ({ "data-leaving": leaving.has(id) || undefined });
@@ -369,7 +371,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     <div className="pf-stage" ref={stage} data-state={data.state} data-phase={data.phase}>
       <svg className="pf-cables" aria-hidden="true">
         {cables.map((cable) => (
-          <g key={cable.id} className="pf-cable" data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || undefined}
+          <g key={cable.id} className="pf-cable" data-side={cable.side} data-out={cable.id === "model" || undefined} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || undefined}
              data-leaving={leaving.has(cable.id) || undefined}>
             <path className="pf-cable-body" d={cable.d} pathLength={100} />
             <rect className="pf-socket" rx={4}
@@ -551,41 +553,15 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                       onClick={() => setWorkers((count) => Math.min(data.maxWorkers, count + 1))}><Plus size={10} strokeWidth={2.6} /></button>
             </span>
             {data.models ? (
-              // The model the agents think with. Its card unfolds out of this name and folds back into it.
-              <div className="cp-anchor pf-model-anchor" ref={modelPanel.anchorRef}
-                   style={{ "--pf-chip": `${modelPanel.triggerRef.current?.offsetWidth ?? 120}px` } as React.CSSProperties}>
-                <button ref={modelPanel.triggerRef} type="button" className="pf-model pf-model-chip" data-open={modelPanel.open || undefined}
-                        aria-haspopup="dialog" aria-expanded={modelPanel.open} title={data.models.current.name} onClick={modelPanel.toggle}>
-                  <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="small" />
-                  <span key={data.models.current.selection}>{data.models.current.name}</span>
-                  <ChevronDown size={11} />
-                </button>
-                <ComposerPanel panel={modelPanel} label={text.modelCard} size="s" className="pf-model-pop">
-                  <div className="pf-model-pop-body">
-                    <div className="pf-model-pop-head"><Sparkles size={12} /><span>{text.modelCard}</span>
-                      {data.models.current.reasoning ? <em className="pf-count">{data.models.current.reasoning}</em> : null}</div>
-                    <div className="pf-well pf-model-now" key={data.models.current.selection}>
-                      <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="large" />
-                      <span className="pf-model-copy">
-                        <strong title={data.models.current.name}>{data.models.current.name}</strong>
-                        <span>{data.models.current.group}{data.models.current.vision ? <em>{text.vision}</em> : null}</span>
-                      </span>
-                    </div>
-                    {data.models.options.length && actions.onModel ? (
-                      <div className="pf-model-options">
-                        {data.models.options.map((option) => (
-                          <button key={option.selection} type="button" className="pf-model-option" data-cp-item="" disabled={actions.busy}
-                                  title={option.name} onClick={() => { actions.onModel?.(option.selection); modelPanel.close(true); }}>
-                            <ProviderMark id={option.groupId} name={option.group} size="small" />
-                            <span>{option.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                    {data.phase === "live" && data.state === "running" ? <p className="pf-model-hint">{text.modelHint}</p> : null}
-                  </div>
-                </ComposerPanel>
-              </div>
+              // The model the agents think with. The chip grows its card out of the hub on a cable, and takes it back.
+              <button type="button" className="pf-model pf-model-chip" data-open={modelOpen || undefined}
+                      aria-expanded={modelOpen} aria-controls="pf-model-card" title={data.models.current.name}
+                      onClick={() => setModelOpen((value) => !value)} onKeyDown={(event) => { if (event.key === "Escape") setModelOpen(false); }}
+                      {...hover("model")}>
+                <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="small" />
+                <span key={data.models.current.selection}>{data.models.current.name}</span>
+                <ChevronDown size={11} />
+              </button>
             ) : null}
             <button type="button" className="pf-send" disabled={!draft.trim() || actions.busy || blocked} aria-label={draftMode ? text.start : text.send}
                     title={blocked ? text.startBlocked : undefined}
@@ -639,6 +615,33 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
       </div>
 
       <div className="pf-col pf-right">
+        {data.models && branches.some((item) => item.id === "model") ? (
+          <div className="pf-slot pf-model-slot" id="pf-model-card" {...hover("model")} {...slot("model")}
+               onKeyDown={(event) => { if (event.key === "Escape") setModelOpen(false); }}>
+            <Card id="model" side="right" className="pf-model-card" icon={<Sparkles size={12} />} label={text.modelCard}
+                  count={data.models.current.reasoning || undefined} register={register}>
+              <div className="pf-well pf-model-now" key={data.models.current.selection}>
+                <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="large" />
+                <span className="pf-model-copy">
+                  <strong title={data.models.current.name}>{data.models.current.name}</strong>
+                  <span>{data.models.current.group}{data.models.current.vision ? <em>{text.vision}</em> : null}</span>
+                </span>
+              </div>
+              {data.models.options.length && actions.onModel ? (
+                <div className="pf-model-options">
+                  {data.models.options.map((option) => (
+                    <button key={option.selection} type="button" className="pf-model-option" disabled={actions.busy}
+                            title={option.name} onClick={() => actions.onModel?.(option.selection)}>
+                      <ProviderMark id={option.groupId} name={option.group} size="small" />
+                      <span>{option.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {data.phase === "live" && data.state === "running" ? <p className="pf-model-hint">{text.modelHint}</p> : null}
+            </Card>
+          </div>
+        ) : null}
         {agents.map((agent, index) => {
           const Icon = roleIcon[agent.role];
           return (
