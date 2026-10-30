@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import uuid
 from pathlib import Path
 
@@ -495,7 +496,44 @@ class ProjectServiceMixin:
                 "ledgerPosition": self.project_budget.report(ledger), "ledgerTokens": ledger["tokensUsed"],
                 "ledgerEpisodes": ledger["episodesUsed"], "guidance": list(root.get("guidance") or [])}
         return {"run": view, "program": current, "children": children, "integration": integration,
-                "agents": agents, "events": events}
+                "agents": agents, "events": events, "timeline": self._project_timeline(root, family)}
+
+    def _project_timeline(self, root, family):
+        """Every episode of this milestone as a span on a clock: who, on what, from when to when, what it cost.
+
+        Episodes keep no times of their own; each project event stores the run as it was, so an
+        episode starts at the first event naming it active and ends at the first after that does
+        not. The event that closed it says how it ended (merged, rejected, interrupted, ...).
+        """
+        store = self.project_store
+        ids = [run["id"] for run in family]
+        tasks = {item["runId"]: item["taskId"] for item in root.get("teamChildren", [])}
+        plans = {run["id"]: run.get("plan") or [] for run in family}
+        with store.lock:
+            marks = ",".join("?" * len(ids))
+            rows = store.db.execute(
+                f"SELECT run_id, kind, json_extract(data,'$.updatedAt'), json_extract(data,'$.activeEpisode.id') "
+                f"FROM project_events WHERE run_id IN ({marks}) ORDER BY sequence", ids).fetchall()
+            episodes = {row[0]: json.loads(row[1]) for row in store.db.execute(
+                f"SELECT id, data FROM project_episodes WHERE run_id IN ({marks})", ids)}
+        spans, open_ = [], {}
+        def close(run_id, end, outcome):
+            episode_id, start = open_.pop(run_id)
+            episode = episodes.get(episode_id) or {}
+            phase = episode.get("phase") or ""
+            plan = plans.get(run_id) or []
+            index = episode.get("taskIndex", 0)
+            task = tasks.get(run_id) or (plan[index]["id"] if phase == "working" and index < len(plan) else None)
+            spans.append({"id": episode_id, "runId": run_id, "phase": phase, "taskId": task, "start": start, "end": end,
+                          "tokens": int(((episode.get("result") or {}).get("tokens")) or 0), "outcome": outcome})
+        for run_id, kind, at, active in rows:
+            if run_id in open_ and open_[run_id][0] != active:
+                close(run_id, at, kind)
+            if active and run_id not in open_:
+                open_[run_id] = (active, at)
+        for run_id in list(open_):
+            close(run_id, None, "")  # still running
+        return spans[-120:]
 
     def _agent_view(self, run, episode):
         """An active episode as a person reads it: who, on what, how far, doing what."""

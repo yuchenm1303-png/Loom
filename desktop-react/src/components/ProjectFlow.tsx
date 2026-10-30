@@ -15,7 +15,7 @@
  * The data comes from projectOverview.ts (projectRun/overview); this file only draws it. */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowUp, Bot, BookMarked, Check, ChevronDown, Circle, CircleDot, Compass, FolderOpen, GitBranch, Hammer,
+  ArrowUp, Bot, BookMarked, ChartGantt, Check, ChevronDown, Circle, CircleDot, Compass, FolderOpen, GitBranch, Hammer,
   LoaderCircle, Minus, Pause, Play, Plus, ShieldCheck, Square,
 } from "lucide-react";
 import { RETAIN } from "../motion/tokens";
@@ -51,6 +51,15 @@ export interface FlowData {
   tasks: { id: string; title: string; state: FlowTaskState; detail?: string; agentId?: string; agentName?: string }[];
   /** A finished program: why its last planner found the objective met, and what each milestone took. */
   outcome?: { summary: string; milestones: { index: number; tokens: number; episodes: number }[] };
+  /** The milestone woven so far: a lane per task, a span per episode, positions as shares of the time axis. */
+  timeline?: {
+    lanes: { key: string; label: string; taskId?: string }[];
+    spans: { id: string; lane: string; phase: "plan" | "work" | "review"; from: number; to: number; live: boolean;
+             trouble: boolean; tokens: number; minutes: number }[];
+    ticks: { at: number; label: string }[];
+    live: boolean;
+    stats: { episodes: number; trouble: number; perHour: number };
+  };
   budget: { tokens: number; tokenLimit: number };
   workers: number;
   maxWorkers: number;
@@ -80,7 +89,11 @@ const taskIcon: Record<FlowTaskState, typeof Check> = { pending: Circle, working
 const zhText = {
   repository: "仓库", scope: "工作范围", knowledge: "项目知识", checks: "条检查", notes: "条笔记", plan: (n: number) => `阶段 ${n} 计划`,
   planEmpty: "规划完成后在这里显示任务", outcome: "已完成", outcomeCount: (n: number) => `${n} 个阶段`, episodes: (n: number) => `${n} 轮`,
-  donePlaceholder: "目标已完成", mode: "织造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
+  donePlaceholder: "目标已完成", loom: "织造时间线", phases: { plan: "规划", work: "开发", review: "复审" },
+  loomStats: (s: { episodes: number; trouble: number; perHour: number }) => `${s.episodes} 轮 · 重试 ${s.trouble} · ${compact(s.perHour)}/时`,
+  spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
+    `${phase} · ${minutes} 分 · ${compact(tokens)} token${trouble ? " · 未正常结束，已重试" : ""}`,
+  now: "现在", mode: "织造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
   review: "独立复审", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "织造",
@@ -89,7 +102,12 @@ const zhText = {
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
   planEmpty: "Tasks appear here once the plan is made", outcome: "Complete", outcomeCount: (n: number) => `${n} milestones`,
-  episodes: (n: number) => `${n} episodes`, donePlaceholder: "The objective is complete", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
+  episodes: (n: number) => `${n} episodes`, donePlaceholder: "The objective is complete",
+  loom: "Timeline", phases: { plan: "Plan", work: "Build", review: "Review" },
+  loomStats: (s: { episodes: number; trouble: number; perHour: number }) => `${s.episodes} episodes · ${s.trouble} retried · ${compact(s.perHour)}/h`,
+  spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
+    `${phase} · ${minutes} min · ${compact(tokens)} tokens${trouble ? " · did not settle; retried" : ""}`,
+  now: "now", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
   draftPlaceholder: "Describe an objective to pursue; it is split into milestones and tasks, independently reviewed, then integrated",
   steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
   review: "Independent review", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
@@ -222,9 +240,15 @@ function Inline({ text }: { text: string }) {
   return <>{parts.map((part, index) => index % 2 ? <code key={index} className="pf-code">{part}</code> : part)}</>;
 }
 
-function Pulse({ d, step }: { d: string; step: number }) {
+function Pulse({ d, step, back = false }: { d: string; step: number; back?: boolean }) {
   const moment = useMoment(step);
-  return moment ? <path key={moment} className="pf-pulse" d={d} pathLength={100} /> : null;
+  return moment ? <path key={moment} className="pf-pulse" data-back={back || undefined} d={d} pathLength={100} /> : null;
+}
+
+/** One soft wash across a well when its value changes (not when it first appears). */
+function Wash({ on }: { on: unknown }) {
+  const moment = useMoment(on);
+  return moment ? <span key={moment} className="pf-task-wash" aria-hidden="true" /> : null;
 }
 
 export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowData; actions?: FlowActions; lang?: "zh" | "en" }) {
@@ -297,6 +321,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           const agent = data.agents.find((item) => `agent:${item.id}` === cable.id);
           return agent && !agent.done ? <Pulse key={cable.id} d={cable.d} step={agent.step} /> : null;
         })}
+        {/* A task lands: its work runs back out of the hub into the repository. */}
+        {cables.filter((cable) => cable.id === "repo").map((cable) => <Pulse key="merge" d={cable.d} step={done} back />)}
       </svg>
 
       <div className="pf-col pf-left">
@@ -305,7 +331,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             <Card id="repo" side="left" icon={<GitBranch size={12} />} label={text.repository} register={register}>
               <div className="pf-well pf-repo">
                 <strong>{data.repository.name}</strong>
-                <span>{[data.repository.commit, data.repository.subject].filter(Boolean).join(" · ")}</span>
+                <span key={data.repository.commit} className="pf-repo-commit">{[data.repository.commit, data.repository.subject].filter(Boolean).join(" · ")}</span>
+                <Wash on={data.repository.commit} />
               </div>
               <div className="pf-well pf-branch"><GitBranch size={12} /><span>{data.repository.branch}</span><ChevronDown size={12} /></div>
             </Card>
@@ -438,7 +465,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               const Icon = taskIcon[task.state];
               const linked = task.agentId && hot === `agent:${task.agentId}`;
               return (
-                <div key={task.id} className="pf-well pf-row pf-task" data-task={task.id} data-state={task.state} data-hot={linked || undefined}
+                <div key={task.id} className="pf-well pf-row pf-task" data-task={task.id} data-state={task.state} data-hot={linked || hot === `lane:${task.id}` || undefined}
                      title={task.detail || task.title}
                      onPointerEnter={() => task.agentId && setHot(`task:${task.agentId}`)} onPointerLeave={() => task.agentId && setHot("")}>
                   <span className="pf-task-mark" key={task.state}><Icon size={11} strokeWidth={2.4} /></span>
@@ -478,6 +505,40 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         })}
         {!agents.length && data.phase === "live" && data.state === "running" ? <p className="pf-empty pf-agents-empty">{text.noAgents}</p> : null}
       </div>
+
+      {data.timeline ? (
+        // The milestone woven so far: a lane per task, a span per episode, the clock along the bottom.
+        <section className="pf-loom" aria-label={text.loom}>
+          <header className="pf-card-head pf-loom-head">
+            <span className="pf-card-icon"><ChartGantt size={12} /></span><span>{text.loom}</span>
+            <span className="pf-loom-legend" aria-hidden="true">
+              {(["plan", "work", "review"] as const).map((phase) => <span key={phase} data-phase={phase}><i />{text.phases[phase]}</span>)}
+            </span>
+            <em className="pf-count">{text.loomStats(data.timeline.stats)}</em>
+          </header>
+          <div className="pf-loom-body">
+            <div className="pf-loom-grid" aria-hidden="true">
+              {data.timeline.ticks.map((tick) => <span key={tick.label} style={{ left: `${tick.at * 100}%` }}><b>{tick.label}</b></span>)}
+              {data.timeline.live ? <span className="pf-loom-now"><b>{text.now}</b></span> : null}
+            </div>
+            {data.timeline.lanes.map((lane) => (
+              <div key={lane.key} className="pf-loom-lane" data-hot={hot === `lane:${lane.taskId || lane.key}` || undefined}
+                   onPointerEnter={() => setHot(`lane:${lane.taskId || lane.key}`)} onPointerLeave={() => setHot("")}>
+                <span className="pf-loom-label">{lane.label}</span>
+                <div className="pf-loom-track">
+                  {data.timeline!.spans.filter((span) => span.lane === lane.key).map((span) => (
+                    <span key={span.id} className="pf-loom-span" data-phase={span.phase} data-live={span.live || undefined}
+                          data-trouble={span.trouble || undefined} title={text.spanTitle(text.phases[span.phase], span.minutes, span.tokens, span.trouble)}
+                          style={{ left: `${span.from * 100}%`, width: `max(4px, ${(span.to - span.from) * 100}%)` }}>
+                      {span.live ? <span className="pf-agent-live" /> : null}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

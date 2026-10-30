@@ -24,6 +24,11 @@ export interface ProjectOverview {
   integration?: ProjectRun | null;
   agents: OverviewAgent[];
   events: OverviewEvent[];
+  /** The milestone's episodes on a clock (seconds since the epoch; end null while running). */
+  timeline?: OverviewSpan[];
+}
+export interface OverviewSpan {
+  id: string; runId: string; phase: string; taskId: string | null; start: number; end: number | null; tokens: number; outcome: string;
 }
 
 type Lang = "zh" | "en";
@@ -178,6 +183,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   return {
     phase: "live",
     // The last milestone's planner found the objective met: its evidence, and what each milestone took.
+    timeline: toTimeline(overview, now, lang),
     outcome: finished && program ? { summary: run.objectiveComplete ? run.reason || "" : "",
       milestones: program.milestones.map(({ index, tokens, episodes }) => ({ index, tokens, episodes })) } : undefined,
     objective: program?.objective || run.objective.split("\n\nThis is milestone")[0],
@@ -213,6 +219,51 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
                activity: agent.approval ? t.waitsFor(activityText(agent.approval.command, lang).replace(/^(运行|Running) /, ""))
                  : agent.activity ? activityText(agent.activity, lang) : title || t.waiting, elapsed: t.short(Math.max(0, Math.round((now - startedAt) / 60000))) };
     }),
+  };
+}
+
+// Episodes that ended by a recovery (a retry, a rejection, a stop) rather than settling normally.
+const TROUBLE = new Set(["interrupted_episode_continued", "transient_failure_retry", "review_evidence_rejected", "reply_rejected",
+  "scope_rejected", "no_progress_retry", "episode_limit_reached", "budget_limited", "needs_review"]);
+const TICKS = [1, 2, 5, 10, 15, 30, 60, 120, 240, 480].map((minutes) => minutes * 60);
+
+/** The milestone as a loom: one lane per task (and the planner, the project review), one span per episode. */
+export function toTimeline(overview: ProjectOverview, now: number, lang: Lang = "zh"): FlowData["timeline"] {
+  const spans = overview.timeline || [];
+  const run = overview.run;
+  if (!run || !spans.length) return undefined;
+  const ids = run.plan.map((task) => task.id);
+  const laneOf = (span: OverviewSpan) => span.phase === "planning" ? "plan"
+    : span.taskId ? `task:${span.taskId}` : span.runId === run.id ? "project" : "integrate";
+  const used = new Set(spans.map(laneOf));
+  const order = ["plan", ...ids.map((id) => `task:${id}`), "project", "integrate"].filter((key) => used.has(key));
+  const words = lang === "en" ? { plan: "Plan", project: "Project review", integrate: "Integrate", task: (n: number) => `Task ${n}` }
+    : { plan: "规划", project: "整体复审", integrate: "集成", task: (n: number) => `任务 ${n}` };
+  const lanes = order.map((key) => key.startsWith("task:")
+    ? { key, label: words.task(ids.indexOf(key.slice(5)) + 1), taskId: key.slice(5) }
+    : { key, label: words[key as "plan" | "project" | "integrate"] });
+  const nowSeconds = now / 1000;
+  const live = spans.some((span) => span.end == null);
+  const start = Math.min(...spans.map((span) => span.start));
+  const end = Math.max(start + 60, live ? nowSeconds : Math.max(...spans.map((span) => span.end ?? span.start)));
+  const step = TICKS.find((seconds) => (end - start) / seconds <= 6) || TICKS[TICKS.length - 1];
+  const ticks: { at: number; label: string }[] = [];
+  for (let at = step; at < end - start; at += step) {
+    const minutes = Math.round(at / 60);
+    ticks.push({ at: at / (end - start), label: minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h${minutes % 60 ? `${minutes % 60}m` : ""}` });
+  }
+  const tokens = spans.reduce((sum, span) => sum + span.tokens, 0);
+  const hours = Math.max((end - start) / 3600, 1 / 60);
+  return {
+    lanes, ticks, live,
+    spans: spans.map((span) => ({
+      id: span.id, lane: laneOf(span), phase: span.phase === "planning" ? "plan" : span.phase === "verifying" ? "review" : "work",
+      from: (span.start - start) / (end - start), to: ((span.end ?? end) - start) / (end - start),
+      live: span.end == null, trouble: TROUBLE.has(span.outcome), tokens: span.tokens,
+      minutes: Math.max(0, Math.round(((span.end ?? nowSeconds) - span.start) / 60)),
+    })),
+    stats: { episodes: spans.length, trouble: spans.filter((span) => TROUBLE.has(span.outcome)).length,
+             perHour: Math.round(tokens / hours) },
   };
 }
 

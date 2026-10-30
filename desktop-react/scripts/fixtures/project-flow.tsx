@@ -42,6 +42,22 @@ const start: FlowData = {
   ],
 };
 
+// The milestone's clock, minutes since it started: a planner, two workers in parallel, a review
+// rejected once (task-2 reworked), the last two tasks still running at minute 41.
+const woven: [string, "plan" | "work" | "review", number, number | null, boolean?][] = [
+  ["plan", "plan", 0, 2], ["task:task-1", "work", 2, 9], ["task:task-1", "review", 9, 12],
+  ["task:task-2", "work", 2, 11], ["task:task-2", "review", 12, 14, true], ["task:task-2", "work", 14, 18], ["task:task-2", "review", 18, 20],
+  ["task:task-3", "work", 12, 21], ["task:task-3", "review", 21, 24], ["task:task-4", "work", 24, null], ["task:task-5", "work", 25, 37],
+  ["task:task-5", "review", 37, null],
+];
+function timeline(minute: number): FlowData["timeline"] {
+  const lanes = [{ key: "plan", label: "规划" }, ...start.tasks.map((item, index) => ({ key: `task:${item.id}`, label: `任务 ${index + 1}`, taskId: item.id }))];
+  const spans = woven.map(([lane, phase, from, to, trouble], index) => ({ id: `s${index}`, lane, phase, from: from / minute,
+    to: (to ?? minute) / minute, live: to == null, trouble: !!trouble, tokens: Math.round(((to ?? minute) - from) * 52_000), minutes: (to ?? minute) - from }));
+  return { lanes, spans, live: true, ticks: [10, 20, 30, 40].filter((at) => at < minute).map((at) => ({ at: at / minute, label: `${at}m` })),
+           stats: { episodes: spans.length, trouble: 1, perHour: 3_380_000 } };
+}
+
 type Step = (data: FlowData) => FlowData;
 const agent = (d: FlowData, id: string, change: Partial<FlowAgent>) => ({ ...d, agents: d.agents.map((a) => a.id === id ? { ...a, ...change } : a) });
 const task = (d: FlowData, id: string, state: FlowData["tasks"][number]["state"]) => ({ ...d, tasks: d.tasks.map((t) => t.id === id ? { ...t, state } : t) });
@@ -56,6 +72,7 @@ const steps: Step[] = [
   (d) => spend(agent(d, "w1", { activity: "补充行号回归测试", step: 9 }), 50_000),
   (d) => spend(agent(d, "rv", { activity: "检查 7 条命令的输出", step: 2 }), 70_000),
   (d) => ({ ...task(d, "task-5", "integrated"), agents: d.agents.filter((a) => a.id !== "rv"),
+    repository: { ...d.repository, commit: "7c41e09", subject: "Integrate task-5 README" },
     narration: { summary: "已工作 47 分钟 · 13 轮", text: "README 复审通过并已集成。只剩测试套件，完成后进入整体复审。" } }),
   (d) => spend(agent(d, "w1", { activity: "运行 python -m unittest", step: 10 }), 40_000),
 ];
@@ -65,7 +82,7 @@ function play(count: number, workers: number) {
   // The stepper adds an idle agent slot or removes the last idle one.
   const extra: FlowAgent[] = Array.from({ length: Math.max(0, workers - 2) }, (_, i) =>
     ({ id: `extra-${i}`, role: "worker", name: `Agent ${data.agents.length + 1 + i}`, activity: "等待可并行的任务", step: 0, elapsed: "", done: true }));
-  return { ...data, workers, agents: [...data.agents, ...extra] };
+  return { ...data, workers, agents: [...data.agents, ...extra], timeline: timeline(41 + count) };
 }
 
 // ?draft=1: nothing started yet; ?attention=1: stopped at the budget and waiting.

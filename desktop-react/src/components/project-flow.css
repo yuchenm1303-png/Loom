@@ -76,6 +76,10 @@ html[data-loom-theme="light"] .pf-stage {
   stroke-dashoffset: -100;
   animation: pf-pulse var(--loom-dur-slow) var(--loom-ease-glide);
 }
+/* A merge runs the other way, out of the hub into the repository, in the colour of landed work. */
+.pf-pulse[data-back] { stroke: var(--pf-ok); stroke-dasharray: 14 100; animation-name: pf-pulse-back; }
+.pf-repo { position: relative; overflow: hidden; }
+.pf-repo-commit { animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 
 .pf-col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 12px; }
 .pf-left { align-self: end; padding-bottom: 6px; }
@@ -253,6 +257,9 @@ html[data-loom-theme="light"] .pf-stage {
   position: relative;
   z-index: 1;
   display: grid;
+  /* An auto track takes its widest row's min-content: the one-line header (state, model,
+     budget, controls) pushed the field and the send button past the card's edge. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   padding: 7px;
   border-radius: 16px;
@@ -448,6 +455,72 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-agents-empty { align-self: flex-start; padding-left: 4px; }
 .pf-loading { min-height: 100%; }
 
+/* The timeline under the hub, across all three columns: the milestone as a loom. Each lane is
+   a warp thread (a task, the planner, the project review); each episode a weft span on it,
+   coloured by what it did. Spans arrive by growing from their start; nothing else moves but
+   the live span's dot, which is the agent's own breathing dot. */
+.pf-loom {
+  grid-column: 1 / -1;
+  margin-top: 36px;
+  padding: 9px 12px 12px;
+  border-radius: 14px;
+  background: var(--pf-card);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .12), 0 14px 30px -22px rgba(0, 0, 0, .6);
+  animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
+}
+.pf-loom-head { padding-bottom: 8px; }
+.pf-loom-head .pf-card-icon { color: #c3a6f5; }
+.pf-loom-legend { display: inline-flex; gap: 12px; margin-left: 10px; color: var(--pl-faint); font-size: 11.5px; }
+.pf-loom-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.pf-loom-legend i { width: 10px; height: 4px; border-radius: 2px; background: var(--pf-span); }
+.pf-loom-legend > span,
+.pf-loom-span { --pf-span: color-mix(in srgb, var(--pf-live) 70%, transparent); }
+.pf-loom-legend > span[data-phase="plan"],
+.pf-loom-span[data-phase="plan"] { --pf-span: color-mix(in srgb, var(--pl-accent) 75%, transparent); }
+.pf-loom-legend > span[data-phase="review"],
+.pf-loom-span[data-phase="review"] { --pf-span: color-mix(in srgb, var(--pf-ok) 75%, transparent); }
+.pf-loom-head .pf-count { margin-left: auto; }
+
+.pf-loom-body { position: relative; display: grid; gap: 3px; padding-bottom: 18px; }
+/* The clock: tick lines over the tracks, labels under them. Tracks start after the 64px labels and an 8px gap. */
+.pf-loom-grid { position: absolute; inset: 0 0 0 72px; pointer-events: none; }
+.pf-loom-grid > span { position: absolute; top: 0; bottom: 14px; width: 1px; background: var(--pf-raise); }
+.pf-loom-grid b {
+  position: absolute;
+  top: calc(100% + 2px);
+  color: var(--pl-faint);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 14px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+.pf-loom-grid .pf-loom-now { left: 100%; background: color-mix(in srgb, var(--pf-live) 55%, transparent); }
+.pf-loom-now b { color: var(--pf-live); transform: translateX(-100%); }
+
+.pf-loom-lane { position: relative; display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 8px; }
+.pf-loom-label { overflow: hidden; color: var(--pl-faint); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; transition: color var(--loom-dur-fast) var(--loom-ease-out); }
+.pf-loom-lane[data-hot] .pf-loom-label { color: var(--pl-ink); }
+.pf-loom-track { position: relative; height: 12px; border-radius: 6px; background: var(--pf-well); }
+.pf-loom-span {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  border-radius: 4px;
+  background: var(--pf-span);
+  transform-origin: left center;
+  animation: pf-meter-in var(--loom-dur-slow) var(--loom-ease-move) backwards;
+  transition: filter var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-loom-lane[data-hot] .pf-loom-span { filter: brightness(1.25); }
+/* An episode that did not settle (a retry, a rejection, a stop): a warm notch at its end. */
+.pf-loom-span[data-trouble] { box-shadow: inset -3px 0 0 var(--pf-warn); }
+.pf-loom-span[data-live] { background: linear-gradient(90deg, var(--pf-span), color-mix(in srgb, var(--pf-span) 40%, transparent)); }
+.pf-loom-span .pf-agent-live { margin-right: -3px; }
+
 /* A finished program: the planner's evidence, then one row per milestone with its share of the tokens. */
 .pf-outcome .pf-card-icon { color: var(--pf-ok); }
 .pf-outcome-summary { -webkit-line-clamp: 6; }
@@ -628,9 +701,11 @@ html[data-loom-theme="light"] .pf-stage {
 @keyframes pf-fade { from { opacity: 0; } }
 @keyframes pf-cable-draw { from { stroke-dashoffset: 100; } }
 @keyframes pf-pulse { from { stroke-dashoffset: 7; } to { stroke-dashoffset: -100; } }
+@keyframes pf-pulse-back { from { stroke-dashoffset: -100; } to { stroke-dashoffset: 14; } }
 @keyframes pf-mark-in { from { opacity: 0; scale: .5; } }
 @keyframes pf-glint { from { transform: translateX(-100%); } }
 @keyframes pf-fill { from { transform: scaleX(0); } }
+@keyframes pf-meter-in { from { transform: scaleX(0); } }
 @keyframes pf-wash { from { transform: translateX(-100%); } }
 @keyframes pf-spin { to { rotate: 360deg; } }
 @keyframes pf-breathe { 0%, 100% { opacity: .45; scale: .8; } 50% { opacity: 1; scale: 1; } }
@@ -639,6 +714,8 @@ html[data-loom-theme="light"] .pf-stage {
   .pf-agent-live,
   .pf-task[data-state="working"] .pf-task-mark svg,
   .pf-task-wash,
+  .pf-loom,
+  .pf-loom-span,
   .pf-attention-dot,
   .pf-busy,
   .pf-pulse,
@@ -652,4 +729,5 @@ html[data-loom-theme="light"] .pf-stage {
   .pf-left, .pf-right { padding-bottom: 0; }
   .pf-offset-2, .pf-offset-3 { margin: 0; }
   .pf-agent, .pf-below { width: auto; }
+  .pf-loom-legend { display: none; }  /* the stats keep the header's one line */
 }

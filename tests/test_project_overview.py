@@ -36,6 +36,12 @@ def test_an_agent_reads_as_its_role_task_steps_and_latest_action(tmp_path):
         assert "episode_settled" in [event["kind"] for event in overview["events"]]
         assert [event["sequence"] for event in overview["events"]] == sorted(
             (event["sequence"] for event in overview["events"]), reverse=True)  # newest first
+        # The milestone's episodes on a clock: the planner's closed, the worker's in order after it.
+        spans = overview["timeline"]
+        assert [span["phase"] for span in spans][:2] == ["planning", "working"]
+        assert spans[0]["end"] is not None and spans[0]["start"] <= spans[0]["end"] <= spans[1]["start"]
+        assert spans[1]["taskId"] == "task-1" and spans[0]["taskId"] is None
+        assert spans[0]["outcome"] and all(span["tokens"] >= 0 for span in spans)
     finally:
         runtime.close()
 

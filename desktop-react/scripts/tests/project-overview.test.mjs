@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../src/components/projectOverview.ts", i
 const module = { exports: {} };
 new Function("module", "exports", "require", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(
   module, module.exports, () => ({}));
-const { toFlowData, eventText, activityText, humanReason, raisedBudget } = module.exports;
+const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline } = module.exports;
 
 const now = Date.parse("2026-10-30T10:00:00Z");
 const run = (extra = {}) => ({
@@ -141,4 +141,24 @@ test("a program its planner found complete shows the evidence and what each mile
   assert.deepEqual(data.outcome, { summary: "All five commands work; `python -m unittest` ran 215 tests OK.",
     milestones: [{ index: 1, tokens: 3000, episodes: 20 }, { index: 2, tokens: 100, episodes: 1 }] });
   assert.equal(toFlowData(overview(), now, "zh").outcome, undefined);  // a running project has no outcome yet
+});
+
+test("the timeline: a lane per task in plan order, spans as shares of the clock, retries marked", () => {
+  const t0 = now / 1000 - 40 * 60;
+  const span = (id, phase, taskId, from, to, outcome = "episode_settled", runId = "c2") =>
+    ({ id, runId, phase, taskId, start: t0 + from * 60, end: to == null ? null : t0 + to * 60, tokens: 60000, outcome });
+  const data = toTimeline({ ...overview(), timeline: [
+    span("p", "planning", null, 0, 4, "episode_settled", "root"), span("w3", "working", "task-3", 4, 20),
+    span("w2", "working", "task-2", 4, 10), span("r2", "verifying", "task-2", 10, 12, "review_evidence_rejected"),
+    span("pr", "verifying", null, 30, null, "", "root") ] }, now, "zh");
+  assert.deepEqual(data.lanes.map((lane) => lane.label), ["规划", "任务 2", "任务 3", "整体复审"]);  // plan order, not arrival order
+  const byId = Object.fromEntries(data.spans.map((item) => [item.id, item]));
+  assert.equal(byId.p.from, 0);
+  assert.equal(byId.w3.to, 0.5);
+  assert.equal(byId.r2.trouble, true);
+  assert.equal(byId.pr.live, true);
+  assert.equal(byId.pr.to, 1);  // a running span reaches now
+  assert.deepEqual(data.ticks.map((tick) => tick.label), ["10m", "20m", "30m"]);
+  assert.deepEqual(data.stats, { episodes: 5, trouble: 1, perHour: 450000 });
+  assert.equal(toTimeline(overview(), now, "zh"), undefined);  // no episodes yet, no timeline
 });
