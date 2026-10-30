@@ -70,3 +70,19 @@ def test_guidance_reaches_the_next_prompt_and_later_milestones(tmp_path):
         assert service.project_store.get(first)["guidance"] == ["Keep the public API stable."]
     finally:
         runtime.close()
+
+
+def test_budget_added_to_a_milestone_is_added_to_its_program(tmp_path):
+    service, runtime, platform, workspace, source = setup_review(tmp_path, [reply(PLAN)])
+    try:
+        with service.project_runner.guard:
+            created = program.create(service, {"operationId": str(uuid.uuid4()), "threadId": source,
+                "objective": "Implement a working project", "tokenBudget": 10000, "maxEpisodes": 40})
+        run = service.project_store.get(program.get(service.project_store, created["id"])["currentRunId"])
+        run = control(service, run, "pause")
+        service.project_control({"operationId": str(uuid.uuid4()), "runId": run["id"], "expectedRevision": run["revision"],
+                                 "tokenBudget": 15000, "maxEpisodes": 60}, "resume")
+        after = program.get(service.project_store, created["id"])
+        assert (after["tokenBudget"], after["maxEpisodes"]) == (15000, 60)
+    finally:
+        runtime.close()

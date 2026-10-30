@@ -384,6 +384,7 @@ class ProjectServiceMixin:
             current = self.project_store.get(self._required_text(params, "runId"))
             if current.get("completionPolicy") == "local_integrate" or current.get("maxWorkers", 1) > 1:
                 run = workflow.control(self, params, action)
+                self._raise_program_budget(current, params)
                 if action == "cancel":
                     for target in (run, self.project_store.get(run["integrationRunId"]) if run.get("integrationRunId") else run):
                         if target["activeEpisode"]:
@@ -396,6 +397,19 @@ class ProjectServiceMixin:
                 self.project_runner.executor.cancel(run["activeEpisode"])
             self._project_team_cancel(run, action)
             return run
+
+    def _raise_program_budget(self, before, params):
+        """Budget added to a milestone is added to its program, or the next milestone would stop at the old total."""
+        owner = (before.get("milestone") or {}).get("programId")
+        if not owner:
+            return
+        raised = {key: params[key] - before[key] for key in ("tokenBudget", "maxEpisodes")
+                  if type(params.get(key)) is int and params[key] > before[key]}
+        if raised:
+            current = program.get(self.project_store, owner)
+            for key, amount in raised.items():
+                current[key] += amount
+            program._save(self.project_store, current)
 
     def _project_team_cancel(self, run, action):
         if action != "cancel":

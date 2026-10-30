@@ -55,7 +55,7 @@ export interface FlowData {
 }
 
 export interface FlowActions {
-  onStart?(objective: string, workers: number): void;
+  onStart?(objective: string, workers: number, tokens: number): void;
   onSteer?(text: string): void;
   onWorkers?(count: number): void;
   onPause?(): void;
@@ -67,6 +67,8 @@ export interface FlowActions {
 }
 
 const roleIcon = { planner: Compass, worker: Hammer, reviewer: ShieldCheck };
+/** Budgets a new program can start with; the chip cycles through them. The Host enforces it at every request. */
+const START_BUDGETS = [2_000_000, 4_000_000, 8_000_000, 16_000_000];
 const taskIcon: Record<FlowTaskState, typeof Check> = { pending: Circle, working: LoaderCircle, review: CircleDot, rework: CircleDot, integrated: Check };
 
 const zhText = {
@@ -75,7 +77,7 @@ const zhText = {
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
   review: "独立复审", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "织造",
-  attention: { resume: "继续", budget: "追加预算" }, noAgents: "等待调度",
+  attention: { resume: "继续", budget: "追加预算" }, noAgents: "等待调度", budgetHint: "总 token 预算，点击切换",
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
@@ -84,7 +86,7 @@ const enText: typeof zhText = {
   steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
   review: "Independent review", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
-  attention: { resume: "Resume", budget: "Add budget" }, noAgents: "Waiting to schedule",
+  attention: { resume: "Resume", budget: "Add budget" }, noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change",
 };
 const stateWord = {
   zh: { running: "运行中", paused: "已暂停", needs_you: "等你处理", completed: "已完成", starting: "启动中" },
@@ -217,6 +219,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const [hot, setHot] = useState("");
   const [draft, setDraft] = useState("");
   const [workers, setWorkers] = useState(data.workers);
+  const [tokens, setTokens] = useState(START_BUDGETS[2]);
   const register = useCallback((id: string, side: Side, node: HTMLElement | null) => {
     if (node) cards.current.set(id, { side, node }); else cards.current.delete(id);
   }, []);
@@ -239,7 +242,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const submit = () => {
     const value = draft.trim();
     if (!value || actions.busy) return;
-    if (draftMode) actions.onStart?.(value, workers); else actions.onSteer?.(value);
+    if (draftMode) actions.onStart?.(value, workers, tokens); else actions.onSteer?.(value);
     setDraft("");
   };
 
@@ -341,6 +344,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           {actions.error ? <p className="pf-error" role="alert">{actions.error}</p> : null}
           <footer className="pf-composer-foot">
             <span className="pf-chip"><ShieldCheck size={13} />{text.review}</span>
+            {draftMode ? (
+              <button type="button" className="pf-chip pf-chip-button" title={text.budgetHint}
+                      onClick={() => setTokens((value) => START_BUDGETS[(START_BUDGETS.indexOf(value) + 1) % START_BUDGETS.length])}>
+                <span className="pf-chip-value" key={tokens}>{compact(tokens)}</span> token
+              </button>
+            ) : null}
             <span className="pf-stepper" aria-label={text.agents} title={text.agents}>
               <button type="button" aria-label={text.fewer} disabled={!draftMode || shownWorkers <= 1}
                       onClick={() => setWorkers((count) => Math.max(1, count - 1))}><Minus size={10} strokeWidth={2.6} /></button>

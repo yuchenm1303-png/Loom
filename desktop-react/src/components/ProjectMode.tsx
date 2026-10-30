@@ -8,9 +8,8 @@ import { toFlowData, type ProjectOverview } from "./projectOverview";
 
 const LIVE_POLL_MS = 2000;
 const REST_POLL_MS = 12000;
-/** A new program's budget. Visible and raised from the hub; the Host enforces it at every request. */
-const START_TOKENS = 4_000_000;
-const START_EPISODES = 200;
+/** Episodes for a new program: generous, since tokens are the budget a person chooses. */
+const START_EPISODES = 400;
 
 export function ProjectMode({ threadId, workspace, model }: { threadId: string; workspace?: string; model?: string }) {
   const { language } = useI18n();
@@ -72,8 +71,8 @@ export function ProjectMode({ threadId, workspace, model }: { threadId: string; 
   return (
     <ProjectFlow lang={lang} data={data} actions={{
       busy, error,
-      onStart: (objective, workers) => act(() => window.loom.call("projectProgram/create", {
-        operationId: crypto.randomUUID(), threadId, objective, tokenBudget: START_TOKENS, maxEpisodes: START_EPISODES,
+      onStart: (objective, workers, tokens) => act(() => window.loom.call("projectProgram/create", {
+        operationId: crypto.randomUUID(), threadId, objective, tokenBudget: tokens, maxEpisodes: START_EPISODES,
         maxWorkers: workers, maxMilestones: 20 })),
       onSteer: (text) => run && act(() => window.loom.call("projectRun/steer", { runId: run.id, text })),
       onPause: () => run && control("pause"),
