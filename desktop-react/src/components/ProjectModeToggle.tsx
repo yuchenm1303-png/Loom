@@ -1,27 +1,28 @@
 /* The header switch between a conversation and its persistent project (ProjectMode.tsx):
- * 对话 / 织造 (Chat / Weave). Weaving is what a loom does: one objective worked thread by
- * thread, over days. Kept apart from ProjectFlow so the header loads none of the mode.
+ * 对话 / 织造 (Chat / Weave), drawn as glyphs only; the names are the tooltip and label.
+ * Kept apart from ProjectFlow so the header loads none of the mode.
  *
  * Header controls are quiet and tint is reserved for selection (workspace-surface-refinement.css):
  * a hairline capsule, and the selection's tint on a thumb that travels to the chosen item.
- * The thumb is measured, so the two labels may differ in width; choosing 织造 draws the
- * glyph's weft once. Styles: project-mode-toggle.css. */
+ * Choosing 织造 draws the code mark's slash once. Styles: project-mode-toggle.css. */
 import { useLayoutEffect, useRef, useState } from "react";
 import { createIcon } from "./icons/base";
 import "./project-mode-toggle.css";
 
 const ChatGlyph = createIcon("mode-chat", "ModeChat",
   <path d="M7.9 19.5A8.5 8.5 0 1 0 4.5 16L3 21Z" />);
-// Two warp threads and a weft that passes over one and under the other.
+// The user's reference: a frame left open at its top-left corner, where a </> sits.
+// Fitted to their 120 px crop (shape IoU .89 at the reference's own stroke).
 const WeaveGlyph = createIcon("mode-weave", "ModeWeave", <>
-  <path d="M8 3.5v17" />
-  <path d="M16 3.5v17" />
-  <path className="li li-weft" d="M3 12c2.5 0 3.5-4 5-4s2.5 8 8 8 2.5-4 5-4" pathLength={1} />
+  <path d="M2 12.8V17.5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3" />
+  <path d="M4.2 4.4 2.3 7l1.9 2.6" />
+  <path className="li li-weft" d="M8.9 4.3 7.3 9.8" pathLength={1} />
+  <path d="M11.4 4.4 14.2 7l-2.8 2.6" />
 </>);
 
 export function ProjectModeToggle({ value, onChange, lang = "zh" }: { value: "chat" | "project"; onChange(value: "chat" | "project"): void; lang?: "zh" | "en" }) {
-  const words = lang === "en" ? { chat: "Chat", project: "Weave", label: "Mode", hint: "Pursue one objective over days, task by task" }
-                              : { chat: "对话", project: "织造", label: "工作方式", hint: "一个目标，拆成任务持续推进，独立复审后集成" };
+  const words = lang === "en" ? { chat: "Chat", project: "Weave", label: "Mode", hint: "Weave · pursue one objective over days, task by task" }
+                              : { chat: "对话", project: "织造", label: "工作方式", hint: "织造 · 一个目标拆成任务持续推进，独立复审后集成" };
   const items = useRef<Record<string, HTMLButtonElement | null>>({});
   const [thumb, setThumb] = useState<{ x: number; width: number } | null>(null);
   useLayoutEffect(() => {
@@ -36,10 +37,9 @@ export function ProjectModeToggle({ value, onChange, lang = "zh" }: { value: "ch
         const Glyph = option === "chat" ? ChatGlyph : WeaveGlyph;
         return (
           <button key={option} type="button" role="radio" aria-checked={value === option} data-on={value === option || undefined}
-                  ref={(node) => { items.current[option] = node; }} title={option === "project" ? words.hint : undefined}
-                  onClick={() => onChange(option)}>
-            <Glyph size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span>{words[option]}</span>
+                  ref={(node) => { items.current[option] = node; }} aria-label={words[option]}
+                  title={option === "project" ? words.hint : words.chat} onClick={() => onChange(option)}>
+            <Glyph size={16} strokeWidth={1.75} aria-hidden="true" />
           </button>
         );
       })}

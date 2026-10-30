@@ -16,11 +16,11 @@
 .pf-toggle button {
   position: relative;
   z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
   height: 24px;
-  padding: 0 10px 0 8px;
+  padding: 0;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -52,7 +52,7 @@
   transition: transform var(--loom-dur-flow) var(--loom-ease-move), width var(--loom-dur-flow) var(--loom-ease-move);
 }
 
-/* Choosing 织造 draws the weft through the warp, once. */
+/* Choosing 织造 draws the slash of its </> once. */
 .pf-toggle button[data-on] .li-weft {
   stroke-dasharray: 1;
   animation: pf-weft-draw var(--loom-dur-slow) var(--loom-ease-out) backwards;
