@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import shutil
 import json
 import uuid
 from pathlib import Path
@@ -94,14 +95,46 @@ class ProjectExecutor:
                           "titleSource": "manual", "autoTitleDisabled": True, "projectRunId": run["id"]})
         return session.session_id
 
+    def session_scratch(self, session_id):
+        """The scratch every episode of a project session shares (and its sandbox opens).
+
+        A project session is registered as one before its first episode's prompt is built:
+        otherwise the runtime names a per-turn folder, and what is copied there before the
+        turn starts lands where the sandboxed episode cannot read it.
+        """
+        self.service._project_session_ids.add(session_id)
+        return self.service.runtime._run_scratch_dir(session_id, "session")
+
     def accepted_checks(self, run, session_id):
         """The project's kept checks, copied into this session's scratch and rendered for it."""
-        scratch = self.service.runtime._run_scratch_dir(session_id, "accepted-checks")
+        scratch = self.session_scratch(session_id)
         workspace = self.service._load(session_id).workspace_dir
         if scratch is None:
             return []
         scratch.mkdir(parents=True, exist_ok=True)
         return checks.provide(self.service.project_store, run, scratch, workspace)
+
+    def references(self, run, session_id):
+        """The program's attached files, copied into this session's scratch; returns their paths for the prompt."""
+        store = self.service.project_store
+        owner = checks.registry_root(run)
+        milestone = (store.get(owner) if owner != run["id"] else run).get("milestone") or {}
+        if not milestone.get("programId"):
+            return []
+        records = program.get(store, milestone["programId"]).get("references") or []
+        scratch = self.session_scratch(session_id)
+        if not records or scratch is None:
+            return []
+        scratch = scratch / "references"
+        scratch.mkdir(parents=True, exist_ok=True)
+        source = program.references_folder(store, milestone["programId"])
+        paths = []
+        for item in records:
+            target = scratch / item["name"]
+            if not target.exists():
+                shutil.copyfile(source / item["name"], target)
+            paths.append(target.as_posix())
+        return paths
 
     def compact_between_episodes(self, run, session_id):
         """Start a continued episode from the run's own handoff, not the whole history.
@@ -769,6 +802,9 @@ class ProjectControllerMixin:
         if method == "projectProgram/create":
             with self.service.project_runner.guard:
                 return {"program": program.create(self.service, params)}
+        if method == "projectProgram/attach":
+            with self.service.project_runner.guard:
+                return {"program": program.attach(self.service, params)}
         if method == "projectProgram/get":
             return {"program": program.get(self.service.project_store, self.service._required_text(params, "programId"))}
         if method == "projectProgram/list":

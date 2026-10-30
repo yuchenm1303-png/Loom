@@ -20,6 +20,8 @@ next; it never edits anything itself.
 from __future__ import annotations
 
 import json
+from pathlib import Path
+import shutil
 import time
 import uuid
 
@@ -55,6 +57,60 @@ def objective_for(program, index):
     return (program["objective"][:14000] + "\n\n" + stance)[:20000]
 
 
+MAX_REFERENCES = 12
+MAX_REFERENCE_BYTES = 4_000_000
+
+
+def references_folder(store, program_id):
+    return store.home / "references" / program_id
+
+
+def _stage_references(store, program, paths):
+    """Copy files the person attached into the program's own store; returns their records.
+
+    Agents work in sandboxed checkouts and cannot read the person's folders, so each episode
+    gets a copy in its scratch (ProjectExecutor.references). The originals are never touched.
+    """
+    if paths is None:
+        return []
+    if not isinstance(paths, list) or not all(isinstance(item, str) and item.strip() for item in paths):
+        raise ValueError("attachments must be a list of file paths")
+    folder = references_folder(store, program["id"])
+    have = list(program.get("references") or [])
+    if len(have) + len(paths) > MAX_REFERENCES:
+        raise ValueError(f"at most {MAX_REFERENCES} reference files per program")
+    added = []
+    for raw in paths:
+        source = Path(raw).expanduser()
+        if not source.is_file():
+            raise ValueError(f"Not a file: {raw}")
+        size = source.stat().st_size
+        if size > MAX_REFERENCE_BYTES:
+            raise ValueError(f"{source.name} is larger than {MAX_REFERENCE_BYTES // 1_000_000} MB")
+        taken = {item["name"] for item in have + added}
+        name, index = source.name, 2
+        while name in taken:  # two files of one name keep both
+            name = f"{source.stem}-{index}{source.suffix}"
+            index += 1
+        folder.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, folder / name)
+        added.append({"name": name, "bytes": size, "source": str(source), "addedAt": time.time()})
+    return added
+
+
+def attach(service, params):
+    """Add reference files to a running program; the next episodes read them."""
+    store = service.project_store
+    current = get(store, service._required_text(params, "programId"))
+    added = _stage_references(store, current, params.get("attachments"))
+    with store.transaction() as db:
+        row = db.execute("SELECT data FROM project_programs WHERE id=?", (current["id"],)).fetchone()
+        latest = json.loads(row[0])
+        latest["references"] = [*(latest.get("references") or []), *added]
+        db.execute("INSERT OR REPLACE INTO project_programs VALUES(?,?)", (latest["id"], encoded(latest)))
+    return latest
+
+
 def create(service, params):
     """Create a program and its first milestone run, started."""
     store = service.project_store
@@ -73,6 +129,7 @@ def create(service, params):
                "sourceThreadId": service._required_text(params, "threadId"), "tokenBudget": budget,
                "maxEpisodes": episodes, "maxWorkers": params.get("maxWorkers", 1), "maxMilestones": milestones,
                "state": "running", "reason": "", "milestones": [], "currentRunId": None, "createdAt": time.time()}
+    program["references"] = _stage_references(store, program, params.get("attachments"))
     _save(store, program)  # first, so a retried create finds it rather than starting another
     try:
         # The first run validates the shared parameters (budget, workers, repository state).

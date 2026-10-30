@@ -213,6 +213,11 @@ def build_service(root: Path, stored_model: str, provider: str | None):
     return service, runtime, entry.model
 
 
+def _attach(service, params):
+    with service.project_runner.guard:
+        return program.attach(service, params)
+
+
 def serve(service, root: Path, thread_id: str, model: str, token: str, port: int):
     """The project calls of the Weave UI, for one page origin, with a per-run token."""
     calls = {
@@ -223,6 +228,7 @@ def serve(service, root: Path, thread_id: str, model: str, token: str, port: int
         "projectRun/cancel": lambda p: {"run": service.project_control(p, "cancel")},
         "projectRun/recover": lambda p: service.project_recover(p),
         "projectRun/approval": lambda p: service.project_approval(p),
+        "projectProgram/attach": lambda p: {"program": _attach(service, p)},
     }
     def create(params):
         with service.project_runner.guard:

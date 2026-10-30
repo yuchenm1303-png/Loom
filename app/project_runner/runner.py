@@ -205,9 +205,14 @@ class ProjectRunner:
             except Exception as exc:
                 self.error = f"{type(exc).__name__}: {exc}"
 
-    def prompt(self, run, kept=()):
+    def prompt(self, run, kept=(), references=()):
         note = run.get("replyNote")
         text = self._prompt(run, list(kept))
+        if references:
+            # Files the person attached to the program (a spec, sample data): copies in this session's scratch.
+            text = ("The person attached reference files for this project. Read them where they bear on your work; "
+                    "they are copies, so never edit them and never copy them into the repository unless the plan says so:\n"
+                    + "\n".join(f"- {path}" for path in references) + "\n" + text)
         guidance = self._guidance(run)
         if guidance:
             # What the person added while the project ran (projectRun/steer): it outranks the
@@ -363,8 +368,13 @@ class ProjectRunner:
             kept = provide(run, session_id) if provide else []
         except (OSError, ValueError):
             kept = []
+        attached = getattr(self.executor, "references", None)
+        try:
+            references = attached(run, session_id) if attached else []
+        except (OSError, ValueError):
+            references = []
         episode = {"id": str(uuid.uuid4()), "runId": run["id"], "turnId": str(uuid.uuid4()), "sessionId": session_id,
-                   "phase": run["phase"], "taskIndex": run["taskIndex"], "prompt": self.prompt(run, kept), "state": "prepared"}
+                   "phase": run["phase"], "taskIndex": run["taskIndex"], "prompt": self.prompt(run, kept, references), "state": "prepared"}
         # Session creation may leave an orphan after a crash; it has no execution authority.
         with self.store.transaction() as db:
             current = self.store._read(db, run["id"])

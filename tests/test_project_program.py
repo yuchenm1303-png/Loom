@@ -89,3 +89,39 @@ def test_a_restarted_host_never_starts_a_milestone_twice(tmp_path):
         assert program.get(service.project_store, created["id"])["currentRunId"] == state["currentRunId"]
     finally:
         runtime.close()
+
+
+def test_attached_files_reach_every_episode_as_scratch_copies(tmp_path, monkeypatch):
+    import pytest
+    import test_app_server
+    monkeypatch.setattr(test_app_server, "DurableAgentRuntime", ContextAgentRuntime)
+    spec = tmp_path / "outside" / "spec.md"
+    spec.parent.mkdir()
+    spec.write_text("Totals use integer cents.\n", encoding="utf-8")
+    other = tmp_path / "outside" / "nested"
+    other.mkdir()
+    (other / "spec.md").write_text("second\n", encoding="utf-8")
+    responses = [reply(PLAN), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED), reply(COMPLETE)]
+    service, runtime, platform, workspace, source = setup_review(tmp_path, responses)
+    try:
+        with pytest.raises(ValueError, match="Not a file"):
+            run_program(service, source, attachments=[str(tmp_path / "missing.md")])
+        final = run_program(service, source, attachments=[str(spec)])
+        assert final["state"] == "completed", final["reason"]
+        assert [item["name"] for item in final["references"]] == ["spec.md"]
+        # Every episode's prompt names the copy in its own scratch, and the copy holds the file.
+        with service.project_store.lock:
+            episodes = [json.loads(row[0]) for row in service.project_store.db.execute("SELECT data FROM project_episodes")]
+        assert episodes and all("attached reference files" in item["prompt"] for item in episodes)
+        for item in episodes:
+            # In the scratch the episode's sandbox opens, not beside it.
+            copy = service.runtime._run_scratch_dir(item["sessionId"], "any-turn") / "references" / "spec.md"
+            assert copy.as_posix() in item["prompt"]
+            assert copy.read_text(encoding="utf-8") == "Totals use integer cents.\n"
+        assert spec.read_text(encoding="utf-8") == "Totals use integer cents.\n"  # the original is untouched
+        # Added later under the same name: both kept.
+        with service.project_runner.guard:
+            later = program.attach(service, {"programId": final["id"], "attachments": [str(other / "spec.md")]})
+        assert [item["name"] for item in later["references"]] == ["spec.md", "spec-2.md"]
+    finally:
+        runtime.close()
