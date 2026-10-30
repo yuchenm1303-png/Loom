@@ -7,7 +7,7 @@ export interface OverviewAgent {
   id: string; runId: string; role: FlowAgent["role"]; state?: string; taskId?: string | null; taskTitle?: string;
   scope?: string | null; step: number; activity: string; startedAt?: string | null;
   /** A call this agent waits for a person to allow (the sandbox could not start it, say). */
-  approval?: { callId: string; requestId: string; tool: string; command: string; reason: string; kind: string } | null;
+  approval?: { callId: string; requestId: string; tool: string; command: string; reason: string; kind: string; error?: string } | null;
 }
 export interface OverviewEvent { sequence: number; runId: string; kind: string; at?: number | null; reason?: string; taskId?: string | null }
 export interface ProjectProgram {
@@ -51,7 +51,9 @@ const words = {
 function approvalAttention(agent: OverviewAgent, who: string, lang: Lang): NonNullable<FlowData["attention"]> {
   const approval = agent.approval!;
   const command = activityText(approval.command, lang).replace(/^(运行|Running) /, "");
-  return { reason: words[lang].asks(who, command, approval.kind === "sandbox"), detail: approval.reason, action: "approval", agentId: agent.id };
+  // An answer the Host could not carry out is said, or the same question would simply stay.
+  const failed = approval.error ? (lang === "en" ? ` (your last answer failed: ${approval.error})` : `（上次的回应没有生效：${approval.error}）`) : "";
+  return { reason: words[lang].asks(who, command, approval.kind === "sandbox") + failed, detail: approval.reason, action: "approval", agentId: agent.id };
 }
 
 /** One project event as a sentence, or "" for bookkeeping a person does not need to read. */

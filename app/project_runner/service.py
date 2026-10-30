@@ -527,6 +527,8 @@ class ProjectServiceMixin:
         return {"callId": record["callId"], "requestId": record["requestId"], "tool": record.get("toolName") or "",
                 "command": _describe_tool(record.get("toolName"), record.get("arguments") or {}),
                 "reason": str(record.get("retryReason") or record.get("reason") or "")[:300],
+                # An answer that could not be carried out (the resume failed): say so instead of asking silently again.
+                "error": str((getattr(self, "_task_errors", {}) or {}).get(episode["sessionId"]) or "")[:300],
                 "kind": (record.get("sandboxDenial") and "sandbox") or record.get("effect") or ""}
 
     def project_approval(self, params):
@@ -551,8 +553,19 @@ class ProjectServiceMixin:
         pending = self._project_pending_approval({**episode, "state": "waiting_approval"}, events)
         if pending is None:
             raise ValueError("That agent is no longer waiting for approval")
-        return self.approval_respond({"threadId": session_id, "turnId": episode["turnId"], "requestId": pending["requestId"],
-                                      "callId": pending["callId"], "decision": decision})
+        # Like the runner's own dispatch: the turn resumes on this project's prepared model boundary
+        # (credentials, per-thread model), which a restarted Host has not set up for this session.
+        call_id = pending["callId"]
+        def resume():
+            self._prepare_turn(self._load(session_id))
+            self.runtime.resume_approval(session_id, call_id, approved=decision == "accept")
+        with self._guard:
+            if self._is_active(session_id):
+                raise RuntimeError("That agent is already resuming")
+            self._project_session_ids.add(session_id)
+            self._launch(session_id, resume)
+        return {"accepted": True, "threadId": session_id, "turnId": episode["turnId"], "requestId": pending["requestId"],
+                "callId": call_id, "decision": decision}
 
     def project_recover(self, params):
         """One step back to work after a team task stopped for inspection: review it again, resume.
