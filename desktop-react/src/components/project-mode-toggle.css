@@ -1,4 +1,4 @@
-/* The header's 对话 / 织造 switch (ProjectModeToggle.tsx) and the stage the mode takes.
+/* The header's 对话 / 建造 switch (ProjectModeToggle.tsx) and the stage the mode takes.
    Owner of .pf-toggle* and .project-mode-stage. Header controls are quiet; tint is reserved
    for selection. Time and curves from motion-tokens.css: the thumb travels, the words stay. */
 
@@ -52,7 +52,7 @@
   transition: transform var(--loom-dur-flow) var(--loom-ease-move), width var(--loom-dur-flow) var(--loom-ease-move);
 }
 
-/* Choosing 织造 draws the slash of its </> once. */
+/* Choosing 建造 draws the slash of its </> once. */
 .pf-toggle button[data-on] .li-weft {
   stroke-dasharray: 1;
   animation: pf-weft-draw var(--loom-dur-slow) var(--loom-ease-out) backwards;

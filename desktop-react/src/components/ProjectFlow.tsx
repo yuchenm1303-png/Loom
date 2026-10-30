@@ -106,19 +106,19 @@ const taskIcon: Record<FlowTaskState, typeof Check> = { pending: Circle, working
 const zhText = {
   repository: "仓库", scope: "工作范围", knowledge: "项目知识", checks: "条检查", notes: "条笔记", plan: (n: number) => `阶段 ${n} 计划`,
   planEmpty: "规划完成后在这里显示任务", outcome: "已完成", outcomeCount: (n: number) => `${n} 个阶段`, episodes: (n: number) => `${n} 轮`,
-  donePlaceholder: "目标已完成", loom: "织造时间线", phases: { plan: "规划", work: "开发", review: "复审" },
+  donePlaceholder: "目标已完成", loom: "建造时间线", phases: { plan: "规划", work: "开发", review: "复审" },
   loomStats: (s: { episodes: number; trouble: number; perHour: number }) => `${s.episodes} 轮 · 重试 ${s.trouble} · ${compact(s.perHour)}/时`,
   spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
     `${phase} · ${minutes} 分 · ${compact(tokens)} token${trouble ? " · 未正常结束，已重试" : ""}`,
   dirty: (n: number) => `仓库里有 ${n} 个未提交的改动`,
-  dirtyWhy: (head: string, branch: string) => `织造从最后一次提交${head ? `（${head}）` : ""}开始，完成后合并回 ${branch || "当前分支"}；未提交的改动会挡住这一步，所以先提交它们。`,
+  dirtyWhy: (head: string, branch: string) => `建造从最后一次提交${head ? `（${head}）` : ""}开始，完成后合并回 ${branch || "当前分支"}；未提交的改动会挡住这一步，所以先提交它们。`,
   dirtyShow: "查看并提交", dirtyHide: "收起", dirtyMore: (n: number) => `还有 ${n} 个`, commitAll: "全部提交",
-  commitMessage: "保存改动，准备开始织造", commitHint: "不想提交的文件，先加入 .gitignore 或移出仓库。", startBlocked: "先提交未提交的改动",
+  commitMessage: "保存改动，准备开始建造", commitHint: "不想提交的文件，先加入 .gitignore 或移出仓库。", startBlocked: "先提交未提交的改动",
   now: "现在", files: "参考文件", filesEmpty: "需求文档、规格或样例数据，每一轮的 agent 都能读到", addFiles: "添加文件",
-  remove: "移除", modelCard: "模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "织造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
+  remove: "移除", modelCard: "模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "建造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
   review: "独立复审", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
-  roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "织造",
+  roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "建造",
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
 };
 const enText: typeof zhText = {

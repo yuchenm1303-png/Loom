@@ -1,10 +1,10 @@
 /* The header switch between a conversation and its persistent project (ProjectMode.tsx):
- * 对话 / 织造 (Chat / Weave), drawn as glyphs only; the names are the tooltip and label.
+ * 对话 / 建造 (Chat / Weave), drawn as glyphs only; the names are the tooltip and label.
  * Kept apart from ProjectFlow so the header loads none of the mode.
  *
  * Header controls are quiet and tint is reserved for selection (workspace-surface-refinement.css):
  * a hairline capsule, and the selection's tint on a thumb that travels to the chosen item.
- * Choosing 织造 draws the code mark's slash once. Styles: project-mode-toggle.css. */
+ * Choosing 建造 draws the code mark's slash once. Styles: project-mode-toggle.css. */
 import { useLayoutEffect, useRef, useState } from "react";
 import { createIcon } from "./icons/base";
 import "./project-mode-toggle.css";
@@ -22,7 +22,7 @@ const WeaveGlyph = createIcon("mode-weave", "ModeWeave", <>
 
 export function ProjectModeToggle({ value, onChange, lang = "zh" }: { value: "chat" | "project"; onChange(value: "chat" | "project"): void; lang?: "zh" | "en" }) {
   const words = lang === "en" ? { chat: "Chat", project: "Weave", label: "Mode", hint: "Weave · pursue one objective over days, task by task" }
-                              : { chat: "对话", project: "织造", label: "工作方式", hint: "织造 · 一个目标拆成任务持续推进，独立复审后集成" };
+                              : { chat: "对话", project: "建造", label: "工作方式", hint: "建造 · 一个目标拆成任务持续推进，独立复审后集成" };
   const items = useRef<Record<string, HTMLButtonElement | null>>({});
   const [thumb, setThumb] = useState<{ x: number; width: number } | null>(null);
   useLayoutEffect(() => {

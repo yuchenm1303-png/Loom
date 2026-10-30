@@ -294,7 +294,7 @@ export function toModelChoice(snapshot: ModelSnapshot | null | undefined): FlowD
 // The Host's reasons a person can act on, said plainly; anything else keeps its own words.
 const REASONS: [RegExp, Record<Lang, string>][] = [
   [/commit or separate existing workspace changes/i, { zh: "仓库里有未提交的改动，先提交它们再开始。", en: "The repository has uncommitted changes; commit them before starting." }],
-  [/requires a Git repository root/i, { zh: "织造需要在 Git 仓库的根目录里运行。", en: "Weave runs at the root of a Git repository." }],
+  [/requires a Git repository root/i, { zh: "建造需要在 Git 仓库的根目录里运行。", en: "Weave runs at the root of a Git repository." }],
   [/changes moved since they were shown/i, { zh: "改动在显示之后又变了，请再看一眼后提交。", en: "The changes moved since they were shown; look again before committing." }],
   [/project budget exhausted/i, { zh: "token 预算已用完。", en: "The token budget is used up." }],
 ];
