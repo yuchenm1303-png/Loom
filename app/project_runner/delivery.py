@@ -25,7 +25,7 @@ def validate(run, expected, source):
 def prepare(run, expected, source, home):
     """Commit in a fresh delivery checkout without invoking commit hooks."""
     validate(run, expected, source)
-    target = home / "deliveries" / run["id"] / str(uuid.uuid4())
+    target = home / "deliveries" / run["id"] / uuid.uuid4().hex[:12]  # short: see janitor.SHORT
     review_workspace(run, expected, source, target)
     git(target, "-c", "core.autocrlf=false", "add", "--all", "--", ".")
     tree = git(target, "write-tree")
@@ -33,7 +33,7 @@ def prepare(run, expected, source, home):
                  "commit-tree", tree, "-p", run["baseCommit"], "-m",
                  f"Project {run['id']}: independently verified candidate {expected['id']}")
     # Git filters/line-ending conversion must not silently change tested bytes.
-    exported = home / "delivery-checks" / run["id"] / commit
+    exported = home / "delivery-checks" / run["id"] / commit[:12]
     git(run["repository"], "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(exported), commit)
     actual = snapshot(exported)["files"]
     wanted = {name: item for name, item in expected["files"].items() if item["sha256"] is not None}

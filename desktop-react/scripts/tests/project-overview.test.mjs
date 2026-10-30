@@ -203,3 +203,13 @@ test("Host errors read as sentences, without the IPC wrapper", () => {
   assert.equal(readableError(raw, "en"), "The repository has uncommitted changes; commit them before starting.");
   assert.equal(readableError("Error invoking remote method 'loom:call': Error: something new"), "something new");
 });
+
+test("refused access waits for the person to fix it and continue, not for a review", () => {
+  const blocked = { ...overview({ control: "paused", workflowStatus: "blocked",
+    reason: "Parallel coordination stopped: Parallel task needs inspection: The model provider refused the credential 7 times in a row: 401" }),
+    children: [{ id: "c2", state: "running", control: "credential_blocked", activeEpisode: null }] };
+  const data = toFlowData(blocked, now, "zh");
+  assert.equal(data.state, "needs_you");
+  assert.equal(data.attention.action, "resume");
+  assert.match(data.attention.reason, /重新登录账号或更新 API 密钥/);
+});

@@ -27,7 +27,8 @@ def advance(service, run):
                  control="paused", tokensUsed=target["tokensUsed"], episodesUsed=target["episodesUsed"],
                  reason="Automatic local integration completed; remote publication pending")
             return True
-        if target["state"] == "needs_review" or target["control"] == "budget_limited" or target["state"] == "cancelled":
+        if target["state"] == "needs_review" or target["control"] in {"budget_limited", "credential_blocked"} \
+                or target["state"] == "cancelled":
             save(store, run, workflowStatus="blocked", workflowError=target.get("reason") or "Integration child needs inspection")
             return True
         action = "deliver" if target["state"] == "ready_for_review" else (
@@ -86,7 +87,8 @@ def control(service, params, action):
             if target["state"] in {"created", "running"}:
                 if target["tokensUsed"] >= target["tokenBudget"] or target["episodesUsed"] >= target["maxEpisodes"]:
                     raise ValueError("project budget exhausted")
-                target.update(state="running", control="active")
+                # The person says access works again: no waiting out an earlier refusal.
+                target.update(state="running", control="active", credentialStreak=0, retryAfter=0)
             root.update(workflowControl="active", workflowStatus="active", workflowError="", reason="")
             step = root.get("workflowStep")
             if step and not db.execute("SELECT 1 FROM project_commands WHERE operation=?", (step["params"]["operationId"],)).fetchone():
@@ -111,8 +113,8 @@ def control(service, params, action):
                 for key in ("tokenBudget", "maxEpisodes"):
                     team[key] = root[key]
                 changed = True
-            if action in {"start", "resume"} and team["state"] == "running" and team["control"] == "budget_limited":
-                team.update(control="active", reason="")
+            if action in {"start", "resume"} and team["state"] == "running" and team["control"] in {"budget_limited", "credential_blocked"}:
+                team.update(control="active", reason="", credentialStreak=0, retryAfter=0)
                 changed = True
             if changed:
                 store.save(db, team, "team_budget_updated")

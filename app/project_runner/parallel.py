@@ -186,7 +186,8 @@ def advance(service, root):
         for item, child in children:
             if item["state"] == "merged":
                 continue
-            if child["state"] == "needs_review" or child["control"] == "budget_limited" or child["state"] == "cancelled":
+            if child["state"] == "needs_review" or child["control"] in {"budget_limited", "credential_blocked"} \
+                    or child["state"] == "cancelled":
                 raise ValueError("Parallel task needs inspection: " + (child.get("reason") or child["id"]))
             if child["state"] in {"ready_for_review", "delivered"} and not child["activeEpisode"]:
                 aggregate(service, root, child, source)

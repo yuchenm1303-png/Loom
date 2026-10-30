@@ -102,6 +102,8 @@ class SimAgent:
         self.raised = 0            # simulated provider failures
         self.requests = []         # (prompt chars, role)
         self.reworked = set()
+        self.auth_expired = False  # while set, every request is refused as an expired credential would be
+        self.refused = 0
 
     def execute_chat(self, _profile, request):
         messages = request.messages
@@ -120,6 +122,9 @@ class SimAgent:
         fresh = not any(m.role is MessageRole.ASSISTANT for m in messages[at + 1:])
         self.requests.append((size, role, (payload.get("task") or {}).get("id") or payload.get("scope") or "",
                               len(prompt), len(messages), fresh))
+        if self.auth_expired:
+            self.refused += 1
+            raise AITransportError("401 Unauthorized: the API key is invalid or expired", retryable=False, status_code=401)
         if self.rng.random() < self.outage:
             self.raised += 1
             raise AITransportError("simulated provider outage", retryable=True)
@@ -231,6 +236,11 @@ def main(argv=None):
     parser.add_argument("--restart-every", type=int, default=7, help="Ticks between Host restarts")
     parser.add_argument("--minutes-per-tick", type=float, default=10.0, help="Fake clock advance per tick")
     parser.add_argument("--max-ticks", type=int, default=3000)
+    parser.add_argument("--auth-expired", default="",
+                        help="FROM:TO ticks during which the credential is refused (HTTP 401), e.g. 40:55")
+    parser.add_argument("--resume-after-auth", action="store_true",
+                        help="When the run stops while the credential is refused, resume it once the credential works "
+                             "again, as a person would from the hub")
     args = parser.parse_args(argv)
     root = args.root.resolve()
     if root.exists():
@@ -269,8 +279,12 @@ def main(argv=None):
 
     samples, restarts, started = [], 0, real_time.monotonic()
     outcome = "max_ticks"
+    expired = tuple(int(part) for part in args.auth_expired.split(":")) if args.auth_expired else None
+    auth_stops, auth_resumes = [], 0
     for number in range(1, args.max_ticks + 1):
         clock.now += args.minutes_per_tick * 60
+        if expired:
+            agent.auth_expired = expired[0] <= number < expired[1]
         began = real_time.perf_counter()
         tick(service)
         elapsed = real_time.perf_counter() - began
@@ -286,7 +300,22 @@ def main(argv=None):
         if not program_id and run.get("workflowStatus") == "completed":
             outcome = "completed"
             break
-        if run["state"] == "needs_review" or run.get("workflowStatus") == "blocked" or run["control"] == "budget_limited":
+        if run["state"] == "needs_review" or run.get("workflowStatus") == "blocked" or run["control"] == "budget_limited" \
+                or (program_id and state["state"] in {"needs_review", "paused"}):
+            blocked_on_access = run["control"] == "credential_blocked" or any(
+                service.project_store.get(item["runId"])["control"] == "credential_blocked" for item in run.get("teamChildren", []))
+            if expired and args.resume_after_auth and blocked_on_access:
+                # What the hub offers for a stopped run: once the credential works again, recover and go on.
+                auth_stops.append({"tick": number, "state": run["state"], "control": run["control"],
+                                   "workflow": run.get("workflowStatus"), "reason": (run.get("reason") or run.get("workflowError") or "")[:300]})
+                if number < expired[1]:
+                    continue  # still refused: a person would wait
+                try:
+                    service.project_recover({"operationId": str(uuid.uuid4()), "runId": run_id})
+                    auth_resumes += 1
+                    continue
+                except Exception as exc:  # noqa: BLE001 - reported, not hidden
+                    auth_stops[-1]["recoverError"] = f"{type(exc).__name__}: {exc}"[:300]
             outcome = "stopped"
             break
         if number % args.restart_every == 0:
@@ -352,6 +381,9 @@ def main(argv=None):
             "SELECT kind, COUNT(*) FROM project_events GROUP BY kind") if "recover" in kind or "continued" in kind
             or "rejected" in kind or "retry" in kind or "transient" in kind or "format" in kind},
         "elapsedSeconds": round(real_time.monotonic() - started, 1),
+        "credential": {"expiredTicks": args.auth_expired, "refusedRequests": agent.refused,
+                       "stops": auth_stops[:3] + (auth_stops[-1:] if len(auth_stops) > 3 else []), "stopTicks": len(auth_stops),
+                       "resumes": auth_resumes},
     }
     report["invariants"] = {
         "integrated": outcome == "completed" and report["integratedFilesMatch"],

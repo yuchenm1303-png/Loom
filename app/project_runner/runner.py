@@ -26,6 +26,10 @@ from .janitor import Janitor
 #                       flight could reach past its checkout
 #   no_progress         it kept repeating one failing operation     next episode, told to change approach
 #   provider_transient  provider/network failed, retryable          wait 30 s .. 30 min, continue
+#   credential          the provider refused the key or account     wait 5 .. 60 min (an account token is
+#                       (HTTP 401/402/403)                          often refreshed meanwhile); after that,
+#                                                                   credential_blocked: the person fixes it
+#                                                                   and resumes. Never "needs inspection"
 #   review_evidence     a review verdict lacked accepted evidence   back to the reviewer, with why
 #   reply_format        a final reply the runner cannot read        back to the model, with why
 #   scope               a team task changed another task's files    back to the worker, with why
@@ -36,6 +40,8 @@ from .janitor import Janitor
 MAX_EPISODE_BOUND_RETRIES = 7
 MAX_TRANSIENT_STREAK = 10
 MAX_INTERRUPTIONS = 5
+# Retries over about three hours (5, 10, 20, 40, 60, 60 min) before asking the person.
+MAX_CREDENTIAL_RETRIES = 6
 MAX_REVIEW_REJECTIONS = 2
 RECOVERY = {
     "episode_bound": ("episodeLimitStreak", lambda: MAX_EPISODE_BOUND_RETRIES, "episode_limit_reached"),
@@ -46,12 +52,16 @@ RECOVERY = {
     # repeating a failing operation; the corrective step is a new approach, not a halt.
     "no_progress": ("noProgressStreak", lambda: MAX_REVIEW_REJECTIONS, "no_progress_retry"),
     "provider_transient": ("transientFailureStreak", lambda: MAX_TRANSIENT_STREAK, "transient_failure_retry"),
+    "credential": ("credentialStreak", lambda: MAX_CREDENTIAL_RETRIES, "credential_retry"),
     "review_evidence": ("reviewEvidenceRejections", lambda: MAX_REVIEW_REJECTIONS, "review_evidence_rejected"),
     "reply_format": ("replyRejections", lambda: MAX_REVIEW_REJECTIONS, "reply_rejected"),
     "scope": ("scopeRejections", lambda: MAX_REVIEW_REJECTIONS, "scope_rejected"),
 }
 CONTINUABLE_LIMITS = {"model_steps", "tool_calls"}
 PERMANENT_STATUS = {400, 401, 402, 403, 404}
+CREDENTIAL_STATUS = {401, 402, 403}
+CREDENTIAL_MARKERS = (" 401", " 402", " 403", "status 401", "status 402", "status 403", "unauthorized",
+                      "invalid api key", "api key is invalid", "insufficient balance", "insufficient_quota")
 LEGACY_EPISODE_LIMITS = {"model step limit reached", "tool call limit reached"}
 TRANSIENT_MARKERS = ("apiconnectionerror", "connection error", "apitimeouterror", "timed out", "timeout",
                      "remotedisconnected", "connection reset", "connection aborted", "stream_stall",
@@ -76,6 +86,14 @@ def provider_transient(result):
     return bool(result["providerFailure"]) and result.get("retryable") is not False and status not in PERMANENT_STATUS
 
 
+def provider_refused(result):
+    """The provider refused the key or the account (not the request): fixable outside the project."""
+    if result.get("providerFailure") is None:
+        text = str(result.get("error") or "").lower()
+        return any(marker in text for marker in CREDENTIAL_MARKERS)
+    return bool(result["providerFailure"]) and result.get("providerStatus") in CREDENTIAL_STATUS
+
+
 def episode_outcome(state, result, refused):
     if state != "completed" and refused:
         return "budget"
@@ -88,6 +106,8 @@ def episode_outcome(state, result, refused):
         return "no_progress"
     if state == "failed" and provider_transient(result):
         return "provider_transient"
+    if state == "failed" and provider_refused(result):
+        return "credential"
     if result.get("reviewRejected"):
         return "review_evidence"
     if result.get("replyRejected"):
@@ -560,6 +580,11 @@ class ProjectRunner:
         streak = run.get(counter, 0) + 1
         run[counter] = streak
         error = str(error or "")
+        if kind == "credential" and streak > allowance():
+            # Not the work's fault: the task stays where it is and the person is asked to fix access.
+            run.update(control="credential_blocked", retryAfter=0,
+                       reason=f"The model provider refused the credential {streak} times in a row: {error[:400]}")
+            return "credential_blocked"
         if streak > allowance():
             reason = {"episode_bound": f"{streak} consecutive episodes ended at their step/tool limit without a result",
                       "provider_transient": f"{streak} consecutive episodes failed on the provider or network: {error[:500]}"
@@ -577,6 +602,10 @@ class ProjectRunner:
             run["handoff"] = ("The previous episode was stopped for repeating the same failing operation without "
                               "progress. Do not retry it as before: read the error, change the approach or the "
                               "command, and keep the work already done.\n" + run.get("handoff", ""))[:12000]
+        elif kind == "credential":
+            run["retryAfter"] = time.time() + min(3600, 300 * 2 ** (streak - 1))
+            run["handoff"] = ("The previous episode stopped because the model provider refused the credential; "
+                              "continue from the workspace and session state.\n" + run.get("handoff", ""))[:12000]
         elif kind == "provider_transient":
             run["retryAfter"] = time.time() + min(1800, 30 * 2 ** (streak - 1))
             run["handoff"] = ("The previous episode was interrupted by a provider or network failure; "

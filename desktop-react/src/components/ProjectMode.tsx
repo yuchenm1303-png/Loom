@@ -9,6 +9,9 @@ import type { ModelSnapshot } from "../types/loom";
 
 const LIVE_POLL_MS = 2000;
 const REST_POLL_MS = 12000;
+/** A read the Host has not answered by then counts as no connection: a frozen or sleeping Host never
+ * fails a request, it just never answers, and one read at a time would wait on it forever. */
+const READ_TIMEOUT_MS = 20000;
 /** Episodes for a new program: generous, since tokens are the budget a person chooses. */
 const START_EPISODES = 400;
 /** The last overview of each conversation shown here: switching back to 建造 draws the hub at once
@@ -42,7 +45,11 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     const ticket = ++serial.current;
     reading.current = true;
     try {
-      const result = await window.loom.call<ProjectOverview>("projectRun/overview", { threadId });
+      let timer = 0;
+      const result = await Promise.race([
+        window.loom.call<ProjectOverview>("projectRun/overview", { threadId }),
+        new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error("timeout")), READ_TIMEOUT_MS); }),
+      ]).finally(() => window.clearTimeout(timer));
       if (alive.current && ticket === serial.current) {
         lastOverview.set(threadId, result);
         setOverview(result);
@@ -138,6 +145,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       // An agent waiting for approval: the person allows that one call or declines it.
       onAttention: (choice) => run && (data.attention?.action === "approval"
         ? act(() => window.loom.call("projectRun/approval", { runId: run.id, sessionId: data.attention!.agentId, decision: choice }))
+        : data.attention?.action === "resume"
+        ? control("resume")
         : data.attention?.action === "budget"
         ? control("resume", raisedBudget(run, overview.program))
         : act(() => window.loom.call("projectRun/recover", { operationId: crypto.randomUUID(), runId: run.id }))),
