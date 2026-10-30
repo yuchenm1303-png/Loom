@@ -29,6 +29,7 @@ import { branchDepth, orderThreadBranches } from "../state/threadBranches";
 import { endThreadDrag, startThreadDrag } from "../threadDrag";
 import "./sidebar.css";
 import { LoomMark } from "./LoomMark";
+import { SidebarUpdate } from "./SidebarUpdate";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 import { useSidebarSelectionMotion } from "./useSidebarSelectionMotion";
@@ -1124,6 +1125,7 @@ export const Sidebar = memo(function Sidebar({
           <span>{threadView === "archived" ? copy.conversations : copy.archive}</span>
           {threadView === "active" && archivedCount > 0 ? <span className="archive-count">{archivedCount}</span> : null}
         </button>
+        <SidebarUpdate />
       </div>
 
       {contextMenu && menuThread ? createPortal(
