@@ -71,19 +71,19 @@ const taskIcon: Record<FlowTaskState, typeof Check> = { pending: Circle, working
 
 const zhText = {
   repository: "仓库", scope: "工作范围", knowledge: "项目知识", checks: "条检查", notes: "条笔记", plan: (n: number) => `阶段 ${n} 计划`,
-  planEmpty: "规划完成后在这里显示任务", mode: "持续", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
+  planEmpty: "规划完成后在这里显示任务", mode: "织造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
   review: "独立复审", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
-  roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "持续项目",
+  roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "织造",
   attention: { resume: "继续", budget: "追加预算" }, noAgents: "等待调度",
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
-  planEmpty: "Tasks appear here once the plan is made", mode: "Persistent", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
+  planEmpty: "Tasks appear here once the plan is made", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
   draftPlaceholder: "Describe an objective to pursue; it is split into milestones and tasks, independently reviewed, then integrated",
   steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
   review: "Independent review", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
-  roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Persistent project",
+  roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
   attention: { resume: "Resume", budget: "Add budget" }, noAgents: "Waiting to schedule",
 };
 const stateWord = {

@@ -9,9 +9,16 @@
    - No :has(), no nesting. */
 
 .pf-stage {
-  --pf-card: color-mix(in srgb, var(--pl-ink) 8%, var(--pl-surface));
-  --pf-well: color-mix(in srgb, var(--pl-ink) 12.5%, var(--pl-surface));
-  --pf-raise: color-mix(in srgb, var(--pl-ink) 17%, var(--pl-surface));
+  /* The app's own layers: the canvas the conversation sits on, the panel material of the
+     composer and sidebar for cards and cables, and two steps of ink over it for wells. */
+  --pf-canvas: var(--loom-workspace-canvas);
+  --pf-card: var(--loom-workspace-panel);
+  --pf-well: color-mix(in srgb, var(--loom-workspace-ink) 4.5%, var(--loom-workspace-panel));
+  --pf-raise: color-mix(in srgb, var(--loom-workspace-ink) 9%, var(--loom-workspace-panel));
+  /* Cables are the cards' material in the dark; on a light canvas white cables vanish, so they
+     become a faint ink groove between white cards. */
+  --pf-cable: var(--pf-card);
+  --pf-cable-hot: var(--pf-raise);
   --pf-ok: var(--semantic-success-strong);
   --pf-warn: #e0b45a;
   --pf-live: #8fd3e8;
@@ -28,9 +35,8 @@
 }
 
 html[data-loom-theme="light"] .pf-stage {
-  --pf-card: #fff;
-  --pf-well: color-mix(in srgb, var(--pl-ink) 4.5%, #fff);
-  --pf-raise: color-mix(in srgb, var(--pl-ink) 9%, #fff);
+  --pf-cable: color-mix(in srgb, var(--loom-workspace-ink) 8%, var(--pf-canvas));
+  --pf-cable-hot: color-mix(in srgb, var(--loom-workspace-ink) 16%, var(--pf-canvas));
   --pf-warn: #9a6b0f;
   --pf-live: #2f8fae;
 }
@@ -46,7 +52,7 @@ html[data-loom-theme="light"] .pf-stage {
 
 .pf-cable-body {
   fill: none;
-  stroke: var(--pf-card);
+  stroke: var(--pf-cable);
   stroke-width: 9;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -55,10 +61,10 @@ html[data-loom-theme="light"] .pf-stage {
   animation: pf-cable-draw var(--loom-dur-flow) var(--loom-ease-move) backwards;
 }
 
-.pf-socket { fill: var(--pf-card); transition: fill var(--loom-dur-fast) var(--loom-ease-out); }
+.pf-socket { fill: var(--pf-cable); transition: fill var(--loom-dur-fast) var(--loom-ease-out); }
 
-.pf-cable[data-hot] .pf-cable-body { stroke: var(--pf-raise); }
-.pf-cable[data-hot] .pf-socket { fill: var(--pf-raise); }
+.pf-cable[data-hot] .pf-cable-body { stroke: var(--pf-cable-hot); }
+.pf-cable[data-hot] .pf-socket { fill: var(--pf-cable-hot); }
 
 /* One step done: a bead of light runs down the agent's cable into the composer. */
 .pf-pulse {
@@ -188,10 +194,11 @@ html[data-loom-theme="light"] .pf-stage {
   max-width: 88%;
   padding: 10px 14px;
   border-radius: 14px;
-  background: var(--pf-card);
+  /* A user message's own tone (the transcript's .user-message). */
+  background: var(--loom-workspace-hover);
   color: var(--pl-ink);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .pf-tag { justify-self: end; display: flex; align-items: center; gap: 5px; color: var(--pl-faint); font-size: 11.5px; }
@@ -214,8 +221,8 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-narration {
   margin: 0;
   color: var(--pl-ink);
-  font-size: 13px;
-  line-height: 21px;
+  font-size: 14px;
+  line-height: 22px;
   animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
 }
 
@@ -352,13 +359,13 @@ html[data-loom-theme="light"] .pf-stage {
   padding: 0;
   border: 0;
   border-radius: 7px;
-  background: var(--pf-well);
-  color: var(--pl-secondary);
+  background: transparent;
+  color: var(--pl-muted);
   cursor: pointer;
   transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
 }
 
-.pf-control:hover { background: var(--pf-raise); color: var(--pl-ink); }
+.pf-control:hover { background: var(--loom-workspace-hover); color: var(--pl-ink); }
 .pf-control:disabled { opacity: .45; cursor: default; }
 .pf-budget + .pf-control,
 .pf-model + .pf-control,
