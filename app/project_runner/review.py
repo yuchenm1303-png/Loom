@@ -40,6 +40,13 @@ def definition_hash(run):
         {key: task[key] for key in ("id", "instructions", "acceptance")} for task in run["plan"]]})
 
 
+def _plain(text):
+    """A criterion's words without Markdown code marks or spacing: a real reviewer copied
+    "`--to csv` or a missing `--to` exits 2" as "--to csv or a missing --to exits 2" and the
+    exact comparison rejected three correct reviews. Any change of wording still differs."""
+    return " ".join(str(text or "").replace("`", "").split())
+
+
 def criteria(run):
     tasks = run["plan"] if run.get("reviewScope") == "project" else [run["plan"][run["taskIndex"]]]
     return [{"id": f"{task['id']}:{index+1}", "taskId": task["id"], "expectation": text}
@@ -174,8 +181,12 @@ def assess(run, episode, reply, expected, source, workspace, events):
             raise ValueError("Missing, duplicate, or foreign review evidence")
         event = by_id[event_id]
         data = event.data
-        if data.get("case_id") != criterion_id or latest.get(criterion_id) != event_id or data.get("expectation") != required[criterion_id]["expectation"]:
-            raise ValueError("Check does not match the current acceptance definition or latest result")
+        if data.get("case_id") != criterion_id or latest.get(criterion_id) != event_id:
+            raise ValueError(f"Check for {criterion_id} is not that criterion's latest recorded result in this review")
+        if _plain(data.get("expectation")) != _plain(required[criterion_id]["expectation"]):
+            # Say what differs: three correct reviews of a real run were rejected without knowing why.
+            raise ValueError(f"Check for {criterion_id} records a different expectation. Required, verbatim: "
+                             f"{required[criterion_id]['expectation']!r}; recorded: {str(data.get('expectation'))[:400]!r}")
         freshness = check_freshness(data, context)
         if (data.get("verdict") != "passed" or data.get("definition_changed") or data.get("acceptance_evidence") is not True or
                 data.get("assessment_source") not in {"runtime_exit_code", "runtime_browser_assertions"} or

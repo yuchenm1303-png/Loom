@@ -87,6 +87,14 @@ export function activityText(activity: string, lang: Lang = "zh"): string {
   return activity;
 }
 
+/** The Host's reason, readable: the coordination wrapper and the review gate's prefix are bookkeeping. */
+export function humanReason(reason: string, lang: Lang = "zh"): string {
+  const text = reason.replace(/^Parallel coordination stopped:\s*/, "").replace(/^Parallel task needs inspection:\s*/, "")
+    .replace(/^Candidate review facts rejected:\s*/, "");
+  if (text === reason) return reason;
+  return (lang === "en" ? "A task's review was rejected: " : "有任务的复审未通过：") + text;
+}
+
 function branchName(ref?: string | null) {
   return ref ? ref.replace(/^refs\/heads\//, "") : "main";
 }
@@ -142,6 +150,8 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   }
   const states = taskStates(run, overview);
   const titleOf = (id?: string | null) => run.plan.find((task) => task.id === id)?.instructions || "";
+  // A team task that stopped for inspection blocks the whole project; "recover" reviews it again and resumes.
+  const stoppedTask = overview.children.some((child) => child.state === "needs_review" && !child.activeEpisode);
   const childTask = (runId: string) => (run.teamChildren || []).find((item) => item.runId === runId)?.taskId;
   return {
     phase: "live",
@@ -149,8 +159,8 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     narration: { summary: t.worked(t.minutes(minutes), episodes), text: finished ? t.done : stopped ? t.cancelled : latest },
     milestone: run.milestone?.index || (program ? program.milestones.length + 1 : 1),
     state,
-    attention: state === "needs_you" ? { reason: reason || (lang === "en" ? "The project stopped for inspection." : "项目停下等你检查。"),
-                                         action: budgetOut ? "budget" : run.state === "needs_review" && !run.activeEpisode ? "resume" : undefined } : undefined,
+    attention: state === "needs_you" ? { reason: humanReason(reason, lang) || (lang === "en" ? "The project stopped for inspection." : "项目停下等你检查。"),
+                                         action: budgetOut ? "budget" : stoppedTask || (run.state === "needs_review" && !run.activeEpisode) ? "recover" : undefined } : undefined,
     model,
     repository: { name: (run.repository || "").split(/[\\/]/).filter(Boolean).pop() || workspaceName, commit: (integration?.baseCommit || run.baseCommit || "").slice(0, 7),
                   subject: "", branch: branchName(run.completionRef) },

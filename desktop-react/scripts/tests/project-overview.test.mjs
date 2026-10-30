@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../src/components/projectOverview.ts", i
 const module = { exports: {} };
 new Function("module", "exports", "require", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(
   module, module.exports, () => ({}));
-const { toFlowData, eventText, activityText } = module.exports;
+const { toFlowData, eventText, activityText, humanReason } = module.exports;
 
 const now = Date.parse("2026-10-30T10:00:00Z");
 const run = (extra = {}) => ({
@@ -61,7 +61,7 @@ test("out of budget needs you, with the action that resolves it", () => {
 
 test("a stopped run asks for inspection and offers resume only when nothing is in flight", () => {
   const stopped = toFlowData(overview({ state: "needs_review", reason: "3 consecutive episodes failed", activeEpisode: null }), now, "en");
-  assert.equal(stopped.attention.action, "resume");
+  assert.equal(stopped.attention.action, "recover");
   assert.equal(stopped.attention.reason, "3 consecutive episodes failed");
   const unknown = toFlowData(overview({ state: "needs_review", reason: "outcome unknown", activeEpisode: { sessionId: "s", state: "outcome_unknown" } }), now, "en");
   assert.equal(unknown.attention.action, undefined);
@@ -92,4 +92,15 @@ test("live data: a team task's reviewer names its task, and paths shrink to thei
   assert.equal(data.agents[0].activity, "复审 task-3");
   assert.equal(activityText(String.raw`C:\Users\me\python.exe C:\work\state\agent\probe_readme.py --x`), "运行 python probe_readme.py --x");
   assert.equal(activityText("read_workspace_text /tmp/a/b/c.txt", "en"), "Reading c.txt");
+});
+
+test("a blocked team task offers one way back, and its reason reads as a sentence", () => {
+  const blocked = { ...overview({ control: "paused", workflowStatus: "blocked", parallelStatus: "blocked",
+    reason: "Parallel coordination stopped: Parallel task needs inspection: Candidate review facts rejected: Check for task-9:3 records a different expectation" }),
+    children: [{ id: "c9", state: "needs_review", activeEpisode: null }] };
+  const data = toFlowData(blocked, now, "zh");
+  assert.equal(data.state, "needs_you");
+  assert.equal(data.attention.action, "recover");
+  assert.equal(data.attention.reason, "有任务的复审未通过：Check for task-9:3 records a different expectation");
+  assert.equal(humanReason("plain reason"), "plain reason");
 });

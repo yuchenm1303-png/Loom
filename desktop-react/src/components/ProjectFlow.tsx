@@ -41,7 +41,7 @@ export interface FlowData {
   narration: { summary: string; text: string };
   milestone: number;
   state: "running" | "paused" | "needs_you" | "completed" | "starting";
-  attention?: { reason: string; action?: "resume" | "budget" };
+  attention?: { reason: string; action?: "recover" | "budget" };
   model: string;
   repository: { name: string; commit: string; subject: string; branch: string };
   scope: { path: string; count: number }[];
@@ -78,7 +78,7 @@ const zhText = {
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
   review: "独立复审", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "织造",
-  attention: { resume: "继续", budget: "追加预算" }, noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
+  attention: { recover: "重新复审并继续", budget: "追加预算" }, noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
@@ -87,7 +87,7 @@ const enText: typeof zhText = {
   steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
   review: "Independent review", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
-  attention: { resume: "Resume", budget: "Add budget" }, noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
+  attention: { recover: "Re-review and continue", budget: "Add budget" }, noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
 };
 const stateWord = {
   zh: { running: "运行中", paused: "已暂停", needs_you: "等你处理", completed: "已完成", starting: "启动中" },

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import uuid
 from pathlib import Path
 
 from app.agent_runtime import PermissionMode
@@ -508,6 +509,37 @@ class ProjectServiceMixin:
                 "scope": run.get("reviewScope") if role == "reviewer" else None,
                 "step": steps, "activity": activity, "startedAt": started}
 
+    def project_recover(self, params):
+        """One step back to work after a team task stopped for inspection: review it again, resume.
+
+        Parallel coordination blocks the whole project when one team task needs inspection
+        (three rejected reviews, say). From the hub a person can only ask for the obvious
+        remedy, so it is one command: a fresh independent review of every stopped team task
+        that has a candidate, then the root's workflow resumes and coordination carries on.
+        """
+        root_id = self._required_text(params, "runId")
+        started = []
+        with self.project_runner.guard:
+            root = self.project_store.get(root_id)
+            for item in root.get("teamChildren", []):
+                child = self.project_store.get(item["runId"])
+                if child["state"] != "needs_review":
+                    continue
+                if not self.project_store.can_review(child):
+                    raise ValueError(f"{item['taskId']} needs inspection that a fresh review cannot settle: {child.get('reason', '')[:300]}")
+                self.project_review({"operationId": f"{params.get('operationId', uuid.uuid4())}:{child['id']}",
+                                     "runId": child["id"], "expectedRevision": child["revision"]})
+                started.append(item["taskId"])
+            root = self.project_store.get(root_id)
+            if root["state"] == "needs_review" and self.project_store.can_review(root):
+                self.project_review({"operationId": f"{params.get('operationId', uuid.uuid4())}:{root_id}",
+                                     "runId": root_id, "expectedRevision": root["revision"]})
+                root = self.project_store.get(root_id)
+            if root.get("workflowStatus") == "blocked" or root["control"] == "paused":
+                self.project_control({"operationId": f"{params.get('operationId', uuid.uuid4())}:resume",
+                                      "runId": root_id, "expectedRevision": root["revision"]}, "resume")
+        return {"run": self.project_store.get(root_id), "reviewed": started}
+
     def project_steer(self, params):
         """Guidance from the person for the rest of the project; it reaches every later prompt."""
         text = " ".join(self._required_text(params, "text").split())[:program.MAX_GUIDANCE_CHARS]
@@ -615,6 +647,8 @@ class ProjectControllerMixin:
             return self.service.project_overview(params)
         if method == "projectRun/steer":
             return {"run": self.service.project_steer(params)}
+        if method == "projectRun/recover":
+            return self.service.project_recover(params)
         if method == "projectProgram/create":
             with self.service.project_runner.guard:
                 return {"program": program.create(self.service, params)}

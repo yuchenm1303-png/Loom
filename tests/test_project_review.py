@@ -185,6 +185,18 @@ def test_gate_rejects_foreign_unexecuted_failed_or_superseded_evidence(review_fa
         assess(run, episode, passed, frozen, source, workspace, events)
 
 
+def test_a_criterion_copied_without_its_code_marks_is_the_same_criterion(review_facts):
+    # A real reviewer recorded "`--to csv` exits 2" as "--to csv exits 2"; three correct
+    # reviews were rejected for it. Formatting is not wording; a changed word still fails.
+    run, episode, frozen, source, workspace, event = review_facts
+    event.data["expectation"] = "`App` starts  and saves `data`"  # the plan's "App starts and saves data", marked up
+    passed = {**PASSED, "checks": [{"criterionId": "task-1:1", "eventId": "executed-check"}]}
+    assert assess(run, episode, passed, frozen, source, workspace, [event])["verdict"] == "passed"
+    event.data["expectation"] = "App starts"
+    with pytest.raises(ValueError, match="task-1:1 records a different expectation"):
+        assess(run, episode, passed, frozen, source, workspace, [event])
+
+
 @pytest.mark.parametrize("changed", ["candidate", "reviewer", "definition"])
 def test_changed_source_or_definition_invalidates_review(review_facts, changed):
     run, episode, frozen, source, workspace, event = review_facts

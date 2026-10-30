@@ -82,10 +82,10 @@ export function ProjectMode({ threadId, workspace, model }: { threadId: string; 
       onPause: () => run && control("pause"),
       onResume: () => run && control("resume"),
       onCancel: () => run && control("cancel"),
-      // Out of budget: add half again, the same step the panel offers; otherwise resume after inspection.
+      // Out of budget: add half again, the same step the panel offers; otherwise review the stopped work again and resume.
       onAttention: () => run && (data.attention?.action === "budget"
         ? control("resume", { tokenBudget: Math.round(run.tokenBudget * 1.5), maxEpisodes: Math.round(run.maxEpisodes * 1.5) })
-        : control("resume")),
+        : act(() => window.loom.call("projectRun/recover", { operationId: crypto.randomUUID(), runId: run.id }))),
     }} />
   );
 }
