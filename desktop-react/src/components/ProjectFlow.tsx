@@ -348,7 +348,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           {data.attention ? (
             <div className="pf-attention" role="status">
               <span className="pf-attention-dot" />
-              <span className="pf-attention-text" title={data.attention.detail || undefined}>{data.attention.reason}</span>
+              <span className="pf-attention-text" title={data.attention.detail || undefined}><Inline text={data.attention.reason} /></span>
               {data.attention.action === "approval" ? (
                 <button type="button" className="pf-attention-quiet" disabled={actions.busy} onClick={() => actions.onAttention?.("decline")}>{text.decline}</button>
               ) : null}

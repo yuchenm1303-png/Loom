@@ -34,7 +34,7 @@ const words = {
         short: (m: number) => m < 1 ? "刚刚" : m < 60 ? `${m} 分` : `${Math.floor(m / 60)} 时`,
         budget: "token 预算已用完。", episodes: "执行轮次已用完。", agent: (n: number) => `Agent ${n}`,
         planning: "规划阶段任务", reviewingProject: "整体复审", reviewing: (t: string) => `复审 ${t}`,
-        asks: (who: string, command: string, sandbox: boolean) => sandbox ? `${who} 想在沙箱外运行 ${command}` : `${who} 想运行 ${command}，等你允许`,
+        asks: (who: string, command: string, sandbox: boolean) => sandbox ? `${who} 想在沙箱外运行 \`${command}\`` : `${who} 想运行 \`${command}\`，等你允许`,
         waitsFor: (command: string) => `等你允许：${command}` },
   en: { worked: (span: string, n: number) => `Worked ${span} · ${n} episodes`, wholeRepo: "Whole repository", waiting: "Waiting to schedule",
         done: "Objective complete; the result is integrated into the local branch.", cancelled: "The project was stopped.",
@@ -43,7 +43,7 @@ const words = {
         short: (m: number) => m < 1 ? "now" : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h`,
         budget: "The token budget is used up.", episodes: "The episode limit is reached.", agent: (n: number) => `Agent ${n}`,
         planning: "Planning the milestone", reviewingProject: "Whole-project review", reviewing: (t: string) => `Reviewing ${t}`,
-        asks: (who: string, command: string, sandbox: boolean) => sandbox ? `${who} wants to run ${command} outside the sandbox` : `${who} wants to run ${command}`,
+        asks: (who: string, command: string, sandbox: boolean) => sandbox ? `${who} wants to run \`${command}\` outside the sandbox` : `${who} wants to run \`${command}\``,
         waitsFor: (command: string) => `Waiting for you: ${command}` },
 };
 

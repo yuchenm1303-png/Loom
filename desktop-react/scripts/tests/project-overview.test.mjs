@@ -118,7 +118,7 @@ test("an agent waiting for approval asks the person, naming the command", () => 
                      reason: "Sandbox denied: git could not read its working directory", kind: "sandbox" };
   const data = toFlowData(overview({}, [{ id: "s3", runId: "c3", role: "reviewer", taskId: null, step: 4, activity: "exec", startedAt: null, approval }]), now, "zh");
   assert.equal(data.state, "needs_you");
-  assert.deepEqual(data.attention, { reason: "Agent 1 想在沙箱外运行 git -c safe.directory=* log --oneline -5",
+  assert.deepEqual(data.attention, { reason: "Agent 1 想在沙箱外运行 `git -c safe.directory=* log --oneline -5`",
                                      detail: approval.reason, action: "approval", agentId: "s3" });
   assert.equal(data.agents[0].waiting, true);
   assert.equal(data.agents[0].activity, "等你允许：git -c safe.directory=* log --oneline -5");
