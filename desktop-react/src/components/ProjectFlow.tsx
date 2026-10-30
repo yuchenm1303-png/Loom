@@ -11,6 +11,7 @@
  *   an agent finishes a step     one pulse runs down its cable into the composer
  *   an agent arrives / leaves    its card fades in / out and its cable grows / unplugs
  *   a task changes state         its mark is born again (spring)
+ *   a card arrives / leaves    the cards around it glide out of its way, cables in tow (projectArrange.ts)
  * Text only fades; marks and cables move (motion-tokens.css). Styles: project-flow.css.
  * The data comes from projectOverview.ts (projectRun/overview); this file only draws it. */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -20,6 +21,7 @@ import {
   Sparkles, Square, X,
 } from "lucide-react";
 import { ProviderMark } from "./ModelPanel";
+import { useGlide } from "./projectArrange";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./project-flow.css";
@@ -244,7 +246,7 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
     if (stage.current) observer.observe(stage.current);
     return () => observer.disconnect();
   }, [measure, layout]);
-  return cables;
+  return { cables, measure };
 }
 
 function Card({ id, side, icon, label, count, under, register, className = "", children }: {
@@ -342,7 +344,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const layout = [context.map((item) => item.id).join(","), branches.map((item) => item.id).join(","), agents.map((agent) => agent.id).join(","), files.length,
                   data.models?.options.length ?? -1,
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase].join("|");
-  const cables = useCables(stage, hub, cards, layout);
+  const { cables, measure } = useCables(stage, hub, cards, layout);
+  useGlide(stage, layout, measure);
   const share = Math.min(1, data.budget.tokens / Math.max(1, data.budget.tokenLimit));
   const done = data.tasks.filter((task) => task.state === "integrated").length;
   const leaving = new Set([...context.filter((item) => item.leaving).map((item) => item.id),
@@ -389,7 +392,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
 
       <div className="pf-col pf-left">
         {shown("repo") ? (
-          <div className="pf-slot pf-offset-2" {...hover("repo")} {...slot("repo")}>
+          <div className="pf-slot pf-offset-2" data-glide="repo" {...hover("repo")} {...slot("repo")}>
             <Card id="repo" side="left" icon={<GitBranch size={12} />} label={text.repository} register={register}>
               <div className="pf-well pf-repo">
                 <strong>{data.repository.name}</strong>
@@ -401,7 +404,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           </div>
         ) : null}
         {shown("scope") ? (
-          <div className="pf-slot" {...hover("scope")} {...slot("scope")}>
+          <div className="pf-slot" data-glide="scope" {...hover("scope")} {...slot("scope")}>
             <Card id="scope" side="left" icon={<FolderOpen size={12} />} label={text.scope} count={data.scope.length} register={register}>
               {data.scope.map((item) => (
                 <div key={item.path} className="pf-well pf-row"><FolderOpen size={12} /><span>{item.path}</span><em className="pf-count">{item.count}</em></div>
@@ -411,7 +414,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         ) : null}
         {shown("files") ? (
           // What the person handed the project: copies every episode can read, never the originals.
-          <div className="pf-slot" {...hover("files")} {...slot("files")}>
+          <div className="pf-slot" data-glide="files" {...hover("files")} {...slot("files")}>
             <Card id="files" side="left" className="pf-files" icon={<Paperclip size={12} />} label={text.files}
                   count={files.length || undefined} register={register}>
               {files.map((file) => {
@@ -436,7 +439,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           </div>
         ) : null}
         {shown("knowledge") ? (
-          <div className="pf-slot pf-offset-2" {...hover("knowledge")} {...slot("knowledge")}>
+          <div className="pf-slot pf-offset-2" data-glide="knowledge" {...hover("knowledge")} {...slot("knowledge")}>
             <Card id="knowledge" side="left" icon={<BookMarked size={12} />} label={text.knowledge}
                   count={data.knowledge.checks + data.knowledge.notes} register={register}>
               <div className="pf-facts"><span><strong>{data.knowledge.checks}</strong> {text.checks}</span><span><strong>{data.knowledge.notes}</strong> {text.notes}</span></div>
@@ -576,7 +579,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           </footer>
         </section>
 
-        <div className="pf-slot pf-below" ref={plan} {...hover("plan")}>
+        <div className="pf-slot pf-below" ref={plan} data-glide="plan" {...hover("plan")}>
           {data.outcome ? (
             <Card id="plan" side="below" className="pf-outcome" icon={<Check size={12} />} label={text.outcome}
                   count={text.outcomeCount(data.outcome.milestones.length)} register={register}>
@@ -623,7 +626,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
 
       <div className="pf-col pf-right">
         {data.models && branches.some((item) => item.id === "model") ? (
-          <div className="pf-slot pf-model-slot" id="pf-model-card" {...hover("model")} {...slot("model")}
+          <div className="pf-slot pf-model-slot" id="pf-model-card" data-glide="model" {...hover("model")} {...slot("model")}
                onKeyDown={(event) => { if (event.key === "Escape") setModelOpen(false); }}>
             <Card id="model" side="right" className="pf-model-card" icon={<Sparkles size={12} />} label={text.modelCard}
                   count={data.models.current.reasoning || undefined} register={register}>
@@ -652,7 +655,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         {agents.map((agent, index) => {
           const Icon = roleIcon[agent.role];
           return (
-            <div key={agent.id} className={`pf-slot pf-agent-slot${index % 2 ? " pf-offset-3" : ""}`} {...hover(`agent:${agent.id}`)} {...slot(`agent:${agent.id}`)}
+            <div key={agent.id} className={`pf-slot pf-agent-slot${index % 2 ? " pf-offset-3" : ""}`} data-glide={`agent:${agent.id}`} {...hover(`agent:${agent.id}`)} {...slot(`agent:${agent.id}`)}
                  data-hot={hot === `task:${agent.id}` || undefined}>
               <Card id={`agent:${agent.id}`} side="right" className="pf-agent" icon={<Bot size={12} />} label={agent.name} register={register}>
                 <div className="pf-well pf-agent-well" data-done={agent.done || undefined}>
