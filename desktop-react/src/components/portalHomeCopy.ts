@@ -68,7 +68,7 @@ export const PORTAL_HOME_COPY: { en: PortalHomeCopy; zh: PortalHomeCopy } = {
     },
     downloadSection: {
       heading: "Download Loom",
-      lead: "One installer for the desktop app and the local Host. Windows 10 and 11, x64.",
+      lead: "The desktop app and local Host, together in one installer.",
       platformLabel: "Platform",
       versionLabel: "Version",
       installerLabel: "Installer",
@@ -125,7 +125,7 @@ export const PORTAL_HOME_COPY: { en: PortalHomeCopy; zh: PortalHomeCopy } = {
     },
     downloadSection: {
       heading: "下载 Loom",
-      lead: "一个安装包，包含桌面应用和本机 Host。支持 Windows 10 / 11，x64。",
+      lead: "一个安装包，包含桌面应用和本机 Host。",
       platformLabel: "平台",
       versionLabel: "版本",
       installerLabel: "安装包",

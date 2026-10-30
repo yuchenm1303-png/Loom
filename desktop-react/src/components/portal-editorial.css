@@ -639,27 +639,34 @@
 
 /* Download: the one file, named, with the release it belongs to. */
 .loom-editorial .editorial-section.editorial-download {
-  align-items: center;
-  padding: clamp(24px, 3vw, 44px);
+  grid-template-columns: minmax(0, 1fr);
+  padding: clamp(24px, 2.6vw, 40px);
   border: 1px solid var(--ed-rule);
   border-radius: 16px;
   background: var(--ed-paper-soft);
-  row-gap: 24px;
+  row-gap: 26px;
 }
-.loom-editorial .editorial-download-lead { grid-column: 1 / span 5; min-width: 0; }
-.loom-editorial .editorial-download-lead h2 { margin-bottom: .4em; }
+.loom-editorial .editorial-download-lead { grid-column: 1 / -1; min-width: 0; }
+.loom-editorial .editorial-download-lead h2 { margin-bottom: 12px; font-size: clamp(30px, 2.5vw, 38px); }
 .loom-editorial .editorial-download-lead > p {
-  max-width: 24em;
+  max-width: 60ch;
   margin: 0;
   color: var(--ed-ink-muted);
-  text-wrap: balance;
+  font-size: 18px;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 .loom-editorial .editorial-download-panel {
-  grid-column: 7 / span 6;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
   min-width: 0;
-  padding: 0;
+  padding: 24px 0 0;
+  border-top: 1px solid var(--ed-rule);
 }
-.loom-editorial .editorial-download-panel dl { display: grid; grid-template-columns: 1.3fr 1fr .8fr; gap: 20px; margin: 0; }
+.loom-editorial .editorial-download-panel dl { display: grid; grid-template-columns: repeat(3, minmax(0, max-content)); gap: clamp(24px, 3vw, 48px); min-width: 0; margin: 0; }
 .loom-editorial .editorial-download-panel dl > div {
   min-width: 0;
   padding: 0;
@@ -673,7 +680,8 @@
   margin-bottom: 8px;
 }
 .loom-editorial .editorial-download-panel dd { margin: 0; color: var(--ed-ink); font-size: 16px; line-height: 1.5; }
-.loom-editorial .editorial-download-panel .editorial-actions { margin-top: 26px; gap: 16px 24px; }
+.loom-editorial .editorial-download-panel .editorial-actions { flex-shrink: 0; margin: 0; gap: 16px 24px; }
+.loom-editorial .editorial-download-panel .editorial-actions > .editorial-download { font-size: 16px; }
 .loom-editorial .editorial-download-panel .editorial-primary {
   color: var(--ed-paper);
   text-decoration: none;
@@ -814,6 +822,8 @@
   .loom-editorial .editorial-download-panel { grid-column: 1 / -1; }
   .loom-editorial .editorial-start .editorial-steps { margin-top: 32px; }
   .loom-editorial .editorial-download-panel { margin-top: 0; }
+  .loom-editorial .editorial-download-panel { flex-direction: column; align-items: flex-start; gap: 24px; }
+  .loom-editorial .editorial-download-panel dl { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
   .loom-editorial .editorial-language { display: none; }
