@@ -853,21 +853,24 @@ html[data-loom-theme="light"] .compact-thread-row.is-waiting-approval {
 /* Footer --------------------------------------------------------------------- */
 .compact-sidebar-footer {
   flex: none;
-  padding-top: 2px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 2px;
 }
 
 .compact-sidebar-footer > button {
-  width: 100%;
-  height: var(--sb-row-h);
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 4px 9px;
   border: 0;
   border-radius: var(--sb-radius);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   background: transparent;
   color: var(--sb-ink-3);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 20px;
   text-align: left;
   cursor: pointer;
@@ -887,7 +890,7 @@ html[data-loom-theme="light"] .compact-thread-row.is-waiting-approval {
 }
 
 .archive-count {
-  margin-left: auto;
+  margin-left: 2px;
   color: var(--sb-ink-4);
   font-size: 12px;
   line-height: 16px;
