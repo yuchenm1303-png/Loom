@@ -69,6 +69,7 @@ export interface FlowActions {
 const roleIcon = { planner: Compass, worker: Hammer, reviewer: ShieldCheck };
 /** Budgets a new program can start with; the chip cycles through them. The Host enforces it at every request. */
 const START_BUDGETS = [2_000_000, 4_000_000, 8_000_000, 16_000_000];
+const INPUT_MAX_HEIGHT = 240;
 const taskIcon: Record<FlowTaskState, typeof Check> = { pending: Circle, working: LoaderCircle, review: CircleDot, rework: CircleDot, integrated: Check };
 
 const zhText = {
@@ -77,7 +78,7 @@ const zhText = {
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
   review: "独立复审", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "织造",
-  attention: { resume: "继续", budget: "追加预算" }, noAgents: "等待调度", budgetHint: "总 token 预算，点击切换",
+  attention: { resume: "继续", budget: "追加预算" }, noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
@@ -86,7 +87,7 @@ const enText: typeof zhText = {
   steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
   review: "Independent review", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
-  attention: { resume: "Resume", budget: "Add budget" }, noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change",
+  attention: { resume: "Resume", budget: "Add budget" }, noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
 };
 const stateWord = {
   zh: { running: "运行中", paused: "已暂停", needs_you: "等你处理", completed: "已完成", starting: "启动中" },
@@ -97,7 +98,8 @@ type Side = "left" | "right" | "below";
 interface Cable { id: string; side: Side; d: string; socket: { x: number; y: number } }
 
 function compact(value: number) {
-  return value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}M` : value >= 1000 ? `${Math.round(value / 1000)}k` : String(value);
+  // 16M, 2.4M: a whole number of millions has no ".0".
+  return value >= 1_000_000 ? `${Number((value / 1_000_000).toFixed(1))}M` : value >= 1000 ? `${Math.round(value / 1000)}k` : String(value);
 }
 
 /** Changes when `value` changes after the first render: keys a one-shot animation to that moment. */
@@ -218,6 +220,15 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const cards = useRef(new Map<string, { side: Side; node: HTMLElement }>());
   const [hot, setHot] = useState("");
   const [draft, setDraft] = useState("");
+  const [objectiveOpen, setObjectiveOpen] = useState(false);
+  const input = useRef<HTMLTextAreaElement>(null);
+  // The field grows with what is typed (an objective is often a page), up to a cap, then scrolls.
+  useLayoutEffect(() => {
+    const field = input.current;
+    if (!field) return;
+    field.style.height = "auto";
+    field.style.height = `${Math.min(field.scrollHeight, INPUT_MAX_HEIGHT)}px`;
+  }, [draft]);
   const [workers, setWorkers] = useState(data.workers);
   const [tokens, setTokens] = useState(START_BUDGETS[2]);
   const register = useCallback((id: string, side: Side, node: HTMLElement | null) => {
@@ -290,7 +301,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             <Card id="knowledge" side="left" icon={<BookMarked size={12} />} label={text.knowledge}
                   count={data.knowledge.checks + data.knowledge.notes} register={register}>
               <div className="pf-facts"><span><strong>{data.knowledge.checks}</strong> {text.checks}</span><span><strong>{data.knowledge.notes}</strong> {text.notes}</span></div>
-              {data.knowledge.latest ? <p className="pf-well pf-note">{data.knowledge.latest}</p> : null}
+              {data.knowledge.latest ? <p className="pf-well pf-note" title={data.knowledge.latest}>{data.knowledge.latest}</p> : null}
             </Card>
           </div>
         ) : null}
@@ -300,7 +311,15 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         <div className="pf-thread">
           {data.objective ? (
             <>
-              <div className="pf-bubble">{data.objective}</div>
+              {/* An objective is often a page of spec: three lines, and the rest on request, so the hub stays in view. */}
+              <div className="pf-bubble" data-open={objectiveOpen || undefined}>
+                <span className="pf-bubble-text">{data.objective}</span>
+                {data.objective.length > 160 ? (
+                  <button type="button" className="pf-bubble-more" onClick={() => setObjectiveOpen((value) => !value)}>
+                    {objectiveOpen ? text.collapse : text.expand}
+                  </button>
+                ) : null}
+              </div>
               <div className="pf-tag"><GitBranch size={11} />{data.repository.name}/{data.repository.branch}</div>
             </>
           ) : null}
@@ -335,7 +354,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             {data.controls.cancel ? <button type="button" className="pf-control" aria-label={text.stop} title={text.stop} disabled={actions.busy} onClick={actions.onCancel}><Square size={11} /></button> : null}
           </header>
           <div className="pf-well pf-input">
-            <textarea value={draft} rows={draftMode ? 3 : 2} disabled={data.state === "completed"}
+            <textarea ref={input} value={draft} rows={draftMode ? 3 : 2} disabled={data.state === "completed"}
                       onChange={(event) => setDraft(event.target.value)}
                       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}
                       placeholder={draftMode ? text.draftPlaceholder : text.steerPlaceholder}

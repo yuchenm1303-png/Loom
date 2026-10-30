@@ -76,7 +76,9 @@ const verbs = {
 
 /** "read_workspace_text README.md" as "读取 README.md"; a command line ("python.exe -m unittest") as "运行 python -m unittest". */
 export function activityText(activity: string, lang: Lang = "zh"): string {
-  const [first, ...rest] = activity.split(" ");
+  // An absolute path says where, not what: keep its last part (probe_readme.py, not C:\Users\...).
+  const short = (word: string) => /^([A-Za-z]:)?[\\/]/.test(word) ? word.split(/[\\/]/).filter(Boolean).pop() || word : word;
+  const [first, ...rest] = activity.split(" ").map(short);
   const verb = verbs[lang][first];
   if (verb) return rest.length ? `${verb} ${rest.join(" ")}` : verb;
   if (/\.exe$/i.test(first) || /^(python|node|npm|git|pytest|py)$/i.test(first)) {
@@ -140,6 +142,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   }
   const states = taskStates(run, overview);
   const titleOf = (id?: string | null) => run.plan.find((task) => task.id === id)?.instructions || "";
+  const childTask = (runId: string) => (run.teamChildren || []).find((item) => item.runId === runId)?.taskId;
   return {
     phase: "live",
     objective: program?.objective || run.objective.split("\n\nThis is milestone")[0],
@@ -162,7 +165,9 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     agents: overview.agents.map((agent, index) => {
       const startedAt = agent.startedAt ? Date.parse(agent.startedAt) : now;
       const title = agent.role === "planner" ? t.planning
-        : agent.role === "reviewer" ? (agent.scope === "project" ? t.reviewingProject : t.reviewing(agent.taskId || ""))
+        // A team task's review runs at project scope on its own one-task run: name the task.
+        : agent.role === "reviewer" ? (agent.runId !== run.id && childTask(agent.runId) ? t.reviewing(childTask(agent.runId) || "")
+                                       : agent.scope === "project" ? t.reviewingProject : t.reviewing(agent.taskId || ""))
         : titleOf(agent.taskId).split(/[.。\n]/)[0];
       return { id: agent.id, role: agent.role, name: t.agent(index + 1), step: agent.step,
                activity: agent.activity ? activityText(agent.activity, lang) : title || t.waiting, elapsed: t.short(Math.max(0, Math.round((now - startedAt) / 60000))) };

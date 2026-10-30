@@ -107,6 +107,9 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-card {
   position: relative;
   display: grid;
+  /* A track's default minimum is its content: one long task title widened the whole card. */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 6px;
   padding: 9px;
   border-radius: 14px;
@@ -184,7 +187,7 @@ html[data-loom-theme="light"] .pf-stage {
 
 .pf-facts { display: flex; gap: 12px; padding: 0 3px; color: var(--pl-muted); white-space: nowrap; }
 .pf-facts strong { color: var(--pl-ink); font-weight: 500; font-variant-numeric: tabular-nums; }
-.pf-note { margin: 0; padding: 8px 10px; color: var(--pl-secondary); font-size: 11.5px; }
+.pf-note { display: -webkit-box; overflow: hidden; margin: 0; padding: 8px 10px; color: var(--pl-secondary); font-size: 11.5px; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 
 /* The conversation above the hub. */
 .pf-thread { display: grid; gap: 6px; margin-bottom: 18px; }
@@ -200,6 +203,24 @@ html[data-loom-theme="light"] .pf-stage {
   font-size: 14px;
   line-height: 22px;
 }
+
+.pf-bubble { display: grid; gap: 4px; }
+.pf-bubble-text { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; white-space: pre-line; }
+.pf-bubble[data-open] .pf-bubble-text { display: block; max-height: 40vh; overflow: auto; }
+
+.pf-bubble-more {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pl-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color var(--loom-dur-fast) var(--loom-ease-out);
+}
+
+.pf-bubble-more:hover { color: var(--pl-ink); }
 
 .pf-tag { justify-self: end; display: flex; align-items: center; gap: 5px; color: var(--pl-faint); font-size: 11.5px; }
 
@@ -238,13 +259,15 @@ html[data-loom-theme="light"] .pf-stage {
   box-shadow: 0 1px 1px rgba(0, 0, 0, .14), 0 22px 44px -26px rgba(0, 0, 0, .7);
 }
 
-.pf-composer-head { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 6px 0 8px; }
+.pf-composer-head { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 6px 0 8px; white-space: nowrap; }
 
 .pf-mode { display: inline-flex; align-items: center; gap: 7px; color: var(--pl-ink); font-size: 12px; }
 .pf-mode-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pl-faint); }
 .pf-mode-dot[data-state="running"] { background: var(--pf-ok); }
 .pf-mode-dot[data-state="needs_you"] { background: var(--pf-warn); }
-.pf-model { color: var(--pl-muted); font-size: 12px; }
+/* The model gives way first when the header is narrow; the state and budget stay whole. */
+.pf-model { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--pl-muted); font-size: 12px; text-overflow: ellipsis; }
+.pf-mode, .pf-budget, .pf-control { flex: none; }
 
 .pf-budget { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; color: var(--pl-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
@@ -421,7 +444,9 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-loading { min-height: 100%; }
 
 /* The plan hangs below the hub. */
-.pf-below { width: 236px; margin-top: 24px; }
+.pf-below { width: 300px; max-width: 100%; margin-top: 24px; }
+/* A long plan scrolls inside its card, so the hub keeps its shape at sixteen tasks. */
+.pf-below .pf-card { max-height: 360px; overflow: auto; overscroll-behavior: contain; }
 .pf-task > span:last-child { color: var(--pl-secondary); }
 .pf-task[data-state="integrated"] > span:last-child { color: var(--pl-muted); }
 
@@ -516,6 +541,7 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-add:focus-visible,
 .pf-control:focus-visible,
 .pf-chip-button:focus-visible,
+.pf-bubble-more:focus-visible,
 .pf-attention button:focus-visible,
 .pf-stepper button:focus-visible,
 .pf-send:focus-visible {

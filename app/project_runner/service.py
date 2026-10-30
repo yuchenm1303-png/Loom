@@ -28,7 +28,8 @@ def _describe_tool(tool, arguments):
         return f"{tool} {path.replace('scratch:', '')}"[:120]
     argv = arguments.get("argv")
     if isinstance(argv, list) and argv:
-        words = [Path(str(argv[0])).name, *(str(item) for item in argv[1:])]
+        # An absolute path says where, not what: its file name, before the line is cut to length.
+        words = [Path(str(item)).name if Path(str(item)).is_absolute() else str(item) for item in argv]
         return " ".join(words)[:120]
     return str(tool or "")[:120]
 

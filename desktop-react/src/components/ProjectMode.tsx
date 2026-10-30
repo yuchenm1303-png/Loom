@@ -18,6 +18,8 @@ export function ProjectMode({ threadId, workspace, model }: { threadId: string; 
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // A failed refresh is the connection (a Host restart, sleep); it clears itself on the next good read.
+  const [offline, setOffline] = useState(false);
   const alive = useRef(true);
   const serial = useRef(0);
 
@@ -28,9 +30,10 @@ export function ProjectMode({ threadId, workspace, model }: { threadId: string; 
       if (alive.current && ticket === serial.current) {
         setOverview(result);
         setNow(Date.now());
+        setOffline(false);
       }
-    } catch (cause) {
-      if (alive.current) setError(cause instanceof Error ? cause.message : String(cause));
+    } catch {
+      if (alive.current) setOffline(true);
     }
   }, [threadId]);
 
@@ -70,7 +73,8 @@ export function ProjectMode({ threadId, workspace, model }: { threadId: string; 
 
   return (
     <ProjectFlow lang={lang} data={data} actions={{
-      busy, error,
+      busy,
+      error: error || (offline ? (lang === "en" ? "Lost the Host; reconnecting…" : "与 Host 的连接中断，正在重连…") : ""),
       onStart: (objective, workers, tokens) => act(() => window.loom.call("projectProgram/create", {
         operationId: crypto.randomUUID(), threadId, objective, tokenBudget: tokens, maxEpisodes: START_EPISODES,
         maxWorkers: workers, maxMilestones: 20 })),

@@ -83,3 +83,13 @@ test("events and tool calls read as sentences", () => {
   assert.equal(activityText("write_workspace_text tests/test_cli.py", "en"), "Writing tests/test_cli.py");
   assert.equal(activityText("something else"), "something else");
 });
+
+test("live data: a team task's reviewer names its task, and paths shrink to their file", () => {
+  const data = toFlowData(overview({}, [
+    { id: "r3", runId: "c3", role: "reviewer", taskId: null, scope: "project", step: 2, activity: "", startedAt: null },
+    { id: "s2", runId: "c2", role: "worker", taskId: "task-2", step: 3, activity: "exec", startedAt: null },
+  ]), now, "zh");
+  assert.equal(data.agents[0].activity, "复审 task-3");
+  assert.equal(activityText(String.raw`C:\Users\me\python.exe C:\work\state\agent\probe_readme.py --x`), "运行 python probe_readme.py --x");
+  assert.equal(activityText("read_workspace_text /tmp/a/b/c.txt", "en"), "Reading c.txt");
+});
