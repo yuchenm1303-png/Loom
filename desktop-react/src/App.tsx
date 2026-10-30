@@ -58,6 +58,7 @@ import { useI18n } from "./i18n";
 import { useMotionPresence } from "./motion/useMotionPresence";
 import { DUR, EASE, RETAIN } from "./motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "./motion/useReducedMotion";
+import { useModeMorph } from "./components/modeMorph";
 import { RUN_STRIP_EXIT_MS } from "./presentationTiming";
 import {
   SHORTCUTS_CHANGED_EVENT,
@@ -636,6 +637,11 @@ export default function App() {
       return next;
     });
   }, [thread?.id]);
+  // The header's switch carries the composer into the hub and back (modeMorph.ts); both views stay mounted for it.
+  const { morph: modeMorph, change: changeMode } = useModeMorph(thread?.id, setProjectMode);
+  const showProject = projectMode || modeMorph?.to === "chat";
+  // The conversation goes once the morph is over: unmounting it on the landing frame cost that frame.
+  const showChat = !projectMode || modeMorph?.to === "project";
   const permissionMode = thread?.permissionMode || loom.draftPermissionMode || loom.runtime.defaultPermissionMode;
   const capabilitySettings = loom.runtime.settings?.capabilities ?? {};
   const attachmentsEnabled = capabilitySettings.attachments !== false;
@@ -1650,7 +1656,7 @@ export default function App() {
           compactionProgress={threadSwitching ? null : loom.compactionProgress}
           onCompactContext={() => void loom.compactContext()}
           mode={thread ? (projectMode ? "project" : "chat") : undefined}
-          onModeChange={setProjectMode}
+          onModeChange={changeMode}
         />
 
         {terminalMounted && <Suspense fallback={null}><TerminalPanel
@@ -1684,15 +1690,17 @@ export default function App() {
           onSplit={openInSplit}
         />
 
-        {projectMode && thread ? (
-          <div className="project-mode-stage" inert={threadSwitching}>
+        {showProject && thread ? (
+          <div className="project-mode-stage" inert={threadSwitching || modeMorph?.to === "chat"}>
             <Suspense fallback={null}>
               <ProjectMode key={thread.id} threadId={thread.id} workspace={selectedThread?.workspace || workspace} model={currentModel}
                            models={loom.models} onSwitchModel={loom.switchModelProfile} onReasoning={loom.setReasoning} />
             </Suspense>
           </div>
-        ) : (<>
-        <div className={`conversation-stage ${running ? "is-running" : ""}`} inert={threadSwitching}>
+        ) : null}
+        {showChat ? (<>
+        <div className={`conversation-stage ${running ? "is-running" : ""}`}
+             inert={threadSwitching || modeMorph?.to === "project"}>
           {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
           {thread?.parentThreadId ? (
             <div className="loom-branch-parent-strip" role="group" aria-label={t("branch.child")}>
@@ -1751,7 +1759,7 @@ export default function App() {
           />
         </div>
 
-        <div className="composer-stage" inert={threadSwitching}>
+        <div className="composer-stage" inert={threadSwitching || modeMorph?.to === "project"}>
           {gitBarPresence.mounted && gitBarProject ? (
             <div className="project-git-fold" data-motion-phase={gitBarPresence.phase} inert={!currentProject}>
               <div className="project-git-fold-body">
@@ -1795,7 +1803,7 @@ export default function App() {
             onPausedChange={typeof thread?.paused === "boolean" ? loom.setPaused : undefined}
           />
         </div>
-        </>)}
+        </>) : null}
       </section>
       <SplitConversationPane
         threadId={splitThreadId}

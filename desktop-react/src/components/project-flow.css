@@ -58,7 +58,8 @@ html[data-loom-theme="light"] .pf-stage {
   stroke-linejoin: round;
   stroke-dasharray: 100;
   transition: stroke var(--loom-dur-fast) var(--loom-ease-out);
-  animation: pf-cable-draw var(--loom-dur-flow) var(--loom-ease-move) backwards;
+  /* A cable grows out of the hub to its card, and retracts back into the hub. */
+  animation: pf-cable-out var(--loom-dur-flow) var(--loom-ease-move) backwards;
 }
 
 .pf-socket { fill: var(--pf-cable); transition: fill var(--loom-dur-fast) var(--loom-ease-out); }
@@ -96,12 +97,9 @@ html[data-loom-theme="light"] .pf-stage {
 }
 
 .pf-cable[data-leaving] .pf-cable-body {
-  stroke-dashoffset: 100;
+  stroke-dashoffset: -100;
   transition: stroke-dashoffset var(--loom-dur-base-out) var(--loom-ease-exit);
 }
-
-.pf-cable[data-out] .pf-cable-body { animation-name: pf-cable-out; }
-.pf-cable[data-out][data-leaving] .pf-cable-body { stroke-dashoffset: -100; }
 
 .pf-cable[data-leaving] .pf-socket {
   opacity: 0;
@@ -940,7 +938,6 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 }
 
 @keyframes pf-fade { from { opacity: 0; } }
-@keyframes pf-cable-draw { from { stroke-dashoffset: 100; } }
 @keyframes pf-cable-out { from { stroke-dashoffset: -100; } }
 @keyframes pf-pulse { from { stroke-dashoffset: 7; } to { stroke-dashoffset: -100; } }
 @keyframes pf-pulse-back { from { stroke-dashoffset: -100; } to { stroke-dashoffset: 14; } }
@@ -953,6 +950,28 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 @keyframes pf-wash { from { transform: translateX(-100%); } }
 @keyframes pf-spin { to { rotate: 360deg; } }
 @keyframes pf-breathe { 0%, 100% { opacity: .45; scale: .8; } 50% { opacity: 1; scale: 1; } }
+
+/* The 对话 / 建造 switch (modeMorph.ts) carries the chat composer into the hub and back.
+   lift / rise: the hub and everything around it wait unseen while the shell travels; nothing
+   plays yet (animation: none), so their entrances start on landing.
+   landed: the hub's contents fade in, the cables grow out of it, the cards follow a press later.
+   unplug / sink: the cards and the hub's contents fade, the cables retract into the hub, then
+   the hub hands its box to the shell. */
+.project-mode-stage:is([data-morph="lift"], [data-morph="rise"]) :is(.pf-composer, .pf-slot, .pf-thread, .pf-cables, .pf-cable-body, .pf-loom) {
+  visibility: hidden;
+  animation: none;
+}
+.project-mode-stage[data-morph="landed"] :is(.pf-composer > *, .pf-thread) { animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.project-mode-stage[data-morph="landed"] :is(.pf-slot, .pf-loom) { animation-delay: 90ms; }
+.project-mode-stage:is([data-morph="unplug"], [data-morph="sink"], [data-morph="arrive"]) :is(.pf-slot, .pf-thread, .pf-loom, .pf-socket, .pf-composer > *) {
+  opacity: 0;
+  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
+}
+.project-mode-stage:is([data-morph="unplug"], [data-morph="sink"], [data-morph="arrive"]) .pf-cable-body {
+  stroke-dashoffset: -100;
+  transition: stroke-dashoffset var(--loom-dur-base-out) var(--loom-ease-exit);
+}
+.project-mode-stage:is([data-morph="sink"], [data-morph="arrive"]) .pf-composer { visibility: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
   .pf-agent-live,

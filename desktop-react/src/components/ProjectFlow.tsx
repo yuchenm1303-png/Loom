@@ -400,7 +400,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     <div className="pf-stage" ref={stage} data-state={data.state} data-phase={data.phase}>
       <svg className="pf-cables" aria-hidden="true">
         {cables.map((cable) => (
-          <g key={cable.id} className="pf-cable" data-side={cable.side} data-out={cable.id === "model" || undefined} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || undefined}
+          <g key={cable.id} className="pf-cable" data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || undefined}
              data-leaving={leaving.has(cable.id) || undefined}>
             <path className="pf-cable-body" d={cable.d} pathLength={100} />
             <rect className="pf-socket" rx={4}

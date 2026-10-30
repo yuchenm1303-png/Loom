@@ -11,6 +11,9 @@ const LIVE_POLL_MS = 2000;
 const REST_POLL_MS = 12000;
 /** Episodes for a new program: generous, since tokens are the budget a person chooses. */
 const START_EPISODES = 400;
+/** The last overview of each conversation shown here: switching back to 建造 draws the hub at once
+ *  (the composer's morph lands on it) and the first read then refreshes it. */
+const lastOverview = new Map<string, ProjectOverview>();
 
 export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning }: {
   threadId: string; workspace?: string; model?: string;
@@ -19,7 +22,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
 }) {
   const { language } = useI18n();
   const lang = language === "zh-CN" ? "zh" : "en";
-  const [overview, setOverview] = useState<ProjectOverview | null>(null);
+  const [overview, setOverview] = useState<ProjectOverview | null>(() => lastOverview.get(threadId) ?? null);
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -33,6 +36,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     try {
       const result = await window.loom.call<ProjectOverview>("projectRun/overview", { threadId });
       if (alive.current && ticket === serial.current) {
+        lastOverview.set(threadId, result);
         setOverview(result);
         setNow(Date.now());
         setOffline(false);
@@ -44,7 +48,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
 
   useEffect(() => {
     alive.current = true;
-    setOverview(null);
+    setOverview(lastOverview.get(threadId) ?? null);
     void load();
     return () => { alive.current = false; };
   }, [load]);

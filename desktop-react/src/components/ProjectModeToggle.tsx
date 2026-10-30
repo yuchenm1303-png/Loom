@@ -24,21 +24,25 @@ export function ProjectModeToggle({ value, onChange, lang = "zh" }: { value: "ch
   const words = lang === "en" ? { chat: "Chat", project: "Weave", label: "Mode", hint: "Weave · pursue one objective over days, task by task" }
                               : { chat: "对话", project: "建造", label: "工作方式", hint: "建造 · 一个目标拆成任务持续推进，独立复审后集成" };
   const items = useRef<Record<string, HTMLButtonElement | null>>({});
+  // The choice shows on the click frame; the app mounts the chosen view in the background and catches up.
+  const [chosen, setChosen] = useState(value);
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) { setSeen(value); setChosen(value); }
   const [thumb, setThumb] = useState<{ x: number; width: number } | null>(null);
   useLayoutEffect(() => {
-    const node = items.current[value];
+    const node = items.current[chosen];
     if (node) setThumb({ x: node.offsetLeft, width: node.offsetWidth });
-  }, [value, lang]);
+  }, [chosen, lang]);
   return (
-    <div className="pf-toggle" role="radiogroup" aria-label={words.label} data-at={value}>
+    <div className="pf-toggle" role="radiogroup" aria-label={words.label} data-at={chosen}>
       <span className="pf-toggle-thumb" aria-hidden="true" data-ready={thumb ? "" : undefined}
             style={thumb ? { transform: `translateX(${thumb.x}px)`, width: thumb.width } : undefined} />
       {(["chat", "project"] as const).map((option) => {
         const Glyph = option === "chat" ? ChatGlyph : WeaveGlyph;
         return (
-          <button key={option} type="button" role="radio" aria-checked={value === option} data-on={value === option || undefined}
+          <button key={option} type="button" role="radio" aria-checked={chosen === option} data-on={chosen === option || undefined}
                   ref={(node) => { items.current[option] = node; }} aria-label={words[option]}
-                  title={option === "project" ? words.hint : words.chat} onClick={() => onChange(option)}>
+                  title={option === "project" ? words.hint : words.chat} onClick={() => { if (option === chosen) return; setChosen(option); onChange(option); }}>
             <Glyph size={16} strokeWidth={1.75} aria-hidden="true" />
           </button>
         );
