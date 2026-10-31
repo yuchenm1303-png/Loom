@@ -130,3 +130,27 @@ def test_kept_script_carries_the_fixtures_it_names_by_absolute_path(tmp_path):
     assert Path(namespace["raw"]).read_text(encoding="utf-8") == "2026-02-30,A,1\n"
     assert Path(namespace["source"]) == later_checkout and namespace["label"] == "w"
     store.close()
+
+
+def test_a_project_review_gets_every_criterions_check_in_plan_order(tmp_path):
+    # weave-live2: 45 kept checks were cut to 24 in string order (task-1, task-10, ..., task-2) before the
+    # review's criteria were picked, so every whole-project review rebuilt task-3..task-9's probes.
+    from app.project_runner.runner import ProjectRunner
+    store = ProjectStore(tmp_path / "home")
+    run = store.create("op", {"tokenBudget": 10, "maxEpisodes": 1})
+    ids = [f"task-{task}:{n}" for task in range(1, 16) for n in (1, 2, 3)]
+    with store.transaction() as db:
+        for criterion in reversed(ids):
+            db.execute("INSERT INTO project_checks VALUES(?,?,?)", (run["id"], criterion, json.dumps({
+                "criterionId": criterion, "expectation": "e", "argv": ["python", "-c", "0"], "cwd": checks.WORKSPACE,
+                "subjectPaths": [], "templated": []})))
+    (tmp_path / "scratch").mkdir()
+    kept = checks.provide(store, run, tmp_path / "scratch", tmp_path / "checkout")
+    assert [item["criterionId"] for item in kept] == ids
+    plan = [{"id": f"task-{task}", "acceptance": ["a", "b", "c"]} for task in range(1, 16)]
+    review = {**run, "plan": plan, "taskIndex": 15, "reviewScope": "project"}
+    assert [item["criterionId"] for item in ProjectRunner._scoped(kept, review, review=True)] == ids
+    worker = {**run, "plan": plan, "taskIndex": 14}
+    regression = ProjectRunner._scoped(kept, worker, review=False)
+    assert len(regression) == checks.MAX_CHECKS_IN_PROMPT and not any(i["criterionId"].startswith("task-15:") for i in regression)
+    store.close()
