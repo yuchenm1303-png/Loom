@@ -22,6 +22,7 @@ import time
 from app.agent_runtime.contracts import AgentEventKind as E
 
 WORKSPACE, CHECKS = "{workspace}", "{checks}"
+# A worker's regression list is capped; a review always gets the checks of every criterion it judges.
 MAX_CHECKS_IN_PROMPT = 24
 # Inside a kept script's text; distinct from argv placeholders because "{workspace}"
 # can be ordinary Python (an f-string) in the script itself.
@@ -109,9 +110,16 @@ def provide(store, run, scratch, workspace):
                 continue
             copied.write_text(text.replace(IN_FILE_CHECKS, destination.as_posix())
                               .replace(IN_FILE_WORKSPACE, Path(workspace).as_posix()), encoding="utf-8")
+    # All of them, in plan order: cut here (in string order: task-1, task-10, ..., task-2) a 15-task project
+    # review was handed none of task-3..task-9's checks and rebuilt 21 probes in every review (weave-live2).
+    rows.sort(key=lambda item: _plan_order(item["criterionId"]))
     return [{"criterionId": item["criterionId"], "expectation": item["expectation"],
              "argv": [render(part) for part in item["argv"]], "cwd": render(item["cwd"]),
-             "subjectPaths": item["subjectPaths"]} for item in rows[:MAX_CHECKS_IN_PROMPT]]
+             "subjectPaths": item["subjectPaths"]} for item in rows]
+
+
+def _plan_order(criterion):
+    return tuple((0, int(part), "") if part.isdigit() else (1, 0, part) for part in re.split(r"[-:]", criterion))
 
 
 def _make_portable(script, target, scratch, workspace):

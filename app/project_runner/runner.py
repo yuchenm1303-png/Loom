@@ -320,7 +320,7 @@ class ProjectRunner:
             wanted = {item["id"] for item in criteria(run)}
             return [item for item in kept if item["criterionId"] in wanted]
         own = run["plan"][run["taskIndex"]]["id"] + ":" if run["plan"] and run["taskIndex"] < len(run["plan"]) else None
-        return [item for item in kept if not (own and item["criterionId"].startswith(own))]
+        return [item for item in kept if not (own and item["criterionId"].startswith(own))][:checks.MAX_CHECKS_IN_PROMPT]
 
     def tick(self):
         with self.guard:
