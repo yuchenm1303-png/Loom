@@ -604,17 +604,17 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "tool for what only the GUI can do. "
                 "It uses the current conversation model and the normal "
                 "TurnRunner: request screenshot first, then choose exactly one visual action from the returned image. "
-                "Coordinates are normalized 0..1. Coordinate input is the primary execution path; UIA is only an "
+                "Coordinates are normalized 0..1. Coordinate input is the primary execution path; semantic control hints are only an "
                 "advisory visual hint and no control id is accepted here. If a target application already appears in "
                 "the known-window list, use switch_window rather than searching the desktop or taskbar; hidden/tray "
                 "windows may be recoverable this way. Every non-terminal action is followed by a fresh screenshot. "
-                "Treat the reported Windows foreground id/process as authoritative for window identity: an image, "
+                "Treat the reported OS foreground id/process as authoritative for window identity: an image, "
                 "video, remote desktop, or prior screenshot displayed inside an app is content, not evidence that "
                 "the pictured app is above it in the real desktop Z-order. "
                 "Use clear_text as one atomic action to clear the focused editor instead of issuing separate Ctrl+A "
                 "and Delete calls whose focus can change between steps. A pixel delta only proves repainting; unless "
                 "semantic_verified is true, do not claim that text, selection, or drag intent succeeded. "
-                "If a coordinate pointer action injects successfully but causes no observable UI change, this tool "
+                "On macOS, switch_window activates the observed application rather than a specific window; multi-monitor control is not yet available. If a coordinate pointer action injects successfully but causes no observable UI change, this tool "
                 "returns ok=false so you must not assume the click worked."
             ),
             input_schema=_schema({"action": _single_action_schema()}, ("action",)),
@@ -630,7 +630,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "model_control": "current conversation model via Loom TurnRunner",
                 "model_facing_tools": ["computer_status", "computer_action"],
                 "coordinate_execution": "primary",
-                "uia_role": "advisory hints only for the single-loop path",
+                "uia_role": "advisory hints on Windows only; unavailable on macOS",
                 "visual_feedback": "fresh screenshot attached ephemerally to the next model request",
                 "window_reuse": "prefer switch_window for known visible/minimized/tray-hidden app windows",
                 "legacy_grounder_active": False,

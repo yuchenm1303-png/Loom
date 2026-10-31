@@ -19,9 +19,16 @@ def _prepare_frozen_environment() -> None:
     browsers = Path(sys.executable).resolve().parent / "browsers"
     if browsers.is_dir():
         os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(browsers))
-        for executable in sorted(browsers.glob("chromium-*/chrome-win*/chrome.exe")):
-            os.environ.setdefault("LOOM_BUNDLED_BROWSER", str(executable))
-            break
+        candidates = (
+            "chromium-*/chrome-win*/chrome.exe",
+            "chromium-*/chrome-mac*/Chromium.app/Contents/MacOS/Chromium",
+            "chromium-*/chrome-mac*/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        )
+        for pattern in candidates:
+            found = next(iter(sorted(browsers.glob(pattern))), None)
+            if found is not None:
+                os.environ.setdefault("LOOM_BUNDLED_BROWSER", str(found))
+                break
 
 
 _prepare_frozen_environment()
@@ -31,7 +38,13 @@ def _replace_packaged_workspace(argv: list[str]) -> list[str]:
     if not getattr(sys, "frozen", False):
         return argv
     args = list(argv)
-    workspace = Path.home() / "Documents" / "Loom Workspace"
+    # ~/Documents is privacy-protected by macOS and would cause a TCC prompt
+    # on the first, otherwise headless, Host startup.
+    workspace = (
+        Path.home() / "Library" / "Application Support" / "Loom" / "Workspace"
+        if sys.platform == "darwin"
+        else Path.home() / "Documents" / "Loom Workspace"
+    )
     workspace.mkdir(parents=True, exist_ok=True)
     try:
         index = args.index("--workspace")
@@ -78,9 +91,13 @@ def _first_run_test() -> int:
     import tempfile
     import importlib
     from loom_cli import _build_runtime
-    for module in ("openai", "httpx", "jsonschema", "mcp.client.streamable_http",
-                   "keyring.backends.Windows", "winpty", "PIL", "psutil",
-                   "pyautogui", "pywinauto", "browser_use", "playwright"):
+    modules = ["openai", "httpx", "jsonschema", "mcp.client.streamable_http",
+               "PIL", "pyautogui", "browser_use", "playwright"]
+    if sys.platform == "win32":
+        modules.extend(("keyring.backends.Windows", "winpty", "psutil", "pywinauto"))
+    elif sys.platform == "darwin":
+        modules.extend(("keyring.backends.macOS", "Quartz"))
+    for module in modules:
         importlib.import_module(module)
     if getattr(sys, "frozen", False):
         browser = Path(os.environ.get("LOOM_BUNDLED_BROWSER", ""))

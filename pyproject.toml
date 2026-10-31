@@ -36,6 +36,10 @@ computer = [
     "Pillow>=11,<13",
     "psutil>=5.9,<8; platform_system == 'Windows'",
     "pyautogui>=0.9.54,<0.10; platform_system == 'Windows'",
+    "pyautogui>=0.9.54,<0.10; platform_system == 'Darwin'",
+    "pyobjc-framework-Quartz>=10,<13; platform_system == 'Darwin'",
+    "pyobjc-framework-ApplicationServices>=10,<13; platform_system == 'Darwin'",
+    "pyobjc-framework-Cocoa>=10,<13; platform_system == 'Darwin'",
     "pywinauto>=0.6.9,<0.7; platform_system == 'Windows'",
     "pywin32>=306,<400; platform_system == 'Windows'",
 ]
@@ -44,6 +48,10 @@ desktop-agent = [
     "Pillow>=11,<13",
     "psutil>=5.9,<8; platform_system == 'Windows'",
     "pyautogui>=0.9.54,<0.10; platform_system == 'Windows'",
+    "pyautogui>=0.9.54,<0.10; platform_system == 'Darwin'",
+    "pyobjc-framework-Quartz>=10,<13; platform_system == 'Darwin'",
+    "pyobjc-framework-ApplicationServices>=10,<13; platform_system == 'Darwin'",
+    "pyobjc-framework-Cocoa>=10,<13; platform_system == 'Darwin'",
     "pywinauto>=0.6.9,<0.7; platform_system == 'Windows'",
     "pywin32>=306,<400; platform_system == 'Windows'",
 ]

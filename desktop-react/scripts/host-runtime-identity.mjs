@@ -15,7 +15,7 @@ export function hostRuntimeIdentity(repoRoot, environment = process.env) {
   const minBootstrapVersion = String(environment.LOOM_HOST_MIN_BOOTSTRAP_VERSION || config.minBootstrapVersion).trim();
   if (!/^\d+\.\d+\.\d+$/.test(version) || !Number.isSafeInteger(protocol) || protocol < 0
     || !/^\d+\.\d+\.\d+$/.test(minBootstrapVersion)) throw new Error("Invalid Host runtime release identity");
-  return { schema: 1, version, protocol, platform: "win32", arch: "x64", minBootstrapVersion,
+  return { schema: 1, version, protocol, platform: process.platform, arch: process.arch, minBootstrapVersion,
     sourceSha, publishedAt: new Date(Number(sourceEpoch) * 1000).toISOString() };
 }
 
