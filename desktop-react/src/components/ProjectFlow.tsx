@@ -211,11 +211,11 @@ function useDeparting<T extends { id: string }>(items: T[]): (T & { leaving?: bo
   useLayoutEffect(() => { latest.current = items; });
   useEffect(() => {
     if (!gone.length) return;
-    // RETAIN.base: the in-place exit (base-out) plus its margin, so the fade is never cut.
+    // Keep the in-place exit until base-out plus its margin has finished.
     const ids = gone.map(({ item }) => item.id);
-    const timer = window.setTimeout(() => setGone((list) => list.filter(({ item }) => !ids.includes(item.id))), RETAIN.base);
+    const timer = window.setTimeout(() => setGone((list) => list.filter(({ item }) => !ids.includes(item.id))), reduce ? 0 : RETAIN.base);
     return () => window.clearTimeout(timer);
-  }, [gone]);
+  }, [gone, reduce]);
   const out: (T & { leaving?: boolean })[] = [...items];
   for (const { item, index } of gone) {
     if (!out.some((entry) => entry.id === item.id)) out.splice(Math.min(index, out.length), 0, { ...item, leaving: true });
@@ -438,7 +438,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const ids = (list: { id: string; leaving?: boolean }[]) => list.map((item) => `${item.id}${item.leaving ? "~" : ""}`).join(",");
   const layout = [ids(context), ids(branches), ids(agents), ids(below), ids(loom), files.length,
                   modelTotal, modelView, query, reasoningState?.value ?? "",
-                  data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase].join("|");
+                  data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase,
+                  dirtyOpen, objectiveOpen, draft].join("|");
   const { cables, measure } = useCables(stage, hub, cards, layout);
   // A low stage squeezes the thread above the hub: it shows the newest line, and scrolls up to the objective.
   const thread = useRef<HTMLDivElement>(null);
@@ -455,7 +456,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                            ...loom.filter((item) => item.leaving).map((item) => item.id),
                            ...agents.filter((item) => item.leaving).map((item) => `agent:${item.id}`)]);
   const shown = (id: string) => context.some((item) => item.id === id);
-  const slot = (id: string) => ({ "data-leaving": leaving.has(id) || undefined });
+  const slot = (id: string) => ({ "data-leaving": leaving.has(id) || undefined, inert: leaving.has(id) });
   const hover = (id: string) => ({ onPointerEnter: () => setHot(id), onPointerLeave: () => setHot("") });
   const shownWorkers = draftMode ? workers : data.workers;
   const submit = () => {
@@ -592,12 +593,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               <div className="pf-dirty-line">
                 <span className="pf-attention-dot" />
                 <span className="pf-attention-text" title={text.dirtyWhy(data.workspace.head, data.workspace.branch)}>{text.dirty(data.workspace.changeCount)}</span>
-                <button type="button" className="pf-attention-quiet" onClick={() => setDirtyOpen((value) => !value)}>
+                <button type="button" className="pf-attention-quiet" aria-expanded={dirtyOpen} aria-controls="pf-dirty-details" onClick={() => setDirtyOpen((value) => !value)}>
                   {dirtyOpen ? text.dirtyHide : text.dirtyShow}
                 </button>
               </div>
-              {dirtyOpen ? (
-                <div className="pf-dirty-body">
+              <div className="pf-disclosure" id="pf-dirty-details" data-open={dirtyOpen} inert={!dirtyOpen}>
+                <div className="pf-disclosure-inner"><div className="pf-dirty-body">
                   <p className="pf-dirty-why">{text.dirtyWhy(data.workspace.head, data.workspace.branch)}</p>
                   <ul className="pf-dirty-files">
                     {data.workspace.changes.slice(0, 8).map((change) => (
@@ -616,13 +617,13 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                     </button>
                   </div>
                   <p className="pf-dirty-hint">{text.commitHint}</p>
-                </div>
-              ) : null}
+                </div></div>
+              </div>
             </div>
           ) : null}
         </div>
 
-        <section className="pf-composer" ref={hub} aria-label={text.hub} data-hot={hot.startsWith("agent:") || undefined}>
+        <section className="pf-composer" ref={hub} data-glide="hub" aria-label={text.hub} data-hot={hot.startsWith("agent:") || undefined}>
           <header className="pf-composer-head">
             {/* The header switch already says 建造; the hub names the stage and its state (the words give way first when narrow). */}
             <span className="pf-mode" title={draftMode ? text.notStarted : `${text.stage(data.milestone)} · ${stateWord[lang][data.state]}`}>

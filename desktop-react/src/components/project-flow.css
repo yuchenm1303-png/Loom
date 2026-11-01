@@ -64,12 +64,14 @@ html[data-loom-theme="light"] .pf-stage {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-dasharray: 100;
-  transition: stroke var(--loom-dur-fast) var(--loom-ease-out);
+  stroke-dashoffset: 0;
+  transition: stroke var(--loom-dur-fast) var(--loom-ease-out), stroke-dashoffset var(--loom-dur-flow) var(--loom-ease-move);
   /* A cable grows out of the hub to its card, and retracts back into the hub. */
-  animation: pf-cable-out var(--loom-dur-flow) var(--loom-ease-move) backwards;
 }
+@starting-style { .pf-cable-body { stroke-dashoffset: -100; } }
 
-.pf-socket { fill: var(--pf-cable); transition: fill var(--loom-dur-fast) var(--loom-ease-out); }
+.pf-socket { fill: var(--pf-cable); opacity: 1; transition: fill var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-base) var(--loom-ease-out); }
+@starting-style { .pf-socket { opacity: 0; } }
 
 .pf-cable[data-hot] .pf-cable-body { stroke: var(--pf-cable-hot); }
 .pf-cable[data-hot] .pf-socket { fill: var(--pf-cable-hot); }
@@ -104,7 +106,20 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-right { gap: 12px; }
 .pf-center { gap: 0; }
 
-.pf-slot { flex: none; min-height: 0; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.pf-slot { flex: none; min-height: 0; opacity: 1; transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
+/* A short movement toward the hub belongs to the surface; the slot is free to
+   carry the whole card through a reorder without stretching its typography. */
+.pf-left { --pf-enter-x: 10px; --pf-enter-y: 0px; }
+.pf-right { --pf-enter-x: -10px; --pf-enter-y: 0px; }
+.pf-below { --pf-enter-x: 0px; --pf-enter-y: -10px; }
+.pf-slot > .pf-card {
+  opacity: 1;
+  translate: 0 0;
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out), translate var(--loom-dur-flow) var(--loom-ease-move), padding var(--loom-dur-flow) var(--loom-ease-move), gap var(--loom-dur-flow) var(--loom-ease-move);
+}
+@starting-style {
+  .pf-slot > .pf-card { opacity: 0; translate: var(--pf-enter-x, 0px) var(--pf-enter-y, 8px); }
+}
 /* The cards that hold lists give height first; their rows scroll inside them. */
 .pf-slot[data-fit],
 .pf-model-slot,
@@ -137,11 +152,17 @@ html[data-loom-theme="light"] .pf-stage {
 }
 
 /* Leaving: the card fades and its cable unplugs from the hub, on the shorter exit step. */
-.pf-slot[data-leaving],
 .pf-loom[data-leaving] {
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit);
+}
+.pf-slot[data-leaving] { pointer-events: none; }
+.pf-slot[data-leaving] > .pf-card {
+  opacity: 0;
+  translate: var(--pf-enter-x, 0px) var(--pf-enter-y, 8px);
+  transition-duration: var(--loom-dur-base-out);
+  transition-timing-function: var(--loom-ease-exit);
 }
 
 .pf-cable[data-leaving] .pf-cable-body {
@@ -603,7 +624,10 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-dirty-why { margin: 0; color: var(--pl-muted); font-size: 11.5px; }
 .pf-dirty-line .pf-attention-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-dirty-hint { margin: 0; color: var(--pl-faint); font-size: 11.5px; }
-.pf-dirty-body { display: grid; gap: 8px; margin: 6px 0 2px 16px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.pf-disclosure { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-move), opacity var(--loom-dur-base) var(--loom-ease-out); }
+.pf-disclosure[data-open="true"] { grid-template-rows: 1fr; opacity: 1; }
+.pf-disclosure-inner { min-height: 0; overflow: hidden; }
+.pf-dirty-body { display: grid; gap: 8px; margin: 6px 0 2px 16px; }
 .pf-dirty-files { display: grid; gap: 2px; margin: 0; padding: 6px 8px; border-radius: 8px; background: var(--pf-well); list-style: none; }
 .pf-dirty-files li { display: flex; gap: 8px; min-width: 0; color: var(--pl-secondary); font-size: 12px; }
 .pf-dirty-files li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1097,11 +1121,17 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 
 /* Folded under the open model card: the role, its state and its clock on one line; the name, the
    activity and the dashes return when the card closes. */
-.pf-right[data-crowded] .pf-agent { padding: 5px; }
+.pf-agent { interpolate-size: allow-keywords; }
+.pf-agent > .pf-card-head,
+.pf-agent-activity { height: auto; min-height: 0; overflow: hidden; transition: height var(--loom-dur-flow) var(--loom-ease-move), opacity var(--loom-dur-base) var(--loom-ease-out), padding var(--loom-dur-flow) var(--loom-ease-move); }
+.pf-agent-well { transition: padding var(--loom-dur-flow) var(--loom-ease-move), gap var(--loom-dur-flow) var(--loom-ease-move), grid-template-columns var(--loom-dur-flow) var(--loom-ease-move); }
+.pf-agent-mark, .pf-agent-mark svg { transition: width var(--loom-dur-flow) var(--loom-ease-move), height var(--loom-dur-flow) var(--loom-ease-move), border-radius var(--loom-dur-flow) var(--loom-ease-move); }
+.pf-dashes { transition: height var(--loom-dur-flow) var(--loom-ease-move), margin-top var(--loom-dur-flow) var(--loom-ease-move), opacity var(--loom-dur-base) var(--loom-ease-out); }
+.pf-right[data-crowded] .pf-agent { padding: 5px; gap: 0; }
 .pf-right[data-crowded] .pf-agent > .pf-card-head,
-.pf-right[data-crowded] .pf-agent-activity,
-.pf-right[data-crowded] .pf-dashes { display: none; }
-.pf-right[data-crowded] .pf-agent-well { grid-template-columns: 24px minmax(0, 1fr); gap: 8px; padding: 5px 9px 5px 5px; }
+.pf-right[data-crowded] .pf-agent-activity { height: 0; opacity: 0; padding: 0; }
+.pf-right[data-crowded] .pf-dashes { height: 0; margin-top: 0; opacity: 0; }
+.pf-right[data-crowded] .pf-agent-well { grid-template-columns: 24px minmax(0, 1fr); gap: 0 8px; padding: 5px 9px 5px 5px; }
 .pf-right[data-crowded] .pf-agent-mark { width: 24px; height: 24px; border-radius: 7px; }
 .pf-right[data-crowded] .pf-agent-mark svg { width: 13px; height: 13px; }
 
@@ -1135,7 +1165,6 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 }
 
 @keyframes pf-fade { from { opacity: 0; } }
-@keyframes pf-cable-out { from { stroke-dashoffset: -100; } }
 @keyframes pf-pulse { from { stroke-dashoffset: 7; } to { stroke-dashoffset: -100; } }
 @keyframes pf-pulse-back { from { stroke-dashoffset: -100; } to { stroke-dashoffset: 14; } }
 @keyframes pf-mark-in { from { opacity: 0; scale: .5; } }
@@ -1159,7 +1188,8 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   animation: none;
 }
 .project-mode-stage[data-morph="landed"] :is(.pf-composer > *, .pf-thread) { animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
-.project-mode-stage[data-morph="landed"] :is(.pf-slot, .pf-loom) { animation-delay: 90ms; }
+.project-mode-stage[data-morph="landed"] .pf-slot { transition-delay: var(--loom-dur-press); }
+.project-mode-stage[data-morph="landed"] .pf-loom { animation-delay: var(--loom-dur-press); }
 .project-mode-stage:is([data-morph="unplug"], [data-morph="sink"], [data-morph="arrive"]) :is(.pf-slot, .pf-thread, .pf-loom, .pf-socket, .pf-composer > *) {
   opacity: 0;
   transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
