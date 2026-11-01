@@ -11,11 +11,19 @@
  * A card that leaves is lifted out of its column at the place it was seen and held there (its
  * column may re-centre under it) while it folds and fades. */
 import { useLayoutEffect, useRef } from "react";
-import { DUR, EASE } from "../motion/tokens";
+import { DUR, EASE, SPRING, STAGGER_MS } from "../motion/tokens";
 import { onReducedMotionChange, prefersReducedMotionNow } from "../motion/useReducedMotion";
 
-/** One clock for every layout move of the hub; the size changes in project-flow.css run on the same step. */
+/** One clock for every layout move of the hub; the size changes in project-flow.css run on the same step and curve.
+ *  The settle spring starts from rest and lands without a crawl: the old move curve jumped 14% in the first
+ *  frame and spent its last 270 ms on the final fifth. Its overshoot is half a percent, under a pixel here. */
 export const HUB_CLOCK = DUR.panel;
+export const HUB_EASE = SPRING.settle;
+/** How far apart the cards of a column set off when they move together. */
+const RIPPLE_MS = STAGGER_MS / 2;
+/** The rows of an arriving card, which come in one after another as it unrolls. */
+const ROWS = ".pf-well, .pf-task, .pf-loom-lane, .pf-model-option, .pf-empty";
+const MAX_ROWS = 8;
 
 type Place = { x: number; y: number; width: number; height: number };
 type Edges = { top: number; bottom: number };
@@ -107,7 +115,7 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     if (!prefersReducedMotionNow()) return;
     cancelAnimationFrame(frame.current);
     for (const animation of stage.current?.getAnimations({ subtree: true }) ?? []) {
-      if (animation.id === "pf-glide") animation.cancel();
+      if (animation.id === "pf-glide" || animation.id === "pf-row") animation.cancel();
     }
     clear();
     onFrame();
@@ -149,6 +157,7 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     }
 
     let moved = false;
+    const started: { node: HTMLElement; target: Place; dy: number }[] = [];
     for (const node of nodes) {
       if (node.dataset.pinned) continue;
       const target = final.get(node)!;
@@ -162,8 +171,30 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
       if (!from) continue;
       const dx = from.x - target.x, dy = from.y - target.y;
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
-      node.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: HUB_CLOCK, easing: EASE.move }).id = "pf-glide";
+      started.push({ node, target, dy });
+      node.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: HUB_CLOCK, easing: HUB_EASE, fill: "backwards" }).id = "pf-glide";
       moved = true;
+    }
+    // A ripple: cards of one column that travel the same way set off one after another, the one in front first.
+    // In front means ahead in the direction of travel, so the gaps between them only open on the way and no card
+    // runs into the one ahead of it. Closing in, the cards nearest the change go first; making room, the farthest.
+    let lastDelay = 0;
+    const groups = new Map<string, typeof started>();
+    for (const item of started) {
+      const column = item.node.parentElement;
+      if (!column?.classList.contains("pf-col") || Math.abs(item.dy) < 0.5) continue;
+      const key = `${[...column.parentElement!.children].indexOf(column)}:${item.dy < 0 ? "down" : "up"}`;
+      groups.set(key, [...(groups.get(key) ?? []), item]);
+    }
+    for (const [key, group] of groups) {
+      const down = key.endsWith("down");
+      group.sort((a, b) => down ? b.target.y - a.target.y : a.target.y - b.target.y);
+      group.forEach(({ node }, index) => {
+        if (!index) return;
+        const glide = node.getAnimations().find((animation) => animation.id === "pf-glide");
+        glide?.effect?.updateTiming({ delay: index * RIPPLE_MS });
+        lastDelay = Math.max(lastDelay, index * RIPPLE_MS);
+      });
     }
 
     // Who reveals what: the cards that arrive, leave or grew, each between its neighbours in its column.
@@ -216,6 +247,12 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
       }
       const surface = node.querySelector<HTMLElement>(":scope > .pf-card") ?? node;
       const round = parseFloat(getComputedStyle(surface).borderTopLeftRadius) || 0;
+      if (kind === "arrive" && !previous.has(node)) {
+        const rows = [...surface.querySelectorAll<HTMLElement>(ROWS)].slice(0, MAX_ROWS);
+        rows.forEach((row, index) => {
+          row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR.base, delay: (index + 1) * STAGGER_MS, easing: EASE.out, fill: "backwards" }).id = "pf-row";
+        });
+      }
       const hung = surface === node ? [...node.children].filter((part): part is HTMLElement => part instanceof HTMLElement) : [surface];
       next.push({ node, kind, prev, next: after, gapPrev, gapNext, from: fromEdges, to: toEdges, round, hung });
     }
@@ -223,7 +260,9 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     if (!moved && !next.length && !held.current.size) { onFrame(); return; }
 
     clock.current?.cancel();
-    clock.current = new Animation(new KeyframeEffect(null, [], { duration: HUB_CLOCK, easing: EASE.move, fill: "forwards" }));
+    clock.current = new Animation(new KeyframeEffect(null, [], { duration: HUB_CLOCK, easing: HUB_EASE, fill: "forwards" }));
+    // The cuts follow live neighbours, so the frames go on until the last card of a ripple has landed.
+    const until = performance.now() + HUB_CLOCK + lastDelay;
     clock.current.play();
     const tick = () => {
       const timing = clock.current?.effect?.getComputedTiming();
@@ -251,7 +290,7 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
         shownEdges.set(reveal.node, { top, bottom });
       }
       onFrame();
-      if (t < 1) frame.current = requestAnimationFrame(tick);
+      if (t < 1 || performance.now() < until) frame.current = requestAnimationFrame(tick);
       else clear();
     };
     cancelAnimationFrame(frame.current);

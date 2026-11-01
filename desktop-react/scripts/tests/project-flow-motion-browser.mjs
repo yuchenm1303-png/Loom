@@ -123,14 +123,43 @@ try {
     }
     assert.equal(await page.locator('[data-glide] [style*="translate"]').count(), 0, "no hung part is left displaced");
 
+    // A column moves as a ripple, the card in front (in the direction of travel) first: closing in, the card next to
+    // the change sets off first; making room, the farthest one. The arriving card's rows come in one after another.
+    const ripple = (id) => page.evaluate(async (id) => {
+      document.querySelector('[data-branch="scope"]').click();
+      await new Promise(requestAnimationFrame);
+      const delay = (glide) => document.querySelector(`[data-glide="${glide}"]`).getAnimations().find((a) => a.id === "pf-glide")?.effect.getTiming().delay;
+      const rows = [...(document.querySelector(`[data-glide="${id}"]`)?.getAnimations({ subtree: true }) ?? [])]
+        .filter((a) => a.id === "pf-row").map((a) => a.effect.getTiming().delay);
+      return { files: delay("files"), knowledge: delay("knowledge"), rows };
+    }, id);
+    const closing = await ripple("scope");
+    assert.ok(closing.files === 0 && closing.knowledge > 0, `closing in, the nearest card leads: ${JSON.stringify(closing)}`);
+    await settle(page);
+    const opening = await ripple("scope");
+    assert.ok(opening.knowledge === 0 && opening.files > 0, `making room, the farthest card leads: ${JSON.stringify(opening)}`);
+    assert.ok(opening.rows.length >= 3 && opening.rows.every((delay, index) => !index || delay > opening.rows[index - 1]), `rows come in one after another: ${opening.rows}`);
+    await settle(page);
+
     // Model opening compresses the agent's own details continuously rather than display:none.
     const expanded = await page.locator('.pf-agent').first().evaluate(node => node.getBoundingClientRect().height);
-    await page.locator('.pf-model-chip').click();
-    await page.waitForTimeout(90);
-    const middle = await page.locator('.pf-agent').first().evaluate(node => node.getBoundingClientRect().height);
+    // Clicked and read inside the page, every frame: a locator click waits for the hub to be still first, which can
+    // outlast the fold. The chip takes focus as a real click gives it, so Escape reaches it below.
+    const heights = await page.evaluate(async () => {
+      const chip = document.querySelector('.pf-model-chip');
+      chip.focus();
+      chip.click();
+      const seen = [];
+      for (const end = performance.now() + 500; performance.now() < end;) {
+        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+        seen.push(document.querySelector('.pf-agent').getBoundingClientRect().height);
+      }
+      return seen;
+    });
     await settle(page);
     const compact = await page.locator('.pf-agent').first().evaluate(node => node.getBoundingClientRect().height);
-    assert.ok(compact < middle && middle < expanded, `agent height interpolates: ${expanded}, ${middle}, ${compact}`);
+    const between = heights.filter((height) => height > compact + 4 && height < expanded - 4);
+    assert.ok(compact < expanded && between.length >= 3, `agent height interpolates: ${expanded} -> ${compact} via ${heights.map(Math.round)}`);
     await page.locator('.pf-model-slot').press("Escape");
     await settle(page);
     assert.ok(Math.abs(await page.locator('.pf-agent').first().evaluate(node => node.getBoundingClientRect().height) - expanded) < 1);
@@ -175,7 +204,7 @@ try {
   }
 
   const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
-  await page.goto(`${origin}/scripts/fixtures/project-flow.html?at=0&draft=1&dirty=1`);
+  await page.goto(`${origin}/scripts/fixtures/project-flow.html?at=0&draft=1&dirty=1&proposal=1`);
   await settle(page);
   const button = page.locator('[aria-controls="pf-dirty-details"]');
   await button.click();
