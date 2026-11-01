@@ -23,7 +23,9 @@ class StaleCandidate(ValueError):
 # and committed, so a machine-wide autocrlf=true must not rewrite them on the way
 # (a reviewed LF file came back CRLF from the delivery export). .gitattributes still apply.
 def git(root, *args, raw=False):
-    result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
+    # stdin closed: the Host's stdin is the desktop's JSON-RPC pipe with a read always pending on it,
+    # and a git that inherits that handle blocks at startup on Windows until the next request arrives.
+    result = subprocess.run(["git", "-C", str(root), *args], stdin=subprocess.DEVNULL, capture_output=True, text=True,
         encoding="utf-8", errors="strict", timeout=30,
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
     if result.returncode:

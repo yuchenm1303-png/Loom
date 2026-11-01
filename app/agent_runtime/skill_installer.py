@@ -533,6 +533,7 @@ class SkillInstaller:
             completed = subprocess.run(
                 command,
                 check=False,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,

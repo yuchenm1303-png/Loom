@@ -189,7 +189,7 @@ def acquire(source, temporary):
             options = ["git", "-c", f"core.hooksPath={hooks}", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "-c", "http.sslBackend=openssl"]
             def git(*args):
                 try:
-                    result = subprocess.run([*options, *args], env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+                    result = subprocess.run([*options, *args], env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
                 except (FileNotFoundError, subprocess.TimeoutExpired):
                     raise PluginPackageError("Git is unavailable or acquisition timed out") from None
                 if result.returncode:
