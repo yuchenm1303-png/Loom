@@ -331,6 +331,16 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     : modelView === RECENT ? models.recent
     : models.groups.find((group) => group.id === modelView)?.options ?? models.groups[0]?.options ?? [];
   const mixed = Boolean(query) || modelView === RECENT;
+  // The chosen source stays in sight in its row. Set by hand: scrollIntoView would also scroll the
+  // stage, which is clipped and must never move.
+  const modelTabs = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const row = modelTabs.current, tab = row?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!row || !tab) return;
+    const left = tab.offsetLeft - row.offsetLeft, right = left + tab.offsetWidth;
+    if (left < row.scrollLeft) row.scrollLeft = left - 8;
+    else if (right > row.scrollLeft + row.clientWidth) row.scrollLeft = right - row.clientWidth + 8;
+  }, [modelView, modelOpen, query]);
   const reasoningState = models?.current.reasoning;
   const reasoningText = reasoningState ? reasoningLabel(reasoningState, lang === "zh") : "";
   // The plan scrolls; keep the task in progress in view as work moves down it, unless the person is reading it.
@@ -371,6 +381,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                   modelTotal, modelView, query, reasoningState?.value ?? "",
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase].join("|");
   const { cables, measure } = useCables(stage, hub, cards, layout);
+  // A low stage squeezes the thread above the hub: it shows the newest line, and scrolls up to the objective.
+  const thread = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const box = thread.current;
+    if (box && box.scrollHeight > box.clientHeight) box.scrollTop = box.scrollHeight;
+  }, [layout, data.narration.text, dirtyOpen, objectiveOpen]);
   useGlide(stage, layout, measure);
   const share = Math.min(1, data.budget.tokens / Math.max(1, data.budget.tokenLimit));
   const done = data.tasks.filter((task) => task.state === "integrated").length;
@@ -430,19 +446,23 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           </div>
         ) : null}
         {shown("scope") ? (
-          <div className="pf-slot" data-glide="scope" {...hover("scope")} {...slot("scope")}>
-            <Card id="scope" side="left" icon={<FolderOpen size={12} />} label={text.scope} count={data.scope.length} register={register}>
-              {data.scope.map((item) => (
-                <div key={item.path} className="pf-well pf-row"><FolderOpen size={12} /><span>{item.path}</span><em className="pf-count">{item.count}</em></div>
-              ))}
+          // data-fit: when the stage is low, the card gives height and its rows scroll between head and foot.
+          <div className="pf-slot" data-glide="scope" data-fit="" {...hover("scope")} {...slot("scope")}>
+            <Card id="scope" side="left" className="pf-listed" icon={<FolderOpen size={12} />} label={text.scope} count={data.scope.length} register={register}>
+              <div className="pf-list">
+                {data.scope.map((item) => (
+                  <div key={item.path} className="pf-well pf-row"><FolderOpen size={12} /><span>{item.path}</span><em className="pf-count">{item.count}</em></div>
+                ))}
+              </div>
             </Card>
           </div>
         ) : null}
         {shown("files") ? (
           // What the person handed the project: copies every episode can read, never the originals.
-          <div className="pf-slot" data-glide="files" {...hover("files")} {...slot("files")}>
-            <Card id="files" side="left" className="pf-files" icon={<Paperclip size={12} />} label={text.files}
+          <div className="pf-slot" data-glide="files" data-fit="" {...hover("files")} {...slot("files")}>
+            <Card id="files" side="left" className="pf-files pf-listed" icon={<Paperclip size={12} />} label={text.files}
                   count={files.length || undefined} register={register}>
+              <div className="pf-list">
               {files.map((file) => {
                 const Icon = fileIcon(file.name);
                 return (
@@ -458,6 +478,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 );
               })}
               {!files.length ? <p className="pf-empty">{text.filesEmpty}</p> : null}
+              </div>
               {(draftMode ? actions.onPickFiles : actions.onAttach && actions.onPickFiles) ? (
                 <button type="button" className="pf-add" disabled={actions.busy} onClick={addFiles}><Plus size={12} />{text.addFiles}</button>
               ) : null}
@@ -476,7 +497,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
       </div>
 
       <div className="pf-col pf-center">
-        <div className="pf-thread">
+        <div className="pf-thread" ref={thread}>
           {data.objective ? (
             <>
               {/* An objective is often a page of spec: three lines, and the rest on request, so the hub stays in view. */}
@@ -508,16 +529,17 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           {draftMode && data.workspace?.changeCount ? (
             // What would stop a start, shown before it is tried, with the one way through it.
             <div className="pf-attention pf-dirty" role="status" data-open={dirtyOpen || undefined}>
+              {/* One line until opened; why it blocks is read with the files, not before them. */}
               <div className="pf-dirty-line">
                 <span className="pf-attention-dot" />
-                <span className="pf-attention-text">{text.dirty(data.workspace.changeCount)}</span>
+                <span className="pf-attention-text" title={text.dirtyWhy(data.workspace.head, data.workspace.branch)}>{text.dirty(data.workspace.changeCount)}</span>
                 <button type="button" className="pf-attention-quiet" onClick={() => setDirtyOpen((value) => !value)}>
                   {dirtyOpen ? text.dirtyHide : text.dirtyShow}
                 </button>
               </div>
-              <p className="pf-dirty-why">{text.dirtyWhy(data.workspace.head, data.workspace.branch)}</p>
               {dirtyOpen ? (
                 <div className="pf-dirty-body">
+                  <p className="pf-dirty-why">{text.dirtyWhy(data.workspace.head, data.workspace.branch)}</p>
                   <ul className="pf-dirty-files">
                     {data.workspace.changes.slice(0, 8).map((change) => (
                       <li key={change.path} title={change.path}>
@@ -650,13 +672,16 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         </div>
       </div>
 
-      <div className="pf-col pf-right">
+      {/* With the model card open, the agents under it fold to one line each, so both fit the column. */}
+      <div className="pf-col pf-right" data-crowded={branches.some((item) => item.id === "model" && !item.leaving) || undefined}>
         {data.models && branches.some((item) => item.id === "model") ? (
           <div className="pf-slot pf-model-slot" id="pf-model-card" data-glide="model" {...hover("model")} {...slot("model")}
                onKeyDown={(event) => { if (event.key === "Escape") setModelOpen(false); }}>
             <Card id="model" side="right" className="pf-model-card" icon={<Sparkles size={12} />} label={text.modelCard}
                   count={reasoningText || undefined} register={register}>
-              <div className="pf-well pf-model-now" key={data.models.current.selection}>
+              {/* While agents run, a switch reaches only the new ones; said on the model itself, so it costs the card no row. */}
+              <div className="pf-well pf-model-now" key={data.models.current.selection}
+                   title={data.phase === "live" && data.state === "running" ? text.modelHint : undefined}>
                 <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="large" />
                 <span className="pf-model-copy">
                   <strong title={data.models.current.name}>{data.models.current.name}</strong>
@@ -665,7 +690,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               </div>
               {data.models.current.reasoning && actions.onReasoning ? (
                 <div className="cp-tokens pf-model-reasoning">
-                  <ReasoningControl reasoning={data.models.current.reasoning} busy={actions.busy} onChange={actions.onReasoning} />
+                  <ReasoningControl reasoning={data.models.current.reasoning} busy={actions.busy} compact onChange={actions.onReasoning} />
                 </div>
               ) : null}
               {modelTotal > 1 && actions.onModel ? (
@@ -680,7 +705,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                   ) : null}
                   {!query ? (
                     // Where to look: the recent ones, then each provider. The tab only chooses what the list shows.
-                    <div className="pf-model-tabs" role="tablist" aria-label={text.modelGroups}>
+                    <div className="pf-model-tabs" role="tablist" aria-label={text.modelGroups} ref={modelTabs}
+                         onWheel={(event) => { if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY; }}>
                       {data.models.recent.length ? (
                         <button type="button" role="tab" className="pf-model-tab" aria-selected={modelView === RECENT}
                                 onClick={() => setModelTab(RECENT)}><History size={12} /><span>{text.modelRecent}</span></button>
@@ -710,7 +736,6 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                   </div>
                 </div>
               ) : null}
-              {data.phase === "live" && data.state === "running" ? <p className="pf-model-hint">{text.modelHint}</p> : null}
             </Card>
           </div>
         ) : null}

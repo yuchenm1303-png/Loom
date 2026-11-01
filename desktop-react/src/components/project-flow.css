@@ -23,12 +23,19 @@
   --pf-warn: #e0b45a;
   --pf-live: #8fd3e8;
   position: relative;
+  /* The hub fits the stage, both ways: the columns give before anything leaves the box, and
+     inside a column only the parts that hold lists (the thread, the plan, the files, the
+     model list) shrink, each scrolling its own rows. */
   display: grid;
-  grid-template-columns: 228px minmax(380px, 448px) 228px;
+  grid-template-columns: minmax(172px, 228px) minmax(340px, 460px) minmax(192px, 252px);
+  grid-template-rows: minmax(0, 1fr) auto;
   justify-content: center;
-  align-items: end;
-  column-gap: 72px;
-  padding: 40px 32px 48px;
+  column-gap: clamp(36px, 5.5cqw, 72px);
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: clamp(14px, 3.2vh, 32px) clamp(16px, 2.8cqw, 32px) clamp(14px, 3.2vh, 32px);
+  overflow: hidden;
   color: var(--pl-secondary);
   font-size: 12px;
   line-height: 18px;
@@ -82,12 +89,42 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-repo { position: relative; overflow: hidden; }
 .pf-repo-commit { animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 
-.pf-col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 12px; }
-.pf-left { align-self: end; padding-bottom: 6px; }
-.pf-right { align-self: end; padding-bottom: 150px; gap: 14px; }
+/* Every column is at most the stage's height and centred on it; what does not fit shrinks inside. */
+.pf-col {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-self: center;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+}
+.pf-right { gap: 12px; }
 .pf-center { gap: 0; }
 
-.pf-slot { animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.pf-slot { flex: none; min-height: 0; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+/* The cards that hold lists give height first; their rows scroll inside them. */
+.pf-slot[data-fit],
+.pf-model-slot,
+.pf-below { display: flex; flex: 0 1 auto; flex-direction: column; }
+.pf-below > .pf-card { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+/* Scope and files: the head (and the add button) stay; the rows between them scroll, one stays in sight. */
+.pf-slot[data-fit] { min-height: 80px; }
+.pf-slot[data-glide="files"] { min-height: 118px; }
+.pf-slot[data-fit] > .pf-listed { display: flex; flex: 0 1 auto; flex-direction: column; min-height: 0; }
+.pf-listed > * { flex: none; }
+.pf-listed > .pf-list {
+  display: grid;
+  flex: 0 1 auto;
+  align-content: start;
+  gap: 6px;
+  min-height: 30px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
 
 /* Leaving: the card fades and its cable unplugs from the hub, on the shorter exit step. */
 .pf-slot[data-leaving] {
@@ -105,8 +142,9 @@ html[data-loom-theme="light"] .pf-stage {
   opacity: 0;
   transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit);
 }
-.pf-offset-2 { margin-left: 46px; }
-.pf-offset-3 { margin-left: 48px; margin-right: -48px; }
+/* The stagger, as a share of the column: it narrows with the column and never pushes a card past it. */
+.pf-offset-2 { margin-left: 16%; }
+.pf-offset-3 { margin-left: 12%; }
 
 /* Cards. */
 .pf-card {
@@ -197,7 +235,19 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-note { display: -webkit-box; overflow: hidden; margin: 0; padding: 8px 10px 0; border-bottom: 8px solid transparent; color: var(--pl-secondary); font-size: 11.5px; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 
 /* The conversation above the hub. */
-.pf-thread { display: grid; gap: 6px; margin-bottom: 18px; }
+.pf-thread {
+  display: grid;
+  flex: 0 1 auto;
+  /* safe: squeezed, it starts at the objective and ProjectFlow scrolls it to the newest line. */
+  align-content: safe end;
+  gap: 6px;
+  min-height: 0;
+  margin-bottom: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.pf-composer { flex: none; }
 
 .pf-bubble {
   justify-self: end;
@@ -484,7 +534,8 @@ html[data-loom-theme="light"] .pf-stage {
 /* Uncommitted changes before a start: the attention line, opened into the files and one commit. */
 .pf-dirty { display: grid; gap: 4px; align-items: stretch; }
 .pf-dirty-line { display: flex; align-items: center; gap: 10px; }
-.pf-dirty-why { margin: 0; padding-left: 16px; color: var(--pl-muted); font-size: 11.5px; }
+.pf-dirty-why { margin: 0; color: var(--pl-muted); font-size: 11.5px; }
+.pf-dirty-line .pf-attention-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-dirty-hint { margin: 0; color: var(--pl-faint); font-size: 11.5px; }
 .pf-dirty-body { display: grid; gap: 8px; margin: 6px 0 2px 16px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 .pf-dirty-files { display: grid; gap: 2px; margin: 0; padding: 6px 8px; border-radius: 8px; background: var(--pf-well); list-style: none; }
@@ -583,19 +634,35 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-model-chip:hover,
 .pf-model-chip[data-open] { background: var(--pf-raise); color: var(--pl-ink); }
 .pf-model-chip[data-open] > svg { rotate: 180deg; }
-.pf-model-card { width: 280px; }
+/* As wide as its column, never wider; a column of flex so that, when the stage is low, only the
+   list of models gives height. */
+.pf-model-card {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.pf-model-card > *,
+.pf-model-pick > * { flex: none; }
 .pf-model-card .pf-card-icon { color: #f2c76b; }
 .pf-model-card .pf-count { font-variant-numeric: normal; }
-.pf-model-now { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px 10px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.pf-model-now { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; padding: 7px 9px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 .pf-model-now .cp-mark { animation: pf-mark-in var(--loom-dur-base) var(--loom-ease-move) backwards; }
 .pf-model-copy { display: grid; min-width: 0; }
 .pf-model-copy strong { overflow: hidden; color: var(--pl-ink); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .pf-model-copy > span { display: flex; align-items: center; gap: 6px; overflow: hidden; color: var(--pl-faint); font-size: 11.5px; white-space: nowrap; }
 .pf-model-copy em { padding: 0 5px; border-radius: 4px; background: var(--pf-raise); color: var(--pl-muted); font-style: normal; }
 /* The reasoning scale is the app model card's own control; its needle's ring takes this card's colour. */
-.pf-model-reasoning { --cp-surface: var(--pf-card); margin: 0 -10px; }
-/* Choosing: a search once there are many, tabs for where to look, then that source's models. */
-.pf-model-pick { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--loom-workspace-hover); }
+/* In the hub the card's head already names the level, so the scale comes compact: no label, no caption. */
+.pf-model-reasoning { --cp-surface: var(--pf-card); margin: 0 -10px; overflow-x: clip; overflow-clip-margin: 6px; }
+/* Choosing: a search once there are many, one row of sources, then that source's models. The
+   group lends its parts to the card (no box of its own), so the list is the card's one part that
+   gives height: through a wrapper its three-row minimum could not hold. Its divider is ::before. */
+.pf-model-pick { display: contents; }
+.pf-model-pick::before { content: ""; flex: none; height: 1px; margin: 1px 0; background: var(--loom-workspace-hover); }
 .pf-model-search {
   display: flex;
   align-items: center;
@@ -611,14 +678,26 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-model-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--pl-ink); font: inherit; font-size: 12px; }
 .pf-model-search input::placeholder { color: var(--pl-faint); }
 .pf-model-search input::-webkit-search-cancel-button { display: none; }
-.pf-model-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+/* The sources are one row of marks; the chosen one also shows its name. More than fit scroll
+   sideways (the wheel turns it too), so the row never stacks into a wall of names. */
+.pf-model-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.pf-model-tabs::-webkit-scrollbar { display: none; }
 .pf-model-tab {
   display: inline-flex;
+  flex: none;
   align-items: center;
+  justify-content: center;
   gap: 5px;
-  max-width: 100%;
-  height: 24px;
-  padding: 0 8px 0 5px;
+  min-width: 26px;
+  max-width: 136px;
+  height: 26px;
+  padding: 0 5px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -628,13 +707,18 @@ html[data-loom-theme="light"] .pf-stage {
   cursor: pointer;
   transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
 }
-.pf-model-tab > svg { flex: none; margin-left: 2px; }
+.pf-model-tab > svg { flex: none; }
 .pf-model-tab > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-model-tab[aria-selected="false"] > span:last-child { display: none; }
+.pf-model-tab[aria-selected="true"] { padding-right: 8px; }
 .pf-model-tab:hover { background: var(--pf-well); color: var(--pl-secondary); }
 .pf-model-tab[aria-selected="true"] { background: var(--pf-raise); color: var(--pl-ink); }
-.pf-model-options {
+.pf-model-pick > .pf-model-options {
   display: grid;
+  flex: 0 1 auto;
+  align-content: start;
   gap: 2px;
+  min-height: 94px;
   max-height: 216px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -664,7 +748,6 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-model-option:hover:not(:disabled) { background: var(--pf-well); color: var(--pl-ink); }
 .pf-model-option[aria-pressed="true"] { color: var(--pl-ink); cursor: default; }
 .pf-model-option:disabled:not([aria-pressed="true"]) { opacity: .5; cursor: default; }
-.pf-model-hint { margin: 0; padding: 2px 4px 0; color: var(--pl-faint); font-size: 11.5px; }
 
 /* Reference files: one row per file, its kind as a tinted mark; the add button is a dashed well,
    the one surface here that invites a drop of new material. */
@@ -722,7 +805,7 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
    the live span's dot, which is the agent's own breathing dot. */
 .pf-loom {
   grid-column: 1 / -1;
-  margin-top: 36px;
+  margin-top: clamp(14px, 2.6vh, 28px);
   padding: 9px 12px 12px;
   border-radius: 14px;
   background: var(--pf-card);
@@ -833,9 +916,9 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 .pf-strip-cell[data-state="rework"] > span { background: var(--pf-warn); }
 
 /* The plan hangs below the hub. */
-.pf-below { width: 300px; max-width: 100%; margin-top: 24px; }
-/* A long plan scrolls inside its card, so the hub keeps its shape at sixteen tasks. */
-.pf-below .pf-card { max-height: 360px; overflow: auto; overscroll-behavior: contain; }
+.pf-below { width: 300px; max-width: 100%; min-height: 104px; margin-top: 20px; }
+/* A long plan scrolls inside its card (and shorter still when the stage is low), so the hub keeps its shape at sixteen tasks. */
+.pf-below .pf-card { max-height: 360px; }
 /* The plan's title and strip stay put while its rows scroll beneath them. */
 .pf-below .pf-card-head { position: sticky; z-index: 1; top: -9px; margin: -9px -9px 0; padding: 10px 12px 3px; background: var(--pf-card); }
 .pf-below .pf-strip { position: sticky; z-index: 1; top: 22px; margin: -6px -9px 0; padding: 4px 12px 6px; background: var(--pf-card); }
@@ -878,7 +961,7 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 .pf-task[data-state="working"] .pf-task-mark svg { animation: pf-spin var(--loom-period-spin) linear infinite; }
 
 /* Agents. */
-.pf-agent { width: 212px; }
+.pf-agent { width: 100%; box-sizing: border-box; }
 .pf-agent-well { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 9px; padding: 8px 10px 9px 8px; }
 
 .pf-agent-mark {
@@ -947,6 +1030,30 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 
 .pf-agent-well[data-done] .pf-dashes-glint { display: none; }
 
+/* Folded under the open model card: the role, its state and its clock on one line; the name, the
+   activity and the dashes return when the card closes. */
+.pf-right[data-crowded] .pf-agent { padding: 5px; }
+.pf-right[data-crowded] .pf-agent > .pf-card-head,
+.pf-right[data-crowded] .pf-agent-activity,
+.pf-right[data-crowded] .pf-dashes { display: none; }
+.pf-right[data-crowded] .pf-agent-well { grid-template-columns: 24px minmax(0, 1fr); gap: 8px; padding: 5px 9px 5px 5px; }
+.pf-right[data-crowded] .pf-agent-mark { width: 24px; height: 24px; border-radius: 7px; }
+.pf-right[data-crowded] .pf-agent-mark svg { width: 13px; height: 13px; }
+
+/* A low stage (a laptop window): the timeline's lanes thin out and the knowledge card keeps its counts only. */
+@media (max-height: 820px) {
+  .pf-col { gap: 10px; }
+  .pf-loom { padding-top: 7px; padding-bottom: 9px; }
+  .pf-loom-head { padding-bottom: 5px; }
+  .pf-loom-body { gap: 2px; }
+  .pf-loom-track { height: 8px; border-radius: 4px; }
+  .pf-loom-span { top: 1px; bottom: 1px; border-radius: 3px; }
+  .pf-loom-label { line-height: 12px; }
+  .pf-slot[data-glide="knowledge"] .pf-note { display: none; }
+  /* The footer chip names the model and the list ticks it: the card's own well of it goes first. */
+  .pf-model-now { display: none; }
+}
+
 /* Keyboard: the panels' quiet ring. */
 .pf-add:focus-visible,
 .pf-control:focus-visible,
@@ -1014,11 +1121,13 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   .pf-dashes-glint { animation: none; }
 }
 
-@media (max-width: 1080px) {
-  .pf-stage { grid-template-columns: minmax(0, 1fr); row-gap: 20px; padding: 24px 16px; }
+/* Too narrow for three columns (the columns' least widths and gaps): one column, the hub first,
+   and only here does the stage read down by scrolling. */
+@container pf-stage (max-width: 820px) {
+  .pf-stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; row-gap: 20px; padding: 24px 16px; overflow-y: auto; }
   .pf-cables { display: none; }
+  .pf-col { align-self: start; max-height: none; }
   .pf-center { order: -1; }
-  .pf-left, .pf-right { padding-bottom: 0; }
   .pf-offset-2, .pf-offset-3 { margin: 0; }
   .pf-agent, .pf-below { width: auto; }
   .pf-loom-legend { display: none; }  /* the stats keep the header's one line */

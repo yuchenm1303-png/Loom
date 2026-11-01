@@ -8,6 +8,8 @@ interface ReasoningControlProps {
   reasoning: ModelReasoningState | null;
   busy?: boolean;
   running?: boolean;
+  /** The scale alone, for a card whose head already names the level: no label and no description (errors still show). */
+  compact?: boolean;
   onChange(kind: string, value: string): Promise<void> | void;
 }
 
@@ -96,25 +98,25 @@ const Ticks = memo(function Ticks({ count, peek, size = 1 }: { count: number; pe
  * anywhere on the scale chooses the nearest level, a drag carries the needle and chooses where it lets go, and hovering
  * a level reads its description under the scale before you choose it.
  */
-export function ReasoningControl({ reasoning, busy, running, onChange }: ReasoningControlProps) {
+export function ReasoningControl({ reasoning, busy, running, compact, onChange }: ReasoningControlProps) {
   const zh = useI18n().language === "zh-CN";
   if (!reasoning?.options.length) {
     return (
-      <section className="cp-reasoning is-managed" aria-label={zh ? "推理" : "Reasoning"}>
-        <PanelLabel>{zh ? "推理" : "Reasoning"}</PanelLabel>
+      <section className={`cp-reasoning is-managed${compact ? " is-compact" : ""}`} aria-label={zh ? "推理" : "Reasoning"}>
+        {compact ? null : <PanelLabel>{zh ? "推理" : "Reasoning"}</PanelLabel>}
         <div className="cp-auto">
           <span>{zh ? "自动" : "Automatic"}</span>
           <span className="cp-scale" aria-hidden="true">
             <Ticks count={5} peek={null} size={0.55} />
           </span>
         </div>
-        <div className="cp-caption">{zh ? "由模型自己决定思考的深度。" : "This model decides how deeply to reason."}</div>
+        {compact ? null : <div className="cp-caption">{zh ? "由模型自己决定思考的深度。" : "This model decides how deeply to reason."}</div>}
       </section>
     );
   }
   // A different set of levels (another model) is a new scale: the needle does not travel across unrelated levels.
   const key = `${reasoning.kind}:${reasoning.options.map((option) => option.value).join(",")}`;
-  return <ReasoningSteps key={key} reasoning={reasoning} busy={busy} running={running} onChange={onChange} zh={zh} />;
+  return <ReasoningSteps key={key} reasoning={reasoning} busy={busy} running={running} compact={compact} onChange={onChange} zh={zh} />;
 }
 
 interface Gesture {
@@ -123,7 +125,7 @@ interface Gesture {
   dragging: boolean;
 }
 
-function ReasoningSteps({ reasoning, busy, running, onChange, zh }: ReasoningControlProps & { reasoning: ModelReasoningState; zh: boolean }) {
+function ReasoningSteps({ reasoning, busy, running, compact, onChange, zh }: ReasoningControlProps & { reasoning: ModelReasoningState; zh: boolean }) {
   const options = reasoning.options;
   const count = options.length;
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === reasoning.value));
@@ -246,8 +248,8 @@ function ReasoningSteps({ reasoning, busy, running, onChange, zh }: ReasoningCon
   const defaultText = defaultOption ? optionText(defaultOption, zh) : null;
 
   return (
-    <section className={`cp-reasoning${locked ? " is-locked" : ""}`} aria-label={zh ? "推理" : "Reasoning"}>
-      <PanelLabel
+    <section className={`cp-reasoning${locked ? " is-locked" : ""}${compact ? " is-compact" : ""}`} aria-label={zh ? "推理" : "Reasoning"}>
+      {compact ? null : <PanelLabel
         action={canReset && defaultText ? (
           <button
             type="button"
@@ -262,7 +264,7 @@ function ReasoningSteps({ reasoning, busy, running, onChange, zh }: ReasoningCon
         ) : null}
       >
         {zh ? "推理" : "Reasoning"}
-      </PanelLabel>
+      </PanelLabel>}
 
       <div
         ref={railRef}
@@ -322,7 +324,7 @@ function ReasoningSteps({ reasoning, busy, running, onChange, zh }: ReasoningCon
           <Lock size={12} strokeWidth={2} aria-hidden="true" />
           <span>{zh ? "先停止当前任务，再调整推理强度。" : "Stop the active turn to change reasoning."}</span>
         </div>
-      ) : (
+      ) : compact ? null : (
         <div key={described.value} className="cp-caption" title={describedText.description}>
           {describedText.description}
         </div>

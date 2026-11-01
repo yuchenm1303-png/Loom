@@ -995,6 +995,11 @@ html[data-loom-theme="light"] .cp-mark {
   padding: 0 10px 12px;
 }
 
+/* The scale alone (the build hub's model card names the level in its head). */
+.cp-reasoning.is-compact {
+  padding-bottom: 4px;
+}
+
 .cp-reasoning .cp-label {
   padding-inline: 0;
 }

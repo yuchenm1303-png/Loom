@@ -137,16 +137,20 @@ function Preview() {
     return () => clearInterval(timer);
   }, [frozen]);
   return (
-    <div style={{ minHeight: "100vh", background: "var(--pl-surface)", color: "var(--pl-ink)" }}>
+    // The app's shape: a header row, then the stage takes exactly what is left of the window.
+    <div style={{ display: "grid", gridTemplateRows: "56px minmax(0, 1fr)", height: "100vh", background: "var(--pl-surface)", color: "var(--pl-ink)" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12, height: 56, padding: "0 24px" }}>
         <span style={{ color: "var(--pl-ink)", fontSize: 13, fontWeight: 500 }}>ledger 记账工具</span>
         <span style={{ color: "var(--pl-faint)", fontSize: 12 }}>ledger</span>
         <span style={{ marginLeft: "auto" }}><ProjectModeToggle value={mode} onChange={setMode} /></span>
       </header>
       {mode === "project"
-        ? <ProjectFlow data={{ ...variant(play(count, workers)), models, references: REFERENCES }}
-                       actions={{ onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {},
-                                  onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
+        ? <div className="project-mode-stage" style={{ gridRow: "2" }}>
+            <ProjectFlow data={{ ...variant(play(count, workers)), models, references: REFERENCES }}
+                         actions={{ onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {},
+                                    error: params.has("error") ? "Lost the Host; reconnecting…" : undefined,
+                                    onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
+          </div>
         : <div style={{ display: "grid", placeItems: "center", height: "70vh", color: "var(--pl-faint)", fontSize: 13 }}>（这里是普通对话）</div>}
     </div>
   );
