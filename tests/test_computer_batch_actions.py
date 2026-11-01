@@ -795,3 +795,14 @@ def test_every_text_field_is_stashed_whatever_the_action_is_called():
 
     stashed = ComputerTransientInputPlatform(Inner()).execute_chat("p", None).tool_calls[0].arguments
     assert "hunter2" not in str(stashed) and "hunter3" not in str(stashed)
+
+
+def test_keys_sent_as_text_are_read_as_keys(rig):
+    rig.run({"action": {"actions": [{"type": "key", "text": "right"}, {"type": "hotkey", "text": "ctrl+a"}]}})
+    assert [a.keys for a in rig.desktop.executed] == [("right",), ("ctrl", "a")]
+
+
+def test_a_missing_frame_id_error_names_the_current_one(rig):
+    frame_id = rig.runtime.computer_sessions.latest(rig.context.session_id).observation.frame.frame_id
+    with pytest.raises(ValueError, match=frame_id):
+        rig.run({"action": {"type": "click", "control_id": "3"}})

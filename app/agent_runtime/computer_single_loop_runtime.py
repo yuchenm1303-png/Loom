@@ -833,7 +833,7 @@ def _resolve_frame_target(payload: dict[str, Any], observation: Any) -> dict[str
     if not control_id:
         return payload
     if frame_id != observation.frame.frame_id:
-        raise ValueError("control_id requires the current frame_id")
+        raise ValueError(f"control_id requires the current frame_id, which is {observation.frame.frame_id}")
     if payload.get("type") not in {"click", "double_click", "right_click", "move", "type", "clear_text"}:
         raise ValueError("control_id is supported only for click, move, type or clear_text actions")
     if "point" in payload:
@@ -1363,6 +1363,10 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             opposite = {"up": "down", "down": "up", "left": "right", "right": "left"}
             payload["amount"] = -payload["amount"]
             payload["direction"] = opposite.get(str(payload.get("direction") or "down").casefold(), "up")
+        if str(payload.get("type") or "") in {"key", "hotkey"} and not payload.get("keys") and payload.get("text"):
+            # Keys sent as text ("right", "ctrl+a"); every text is stashed, so recover it first.
+            named = self.consume_computer_transient(str(payload.pop("text")), context.session_id)
+            payload["keys"] = [part.strip() for part in named.split("+") if part.strip()]
         if str(payload.get("type") or "") == "type" and "text" in payload:
             # The session id is not optional here. Typed text is stashed by the
             # platform that produced the response, and a session with its own
