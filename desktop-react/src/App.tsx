@@ -1694,6 +1694,10 @@ export default function App() {
           <div className="project-mode-stage" inert={threadSwitching || modeMorph?.to === "chat"}>
             <Suspense fallback={null}>
               <ProjectMode key={thread.id} threadId={thread.id} workspace={selectedThread?.workspace || workspace} model={currentModel}
+                           onChangeWorkspace={!running ? async (root) => {
+                             const project = await loom.createProject(root);
+                             await handleMoveProject(thread.id, project.id);
+                           } : undefined}
                            models={loom.models} onSwitchModel={loom.switchModelProfile} onReasoning={loom.setReasoning}
                            items={loom.items} chatting={running} onInterrupt={loom.interrupt}
                            onChat={(input) => loom.send(input, [], undefined, { weave: true })} />

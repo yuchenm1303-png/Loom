@@ -1,0 +1,5 @@
+.pf-folder-path { font-size: 11px; opacity: .65; overflow-wrap: anywhere; }
+.pf-folder-picker { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 8px; padding: 9px 12px; border: 1px dashed currentColor; border-radius: 12px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.pf-folder-picker:hover:not(:disabled) { background: rgb(128 128 128 / 10%); }
+.pf-folder-picker:disabled { opacity: .4; cursor: default; }
+.pf-folder-picker:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }

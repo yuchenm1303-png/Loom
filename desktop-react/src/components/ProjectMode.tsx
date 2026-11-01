@@ -21,8 +21,9 @@ const START_EPISODES = 400;
  *  (the composer's morph lands on it) and the first read then refreshes it. */
 const lastOverview = new Map<string, ProjectOverview>();
 
-export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt }: {
+export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt, onChangeWorkspace }: {
   threadId: string; workspace?: string; model?: string;
+  onChangeWorkspace?(path: string): Promise<unknown>;
   /** The app's model snapshot and switch: a project's agents take the conversation's model. */
   models?: ModelSnapshot | null; onSwitchModel?(selection: string): Promise<unknown>; onReasoning?(kind: string, value: string): Promise<unknown>;
   /** The conversation's transcript and whether its agent is answering now. */
@@ -134,10 +135,16 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   const data = { ...toFlowData(overview, now, lang, model || "", workspaceName), models: toModelChoice(models),
                  conversation: conversation.messages, activity: conversation.activity, chatting };
   const proposal = data.phase === "draft" ? overview.proposal : null;
+  data.repository.path = run?.repository || workspace;
+  if (!run) data.repository.branch = overview.workspace?.branch || "—";
   const programId = overview.program?.id;
 
   return (
     <ProjectFlow lang={lang} data={data} actions={{
+      onChooseWorkspace: !run && onChangeWorkspace && window.loom.pickDirectory ? () => void act(async () => {
+        const picked = await window.loom.pickDirectory!();
+        if (picked) await onChangeWorkspace(picked);
+      }) : undefined,
       busy,
       error: error || (offline ? (lang === "en" ? "Lost the Host; reconnecting…" : "与 Host 的连接中断，正在重连…") : ""),
       onPickFiles: window.loom.pickFiles ? () => window.loom.pickFiles() : undefined,

@@ -913,7 +913,6 @@ export const Sidebar = memo(function Sidebar({
 
   const renderProjects = () => {
     if (!projectsSupported || threadView === "archived") return null;
-    if (!projectSections.length) return null;
 
     return (
       <section className="sidebar-section project-section" aria-label={copy.projects}>

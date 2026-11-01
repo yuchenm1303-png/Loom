@@ -31,6 +31,7 @@ import type { ModelReasoningState } from "../types/loom";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./project-flow.css";
+import "./project-folder.css";
 
 export type FlowTaskState = "pending" | "working" | "review" | "rework" | "integrated";
 
@@ -55,7 +56,7 @@ export interface FlowData {
   state: "running" | "paused" | "needs_you" | "completed" | "starting";
   attention?: { reason: string; detail?: string; action?: "recover" | "budget" | "approval" | "resume"; agentId?: string };
   model: string;
-  repository: { name: string; commit: string; subject: string; branch: string };
+  repository: { name: string; commit: string; subject: string; branch: string; path?: string };
   scope: { path: string; count: number }[];
   knowledge: { checks: number; notes: number; latest: string };
   tasks: { id: string; title: string; state: FlowTaskState; detail?: string; agentId?: string; agentName?: string }[];
@@ -94,6 +95,7 @@ export interface FlowData {
 export interface ModelOption { selection: string; name: string; group: string; groupId: string }
 
 export interface FlowActions {
+  onChooseWorkspace?(): void;
   /** A message to the conversation's agent. */
   onChat?(text: string): void;
   /** Stop the agent's answer. */
@@ -536,10 +538,16 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             <Card id="repo" side="left" icon={<GitBranch size={12} />} label={text.repository} register={register}>
               <div className="pf-well pf-repo">
                 <strong>{data.repository.name}</strong>
+                {data.repository.path ? <span className="pf-folder-path" title={data.repository.path}>{data.repository.path}</span> : null}
                 <span key={data.repository.commit} className="pf-repo-commit">{[data.repository.commit, data.repository.subject].filter(Boolean).join(" · ")}</span>
                 <Wash on={data.repository.commit} />
               </div>
-              <div className="pf-well pf-branch"><GitBranch size={12} /><span>{data.repository.branch}</span><ChevronDown size={12} /></div>
+              <div className="pf-well pf-branch"><GitBranch size={12} /><span>{data.repository.branch}</span></div>
+              <button type="button" className="pf-folder-picker" disabled={data.phase !== "draft" || actions.busy || !actions.onChooseWorkspace}
+                      title={data.phase !== "draft" ? (lang === "zh" ? "已开始的项目保留原文件夹；新任务请新建会话" : "This project keeps its folder; use a new conversation for another project") : undefined}
+                      onClick={() => actions.onChooseWorkspace?.()}>
+                <FolderOpen size={14} />{lang === "zh" ? "选择文件夹" : "Choose folder"}
+              </button>
             </Card>
           </div>
         ) : null}
