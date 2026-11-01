@@ -52,6 +52,10 @@ NATIVE_INVOKE_DEADLINE_MS = 1500
 #: only means the stored wrapper is not used, never that the action is refused.
 CONTROL_IDENTITY_DEADLINE_MS = 500
 
+#: Long edge of a zoomed view: enough to read small text, small enough that a
+#: zoom costs about what one ordinary screenshot does.
+ZOOM_LONG_EDGE = 1024
+
 #: UI Automation errors raised before a pattern call reaches the provider, so
 #: the target saw nothing: element gone, element disabled, pattern unsupported.
 _UIA_REFUSED_HRESULTS = frozenset({0x80040201, 0x80040200, 0x80040204, 0x80004002})
@@ -772,6 +776,82 @@ class PyWinAutoWindowsOperator:
                     return self._coordinate_action(action, observation.frame, point_override=point, fallback=True)
 
             return self._coordinate_action(action, observation.frame, fallback=wrapper is not None)
+
+    def capture_window(self, window_id: str) -> tuple[bytes, str, dict[str, object]]:
+        """A picture of a window behind the foreground one, without bringing it forward.
+
+        The model otherwise sees only the foreground window, so reading a code
+        in one window to type it into another cost two switch_window round
+        trips and two focus changes. PrintWindow with PW_RENDERFULLCONTENT asks
+        the window to paint itself into a memory DC, which works for Win32,
+        WPF, Chromium and most UWP windows; a minimized window has nothing to
+        paint, and one that renders black is refused rather than shown.
+        """
+
+        import win32gui
+        import win32ui
+        from PIL import Image
+
+        with self._lock:
+            hwnd = self._parse_window_id(window_id)
+            if not win32gui.IsWindow(hwnd):
+                raise RuntimeError(f"Windows window no longer exists: {window_id}")
+            if win32gui.IsIconic(hwnd):
+                raise RuntimeError(
+                    f"window {window_id} is minimized and has nothing to show; use switch_window to restore it"
+                )
+            left, top, right, bottom = map(int, win32gui.GetWindowRect(hwnd))
+            width, height = right - left, bottom - top
+            if width <= 0 or height <= 0:
+                raise RuntimeError(f"window {window_id} has no visible area")
+            window_dc = win32gui.GetWindowDC(hwnd)
+            source = win32ui.CreateDCFromHandle(window_dc)
+            memory = source.CreateCompatibleDC()
+            bitmap = win32ui.CreateBitmap()
+            try:
+                bitmap.CreateCompatibleBitmap(source, width, height)
+                memory.SelectObject(bitmap)
+                PW_RENDERFULLCONTENT = 0x2
+                painted = bool(ctypes.windll.user32.PrintWindow(hwnd, memory.GetSafeHdc(), PW_RENDERFULLCONTENT))
+                image = Image.frombuffer("RGB", (width, height), bitmap.GetBitmapBits(True), "raw", "BGRX", 0, 1)
+            finally:
+                win32gui.DeleteObject(bitmap.GetHandle())
+                memory.DeleteDC()
+                source.DeleteDC()
+                win32gui.ReleaseDC(hwnd, window_dc)
+            if not painted or max(high for _low, high in image.getextrema()) < 8:
+                raise RuntimeError(
+                    f"window {window_id} could not be captured without bringing it forward; use switch_window"
+                )
+            # A DPI-unaware window paints at its unscaled size into the scaled
+            # rectangle, leaving the rest black; show only what it painted.
+            painted_box = image.getbbox()
+            if painted_box is not None:
+                image = image.crop(painted_box)
+            data, media_type, encoding = self._encode(image)
+            return data, media_type, {"width": width, "height": height, **encoding}
+
+    def capture_region(self, frame: ComputerFrame, region: tuple[float, float, float, float]) -> tuple[bytes, str, float]:
+        """The foreground frame's ``region`` (normalized) at full resolution, enlarged up to 4x."""
+
+        import win32gui
+        from PIL import ImageGrab
+
+        x0, y0, x1, y1 = region
+        with self._lock:
+            if self._window_id(int(win32gui.GetForegroundWindow() or 0)) != str(frame.window_id or "").casefold():
+                raise RuntimeError("the foreground window changed since the screenshot; take a screenshot first")
+            left = frame.origin_x + round(x0 * (frame.width - 1))
+            top = frame.origin_y + round(y0 * (frame.height - 1))
+            right = frame.origin_x + max(round(x1 * (frame.width - 1)), round(x0 * (frame.width - 1)) + 1)
+            bottom = frame.origin_y + max(round(y1 * (frame.height - 1)), round(y0 * (frame.height - 1)) + 1)
+            image = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
+            scale = max(1.0, min(4.0, ZOOM_LONG_EDGE / max(image.width, image.height)))
+            if scale > 1.0:
+                image = image.resize((round(image.width * scale), round(image.height * scale)), _resampling_filter())
+            output = io.BytesIO()
+            image.convert("RGB").save(output, format="JPEG", quality=85, optimize=True, subsampling=0)
+            return output.getvalue(), "image/jpeg", scale
 
     def close(self) -> None:
         with self._lock:

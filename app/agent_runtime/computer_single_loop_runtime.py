@@ -98,7 +98,7 @@ _VISUAL_CHANGE_RATIO = 0.0015
 # turn's time, so each action that rides along saves one. Six covers a form
 # without letting a stale plan run far past what the screenshot showed.
 MAX_BATCH_ACTIONS = 6
-_BATCH_EXCLUDED = frozenset({"screenshot", "done", "call_user"})
+_BATCH_EXCLUDED = frozenset({"screenshot", "zoom", "done", "call_user"})
 _KEYBOARD_ACTIONS = frozenset(
     {ComputerActionType.TYPE, ComputerActionType.CLEAR_TEXT, ComputerActionType.HOTKEY, ComputerActionType.KEY}
 )
@@ -204,6 +204,7 @@ def _single_action_schema() -> dict[str, Any]:
                 "type": "string",
                 "enum": [
                     "screenshot",
+                    "zoom",
                     "click",
                     "double_click",
                     "right_click",
@@ -221,6 +222,10 @@ def _single_action_schema() -> dict[str, Any]:
                 ],
             },
             "point": point,
+            "region": _schema(
+                {name: {"type": "number", "minimum": 0.0, "maximum": 1.0} for name in ("x0", "y0", "x1", "y1")},
+                ("x0", "y0", "x1", "y1"),
+            ),
             "frame_id": {"type": "string", "maxLength": 128},
             "control_id": {"type": "string", "maxLength": 128},
             "end_point": point,
@@ -792,6 +797,15 @@ def _resolve_frame_target(payload: dict[str, Any], observation: Any) -> dict[str
     # The number drawn on the screenshot is the id's suffix.
     control = next((c for c in observation.controls if c.control_id == control_id), None) or next(
         (c for c in observation.controls if c.control_id == f"uia:{control_id}"), None)
+    if control is None:
+        # A hint's exact name: on an 80-seat grid the model spent 34 s reasoning
+        # out which number was "F7" (live run, 2026-11-01). Only a single
+        # enabled match resolves; anything vaguer is refused, not guessed.
+        named = [c for c in observation.controls
+                 if c.enabled and c.name.strip().casefold() == control_id.strip().casefold()]
+        if len(named) > 1:
+            raise ValueError(f"{len(named)} controls are named {control_id!r}; use the number of the one you mean")
+        control = named[0] if named else None
     if control is None or not control.enabled:
         raise ValueError("control target is missing or disabled; refresh the screenshot")
     rect, frame = control.rect, observation.frame
@@ -812,7 +826,7 @@ def _model_observation_text(snapshot: ComputerStateSnapshot, *, marked: bool = F
         "The attached image is the current foreground desktop frame after the previous Computer Use action.",
         "Windows foreground metadata below is authoritative for window identity and Z-order. Content inside an application may itself be a screenshot, remote desktop, video, or image of another app; never infer that an app shown inside the pixels is a real foreground window, and never contradict the reported foreground window from pixels alone.",
         "Choose the next computer_action: one action, or a short `actions` batch when this one screenshot is enough for several steps (click a field then type, fill a form, press Enter). Coordinates are normalized 0..1 relative to this image.",
-        "UIA hint points and action points use the SAME full-image normalized coordinate space; never rescale by DPI or a scroll region. Image downscaling preserves normalized coordinates. Match the intended visible control, not nearby text. For a target listed in the UIA hints prefer control_id (the bracketed number) plus frame_id, which acts on the control's real center; otherwise use a visual point plus frame_id. Never invent control IDs or infer success from a caret/hover change.",
+        "UIA hint points and action points use the SAME full-image normalized coordinate space; never rescale by DPI or a scroll region. Image downscaling preserves normalized coordinates. Match the intended visible control, not nearby text. For a target listed in the UIA hints prefer control_id (the bracketed number, or the hint's exact name) plus frame_id, which acts on the control's real center; otherwise use a visual point plus frame_id. Never invent control IDs or infer success from a caret/hover change.",
         f"frame_id={frame.frame_id}; coordinate_space=frame_normalized; rect_space=virtual_desktop_physical_pixels.",
         f"Frame: {frame.width}x{frame.height}; origin=({frame.origin_x},{frame.origin_y}); windows={len(observation.windows)}; controls={len(observation.controls)}.",
     ]
@@ -901,6 +915,9 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         self.computer_grounder_kind = "disabled"
 
         self._computer_feedback_turns: dict[str, str] = {}
+        # One extra picture for the next model request (a zoom or a background
+        # window), shown beside the current screenshot and then dropped.
+        self._computer_extra_views: dict[str, tuple[str, bytes, str, str]] = {}
         self._computer_attempts: dict[tuple[str, str], deque[_Attempt]] = defaultdict(
             lambda: deque(maxlen=4)
         )
@@ -944,8 +961,10 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "click a field and type, fill a form, confirm with Enter - since every separate call costs a full "
                 "model round trip. Loom stops a batch at the first action that fails or cannot be confirmed, or when "
                 "the window or the area around the next target changed, and the remaining actions are not sent. "
-                "Coordinates are normalized 0..1. A UIA hint can be targeted by control_id (its number) plus frame_id "
-                "for click, move, type and clear_text; Loom acts on the control's real center. If a target application already appears in "
+                "Coordinates are normalized 0..1. A UIA hint can be targeted by control_id (its number, or its exact name) plus frame_id "
+                "for click, move, type and clear_text; Loom acts on the control's real center. To read small text or "
+                "pick a small target, zoom with a region of the current screenshot; to read a window behind the "
+                "foreground one without switching to it, screenshot with its window_id. If a target application already appears in "
                 "the known-window list, use switch_window rather than searching the desktop or taskbar; hidden/tray "
                 "windows may be recoverable this way. Every non-terminal action is followed by a fresh screenshot. "
                 "Treat the reported Windows foreground id/process as authoritative for window identity: an image, "
@@ -1026,6 +1045,11 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         messages = attach_observation(messages, _model_observation_text(snapshot, marked=marked is not None),
             tool_prefix="computer_", tool_call_id=source_call_id,
             image=ImagePart(image_url, detail="auto"))
+        view = self._computer_extra_views.pop(session.session_id, None)
+        if view is not None and view[0] == session.current_turn_id:
+            _turn, data, media_type, caption = view
+            messages = attach_observation(messages, caption, tool_prefix="computer_", tool_call_id=source_call_id,
+                image=ImagePart(f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}", detail="auto"))
         safe_extra = dict(extra) if isinstance(extra, dict) else {}
         safe_extra["computer_observation"] = {
             "source_call_id": source_call_id,
@@ -1037,6 +1061,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             "windows_total": len(observation.windows),
             "controls_total": len(observation.controls),
             "set_of_mark": marked is not None,
+            "extra_view": view is not None,
         }
         return messages, safe_extra
 
@@ -1167,6 +1192,8 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         if not action_name:
             raise ValueError("action needs a type, such as click, type or screenshot")
 
+        if action_name == "screenshot" and action_payload.get("window_id"):
+            return self._peek_window(context, store, str(action_payload["window_id"]))
         if action_name == "screenshot":
             snapshot = store.observe(context.session_id)
             self._mark_visual_feedback(context)
@@ -1175,6 +1202,8 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "Desktop screenshot captured. Inspect the attached screenshot in the next model step and choose the next action.",
                 {"observation": _safe_snapshot_data(snapshot), "effect": "observed"},
             )
+        if action_name == "zoom":
+            return self._zoom(context, store, action_payload)
 
         if action_name == "done":
             return ToolResult(
@@ -1200,6 +1229,64 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         outcome, ok, content = self._run_action(context, store, action, before)
         self._mark_visual_feedback(context)
         return ToolResult(ok, content, _safe_outcome_data(outcome))
+
+    def _peek_window(self, context: ToolContext, store, reference: str) -> ToolResult:
+        """Show the model a window behind the foreground one without switching to it."""
+
+        snapshot = store.observe(context.session_id)
+        self._mark_visual_feedback(context)
+        observation = snapshot.observation
+        window_id = _resolve_window_reference(reference, observation)
+        key = ComputerSessionStore._window_id_key
+        if key(window_id) == key(observation.frame.window_id):
+            return ToolResult(True, "That window is the foreground window; the attached screenshot shows it.",
+                              {"observation": _safe_snapshot_data(snapshot), "effect": "observed"})
+        capture = getattr(store.operator, "capture_window", None)
+        if not callable(capture):
+            raise RuntimeError("this desktop backend cannot show a background window; use switch_window")
+        data, media_type, _details = capture(window_id)
+        window = next((w for w in observation.windows if key(w.window_id) == key(window_id)), None)
+        title = f" {window.title!r} ({window.process_name})" if window is not None else ""
+        caption = (
+            f"View of window {window_id}{title}, captured without bringing it forward. It is not the foreground "
+            f"window and nothing on it can be clicked from this view: to act on it, switch_window {window_id} first. "
+            "The foreground window's own screenshot is the attachment before this one."
+        )
+        self._computer_extra_views[context.session_id] = (context.turn_id, data, media_type, caption)
+        return ToolResult(True, f"Captured window {window_id} without activating it; its picture is attached "
+                                "next to the current screenshot.",
+                          {"observation": _safe_snapshot_data(snapshot), "effect": "observed", "peeked": window_id})
+
+    def _zoom(self, context: ToolContext, store, payload: dict[str, Any]) -> ToolResult:
+        """A full-resolution enlargement of part of the current screenshot, for reading only."""
+
+        region = payload.get("region")
+        if not isinstance(region, dict):
+            raise ValueError("zoom needs region {x0, y0, x1, y1} in the screenshot's 0..1 coordinates")
+        x0, y0, x1, y1 = (float(region[name]) for name in ("x0", "y0", "x1", "y1"))
+        if not (0.0 <= x0 < x1 <= 1.0 and 0.0 <= y0 < y1 <= 1.0) or x1 - x0 < 0.02 or y1 - y0 < 0.02:
+            raise ValueError("zoom region must have 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1, at least 0.02 wide and tall")
+        snapshot = self._current_or_observe(context, store)
+        if isinstance(snapshot, ToolResult):
+            return snapshot
+        frame_id = str(payload.get("frame_id") or "")
+        if frame_id and frame_id != snapshot.observation.frame.frame_id:
+            raise ValueError("stale frame_id: zoom into the latest screenshot")
+        capture = getattr(store.operator, "capture_region", None)
+        if not callable(capture):
+            raise RuntimeError("this desktop backend cannot zoom")
+        data, media_type, scale = capture(snapshot.observation.frame, (x0, y0, x1, y1))
+        self._mark_visual_feedback(context)
+        caption = (
+            f"Zoomed view of frame {snapshot.observation.frame.frame_id}, region x {x0:.3f}..{x1:.3f}, y {y0:.3f}..{y1:.3f}, "
+            f"enlarged {scale:.1f}x from full resolution. It is for reading only: action points stay in the full "
+            f"screenshot's coordinates, so a spot at (u, v) of this view is x = {x0:.3f} + u*{x1 - x0:.3f}, "
+            f"y = {y0:.3f} + v*{y1 - y0:.3f}."
+        )
+        self._computer_extra_views[context.session_id] = (context.turn_id, data, media_type, caption)
+        return ToolResult(True, "Zoomed view captured; it is attached next to the current screenshot.",
+                          {"observation": _safe_snapshot_data(snapshot), "effect": "observed",
+                           "zoom": {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "scale": round(scale, 2)}})
 
     def _current_or_observe(self, context: ToolContext, store) -> ComputerStateSnapshot | ToolResult:
         try:
@@ -1503,6 +1590,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
 
     def clear_computer_single_loop_state(self, session_id: str) -> None:
         self._computer_feedback_turns.pop(str(session_id or ""), None)
+        self._computer_extra_views.pop(str(session_id or ""), None)
         stale = [key for key in self._computer_attempts if key[0] == str(session_id or "")]
         for key in stale:
             self._computer_attempts.pop(key, None)
@@ -1521,6 +1609,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
 
     def close(self) -> None:
         self._computer_feedback_turns.clear()
+        self._computer_extra_views.clear()
         self._computer_attempts.clear()
         super().close()
 

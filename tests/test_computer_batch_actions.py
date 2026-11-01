@@ -11,6 +11,7 @@ that everything is validated before the first input.
 from __future__ import annotations
 
 import io
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -658,3 +659,90 @@ def test_every_walked_control_is_numbered_on_a_dense_window():
     observation = SimpleNamespace(frame=frame, controls=controls)
 
     assert [c.control_id for c in _hint_controls(observation)] == [c.control_id for c in controls]
+
+
+# -- zoom and background windows ---------------------------------------------
+
+
+def test_zoom_attaches_an_enlarged_view_beside_the_screenshot_with_the_coordinate_rule(rig, monkeypatch):
+    regions = []
+
+    def capture_region(frame, region):
+        regions.append(region)
+        return b"\xff\xd8zoomed", "image/jpeg", 3.0
+
+    rig.desktop.capture_region = capture_region
+    result = rig.run({"action": {"type": "zoom", "region": {"x0": 0.1, "y0": 0.2, "x1": 0.4, "y1": 0.5}}})
+
+    assert result.ok is True and regions == [(0.1, 0.2, 0.4, 0.5)]
+    assert rig.desktop.executed == []
+    attached = []
+    monkeypatch.setattr("app.agent_runtime.tool_observation.attach_observation",
+                        lambda messages, text, **kw: attached.append((text, kw.get("image"))) or messages)
+    session = rig.runtime.get_session(rig.context.session_id)
+    rig.runtime._computer_feedback_turns[session.session_id] = session.current_turn_id
+    view = rig.runtime._computer_extra_views[session.session_id]
+    rig.runtime._computer_extra_views[session.session_id] = (session.current_turn_id, *view[1:])
+    _, extra = rig.runtime._collect_model_observations(session, None)
+    assert extra["computer_observation"]["extra_view"] is True
+    assert len(attached) == 2 and "x = 0.100 + u*0.300" in attached[1][0]
+    _, extra = rig.runtime._collect_model_observations(session, None)  # one-shot
+    assert "computer_observation" not in extra or extra["computer_observation"]["extra_view"] is False
+
+
+@pytest.mark.parametrize("region", [
+    {"x0": 0.5, "y0": 0.2, "x1": 0.4, "y1": 0.5},
+    {"x0": 0.1, "y0": 0.2, "x1": 0.105, "y1": 0.5},
+    {"x0": 0.1, "y0": 0.2},
+])
+def test_a_malformed_zoom_region_is_refused(rig, region):
+    rig.desktop.capture_region = lambda frame, region: (b"x", "image/jpeg", 1.0)
+    with pytest.raises((ValueError, KeyError)):
+        rig.run({"action": {"type": "zoom", "region": region}})
+
+
+def test_screenshot_of_a_background_window_does_not_switch_to_it(rig):
+    captured = []
+    rig.desktop.capture_window = lambda window_id: captured.append(window_id) or (b"png", "image/png", {})
+    rig.desktop.window_id = "0x10"
+
+    original = rig.desktop.observe
+
+    def with_second_window():
+        observation = original()
+        other = ComputerWindow("0x77", "Verification Code", process_name="pythonw.exe")
+        return replace(observation, windows=(*observation.windows, other))
+
+    rig.desktop.observe = with_second_window
+    result = rig.run({"action": {"type": "screenshot", "window_id": "Verification Code"}})
+
+    assert result.ok is True and captured == ["0x77"] and result.data["peeked"] == "0x77"
+    assert rig.desktop.executed == []  # nothing was activated
+    assert "switch_window 0x77 first" in rig.runtime._computer_extra_views[rig.context.session_id][3]
+
+
+def test_zoom_and_peek_are_not_batch_steps(rig):
+    for step in ({"type": "zoom", "region": {"x0": 0, "y0": 0, "x1": 0.5, "y1": 0.5}}, {"type": "screenshot"}):
+        with pytest.raises(ValueError, match="cannot be part of an actions batch"):
+            rig.run({"actions": [_click(FIELD), step]})
+
+
+def test_a_hint_can_be_named_instead_of_numbered():
+    frame = ComputerFrame("frame-1", 0, 0, 400, 300)
+    controls = (
+        ComputerControl("uia:5", "F7", "Button", ComputerRect(100, 100, 130, 120)),
+        ComputerControl("uia:6", "F8", "Button", ComputerRect(140, 100, 170, 120)),
+        ComputerControl("uia:7", "OK", "Button", ComputerRect(10, 10, 40, 30)),
+        ComputerControl("uia:8", "OK", "Button", ComputerRect(10, 50, 40, 70)),
+        ComputerControl("uia:9", "Off", "Button", ComputerRect(10, 90, 40, 110), enabled=False),
+    )
+    observation = SimpleNamespace(frame=frame, controls=controls)
+
+    resolved = _resolve_frame_target({"type": "click", "control_id": "f7", "frame_id": "frame-1"}, observation)
+    assert resolved["point"] == controls[0].rect.center_in(frame).to_dict()
+    with pytest.raises(ValueError, match="2 controls are named"):
+        _resolve_frame_target({"type": "click", "control_id": "OK", "frame_id": "frame-1"}, observation)
+    with pytest.raises(ValueError):
+        _resolve_frame_target({"type": "click", "control_id": "Off", "frame_id": "frame-1"}, observation)
+    with pytest.raises(ValueError):
+        _resolve_frame_target({"type": "click", "control_id": "F", "frame_id": "frame-1"}, observation)
