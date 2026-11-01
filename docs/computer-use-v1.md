@@ -36,6 +36,12 @@ The optional `computer` extra provides:
 
 The operator prefers UIA-native click/edit when a fresh `control_id` is available, then falls back to physical coordinates. Unicode text fallback uses Windows `SendInput(KEYEVENTF_UNICODE)` rather than depending on the active IME.
 
+Three rules keep a control action landing once, on the control the model saw (adapted from agent-desktop's Windows adapter):
+
+- Every execution carries `delivery`: `not_delivered`, `delivered` or `uncertain`. The physical fallback runs only after a native write that provably never reached the target (no pattern, element gone or disabled, worker busy). A native Invoke or SetValue that outlives its deadline is `uncertain` — a button that opens a modal dialog blocks Invoke until the dialog closes — so the action stops there and asks for a fresh observation instead of pressing the control a second time.
+- A `control_id` is a position in one UIA walk. Before acting, the stored wrapper is re-read and compared on control type, automation id and label (not on value-bearing names of Edit/Document/ComboBox; geometry only for a control with neither id nor label). A changed or vanished control refuses the action before any input; a re-read that cannot finish in 500 ms sets the wrapper aside and uses the screenshot point.
+- Anonymous layout containers (no name, no automation id) are left out of the control shortlist: Pane/ToolBar/Window everywhere, plus Group/Custom in Chromium/Electron windows (`Chrome_WidgetWin_*`), where they are page scaffolding. Named containers stay. `switch_window` refuses a window id whose handle now belongs to a different process (`pid` + process creation time recorded per observation).
+
 ## Alibaba GUI-Plus grounding
 
 Loom supports Alibaba Cloud Model Studio GUI-Plus as a dedicated Computer Grounding backend. The default model is `gui-plus-2026-02-26` and the default OpenAI-compatible endpoint is the existing Beijing DashScope endpoint. Alibaba recommends its newer workspace-specific Beijing domain for higher stability; set `LOOM_COMPUTER_BASE_URL` to that endpoint when a Workspace ID is available.

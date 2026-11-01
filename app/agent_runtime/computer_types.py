@@ -24,6 +24,21 @@ class ComputerActionType(str, Enum):
     CALL_USER = "call_user"
 
 
+class ComputerDelivery(str, Enum):
+    """Whether an action's input reached the application, which decides retry.
+
+    Only ``not_delivered`` makes repeating the action safe. ``uncertain`` means
+    input was sent but its fate is unknown - a UI Automation Invoke that is
+    still blocked inside the target, for example, because the button it pressed
+    opened a modal dialog. Repeating that click, or falling back to a physical
+    click on the same spot, presses the control a second time.
+    """
+
+    NOT_DELIVERED = "not_delivered"
+    DELIVERED = "delivered"
+    UNCERTAIN = "uncertain"
+
+
 @dataclass(frozen=True, slots=True)
 class ComputerPoint:
     """Frame-local normalized point in the inclusive 0..1 range."""
@@ -437,6 +452,8 @@ class ComputerExecution:
     native: bool = False
     fallback_used: bool = False
     details: Mapping[str, Any] = field(default_factory=dict)
+    #: A :class:`ComputerDelivery` value, or empty where the path does not know.
+    delivery: str = ""
 
     def to_safe_dict(self) -> dict[str, object]:
         return {
@@ -446,6 +463,7 @@ class ComputerExecution:
             "native": bool(self.native),
             "fallback_used": bool(self.fallback_used),
             "details": dict(self.details),
+            **({"delivery": str(self.delivery)} if self.delivery else {}),
         }
 
 
@@ -495,6 +513,7 @@ __all__ = [
     "ComputerAction",
     "ComputerActionType",
     "ComputerControl",
+    "ComputerDelivery",
     "ComputerExecution",
     "ComputerFrame",
     "ComputerObservation",

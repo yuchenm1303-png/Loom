@@ -8,6 +8,7 @@ import platform
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from collections import OrderedDict
 from typing import Protocol
@@ -25,6 +26,7 @@ from .computer_types import (
     ComputerAction,
     ComputerActionType,
     ComputerControl,
+    ComputerDelivery,
     ComputerExecution,
     ComputerFrame,
     ComputerObservation,
@@ -40,9 +42,92 @@ SEMANTICS_BEST_EFFORT = "best_effort"
 SEMANTICS_SKIP = "skip"
 
 #: Budget for a single native UIA operation on one already-resolved wrapper.
-#: Physical input is always available as a fallback, so waiting longer than this
-#: buys nothing: it only delays the route that was going to work anyway.
+#: Physical input is the fallback only when the native call provably never
+#: reached the target; a call that outlives this budget may still land, so it
+#: ends the action as ``uncertain`` instead of falling through to a second press.
 NATIVE_INVOKE_DEADLINE_MS = 1500
+
+#: Budget for re-reading a control's identity just before acting on it. It sits
+#: in front of every control-targeted action, so it is a latency budget; a miss
+#: only means the stored wrapper is not used, never that the action is refused.
+CONTROL_IDENTITY_DEADLINE_MS = 500
+
+#: UI Automation errors raised before a pattern call reaches the provider, so
+#: the target saw nothing: element gone, element disabled, pattern unsupported.
+_UIA_REFUSED_HRESULTS = frozenset({0x80040201, 0x80040200, 0x80040204, 0x80004002})
+
+#: Control types whose accessible name may carry the control's current value,
+#: so a different name is not evidence of a different control.
+_VOLATILE_NAME_TYPES = frozenset({"Edit", "Document", "ComboBox"})
+
+#: Container types that are pure layout when they carry no name and no id.
+_STRUCTURAL_TYPES = frozenset({"Pane", "ToolBar", "Window"})
+#: Chromium and Electron wrap page content in chains of anonymous containers,
+#: which there are scaffolding; in native toolkits an anonymous Group or Custom
+#: is often a real custom-drawn control, so they are only skipped under Chromium.
+_CHROMIUM_WRAPPER_TYPES = _STRUCTURAL_TYPES | {"Group", "Custom"}
+_CHROMIUM_WINDOW_CLASSES = frozenset({"Chrome_WidgetWin_0", "Chrome_WidgetWin_1"})
+
+
+def _classify_uia_failure(exc: BaseException) -> str:
+    """Whether a failed native call could have reached the application."""
+
+    if type(exc).__name__ == "NoPatternInterfaceError" or isinstance(exc, AttributeError):
+        return ComputerDelivery.NOT_DELIVERED.value
+    hresult = getattr(exc, "hresult", None)
+    if isinstance(hresult, int) and (hresult & 0xFFFFFFFF) in _UIA_REFUSED_HRESULTS:
+        return ComputerDelivery.NOT_DELIVERED.value
+    return ComputerDelivery.UNCERTAIN.value
+
+
+def _process_generation(hwnd: int) -> str | None:
+    """``pid:creation-time`` of the process owning a window, or None if unknown.
+
+    A window handle is recycled once its window is destroyed, so a handle the
+    model saw earlier can later name another program's window. The pair is
+    what stays unique: a new occupant has a different process or a different
+    start time.
+    """
+
+    try:
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+        kernel32.GetProcessTimes.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+        pid = wintypes.DWORD(0)
+        if not user32.GetWindowThreadProcessId(wintypes.HWND(hwnd), ctypes.byref(pid)) or not pid.value:
+            return None
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+        if not handle:
+            return None
+        try:
+            created, exited, kernel, user = (wintypes.FILETIME() for _ in range(4))
+            if not kernel32.GetProcessTimes(
+                handle, ctypes.byref(created), ctypes.byref(exited), ctypes.byref(kernel), ctypes.byref(user)
+            ):
+                return None
+            return f"{pid.value}:{(created.dwHighDateTime << 32) | created.dwLowDateTime}"
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class _ControlHandle:
+    """A walked UIA wrapper plus the identity it had when the model saw it."""
+
+    wrapper: object
+    identity: ComputerControl
 
 
 def _initialize_com_apartment() -> None:
@@ -318,6 +403,7 @@ class PyWinAutoWindowsOperator:
         self.dpi_awareness = enable_per_monitor_v2_dpi_awareness()
         self._lock = threading.RLock()
         self._control_maps: OrderedDict[str, dict[str, object]] = OrderedDict()
+        self._window_generations: OrderedDict[str, dict[str, str]] = OrderedDict()
         # Every UI Automation call, including native invokes on wrappers, is
         # dispatched here: one COM apartment, one stuck thread at worst, and a
         # deadline on a boundary whose latency belongs to the app being driven.
@@ -490,6 +576,7 @@ class PyWinAutoWindowsOperator:
                 self._control_maps[observation_id] = layer.mapping
                 while len(self._control_maps) > 4:
                     self._control_maps.popitem(last=False)
+            self._remember_window_generations(observation_id, windows)
 
             return ComputerObservation(
                 observation_id=observation_id,
@@ -531,21 +618,30 @@ class PyWinAutoWindowsOperator:
                 time.sleep(max(0.05, action.duration_ms / 1000.0 if action.duration_ms else 1.0))
                 return ComputerExecution(ok=True, message="wait completed", action=action, native=True)
             if action.type is ComputerActionType.SWITCH_WINDOW:
+                self._refuse_recycled_window(action.window_id, observation)
                 return self._switch_window(action)
 
             wrapper = None
             if action.control_id:
-                wrapper = self._control_maps.get(observation.observation_id, {}).get(action.control_id)
-                if wrapper is None:
+                handle = self._control_maps.get(observation.observation_id, {}).get(action.control_id)
+                if handle is None:
                     raise RuntimeError(
                         "computer control target is stale; refresh computer_observe and use its latest state_revision"
                     )
+                if action.type in {
+                    ComputerActionType.TYPE,
+                    ComputerActionType.CLEAR_TEXT,
+                    ComputerActionType.CLICK,
+                    ComputerActionType.DOUBLE_CLICK,
+                    ComputerActionType.RIGHT_CLICK,
+                }:
+                    wrapper = self._confirmed_wrapper(handle, action)
 
             if action.type is ComputerActionType.TYPE:
                 if wrapper is not None:
                     read_before = self._read_focused_value(observation.frame)
                     native = self._native_type(wrapper, action.text)
-                    if native:
+                    if native == ComputerDelivery.DELIVERED:
                         read_after = self._read_focused_value(observation.frame)
                         return ComputerExecution(
                             ok=True,
@@ -553,11 +649,12 @@ class PyWinAutoWindowsOperator:
                             action=action,
                             native=True,
                             details={"input_backend": "uia-value", **self._verify_text_readback(action.text, read_before, read_after)},
+                            delivery=ComputerDelivery.DELIVERED.value,
                         )
-                    if not self._native_click(wrapper, double=False, right=False):
-                        point = self._wrapper_center(wrapper, observation.frame)
-                        if point is not None:
-                            self._click_point(observation.frame, point)
+                    if native == ComputerDelivery.UNCERTAIN:
+                        return self._uncertain(action, "setting the text")
+                    if not self._focus_control(wrapper, observation.frame):
+                        return self._uncertain(action, "focusing the field before typing")
                 elif action.point is not None:
                     self._click_point(observation.frame, action.point)
                 process_name = str(
@@ -574,6 +671,7 @@ class PyWinAutoWindowsOperator:
                             native=False,
                             fallback_used=False,
                             details={"input_backend": "console-refused", **console_target},
+                            delivery=ComputerDelivery.NOT_DELIVERED.value,
                         )
                     if process_name == "windowsterminal.exe":
                         self._send_unicode_text(action.text)
@@ -612,14 +710,13 @@ class PyWinAutoWindowsOperator:
                     details={"input_backend": input_backend, **console_target, **console_result}
                     if process_name in _CONSOLE_PROCESSES
                     else {"input_backend": input_backend, **content_check},
+                    delivery=ComputerDelivery.DELIVERED.value,
                 )
 
             if action.type is ComputerActionType.CLEAR_TEXT:
                 if wrapper is not None:
-                    if not self._native_click(wrapper, double=False, right=False):
-                        point = self._wrapper_center(wrapper, observation.frame)
-                        if point is not None:
-                            self._click_point(observation.frame, point)
+                    if not self._focus_control(wrapper, observation.frame):
+                        return self._uncertain(action, "focusing the field before clearing it")
                 elif action.point is not None:
                     self._click_point(observation.frame, action.point)
                 import pyautogui
@@ -627,10 +724,15 @@ class PyWinAutoWindowsOperator:
                 ime_details = self._cancel_ime_composition(observation.frame)
                 if ime_details.get("after_ime_composition") is True:
                     return ComputerExecution(ok=False, message="IME composition remains active; clear shortcut was not sent",
-                                             action=action, details=ime_details)
-                if wrapper is not None and self._native_type(wrapper, ""):
+                                             action=action, details=ime_details,
+                                             delivery=ComputerDelivery.NOT_DELIVERED.value)
+                cleared = self._native_type(wrapper, "") if wrapper is not None else ComputerDelivery.NOT_DELIVERED
+                if cleared == ComputerDelivery.DELIVERED:
                     return ComputerExecution(ok=True, message="text cleared through UI Automation",
-                                             action=action, native=True, details=ime_details)
+                                             action=action, native=True, details=ime_details,
+                                             delivery=ComputerDelivery.DELIVERED.value)
+                if cleared == ComputerDelivery.UNCERTAIN:
+                    return self._uncertain(action, "clearing the text")
                 try:
                     self._send_key_chord(("ctrl", "a"))
                     pyautogui.press("delete")
@@ -650,17 +752,21 @@ class PyWinAutoWindowsOperator:
                 ComputerActionType.DOUBLE_CLICK,
                 ComputerActionType.RIGHT_CLICK,
             }:
-                if self._native_click(
+                native = self._native_click(
                     wrapper,
                     double=action.type is ComputerActionType.DOUBLE_CLICK,
                     right=action.type is ComputerActionType.RIGHT_CLICK,
-                ):
+                )
+                if native == ComputerDelivery.DELIVERED:
                     return ComputerExecution(
                         ok=True,
                         message="control action completed through UI Automation",
                         action=action,
                         native=True,
+                        delivery=ComputerDelivery.DELIVERED.value,
                     )
+                if native == ComputerDelivery.UNCERTAIN:
+                    return self._uncertain(action, "invoking the control")
                 point = self._wrapper_center(wrapper, observation.frame)
                 if point is not None:
                     return self._coordinate_action(action, observation.frame, point_override=point, fallback=True)
@@ -670,6 +776,7 @@ class PyWinAutoWindowsOperator:
     def close(self) -> None:
         with self._lock:
             self._control_maps.clear()
+            self._window_generations.clear()
         provider = getattr(self, "semantics", None)
         if provider is not None:
             provider.close()
@@ -767,6 +874,7 @@ class PyWinAutoWindowsOperator:
             action=action,
             native=False,
             fallback_used=fallback,
+            delivery=ComputerDelivery.DELIVERED.value,
         )
 
     @staticmethod
@@ -1143,44 +1251,200 @@ class PyWinAutoWindowsOperator:
         result = provider.run(call, deadline_ms=deadline_ms)
         return result.value if result.ok else default
 
-    def _native_click(self, wrapper, *, double: bool, right: bool) -> bool:
+    def _dispatch_delivery(self, call) -> str:
+        """Run a native write and say whether it could have reached the target.
+
+        ``call`` classifies its own exceptions, so a result that never comes back
+        is about the dispatch: a refusal before queueing (worker busy, breaker
+        open) sent nothing, while a missed deadline left the write running inside
+        the target, where it may yet land.
+        """
+
+        provider = getattr(self, "semantics", None)
+        if provider is None:
+            return str(call())
+        result = provider.run(call, deadline_ms=NATIVE_INVOKE_DEADLINE_MS)
+        if result.ok:
+            return str(result.value)
+        if result.reason in {"busy", "circuit_open", "closed"}:
+            return ComputerDelivery.NOT_DELIVERED.value
+        return ComputerDelivery.UNCERTAIN.value
+
+    def _native_click(self, wrapper, *, double: bool, right: bool) -> str:
         if double or right:
-            return False
+            return ComputerDelivery.NOT_DELIVERED.value
 
-        def invoke_once() -> bool:
+        def invoke_once() -> str:
             invoke = getattr(wrapper, "invoke", None)
-            if callable(invoke):
+            if not callable(invoke):
+                return ComputerDelivery.NOT_DELIVERED.value
+            try:
                 invoke()
-                return True
-            return False
+            except Exception as exc:
+                return _classify_uia_failure(exc)
+            return ComputerDelivery.DELIVERED.value
 
-        return bool(
-            self._dispatch_uia(
-                invoke_once,
-                deadline_ms=NATIVE_INVOKE_DEADLINE_MS,
-                default=False,
-            )
-        )
+        return self._dispatch_delivery(invoke_once)
 
-    def _native_type(self, wrapper, text: str) -> bool:
-        def set_text_once() -> bool:
+    def _native_type(self, wrapper, text: str) -> str:
+        def set_text_once() -> str:
             for name in ("set_edit_text", "set_text"):
-                try:
-                    method = getattr(wrapper, name, None)
-                    if callable(method):
-                        method(text)
-                        return True
-                except Exception:
+                method = getattr(wrapper, name, None)
+                if not callable(method):
                     continue
-            return False
+                try:
+                    method(text)
+                except Exception as exc:
+                    outcome = _classify_uia_failure(exc)
+                    if outcome == ComputerDelivery.NOT_DELIVERED:
+                        continue
+                    return outcome
+                return ComputerDelivery.DELIVERED.value
+            return ComputerDelivery.NOT_DELIVERED.value
 
-        return bool(
-            self._dispatch_uia(
-                set_text_once,
-                deadline_ms=NATIVE_INVOKE_DEADLINE_MS,
-                default=False,
-            )
+        return self._dispatch_delivery(set_text_once)
+
+    def _focus_control(self, wrapper, frame: ComputerFrame) -> bool:
+        """Press a control so keyboard input goes to it.
+
+        False means the native press may still be in flight, so the caller must
+        stop: a physical click on top of it would press the control twice.
+        """
+
+        outcome = self._native_click(wrapper, double=False, right=False)
+        if outcome == ComputerDelivery.UNCERTAIN:
+            return False
+        if outcome == ComputerDelivery.NOT_DELIVERED:
+            point = self._wrapper_center(wrapper, frame)
+            if point is not None:
+                self._click_point(frame, point)
+        return True
+
+    @staticmethod
+    def _uncertain(action: ComputerAction, step: str) -> ComputerExecution:
+        return ComputerExecution(
+            ok=False,
+            message=(
+                f"UI Automation did not confirm {step} within {NATIVE_INVOKE_DEADLINE_MS} ms and it may still "
+                "take effect (a control that opens a dialog blocks until the dialog closes). No physical "
+                "fallback was sent. Observe again before acting; do not repeat this action blindly."
+            ),
+            action=action,
+            native=True,
+            details={"input_backend": "uia-uncertain"},
+            delivery=ComputerDelivery.UNCERTAIN.value,
         )
+
+    def _confirmed_wrapper(self, handle, action: ComputerAction):
+        """The stored wrapper, after checking it is still the control the model saw.
+
+        A control id is the element's position in one walk, and the wrapper is
+        the live element from that walk; between observing and acting, a list
+        can refresh or a dialog can open, and then the wrapper is gone or the
+        position names something else. The identity is re-read and compared on
+        what is stable: control type, automation id, then a label - never a
+        value. Geometry only decides for a control that has nothing else.
+        A changed or vanished control refuses the action before any input. A
+        read that cannot finish proves nothing either way, so the wrapper is
+        set aside and the action uses its screenshot point, which the frame
+        guard still checks; without a point there is nothing safe to act on.
+        """
+
+        stored: ComputerControl = handle.identity
+        verdict, reason = self._compare_identity(handle)
+        if verdict == "same":
+            return handle.wrapper
+        if verdict == "changed":
+            raise RuntimeError(
+                f"computer control target changed since the observation ({reason}); nothing was sent. "
+                "Refresh computer_observe and use its latest state_revision"
+            )
+        if action.point is None:
+            raise RuntimeError(
+                f"could not confirm computer control {stored.control_id} within {CONTROL_IDENTITY_DEADLINE_MS} ms "
+                "and the action has no point to fall back to; nothing was sent. Observe again"
+            )
+        return None
+
+    def _compare_identity(self, handle) -> tuple[str, str]:
+        wrapper = handle.wrapper
+
+        def read():
+            try:
+                info = wrapper.element_info
+                rect = wrapper.rectangle()
+                return (
+                    str(info.control_type or ""),
+                    str(info.automation_id or ""),
+                    str(info.name or ""),
+                    (int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)),
+                )
+            except Exception as exc:
+                return exc
+
+        provider = getattr(self, "semantics", None)
+        if provider is None:
+            live = read()
+        else:
+            result = provider.run(read, deadline_ms=CONTROL_IDENTITY_DEADLINE_MS)
+            if not result.ok:
+                return "unknown", str(result.reason)
+            live = result.value
+        if isinstance(live, BaseException):
+            return "changed", f"control is no longer available: {type(live).__name__}"
+        control_type, automation_id, name, rect = live
+        stored: ComputerControl = handle.identity
+        if stored.control_type and control_type and control_type != stored.control_type:
+            return "changed", f"type {stored.control_type} -> {control_type}"
+        if stored.automation_id and automation_id != stored.automation_id:
+            return "changed", "automation id differs"
+        label_counts = bool(stored.name) and stored.control_type not in _VOLATILE_NAME_TYPES
+        if label_counts and name != stored.name:
+            return "changed", "label differs"
+        if not stored.automation_id and not label_counts:
+            old = (stored.rect.left, stored.rect.top, stored.rect.right, stored.rect.bottom)
+            if any(abs(a - b) > 2 for a, b in zip(old, rect)):
+                return "changed", "an unlabelled control moved"
+        return "same", ""
+
+    def _remember_window_generations(self, observation_id: str, windows) -> None:
+        if not hasattr(self, "_window_generations"):
+            self._window_generations = OrderedDict()
+        generations: dict[str, str] = {}
+        for window in windows:
+            try:
+                generation = _process_generation(self._parse_window_id(window.window_id))
+            except (TypeError, ValueError):
+                generation = None
+            if generation:
+                generations[str(window.window_id).casefold()] = generation
+        self._window_generations[observation_id] = generations
+        while len(self._window_generations) > 8:
+            self._window_generations.popitem(last=False)
+
+    def _refuse_recycled_window(self, window_id: str, observation) -> None:
+        """Refuse a window id whose handle now belongs to a different process.
+
+        Only a positive mismatch refuses: a window the observation did not list,
+        or a process that cannot be opened (an elevated one), leaves the old
+        behaviour in place.
+        """
+
+        observation_id = getattr(observation, "observation_id", "")
+        recorded = getattr(self, "_window_generations", {}).get(observation_id, {}).get(
+            str(window_id or "").strip().casefold()
+        )
+        if not recorded:
+            return
+        try:
+            current = _process_generation(self._parse_window_id(window_id))
+        except (TypeError, ValueError):
+            return
+        if current and current != recorded:
+            raise RuntimeError(
+                f"Windows window {window_id} was closed and its handle now belongs to another program; "
+                "nothing was sent. Observe again and pick the window from the new list"
+            )
 
     def _wrapper_center(self, wrapper, frame: ComputerFrame) -> ComputerPoint | None:
         def measure() -> ComputerPoint:
@@ -1376,6 +1640,7 @@ class PyWinAutoWindowsOperator:
             descendants = window.descendants()
         except Exception:
             return (), {}, False
+        skippable = _CHROMIUM_WRAPPER_TYPES if self._is_chromium_window(hwnd) else _STRUCTURAL_TYPES
 
         truncated = False
         for index, wrapper in enumerate(descendants):
@@ -1391,30 +1656,38 @@ class PyWinAutoWindowsOperator:
                 rect = wrapper.rectangle()
                 candidate = ComputerRect(int(rect.left), int(rect.top), int(rect.right), int(rect.bottom))
                 info = getattr(wrapper, "element_info", None)
-                # Structural browser shells must not consume the bounded control
-                # shortlist before the page's actionable descendants are reached.
                 control_type = str(getattr(info, "control_type", "") or wrapper.friendly_class_name())
-                if control_type in {"Pane", "ToolBar", "Window"}:
-                    continue
                 name = str(getattr(info, "name", "") or getattr(wrapper, "window_text", lambda: "")())
-                control_type = str(getattr(info, "control_type", "") or wrapper.friendly_class_name())
                 automation_id = str(getattr(info, "automation_id", "") or "")
+                # Anonymous layout containers must not consume the bounded
+                # shortlist before the actionable descendants are reached. A
+                # named or identified container is a real element and stays.
+                if control_type in skippable and not name.strip() and not automation_id.strip():
+                    continue
                 enabled = bool(wrapper.is_enabled())
             except Exception:
                 continue
             control_id = f"uia:{index}"
-            controls.append(
-                ComputerControl(
-                    control_id=control_id,
-                    name=name,
-                    control_type=control_type,
-                    automation_id=automation_id,
-                    rect=candidate,
-                    enabled=enabled,
-                )
+            control = ComputerControl(
+                control_id=control_id,
+                name=name,
+                control_type=control_type,
+                automation_id=automation_id,
+                rect=candidate,
+                enabled=enabled,
             )
-            mapping[control_id] = wrapper
+            controls.append(control)
+            mapping[control_id] = _ControlHandle(wrapper=wrapper, identity=control)
         return tuple(controls), mapping, truncated
+
+    @staticmethod
+    def _is_chromium_window(hwnd: int) -> bool:
+        try:
+            import win32gui
+
+            return str(win32gui.GetClassName(hwnd) or "") in _CHROMIUM_WINDOW_CLASSES
+        except Exception:
+            return False
 
     def _enumerate_windows(self, foreground_hwnd: int) -> tuple[ComputerWindow, ...]:
         import win32gui

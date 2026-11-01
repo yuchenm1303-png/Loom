@@ -425,6 +425,7 @@ def _safe_outcome_data(outcome: ComputerStepOutcome) -> dict[str, object]:
                 "native": bool(execution.native),
                 "fallback_used": bool(execution.fallback_used),
                 "details": dict(execution.details),
+                **({"delivery": str(execution.delivery)} if execution.delivery else {}),
             }
             if execution is not None
             else None
