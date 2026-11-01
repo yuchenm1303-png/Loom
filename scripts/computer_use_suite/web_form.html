@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shipping Form</title>
+<style>
+  body { font: 15px "Segoe UI", sans-serif; margin: 24px; color: #222; }
+  label { display: block; margin: 12px 0 4px; }
+  fieldset { border: 1px solid #ccc; margin-top: 12px; }
+  #done { color: #1a7f37; margin-top: 14px; font-weight: 600; }
+</style>
+</head>
+<body>
+<h2>Shipping Form</h2>
+<label for="country">Destination country</label>
+<select id="country">
+  <option value="">Choose...</option>
+  <option>Canada</option><option>Denmark</option><option>France</option><option>Germany</option>
+  <option>Japan</option><option>Norway</option><option>Spain</option><option>Sweden</option>
+</select>
+<fieldset><legend>Speed</legend>
+  <label><input type="radio" name="speed" value="standard"> Standard</label>
+  <label><input type="radio" name="speed" value="express"> Express</label>
+  <label><input type="radio" name="speed" value="overnight"> Overnight</label>
+</fieldset>
+<label for="qty">Quantity</label>
+<input id="qty" type="number" min="1" max="20" value="1">
+<label for="date">Delivery date</label>
+<input id="date" type="date">
+<p><label><input id="gift" type="checkbox"> Gift wrap</label></p>
+<button id="place">Place order</button>
+<div id="done"></div>
+<script>
+document.getElementById("place").addEventListener("click", async () => {
+  const speed = document.querySelector('input[name="speed"]:checked');
+  const body = {
+    country: document.getElementById("country").value,
+    speed: speed ? speed.value : "",
+    quantity: document.getElementById("qty").value,
+    date: document.getElementById("date").value,
+    gift: document.getElementById("gift").checked,
+  };
+  await fetch("/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  document.getElementById("done").textContent = "Order placed";
+});
+</script>
+</body>
+</html>

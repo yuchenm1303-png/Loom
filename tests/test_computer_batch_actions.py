@@ -265,7 +265,7 @@ def test_a_refused_step_ends_the_batch_and_nothing_after_it_runs(rig):
 @pytest.mark.parametrize(
     "arguments, message",
     [
-        ({"actions": [_click(FIELD), {"type": "screenshot"}]}, "cannot be part of an actions batch"),
+        ({"actions": [_click(FIELD), {"type": "screenshot"}, _click(BUTTON)]}, "cannot be part of an actions batch"),
         ({"actions": [_click(FIELD), {"type": "type", "text": "x"}, {"type": "click"}]}, "requires point or control_id"),
         ({"actions": [_click(FIELD)] * (MAX_BATCH_ACTIONS + 1)}, "at most"),
         ({"actions": []}, "non-empty"),
@@ -724,7 +724,7 @@ def test_screenshot_of_a_background_window_does_not_switch_to_it(rig):
 def test_zoom_and_peek_are_not_batch_steps(rig):
     for step in ({"type": "zoom", "region": {"x0": 0, "y0": 0, "x1": 0.5, "y1": 0.5}}, {"type": "screenshot"}):
         with pytest.raises(ValueError, match="cannot be part of an actions batch"):
-            rig.run({"actions": [_click(FIELD), step]})
+            rig.run({"actions": [_click(FIELD), step, _click(BUTTON)]})
 
 
 def test_a_hint_can_be_named_instead_of_numbered():
@@ -746,3 +746,16 @@ def test_a_hint_can_be_named_instead_of_numbered():
         _resolve_frame_target({"type": "click", "control_id": "Off", "frame_id": "frame-1"}, observation)
     with pytest.raises(ValueError):
         _resolve_frame_target({"type": "click", "control_id": "F", "frame_id": "frame-1"}, observation)
+
+
+def test_a_trailing_screenshot_in_a_batch_is_dropped_but_one_in_the_middle_is_refused(rig):
+    result = rig.run({"actions": [_click(FIELD), {"type": "type", "text": "Ada"}, {"type": "screenshot"}]})
+    assert result.ok is True and result.data["batch"]["requested"] == 2
+    with pytest.raises(ValueError, match="cannot be part of an actions batch"):
+        rig.run({"actions": [_click(FIELD), {"type": "screenshot"}, _click(BUTTON)]})
+
+
+def test_a_negative_scroll_amount_scrolls_the_other_way(rig):
+    rig.run({"action": {"type": "scroll", "direction": "down", "amount": -360, "point": {"x": 0.5, "y": 0.5}}})
+    action = rig.desktop.executed[0]
+    assert action.direction == "up" and action.amount == 360

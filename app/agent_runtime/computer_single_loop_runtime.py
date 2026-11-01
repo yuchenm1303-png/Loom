@@ -238,7 +238,7 @@ def _single_action_schema() -> dict[str, Any]:
                 "maxItems": 8,
             },
             "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
-            "amount": {"type": "integer", "minimum": 1, "maximum": 10000,
+            "amount": {"type": "integer", "minimum": -10000, "maximum": 10000,
                        "description": "scroll: wheel units at point, 120 per notch (about 3 list rows); one "
                                       "scroll moves a list further than clicking its arrows row by row."},
             "duration_ms": {"type": "integer", "minimum": 0, "maximum": 30000},
@@ -257,7 +257,8 @@ def _batch_action_schema() -> dict[str, Any]:
     # `action`: the full copy doubled this tool's schema on every request, and
     # the handler validates each item as strictly as a single action anyway.
     allowed = [
-        name for name in _single_action_schema()["properties"]["type"]["enum"] if name not in _BATCH_EXCLUDED
+        name for name in _single_action_schema()["properties"]["type"]["enum"]
+        if name not in _BATCH_EXCLUDED or name == "screenshot"  # a trailing one is dropped by the handler
     ]
     return {
         "type": "array",
@@ -1311,6 +1312,11 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         button = str(payload.pop("button", "") or "").strip().casefold()
         if name == "click" and button == "right":
             payload["type"] = "right_click"
+        if str(payload.get("type") or "") == "scroll" and isinstance(payload.get("amount"), (int, float))                 and payload["amount"] < 0:
+            # A negative amount means the other way; ComputerAction clamps it to 1.
+            opposite = {"up": "down", "down": "up", "left": "right", "right": "left"}
+            payload["amount"] = -payload["amount"]
+            payload["direction"] = opposite.get(str(payload.get("direction") or "down").casefold(), "up")
         if str(payload.get("type") or "") == "type" and "text" in payload:
             # The session id is not optional here. Typed text is stashed by the
             # platform that produced the response, and a session with its own
@@ -1504,6 +1510,11 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
 
         if not isinstance(batch, list) or not batch:
             raise ValueError("actions must be a non-empty list")
+        # Ending a batch with a screenshot is the convention of other computer
+        # use tools; Loom attaches a fresh screenshot after every batch anyway.
+        while len(batch) > 1 and isinstance(batch[-1], dict) and \
+                str(batch[-1].get("type") or "").strip().casefold() == "screenshot":
+            batch = batch[:-1]
         if len(batch) > MAX_BATCH_ACTIONS:
             raise ValueError(f"actions takes at most {MAX_BATCH_ACTIONS} steps; send the rest after the next screenshot")
         payloads: list[dict[str, Any]] = []
