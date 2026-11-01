@@ -2,7 +2,7 @@
  * Pure functions, so the mapping is tested without a Host (scripts/tests/project-overview.test.mjs). */
 import type { FlowAgent, FlowData, FlowTaskState } from "./ProjectFlow";
 import type { ProjectRun } from "./projectRuns";
-import type { ModelProfile, ModelSnapshot } from "../types/loom";
+import type { ModelProfile, ModelSnapshot, TranscriptItem } from "../types/loom";
 
 export interface OverviewAgent {
   id: string; runId: string; role: FlowAgent["role"]; state?: string; taskId?: string | null; taskTitle?: string;
@@ -30,7 +30,10 @@ export interface ProjectOverview {
   workspace?: { git: boolean; branch?: string; head?: string; changeCount: number; changes: { status: string; path: string }[] };
   /** The milestone's episodes on a clock (seconds since the epoch; end null while running). */
   timeline?: OverviewSpan[];
+  /** A project the conversation's agent proposed (weave_propose); the person starts or dismisses it. */
+  proposal?: WeaveProposal | null;
 }
+export interface WeaveProposal { id: string; objective: string; title?: string; tokenBudget: number; maxWorkers: number; createdAt?: number }
 export interface OverviewSpan {
   id: string; runId: string; phase: string; taskId: string | null; start: number; end: number | null; tokens: number; outcome: string;
 }
@@ -145,11 +148,15 @@ function taskStates(run: ProjectRun, overview: ProjectOverview): Record<string, 
 
 export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = "zh", model = "", workspaceName = ""): FlowData {
   const t = words[lang];
-  const run = overview.run;
   const program = overview.program;
+  // A project the agent proposed after the last one ended: the hub turns to that new start.
+  const ended = (run: ProjectOverview["run"]) => !run || ["cancelled", "integrated", "delivered"].includes(run.state)
+    || ["completed", "cancelled"].includes(program?.state || "");
+  const run = overview.proposal && ended(overview.run) ? null : overview.run;
   if (!run) {
     return {
-      phase: "draft", objective: "", narration: { summary: "", text: t.start }, milestone: 1, state: "paused", model,
+      phase: "draft", objective: "", narration: { summary: "", text: overview.proposal ? "" : t.start }, milestone: 1, state: "paused", model,
+      proposal: overview.proposal || undefined,
       repository: { name: workspaceName || "workspace", commit: overview.workspace?.head || "", subject: "",
                     branch: overview.workspace?.branch || "main" }, scope: [],
       workspace: overview.workspace?.git ? { changeCount: overview.workspace.changeCount, changes: overview.workspace.changes,
@@ -172,7 +179,12 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   const paused = !blocked && (run.state === "created" || run.workflowControl === "paused" && run.workflowStatus !== "completed" && run.control !== "active");
   const state: FlowData["state"] = finished ? "completed" : stopped ? "paused" : blocked ? "needs_you" : paused ? "paused" : "running";
   const started = (program?.createdAt || run.createdAt || now / 1000) * 1000;
-  const minutes = Math.max(0, Math.round((now - started) / 60000));
+  // Worked time runs while the project runs; stopped, paused or waiting, it ends at the last thing that happened
+  // (counting to now, a project stopped after a minute and a half read "Worked 17 min" a quarter of an hour later).
+  const spans = overview.timeline || [];
+  const lastActivity = Math.max(started / 1000, ...spans.map((span) => span.end ?? now / 1000),
+                                ...overview.events.map((event) => event.at || 0)) * 1000;
+  const minutes = Math.max(0, Math.round(((state === "running" ? now : Math.min(now, lastActivity)) - started) / 60000));
   const episodes = (program ? program.milestones.reduce((sum, item) => sum + item.episodes, 0) : 0) + (run.ledgerEpisodes ?? run.episodesUsed);
   const tokens = (program ? program.milestones.reduce((sum, item) => sum + item.tokens, 0) : 0) + (run.ledgerPosition?.chargedTokens ?? run.tokensUsed);
   // While the project waits for a person the amber line says why; the narration keeps the last thing that happened.
@@ -326,4 +338,26 @@ export function raisedBudget(run: { tokenBudget: number; maxEpisodes: number }, 
   const tokens = Math.max(Math.round(run.tokenBudget * 0.5), Math.round((program?.tokenBudget || 0) * 0.25));
   const episodes = Math.max(Math.round(run.maxEpisodes * 0.5), Math.round((program?.maxEpisodes || 0) * 0.25));
   return { tokenBudget: run.tokenBudget + tokens, maxEpisodes: run.maxEpisodes + episodes };
+}
+
+export interface FlowMessage { id: string; role: "user" | "assistant"; text: string; turnId?: string | null; streaming?: boolean }
+
+/** The conversation as the hub reads it: what the person said and the agent's answers, newest last.
+ *  Commentary (the agent narrating its work) is not an answer; while a turn runs its latest line is `activity`. */
+export function toConversation(items: TranscriptItem[], chatting: boolean, limit = 40): { messages: FlowMessage[]; activity: string } {
+  const messages: FlowMessage[] = [];
+  let activity = "";
+  const lastTurn = [...items].reverse().find((item) => item.turnId)?.turnId;
+  for (const item of items) {
+    const text = String(item.text || "").trim();
+    if (item.type === "user_message" && text) messages.push({ id: item.clientMessageId || item.id, role: "user", text });
+    else if (item.type === "assistant_message" && text && !item.runtimeAuthored) {
+      if (item.phase === "commentary") { if (chatting && item.turnId === lastTurn) activity = text; continue; }
+      messages.push({ id: item.id, role: "assistant", text, turnId: item.turnId });
+    }
+  }
+  // As the transcript does: while a turn runs, its newest answer is the one still arriving.
+  const last = messages[messages.length - 1];
+  if (chatting && last?.role === "assistant" && last.turnId === lastTurn) last.streaming = true;
+  return { messages: messages.slice(-limit), activity };
 }

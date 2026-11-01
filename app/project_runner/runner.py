@@ -257,15 +257,21 @@ class ProjectRunner:
 
     def _prompt(self, run, kept, progress=None):
         if run["phase"] == "planning":
+            # A plan the size of a template helped nobody: a one-word greeting got a seven-task
+            # "new project" plan (skeleton, CI, docs) for a repository the planner never looked at.
+            sizing = ("Read the repository first (list and read files only) so tasks build on what is already there. "
+                      "Size the plan to the objective: a small objective is one or two tasks; never add setup, CI, "
+                      "documentation or clarification tasks the objective does not call for.\n")
             if run.get("maxWorkers", 1) > 1:
                 return ('Plan this project as ordered task IDs task-1, task-2, etc. Return only JSON {"tasks":[{"instructions":"scoped implementation",'
                     '"acceptance":["observable behavior"],"dependsOn":[],"fileScopes":["relative/file.py"],"sharedResources":[]}]}. '
                     "Use 1..16 tasks. Dependencies may reference only earlier task IDs. Only explicitly independent tasks with disjoint file scopes and no shared resources run together. "
                     "A fileScope may name a directory (tests) when a task needs supporting files such as tests/__init__.py. "
-                    "List common ports, databases, GUI/browser or environment resources in sharedResources. Omitted declarations serialize safely.\n" + run["objective"])
+                    "List common ports, databases, GUI/browser or environment resources in sharedResources. Omitted declarations serialize safely. "
+                    + sizing + run["objective"])
             return ("Plan this long-running project. Do not edit files or execute commands. Return only JSON: "
                     '{"tasks":[{"instructions":"scoped implementation", "acceptance":["observable behavior"]}]}. '
-                    "Tasks run in order; cover the entire objective with at most 16 tasks.\n" + run["objective"])
+                    "Tasks run in order; cover the entire objective with at most 16 tasks. " + sizing + run["objective"])
         if run["phase"] == "verifying":
             return ("Independently verify this frozen project candidate in your separate checkout. "
                     "Do not implement fixes, change source/tests/acceptance, commit, merge, or publish. "

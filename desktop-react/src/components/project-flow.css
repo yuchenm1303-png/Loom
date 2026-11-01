@@ -332,6 +332,83 @@ html[data-loom-theme="light"] .pf-stage {
   animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
 }
 
+/* Weave is chat first: the person's messages and the agent's answers, as the chat's transcript reads them. */
+.pf-said { animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.pf-said-text { white-space: pre-line; overflow-wrap: anywhere; }
+.pf-reply {
+  justify-self: stretch;
+  min-width: 0;
+  padding: 2px 2px 4px;
+  color: var(--pl-ink);
+  font-size: 14px;
+  line-height: 22px;
+  animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
+}
+.pf-activity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--pl-muted);
+  font-size: 12px;
+  animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
+}
+.pf-activity svg { flex: none; }
+/* The objective the agent wrote, once the project runs: a brief, not something the person said. */
+.pf-bubble.pf-objective {
+  justify-self: stretch;
+  max-width: none;
+  margin-top: 10px;
+  background: var(--pf-well);
+  color: var(--pl-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+/* A project the agent proposed: read whole, then started (or not) by the person. */
+.pf-proposal {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 12px 12px 10px 14px;
+  border-radius: 14px;
+  background: var(--pf-card);
+  box-shadow: inset 0 0 0 1px var(--pf-raise);
+  animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
+}
+.pf-proposal-head { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--pl-muted); font-size: 12px; }
+.pf-proposal-head svg { flex: none; color: var(--pf-live); }
+.pf-proposal-head strong { overflow: hidden; color: var(--pl-ink); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.pf-proposal-text {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--pl-ink);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+}
+.pf-proposal[data-open] .pf-proposal-text { display: block; max-height: 40vh; overflow: auto; }
+.pf-proposal-hint { margin: 0; color: var(--pl-faint); font-size: 11.5px; }
+.pf-proposal-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.pf-proposal-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pf-proposal-start { background: var(--pl-ink); color: var(--pl-surface); }
+.pf-proposal-actions .pf-attention-quiet { background: transparent; color: var(--pl-secondary); box-shadow: inset 0 0 0 1px var(--pf-raise); }
+.pf-proposal-actions button:disabled { opacity: .5; cursor: default; }
+.pf-proposal-actions button:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 2px; }
+
 /* The hub. */
 .pf-composer {
   position: relative;
@@ -554,6 +631,8 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-send:hover:not(:disabled) { opacity: .88; }
 /* Nothing to send: a quiet well, not a faded ink square that still reads as a button. */
 .pf-send:disabled { background: var(--pf-well); color: var(--pl-faint); cursor: default; }
+/* While the agent answers and nothing is typed, the button stops the answer. */
+.pf-send[data-stop] { background: var(--pf-raise); color: var(--pl-ink); }
 
 /* The composer's own controls: pause, resume, stop. */
 .pf-control {

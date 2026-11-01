@@ -14,7 +14,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash, review_progress
-from . import delivery, integration, workflow, parallel, checks, program
+from . import delivery, integration, workflow, parallel, checks, program, weave
 from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
@@ -389,6 +389,13 @@ class ProjectServiceMixin:
             if run and (parallel.cancelled(self.project_store, run) or self.project_runner.stop.is_set()):
                 token.cancel()  # closes the cancellation race before the first model sample
         self.runtime._on_turn_activated = project_activated
+        # Weave mode: the conversation's own agent proposes, reads and steers its project.
+        self.weave_proposals = weave.Proposals(home)
+        for tool in weave.tools(self):
+            if self.runtime.tools.get(tool.name) is None:
+                self.runtime.tools.register(tool)
+        self.runtime.register_request_context_provider(
+            "weave_mode", lambda session, step: weave.context_messages(self, session, step))
         self.project_runner.start()
         original_close = self.runtime.close
         def close():
@@ -535,7 +542,7 @@ class ProjectServiceMixin:
         if root is None:
             # Nothing started yet: what would stop a start (uncommitted changes) is shown before it is tried.
             return {"run": None, "program": current, "children": [], "agents": [], "events": [],
-                    "workspace": self._project_workspace_state(thread_id)}
+                    "workspace": self._project_workspace_state(thread_id), "proposal": self.weave_proposals.get(thread_id)}
         children = [run for run in runs if run.get("teamOwnerId") == root["id"]]
         integration = store.get(root["integrationRunId"]) if root.get("integrationRunId") else None
         ledger = integration or root
@@ -553,8 +560,10 @@ class ProjectServiceMixin:
         view = {**self.project_budget_position(root), "knowledge": self.project_knowledge(root),
                 "ledgerPosition": self.project_budget.report(ledger), "ledgerTokens": ledger["tokensUsed"],
                 "ledgerEpisodes": ledger["episodesUsed"], "guidance": list(root.get("guidance") or [])}
+        proposal = self.weave_proposals.get(thread_id)
         return {"run": view, "program": current, "children": children, "integration": integration,
-                "agents": agents, "events": events, "timeline": self._project_timeline(root, family)}
+                "agents": agents, "events": events, "timeline": self._project_timeline(root, family),
+                "proposal": proposal, "workspace": self._project_workspace_state(thread_id) if proposal else None}
 
     def _project_workspace_state(self, thread_id):
         """The conversation's repository as a project would start from it: branch, commit, uncommitted changes."""
@@ -873,6 +882,11 @@ class ProjectControllerMixin:
         if method == "projectProgram/create":
             with self.service.project_runner.guard:
                 return {"program": program.create(self.service, params)}
+        if method == "projectWeave/start":
+            with self.service.project_runner.guard:
+                return {"program": weave.start(self.service, params)}
+        if method == "projectWeave/dismiss":
+            return weave.dismiss(self.service, params)
         if method == "projectProgram/attach":
             with self.service.project_runner.guard:
                 return {"program": program.attach(self.service, params)}

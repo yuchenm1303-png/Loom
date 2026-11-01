@@ -1,11 +1,14 @@
-/* Persistent-project mode for one conversation: reads projectRun/overview, draws ProjectFlow,
- * and turns its gestures into project commands. It polls only while it is shown and the
- * window is visible: every 2 s while the project runs, every 12 s once it rests. */
-import { useCallback, useEffect, useRef, useState } from "react";
+/* Weave mode for one conversation: reads projectRun/overview, draws ProjectFlow with the
+ * conversation above the hub, and turns its gestures into project commands. Weave is chat
+ * first: what the person types is an ordinary turn of the conversation (with the weave_*
+ * project tools), and a project starts only from a proposal the agent made, by the person.
+ * It polls only while it is shown and the window is visible: every 2 s while the project
+ * runs or the agent is answering, every 12 s once it rests. */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
-import { raisedBudget, readableError, toFlowData, toModelChoice, type ProjectOverview } from "./projectOverview";
-import type { ModelSnapshot } from "../types/loom";
+import { raisedBudget, readableError, toConversation, toFlowData, toModelChoice, type ProjectOverview } from "./projectOverview";
+import type { ModelSnapshot, TranscriptItem } from "../types/loom";
 
 const LIVE_POLL_MS = 2000;
 const REST_POLL_MS = 12000;
@@ -18,10 +21,14 @@ const START_EPISODES = 400;
  *  (the composer's morph lands on it) and the first read then refreshes it. */
 const lastOverview = new Map<string, ProjectOverview>();
 
-export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning }: {
+export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt }: {
   threadId: string; workspace?: string; model?: string;
   /** The app's model snapshot and switch: a project's agents take the conversation's model. */
   models?: ModelSnapshot | null; onSwitchModel?(selection: string): Promise<unknown>; onReasoning?(kind: string, value: string): Promise<unknown>;
+  /** The conversation's transcript and whether its agent is answering now. */
+  items?: TranscriptItem[]; chatting?: boolean;
+  /** A message to the conversation's agent, as a Weave turn; and stopping its answer. */
+  onChat?(input: string): Promise<unknown>; onInterrupt?(): Promise<unknown> | void;
 }) {
   const { language } = useI18n();
   const lang = language === "zh-CN" ? "zh" : "en";
@@ -77,12 +84,16 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     return () => window.removeEventListener("focus", again);
   }, [load]);
 
-  const resting = !overview?.run || ["integrated", "cancelled"].includes(overview.run.state) ||
-    overview.run.state === "needs_review" || overview.run.control === "budget_limited";
+  const resting = !chatting && (!overview?.run || ["integrated", "cancelled"].includes(overview.run.state) ||
+    overview.run.state === "needs_review" || overview.run.control === "budget_limited");
   useEffect(() => {
     const timer = window.setInterval(() => { if (!document.hidden) void load(); }, resting ? REST_POLL_MS : LIVE_POLL_MS);
     return () => window.clearInterval(timer);
   }, [load, resting]);
+  // An answer that ended may have proposed or steered a project: read it now, not at the next rest tick.
+  useEffect(() => { if (!chatting) void load(true); }, [chatting, load]);
+  const conversation = useMemo(() => toConversation(items.filter((item) => item.threadId === threadId), chatting),
+                               [items, threadId, chatting]);
   const waiting = !overview;
   useEffect(() => {
     setSlow(false);
@@ -120,7 +131,9 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   const control = (action: "pause" | "resume" | "cancel", extra: Record<string, unknown> = {}) => act(() =>
     window.loom.call(`projectRun/${action}`, { operationId: crypto.randomUUID(), runId: run!.id, expectedRevision: run!.revision, ...extra }));
   const workspaceName = (workspace || "").split(/[\\/]/).filter(Boolean).pop() || "";
-  const data = { ...toFlowData(overview, now, lang, model || "", workspaceName), models: toModelChoice(models) };
+  const data = { ...toFlowData(overview, now, lang, model || "", workspaceName), models: toModelChoice(models),
+                 conversation: conversation.messages, activity: conversation.activity, chatting };
+  const proposal = data.phase === "draft" ? overview.proposal : null;
   const programId = overview.program?.id;
 
   return (
@@ -133,11 +146,13 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       // Its own errors show on the scale; the hub's busy state is for the run, not this.
       onReasoning: onReasoning ? async (kind, value) => { await onReasoning(kind, value); } : undefined,
       onCommitWorkspace: (message, count) => act(() => window.loom.call("projectRun/commitWorkspace", { threadId, message, expectedCount: count })),
-      onStart: (objective, workers, tokens, attachments) => act(() => window.loom.call("projectProgram/create", {
-        attachments,
-        operationId: crypto.randomUUID(), threadId, objective, tokenBudget: tokens, maxEpisodes: START_EPISODES,
-        maxWorkers: workers, maxMilestones: 20 })),
-      onSteer: (text) => run && act(() => window.loom.call("projectRun/steer", { runId: run.id, text })),
+      // The proposal the agent wrote, started by the person with the budget and agents set in the footer.
+      onStart: proposal ? (_objective, workers, tokens, attachments) => act(() => window.loom.call("projectWeave/start", {
+        attachments, operationId: `weave:${proposal.id}`, threadId, proposalId: proposal.id, tokenBudget: tokens,
+        maxEpisodes: START_EPISODES, maxWorkers: workers, maxMilestones: 20 })) : undefined,
+      onDismiss: proposal ? () => act(() => window.loom.call("projectWeave/dismiss", { threadId, proposalId: proposal.id })) : undefined,
+      onChat: onChat ? (text) => { setError(""); void onChat(text).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
+      onInterrupt: onInterrupt ? () => { void onInterrupt(); } : undefined,
       onPause: () => run && control("pause"),
       onResume: () => run && control("resume"),
       onCancel: () => run && control("cancel"),

@@ -121,6 +121,7 @@ export function useLoom() {
     input: string,
     attachments: { path: string; name: string }[] = [],
     toolSelection?: string[] | null,
+    options?: { weave?: boolean },
   ) => {
     const thread = loom.active?.thread;
     const text = input.trim();
@@ -132,7 +133,7 @@ export function useLoom() {
       && !activeTurnHasTerminalError;
 
     if (!running) {
-      await loom.send(input, attachments, toolSelection);
+      await loom.send(input, attachments, toolSelection, options);
       return;
     }
     if (!thread?.id || thread.archived) return;

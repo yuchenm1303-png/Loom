@@ -831,7 +831,8 @@ export function useLoom() {
     await openThread(result.thread.id);
   }, [openThread, refreshThreads]);
 
-  const send = useCallback(async (input: string, attachments: { path: string; name: string }[] = [], toolSelection?: string[] | null) => {
+  const send = useCallback(async (input: string, attachments: { path: string; name: string }[] = [], toolSelection?: string[] | null,
+                                  options: { weave?: boolean } = {}) => {
     if (!input.trim() && !attachments.length) return;
     if (active?.thread.archived) throw new Error("该对话已归档，请先取消归档再发送。");
     if (!active?.thread.id && homeSendPendingRef.current) throw new Error("正在创建对话，请等待当前消息发送完成。");
@@ -868,6 +869,8 @@ export function useLoom() {
       const params: Record<string, unknown> = { threadId: thread.id, input: input.trim() };
       if (attachments.length) params.attachments = attachments;
       if (toolSelection !== undefined) params.toolSelection = toolSelection;
+      // Weave mode's turns: the agent also gets the project tools (the Host leaves them out otherwise).
+      if (options.weave) params.weave = true;
       const result = await requireBridge().call<{ turn: TurnRecord }>("turn/start", params);
       threadReadCacheRef.current.delete(threadId);
       const turn = result.turn;

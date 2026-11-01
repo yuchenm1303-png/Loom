@@ -6,7 +6,9 @@
  * composer by thick cables of the cards' own material, so they read as plugged in.
  * Cables are measured from the rendered cards and follow any width.
  *
- * Before a project starts the composer takes its objective; while it runs, guidance.
+ * The composer is the conversation's: what is typed goes to the conversation's agent, which
+ * answers it like chat and can propose a project; a proposal shows above the hub and the
+ * person starts it there. While a project runs the agent reads and steers it.
  * Motion means an event, and nothing moves otherwise:
  *   an agent finishes a step     one pulse runs down its cable into the composer
  *   an agent arrives / leaves    its card fades in / out and its cable grows / unplugs
@@ -20,7 +22,9 @@ import {
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldCheck,
   History, Search, Sparkles, Square, X,
 } from "lucide-react";
+import { MarkdownMessage } from "./MarkdownMessage";
 import { ProviderMark } from "./ModelPanel";
+import type { FlowMessage, WeaveProposal } from "./projectOverview";
 import { useGlide, visibleBox } from "./projectArrange";
 import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
 import type { ModelReasoningState } from "../types/loom";
@@ -78,12 +82,26 @@ export interface FlowData {
   maxWorkers: number;
   controls: { pause: boolean; resume: boolean; cancel: boolean };
   agents: FlowAgent[];
+  /** The conversation above the hub: the person's messages and the agent's answers, newest last. */
+  conversation?: FlowMessage[];
+  /** The agent is answering now; `activity` is its latest line of commentary. */
+  chatting?: boolean;
+  activity?: string;
+  /** A project the agent proposed, waiting for the person to start it. */
+  proposal?: WeaveProposal;
 }
 
 export interface ModelOption { selection: string; name: string; group: string; groupId: string }
 
 export interface FlowActions {
+  /** A message to the conversation's agent. */
+  onChat?(text: string): void;
+  /** Stop the agent's answer. */
+  onInterrupt?(): void;
+  /** Start the proposed project, with the budget and agents set in the footer. */
   onStart?(objective: string, workers: number, tokens: number, attachments: string[]): void;
+  /** Set the proposal aside. */
+  onDismiss?(): void;
   /** The system file dialog; resolves to the chosen paths (none when cancelled). */
   onPickFiles?(): Promise<string[]>;
   /** Files added while the program runs. */
@@ -125,7 +143,9 @@ const zhText = {
   commitMessage: "保存改动，准备开始建造", commitHint: "不想提交的文件，先加入 .gitignore 或移出仓库。",
   now: "现在", files: "参考文件", filesEmpty: "需求文档、规格或样例数据，每一轮的 agent 都能读到", addFiles: "添加文件",
   remove: "移除", modelCard: "模型", modelSearch: "搜索模型", modelGroups: "模型来源", modelRecent: "最近", modelNone: "没有匹配的模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "建造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
-  draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
+  draftPlaceholder: "和它聊聊，或描述一个想持续完成的大目标", steerPlaceholder: "继续对话：问进度、补充要求或调整方向",
+  proposal: "建造提案", startProposal: "开始建造", dismissProposal: "不用了", replying: "正在回复…", stopReply: "停止回复",
+  proposalHint: "从最后一次提交开始，在独立的检出里分阶段开发，每个任务独立复审后集成回当前分支",
   review: "独立复审", reviewHint: "每个任务合入前都由另一个 agent 独立复审", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "建造",
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
@@ -146,8 +166,10 @@ const enText: typeof zhText = {
   now: "now", files: "Reference files", filesEmpty: "Specs, documents or sample data; every episode can read them",
   addFiles: "Add files", remove: "Remove", modelCard: "Model", modelSearch: "Search models", modelGroups: "Model sources", modelRecent: "Recent", modelNone: "No matching models", vision: "vision",
   modelHint: "Agents already started keep their model; new ones use the choice", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
-  draftPlaceholder: "Describe an objective to pursue; it is split into milestones and tasks, independently reviewed, then integrated",
-  steerPlaceholder: "Add guidance or change direction; it applies from the next episode",
+  draftPlaceholder: "Talk it through, or describe a large objective to pursue",
+  steerPlaceholder: "Keep talking: ask about progress, add requirements or change direction",
+  proposal: "Proposed project", startProposal: "Start weaving", dismissProposal: "Not now", replying: "Replying…", stopReply: "Stop the reply",
+  proposalHint: "Builds from the last commit in its own checkout, milestone by milestone; every task is reviewed before it is merged into the current branch",
   review: "Reviewed", reviewHint: "Every task is reviewed by a separate agent before it is integrated", settings: "Run settings", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
@@ -401,6 +423,13 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   }, [draft]);
   const [workers, setWorkers] = useState(data.workers);
   const [tokens, setTokens] = useState(START_BUDGETS[2]);
+  // A new proposal brings the agent's suggestion for both; the person may change them before starting.
+  const proposal = data.proposal;
+  useEffect(() => {
+    if (!proposal) return;
+    setWorkers(Math.min(data.maxWorkers, Math.max(1, proposal.maxWorkers || 1)));
+    setTokens(START_BUDGETS.includes(proposal.tokenBudget) ? proposal.tokenBudget : START_BUDGETS[2]);
+  }, [proposal?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
   const register = useCallback((id: string, side: Side, node: HTMLElement | null) => {
     if (node) cards.current.set(id, { side, node }); else cards.current.delete(id);
   }, []);
@@ -439,7 +468,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const layout = [ids(context), ids(branches), ids(agents), ids(below), ids(loom), files.length,
                   modelTotal, modelView, query, reasoningState?.value ?? "",
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase,
-                  dirtyOpen, objectiveOpen, draft, data.narration.summary, data.narration.text].join("|");
+                  dirtyOpen, objectiveOpen, draft, data.narration.summary, data.narration.text,
+                  data.conversation?.length ?? 0, proposal?.id ?? "", data.chatting ? 1 : 0].join("|");
   const { cables, measure } = useCables(stage, hub, cards, layout);
   // A low stage squeezes the thread above the hub: it shows the newest line, and scrolls up to the objective.
   const thread = useRef<HTMLDivElement>(null);
@@ -459,12 +489,20 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const slot = (id: string) => ({ "data-leaving": leaving.has(id) || undefined, inert: leaving.has(id) });
   const hover = (id: string) => ({ onPointerEnter: () => setHot(id), onPointerLeave: () => setHot("") });
   const shownWorkers = draftMode ? workers : data.workers;
+  // What is typed is always a message to the conversation's agent; projects start from its proposals.
   const submit = () => {
     const value = draft.trim();
-    if (!value || actions.busy) return;
-    if (draftMode) { actions.onStart?.(value, workers, tokens, picked); setPicked([]); } else actions.onSteer?.(value);
+    if (!value) return;
+    if (actions.onChat) actions.onChat(value); else if (!draftMode) actions.onSteer?.(value);
     setDraft("");
   };
+  const startProposal = () => {
+    if (!proposal || actions.busy) return;
+    actions.onStart?.(proposal.objective, workers, tokens, picked);
+    setPicked([]);
+  };
+  const stopping = Boolean(data.chatting && !draft.trim() && actions.onInterrupt);
+  const settingUp = draftMode && Boolean(proposal);
   const addFiles = async () => {
     const paths = await actions.onPickFiles?.() || [];
     if (!paths.length) return;
@@ -558,10 +596,45 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
 
       <div className="pf-col pf-center">
         <div className="pf-thread" ref={thread} data-glide="thread">
+          {/* The conversation: Weave is chat first, so what was said reads here like the chat's transcript. */}
+          {(data.conversation || []).map((message) => message.role === "user" ? (
+            <div key={message.id} className="pf-bubble pf-said"><span className="pf-said-text">{message.text}</span></div>
+          ) : (
+            <div key={message.id} className="pf-reply">
+              <MarkdownMessage content={message.text} compact streaming={message.streaming} messageKey={message.id} />
+            </div>
+          ))}
+          {data.chatting && !data.conversation?.[data.conversation.length - 1]?.streaming ? (
+            <p className="pf-activity" key={data.activity || "replying"}><LoaderCircle size={12} className="pf-busy" />{data.activity || text.replying}</p>
+          ) : null}
+          {proposal ? (
+            // What the agent proposes to build: the person reads it whole and starts it, or not.
+            <section className="pf-proposal" aria-label={text.proposal} data-open={objectiveOpen || undefined}>
+              <header className="pf-proposal-head">
+                <Sparkles size={12} /><span>{text.proposal}</span>
+                {proposal.title ? <strong title={proposal.title}>{proposal.title}</strong> : null}
+              </header>
+              <p className="pf-proposal-text"><Inline text={proposal.objective} /></p>
+              {proposal.objective.length > 240 ? (
+                <button type="button" className="pf-bubble-more" onClick={() => setObjectiveOpen((value) => !value)}>
+                  {objectiveOpen ? text.collapse : text.expand}
+                </button>
+              ) : null}
+              <p className="pf-proposal-hint">{text.proposalHint}</p>
+              <div className="pf-proposal-actions">
+                {actions.onDismiss ? (
+                  <button type="button" className="pf-attention-quiet" disabled={actions.busy} onClick={actions.onDismiss}>{text.dismissProposal}</button>
+                ) : null}
+                <button type="button" className="pf-proposal-start" disabled={actions.busy || !actions.onStart} onClick={startProposal}>
+                  <Play size={12} />{text.startProposal}
+                </button>
+              </div>
+            </section>
+          ) : null}
           {data.objective ? (
             <>
               {/* An objective is often a page of spec: three lines, and the rest on request, so the hub stays in view. */}
-              <div className="pf-bubble" data-open={objectiveOpen || undefined}>
+              <div className={`pf-bubble${data.conversation?.length ? " pf-objective" : ""}`} data-open={objectiveOpen || undefined}>
                 <span className="pf-bubble-text"><Inline text={data.objective} /></span>
                 {data.objective.length > 160 ? (
                   <button type="button" className="pf-bubble-more" onClick={() => setObjectiveOpen((value) => !value)}>
@@ -573,7 +646,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             </>
           ) : null}
           {data.narration.summary ? <span className="pf-summary">{data.narration.summary}</span> : null}
-          {data.narration.text ? <p className="pf-narration" key={data.narration.text}>{data.narration.text}</p> : null}
+          {/* Before a project, the hint is for an empty conversation; once people talk it only repeats itself. */}
+          {data.narration.text && !(draftMode && data.conversation?.length) ? <p className="pf-narration" key={data.narration.text}>{data.narration.text}</p> : null}
           {data.attention ? (
             <div className="pf-attention" role="status">
               <span className="pf-attention-dot" />
@@ -586,7 +660,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               ) : null}
             </div>
           ) : null}
-          {draftMode && data.workspace?.changeCount ? (
+          {draftMode && proposal && data.workspace?.changeCount ? (
             // A reminder, never a lock: the start builds from the last commit, so these stay out of it.
             <div className="pf-attention pf-dirty" role="status" data-open={dirtyOpen || undefined}>
               {/* One line until opened; why it matters is read with the files, not before them. */}
@@ -652,35 +726,37 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             {data.controls.cancel ? <button type="button" className="pf-control" aria-label={text.stop} title={text.stop} disabled={actions.busy} onClick={actions.onCancel}><Square size={11} /></button> : null}
           </header>
           <div className="pf-well pf-input">
-            <textarea ref={input} value={draft} rows={draftMode ? 3 : 2} disabled={data.state === "completed"}
+            <textarea ref={input} value={draft} rows={draftMode ? 3 : 2}
                       onChange={(event) => setDraft(event.target.value)}
                       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}
-                      placeholder={draftMode ? text.draftPlaceholder : data.state === "completed" ? text.donePlaceholder : text.steerPlaceholder}
-                      aria-label={draftMode ? text.objective : text.guidance} />
+                      placeholder={draftMode ? text.draftPlaceholder : text.steerPlaceholder} aria-label={text.send} />
           </div>
           {actions.error ? <p className="pf-error" role="alert">{actions.error}</p> : null}
           <footer className="pf-composer-foot">
-            {/* The run's settings as one bar: review is a fact, budget and agents are set before the start. */}
+            {/* The run's settings as one bar: review is a fact, budget and agents are set before a proposal starts.
+                Before there is a project or a proposal there is nothing to set: the hub is a chat composer. */}
+            {!draftMode || proposal ? (
             <span className="pf-settings" role="group" aria-label={text.settings}>
               <span className="pf-chip" title={text.reviewHint}><ShieldCheck size={13} /><span className="pf-chip-label">{text.review}</span></span>
-              {draftMode ? (
+              {settingUp ? (
                 <button type="button" className="pf-chip pf-chip-button" title={text.budgetHint}
                         onClick={() => setTokens((value) => START_BUDGETS[(START_BUDGETS.indexOf(value) + 1) % START_BUDGETS.length])}>
                   <span className="pf-chip-value" key={tokens}>{compact(tokens)}</span><span className="pf-chip-unit">token</span>
                 </button>
               ) : null}
-              <span className="pf-stepper" role="group" aria-label={text.agents} title={text.agents} data-editable={draftMode || undefined}>
-                {draftMode ? (
+              <span className="pf-stepper" role="group" aria-label={text.agents} title={text.agents} data-editable={settingUp || undefined}>
+                {settingUp ? (
                   <button type="button" aria-label={text.fewer} disabled={shownWorkers <= 1}
                           onClick={() => setWorkers((count) => Math.max(1, count - 1))}><Minus size={10} strokeWidth={2.4} /></button>
                 ) : null}
                 <Bot size={13} /><span className="pf-stepper-value" key={shownWorkers}>{shownWorkers}</span>
-                {draftMode ? (
+                {settingUp ? (
                   <button type="button" aria-label={text.more} disabled={shownWorkers >= data.maxWorkers}
                           onClick={() => setWorkers((count) => Math.min(data.maxWorkers, count + 1))}><Plus size={10} strokeWidth={2.4} /></button>
                 ) : null}
               </span>
             </span>
+            ) : null}
             {data.models ? (
               // The model the agents think with. The chip grows its card out of the hub on a cable, and takes it back.
               <button type="button" className="pf-model pf-model-chip" data-open={modelOpen || undefined}
@@ -692,8 +768,10 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 <ChevronDown size={11} />
               </button>
             ) : null}
-            <button type="button" className="pf-send" disabled={!draft.trim() || actions.busy} aria-label={draftMode ? text.start : text.send}
-                    onClick={submit}>{actions.busy ? <LoaderCircle size={15} className="pf-busy" /> : <ArrowUp size={15} />}</button>
+            {/* While the agent answers, an empty field's button stops it; anything typed is sent (it steers the answer). */}
+            <button type="button" className="pf-send" data-stop={stopping || undefined} disabled={!stopping && !draft.trim()}
+                    aria-label={stopping ? text.stopReply : text.send} title={stopping ? text.stopReply : undefined}
+                    onClick={stopping ? actions.onInterrupt : submit}>{stopping ? <Square size={12} /> : <ArrowUp size={15} />}</button>
           </footer>
         </section>
 

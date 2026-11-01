@@ -101,15 +101,34 @@ function play(count: number, workers: number) {
   return { ...data, workers, agents: [...data.agents, ...extra], timeline: timeline(41 + count) };
 }
 
-// ?draft=1: nothing started yet; ?attention=1: stopped at the budget and waiting.
+// &chat=1: the conversation above the hub (Weave is chat first); &chatting=1: the agent is answering now.
+const CHAT: FlowData["conversation"] = [
+  { id: "u1", role: "user", text: "你好" },
+  { id: "a1", role: "assistant", text: "你好！在建造模式里可以直接聊天，也可以交给我一个要持续好几天的大目标。想做点什么？" },
+  { id: "u2", role: "user", text: "帮我把 ledger 做成一个能导入银行流水、按月出报表的记账工具，要有测试" },
+  { id: "a2", role: "assistant", text: "明白。我先看了仓库：已有 `ledger/parser.py` 和基础 CLI。我把目标整理成了下面的提案，**确认后点「开始建造」**。" },
+];
+const PROPOSAL = { id: "p1", title: "ledger 记账工具", tokenBudget: 4_000_000, maxWorkers: 2,
+  objective: "把 ledger 做成完整的记账工具：\n- 导入 CSV 银行流水（招行、工行两种格式），去重\n- 按月汇总收支，输出 Markdown 报表\n"
+    + "- CLI：`ledger import`、`ledger report --month 2026-10`\n完成标准：pytest 全部通过，两个样例流水导入后报表数字与手算一致。" };
+function talk(data: FlowData): FlowData {
+  if (!params.has("chat")) return data;
+  return { ...data, conversation: CHAT, chatting: params.has("chatting"), activity: params.has("chatting") ? "读取 ledger/parser.py" : "" };
+}
+
+// ?draft=1: nothing started yet (&proposal=1: the agent proposed a project); ?attention=1: stopped at the budget and waiting.
 function variant(data: FlowData): FlowData {
+  return talk(variantOf(data));
+}
+function variantOf(data: FlowData): FlowData {
   if (params.has("draft")) return { ...data, phase: "draft", objective: "", narration: { summary: "", text: "描述一个大目标，它会被拆成阶段和任务，并行开发、独立复审后集成。" },
     tasks: [], agents: [], scope: [], knowledge: { checks: 0, notes: 0, latest: "" }, controls: { pause: false, resume: false, cancel: false },
     // &dirty=1: the repository has uncommitted changes, shown as a reminder; the start still goes.
     workspace: params.has("dirty") ? { changeCount: 11, head: "0a1d215", branch: "main",
       changes: [{ status: "M", path: "src/relay/server.py" }, { status: "M", path: "src/relay/client.py" }, { status: "A", path: "src/relay/auth.py" },
               { status: "D", path: "docs/old-setup.md" }, { status: "??", path: "scratch/" }, { status: "M", path: "README.md" },
-              { status: "M", path: "pyproject.toml" }, { status: "??", path: "notes 笔记.txt" }, { status: "M", path: "tests/test_relay.py" }] } : undefined };
+              { status: "M", path: "pyproject.toml" }, { status: "??", path: "notes 笔记.txt" }, { status: "M", path: "tests/test_relay.py" }] } : undefined,
+    proposal: params.has("proposal") ? PROPOSAL : undefined };
   if (params.has("attention")) return { ...data, state: "needs_you", attention: { reason: "token 预算已用完。", action: "budget" },
     controls: { pause: false, resume: false, cancel: true }, agents: data.agents.filter((agent) => agent.done) };
   return data;
@@ -147,7 +166,7 @@ function Preview() {
       {mode === "project"
         ? <div className="project-mode-stage" style={{ gridRow: "2" }}>
             <ProjectFlow data={{ ...variant(play(count, workers)), models, references: REFERENCES }}
-                         actions={{ onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {},
+                         actions={{ onChat: () => {}, onInterrupt: () => {}, onStart: () => {}, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {},
                                     error: params.has("error") ? "Lost the Host; reconnecting…" : undefined,
                                     onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
           </div>

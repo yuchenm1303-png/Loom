@@ -3,6 +3,10 @@ from dataclasses import replace
 
 from .tools import ToolRouter
 
+# Weave mode's project tools: present only in a conversation in Weave mode, whatever the
+# person selected, since starting and steering a project is what that mode adds to chat.
+WEAVE_PREFIX = "weave_"
+
 
 def parse_tool_selection(value):
     if value is None:
@@ -15,18 +19,25 @@ def parse_tool_selection(value):
 
 
 def tool_is_selected(session, name):
+    if name.startswith(WEAVE_PREFIX):
+        return getattr(session, "weave", False) is True
     selected = getattr(session, "tool_selection", None)
     return selected is None or name in selected
 
 
 def selected_step(session, step):
-    if getattr(session, "tool_selection", None) is None:
+    tools = step.tool_router.all()
+    if getattr(session, "tool_selection", None) is None and (
+            getattr(session, "weave", False) is True or not any(tool.name.startswith(WEAVE_PREFIX) for tool in tools)):
         return step
-    visible = tuple(tool for tool in step.tool_router.all() if tool_is_selected(session, tool.name))
-    signatures = "\n".join(f"- {tool.name}" for tool in visible if tool.name != "code_mode")
-    router = ToolRouter(tuple(
-        replace(tool, description=tool.description.split("Callable signatures", 1)[0]
-                + "Only user-selected nested tools are available:\n" + (signatures or "No nested tools selected."))
-        if tool.name == "code_mode" else tool for tool in visible))
+    visible = tuple(tool for tool in tools if tool_is_selected(session, tool.name))
+    if getattr(session, "tool_selection", None) is None:
+        router = ToolRouter(visible)
+    else:
+        signatures = "\n".join(f"- {tool.name}" for tool in visible if tool.name != "code_mode")
+        router = ToolRouter(tuple(
+            replace(tool, description=tool.description.split("Callable signatures", 1)[0]
+                    + "Only user-selected nested tools are available:\n" + (signatures or "No nested tools selected."))
+            if tool.name == "code_mode" else tool for tool in visible))
     return replace(step, tool_router=router, world_state=replace(
         step.world_state, tool_names=tuple(tool.name for tool in router.all())))

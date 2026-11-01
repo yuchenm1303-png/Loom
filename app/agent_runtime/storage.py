@@ -219,6 +219,7 @@ def _session_document(session: AgentSession, messages: Any, frames: Any) -> dict
         "reasoning_kind": session.reasoning_kind,
         "reasoning_value": session.reasoning_value,
         "tool_selection": session.tool_selection,
+        "weave": session.weave,
         "messages": messages,
         "request_context_frames": frames,
         "pending_tool_calls": [_tool_call_to_dict(call) for call in session.pending_tool_calls],
@@ -363,6 +364,7 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
         reasoning_kind=str(payload.get("reasoning_kind") or ""),
         reasoning_value=str(payload.get("reasoning_value") or ""),
         tool_selection=payload.get("tool_selection") if isinstance(payload.get("tool_selection"), list) else None,
+        weave=payload.get("weave") is True,
         messages=[
             _message_from_dict(dict(item))
             for item in payload.get("messages", [])

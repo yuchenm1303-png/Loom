@@ -1283,6 +1283,8 @@ class LoomAppServerService:
         def run_turn() -> Any:
             try:
                 session.tool_selection = selection
+                # Each turn says which mode sent it; one from the chat composer leaves Weave.
+                session.weave = params.get("weave") is True
                 self.store.save(session)
                 self._prepare_turn(session)
             except Exception as exc:

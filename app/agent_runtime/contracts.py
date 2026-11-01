@@ -192,6 +192,8 @@ class AgentSession:
     reasoning_kind: str = ""
     reasoning_value: str = ""
     tool_selection: list[str] | None = None
+    # The conversation is in Weave mode: its agent also gets the weave_* project tools.
+    weave: bool = False
     messages: list[AIMessage] = field(default_factory=list)
     request_context_frames: list[dict[str, Any]] = field(default_factory=list)
     pending_tool_calls: list[ToolCall] = field(default_factory=list)
@@ -218,6 +220,7 @@ class AgentSession:
         self.model_provider = str(self.model_provider or "").strip().casefold()
         self.model_base_url = str(self.model_base_url or "").strip().rstrip("/")
         self.model_vision = self.model_vision if isinstance(self.model_vision, bool) else None
+        self.weave = self.weave is True
         self.reasoning_kind = str(self.reasoning_kind or "").strip()
         self.reasoning_value = str(self.reasoning_value or "").strip()
         language = str(self.communication_language or "auto").strip().casefold()

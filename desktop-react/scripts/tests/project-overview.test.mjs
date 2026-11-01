@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../src/components/projectOverview.ts", i
 const module = { exports: {} };
 new Function("module", "exports", "require", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(
   module, module.exports, () => ({}));
-const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice, readableError } = module.exports;
+const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice, readableError, toConversation } = module.exports;
 
 const now = Date.parse("2026-10-30T10:00:00Z");
 const run = (extra = {}) => ({
@@ -212,4 +212,42 @@ test("refused access waits for the person to fix it and continue, not for a revi
   assert.equal(data.state, "needs_you");
   assert.equal(data.attention.action, "resume");
   assert.match(data.attention.reason, /重新登录账号或更新 API 密钥/);
+});
+
+test("worked time stops with the project: a stop after 90 s never reads as a quarter of an hour", () => {
+  const start = now / 1000 - 17 * 60;
+  const stopped = { ...overview({ state: "cancelled", createdAt: start }), timeline: [
+    { id: "e1", runId: "root", phase: "planning", taskId: null, start: start + 3, end: start + 24, tokens: 1, outcome: "episode_settled" },
+    { id: "e2", runId: "root", phase: "working", taskId: "task-1", start: start + 25, end: start + 93, tokens: 1, outcome: "cancelled" }],
+    events: [{ sequence: 9, runId: "root", kind: "cancelled_episode_settled", at: start + 93 }] };
+  const data = toFlowData(stopped, now, "en");
+  assert.match(data.narration.summary, /^Worked 2 min/);
+  // While it runs, the clock runs.
+  assert.match(toFlowData(overview({ createdAt: start }), now, "en").narration.summary, /^Worked 17 min/);
+});
+
+test("a proposal after the last project ended turns the hub to that new start", () => {
+  const proposal = { id: "p1", objective: "Build a CLI", tokenBudget: 4000000, maxWorkers: 1 };
+  const data = toFlowData({ ...overview({ state: "cancelled" }), proposal }, now, "zh");
+  assert.equal(data.phase, "draft");
+  assert.equal(data.proposal.id, "p1");
+  // A running project keeps the hub; a proposal is only shown once nothing runs.
+  assert.equal(toFlowData({ ...overview(), proposal }, now, "zh").phase, "live");
+});
+
+test("the conversation reads what was said and answered; commentary is the live activity line", () => {
+  const items = [
+    { id: "u1", threadId: "t", turnId: "a", type: "user_message", text: "你好" },
+    { id: "a1", threadId: "t", turnId: "a", type: "assistant_message", text: "你好！想做什么？", phase: "final_answer" },
+    { id: "u2", threadId: "t", turnId: "b", type: "user_message", text: "做个 CLI" },
+    { id: "c2", threadId: "t", turnId: "b", type: "assistant_message", text: "先看看仓库", phase: "commentary" },
+    { id: "r2", threadId: "t", turnId: "b", type: "assistant_message", text: "", runtimeAuthored: true },
+  ];
+  const live = toConversation(items, true);
+  assert.deepEqual(live.messages.map((m) => [m.role, m.text, Boolean(m.streaming)]),
+    [["user", "你好", false], ["assistant", "你好！想做什么？", false], ["user", "做个 CLI", false]]);
+  assert.equal(live.activity, "先看看仓库");
+  const answered = toConversation([...items, { id: "a2", threadId: "t", turnId: "b", type: "assistant_message", text: "提案已放在上面" }], true);
+  assert.equal(answered.messages.at(-1).streaming, true);
+  assert.equal(toConversation(items, false).activity, "");
 });

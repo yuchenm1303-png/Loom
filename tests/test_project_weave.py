@@ -1,0 +1,142 @@
+"""Weave mode: the conversation's own agent chats, proposes a project, and the person starts it."""
+import json
+
+from app.ai import ModelResponse, ModelUsage, ToolCall
+from app.project_runner import program, weave
+from test_app_server import _wait_until
+from test_project_runner import PLAN, build, cycle
+
+
+def answer(text):
+    return ModelResponse(text=text, usage=ModelUsage(5, 0, 5))
+
+
+def calling(name, arguments, call_id="call-1"):
+    return ModelResponse(tool_calls=(ToolCall(call_id=call_id, name=name, arguments=arguments),), usage=ModelUsage(5, 0, 5))
+
+
+def turn(service, source, text, *, weave_mode):
+    params = {"threadId": source, "input": text}
+    if weave_mode:
+        params["weave"] = True
+    service.turn_start(params)
+    _wait_until(lambda: not service._is_active(source) and service._load(source).status.value != "running", timeout=10)
+
+
+def tool_names(request):
+    return {tool.name for tool in request.tools}
+
+
+def context_text(request):
+    return "\n".join(str(message.content) for message in request.messages if message.name == weave.CONTEXT_NAME)
+
+
+def test_a_greeting_in_weave_mode_is_one_chat_answer_with_no_project(tmp_path):
+    service, runtime, platform, _, source = build(tmp_path, [answer("你好！想做点什么？")])
+    try:
+        turn(service, source, "你好", weave_mode=True)
+        assert len(platform.requests) == 1  # one model request, not a planner and a worker
+        request = platform.requests[0]
+        assert {"weave_status", "weave_propose", "weave_steer", "weave_control"} <= tool_names(request)
+        assert "Weave mode" in context_text(request) and "No project is running" in context_text(request)
+        overview = service.project_overview({"threadId": source})
+        assert overview["run"] is None and overview["program"] is None and overview["proposal"] is None
+    finally:
+        runtime.close()
+
+
+def test_chat_mode_turns_never_see_the_weave_tools_or_guide(tmp_path):
+    service, runtime, platform, _, source = build(tmp_path, [answer("hi"), answer("hi again")])
+    try:
+        turn(service, source, "hello", weave_mode=True)
+        turn(service, source, "hello", weave_mode=False)  # the chat composer leaves Weave
+        chat = platform.requests[-1]
+        assert not any(name.startswith("weave_") for name in tool_names(chat))
+        assert service._load(source).weave is False
+    finally:
+        runtime.close()
+
+
+def test_a_weave_tool_refuses_outside_weave_mode(tmp_path):
+    service, runtime, platform, _, source = build(tmp_path, [])
+    try:
+        propose = runtime.tools.get("weave_propose")
+        from app.agent_runtime.tools import ToolContext
+        context = ToolContext(session_id=source, turn_id="t", workspace=tmp_path)
+        try:
+            propose.handler(context, {"objective": "Build it"})
+        except ValueError as exc:
+            assert "Weave mode" in str(exc)
+        else:
+            raise AssertionError("a chat-mode session proposed a project")
+        assert service.weave_proposals.get(source) is None
+    finally:
+        runtime.close()
+
+
+def test_the_agent_proposes_and_only_the_persons_start_runs_it(tmp_path):
+    objective = "Add a CLI that prints the README; done when `python cli.py` prints it."
+    service, runtime, platform, _, source = build(tmp_path, [
+        calling("weave_propose", {"objective": objective, "title": "README CLI", "token_budget": 3_000_000}),
+        answer("I proposed it in the hub; start it when you are ready."),
+        answer(json.dumps(PLAN)),
+    ])
+    try:
+        turn(service, source, "Build me a small CLI over several sessions", weave_mode=True)
+        proposal = service.project_overview({"threadId": source})["proposal"]
+        assert proposal["objective"] == objective and proposal["title"] == "README CLI"
+        assert proposal["tokenBudget"] in weave.BUDGETS and proposal["maxWorkers"] == 1
+        assert program.for_thread(service.project_store, source) is None  # a proposal starts nothing
+        assert len(platform.requests) == 2
+
+        started = weave.start(service, {"threadId": source, "proposalId": proposal["id"], "tokenBudget": 2_000_000,
+                                        "maxWorkers": 1, "operationId": "op-1"})
+        assert started["objective"] == objective and started["tokenBudget"] == 2_000_000
+        assert service.weave_proposals.get(source) is None
+        overview = service.project_overview({"threadId": source})
+        assert overview["run"] is not None and overview["proposal"] is None
+        # The next weave turn knows a project runs, and a second proposal is refused while it does.
+        messages = weave.context_messages(service, service._load(source), None) if service._load(source).weave else ()
+        assert messages and "Current project:" in messages[0].content
+        cycle(service)  # the planner runs only now, after the person's start
+        assert len(platform.requests) == 3
+    finally:
+        runtime.close()
+
+
+def test_a_stale_proposal_cannot_start(tmp_path):
+    service, runtime, platform, _, source = build(tmp_path, [])
+    try:
+        service.weave_proposals.put(source, {"id": "p1", "objective": "x", "tokenBudget": 2_000_000, "maxWorkers": 1})
+        try:
+            weave.start(service, {"threadId": source, "proposalId": "old"})
+        except ValueError as exc:
+            assert "no longer waiting" in str(exc)
+        else:
+            raise AssertionError("an old proposal started")
+        weave.dismiss(service, {"threadId": source, "proposalId": "p1"})
+        assert service.project_overview({"threadId": source})["proposal"] is None
+    finally:
+        runtime.close()
+
+
+def test_the_weave_flag_survives_a_reload(tmp_path):
+    service, runtime, platform, _, source = build(tmp_path, [answer("ok")])
+    try:
+        turn(service, source, "hi", weave_mode=True)
+        assert runtime.store.load(source).weave is True
+    finally:
+        runtime.close()
+
+
+def test_the_planner_sizes_its_plan_and_reads_the_repository_first():
+    from app.project_runner.runner import ProjectRunner
+    prompt = ProjectRunner._prompt(object.__new__(ProjectRunner), {"phase": "planning", "objective": "Say hello"}, [])
+    assert "Size the plan to the objective" in prompt and "Read the repository first" in prompt
+    assert prompt.endswith("Say hello")
+
+
+def test_budget_suggestions_snap_to_the_hubs_choices():
+    assert weave.snap_budget(3_000_000) in (2_000_000, 4_000_000)
+    assert weave.snap_budget(50_000_000) == 16_000_000
+    assert weave.snap_budget("lots") == 8_000_000
