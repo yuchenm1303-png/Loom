@@ -21,7 +21,7 @@ import {
   History, Search, Sparkles, Square, X,
 } from "lucide-react";
 import { ProviderMark } from "./ModelPanel";
-import { useGlide } from "./projectArrange";
+import { useGlide, visibleBox } from "./projectArrange";
 import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
 import type { ModelReasoningState } from "../types/loom";
 import { RETAIN } from "../motion/tokens";
@@ -240,7 +240,7 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
       const toward = side === "left" ? 1 : -1;  // the direction from the cards to the hub
       const list = entries.filter(([, item]) => item.side === side)
         .map(([id, item]) => {
-          const b = box(item.node.getBoundingClientRect());
+          const b = box(visibleBox(item.node));
           return { id, x1: side === "left" ? b.right : b.left, y1: Math.min(b.top + 34, b.top + b.height / 2), y2: 0, lane: 0 };
         })
         .sort((a, b) => a.y1 - b.y1);
@@ -276,7 +276,7 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
       }
     }
     for (const [id, item] of entries.filter(([, item]) => item.side === "below")) {
-      const b = box(item.node.getBoundingClientRect());
+      const b = box(visibleBox(item.node));
       const x = Math.max(b.left + 72, m.left + 72);
       next.push({ id, side: "below", d: `M${x},${b.top} L${x},${m.bottom}`, socket: { x, y: m.bottom } });
     }
@@ -439,7 +439,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const layout = [ids(context), ids(branches), ids(agents), ids(below), ids(loom), files.length,
                   modelTotal, modelView, query, reasoningState?.value ?? "",
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase,
-                  dirtyOpen, objectiveOpen, draft].join("|");
+                  dirtyOpen, objectiveOpen, draft, data.narration.summary, data.narration.text].join("|");
   const { cables, measure } = useCables(stage, hub, cards, layout);
   // A low stage squeezes the thread above the hub: it shows the newest line, and scrolls up to the objective.
   const thread = useRef<HTMLDivElement>(null);
@@ -557,7 +557,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
       </div>
 
       <div className="pf-col pf-center">
-        <div className="pf-thread" ref={thread}>
+        <div className="pf-thread" ref={thread} data-glide="thread">
           {data.objective ? (
             <>
               {/* An objective is often a page of spec: three lines, and the rest on request, so the hub stays in view. */}
