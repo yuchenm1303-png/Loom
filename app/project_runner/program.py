@@ -124,7 +124,10 @@ def create(service, params):
         row = store.db.execute("SELECT data FROM project_programs WHERE json_extract(data,'$.operationId')=?",
                                (operation,)).fetchone()
     if row:
-        return json.loads(row[0])
+        existing = json.loads(row[0])
+        if existing["state"] == "running" and not existing.get("currentRunId"):
+            _start_milestone(service, existing, 1, existing["tokenBudget"], existing["maxEpisodes"])
+        return existing
     program = {"id": str(uuid.uuid4()), "operationId": operation, "objective": objective,
                "sourceThreadId": service._required_text(params, "threadId"), "tokenBudget": budget,
                "maxEpisodes": episodes, "maxWorkers": params.get("maxWorkers", 1), "maxMilestones": milestones,
@@ -189,7 +192,11 @@ def advance(service):
     """Settle finished milestones and start the next; returns whether anything changed."""
     store, changed = service.project_store, False
     for program in list_programs(store):
-        if program["state"] != "running" or not program.get("currentRunId"):
+        if program["state"] != "running":
+            continue
+        if not program.get("currentRunId"):
+            _start_milestone(service, program, 1, program["tokenBudget"], program["maxEpisodes"])
+            changed = True
             continue
         run = store.get(program["currentRunId"])
         if run["state"] == "cancelled":
@@ -235,3 +242,16 @@ def add_guidance(store, program_id, text):
     program = get(store, program_id)
     program["guidance"] = [*program.get("guidance", []), text][-MAX_GUIDANCE:]
     _save(store, program)
+
+
+def completion_review(store, run):
+    """A planner's completion claim becomes a frozen, independently checked task."""
+    owner = get(store, run["milestone"]["programId"])
+    objective = owner["objective"]
+    if owner.get("guidance"):
+        objective += "\nAdditional requirements:\n" + "\n".join(owner["guidance"])
+    return {**run, "objective": objective,
+            "plan": [{"id": "task-1", "instructions": "Verify the entire program objective; repair any missing behavior.",
+                      "acceptance": ["The entire program objective and all additional requirements are satisfied."], "state": "candidate"}],
+            "phase": "verifying", "reviewScope": "project", "taskIndex": 1,
+            "objectiveCompletionPending": True, "verificationStatus": "pending"}

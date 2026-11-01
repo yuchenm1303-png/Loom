@@ -197,6 +197,31 @@ def test_a_criterion_copied_without_its_code_marks_is_the_same_criterion(review_
         assess(run, episode, passed, frozen, source, workspace, [event])
 
 
+@pytest.mark.parametrize("fault", [None, "foreign", "failed", "static", "definition", "stale", "superseded"])
+def test_continuation_progress_uses_the_same_gate_as_the_final_verdict(review_facts, fault):
+    from app.project_runner.review import review_progress
+    run, episode, frozen, source, workspace, event = review_facts
+    events = [event]
+    if fault == "foreign":
+        event.session_id = "another-review"
+    elif fault == "failed":
+        event.data["verdict"] = "failed"
+    elif fault == "static":
+        event.data["check_kind"] = "static"
+    elif fault == "definition":
+        event.data["definition_changed"] = True
+    elif fault == "stale":
+        (workspace / "README.md").write_text("changed")
+    elif fault == "superseded":
+        later = deepcopy(event)
+        later.event_id = "newer-failure"
+        later.data["verdict"] = "failed"
+        events.append(later)
+    progress = review_progress(run, episode["sessionId"], frozen, workspace, events)
+    assert bool(progress["passed"]) is (fault is None)
+    assert progress["remainingCriteria"] == ([] if fault is None else ["task-1:1"])
+
+
 @pytest.mark.parametrize("changed", ["candidate", "reviewer", "definition"])
 def test_changed_source_or_definition_invalidates_review(review_facts, changed):
     run, episode, frozen, source, workspace, event = review_facts

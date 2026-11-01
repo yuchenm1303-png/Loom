@@ -177,15 +177,23 @@ class SimAgent:
         if not after_tools:
             calls = []
             for item in wanted:
-                path, content = re.search(r"(src/\S+\.txt) holds the text '([^']*)'", item["expectation"]).groups()
-                code = f"from pathlib import Path; assert Path({path!r}).read_text(encoding='utf-8') == {content!r}"
+                if item["expectation"].startswith("The entire program objective and all additional requirements"):
+                    paths = [f"src/m{m}-task-{t}.txt" for m in range(1, self.milestones + 1)
+                             for t in range(1, self.tasks + 1)]
+                    code = (f"from pathlib import Path; paths={paths!r}; assert paths; "
+                            "assert all(Path(p).read_text(encoding='utf-8') == Path(p).stem for p in paths)")
+                else:
+                    path, content = re.search(r"(src/\S+\.txt) holds the text '([^']*)'", item["expectation"]).groups()
+                    paths = [path]
+                    code = f"from pathlib import Path; assert Path({path!r}).read_text(encoding='utf-8') == {content!r}"
                 calls.append(ToolCall(f"c-{uuid.uuid4().hex[:8]}", "exec", {
                     "argv": [sys.executable, "-B", "-c", code], "wait": True,
                     "verification": {"case_id": item["id"], "expectation": item["expectation"],
-                                     "subject_paths": [path], "check_kind": "functional"}}))
+                                     "subject_paths": paths, "check_kind": "functional"}}))
             return ModelResponse(tool_calls=tuple(calls))
         scope = (payload.get("scope"), tuple(item["id"] for item in wanted))
-        if wanted and scope not in self.reworked and self.rng.random() < self.rework:
+        if (wanted and not wanted[0]["expectation"].startswith("The entire program objective and all additional requirements")
+                and scope not in self.reworked and self.rng.random() < self.rework):
             self.reworked.add(scope)
             return ModelResponse(text=json.dumps({"verdict": "needs_changes", "summary": "simulated defect",
                 "issues": [{"taskId": wanted[0]["taskId"], "description": "Rewrite the file; expected its content"}]}))

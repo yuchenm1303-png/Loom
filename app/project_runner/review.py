@@ -168,12 +168,19 @@ def assess(run, episode, reply, expected, source, workspace, events):
         return result
     references = reply.get("checks")
     required = {item["id"]: item for item in criteria(run)}
+    result["checks"] = accepted_evidence(episode, expected, workspace, events, references, required)
+    return result
+
+
+def accepted_evidence(episode, expected, workspace, events, references, required):
+    """One validator for final verdicts and the continuation progress shown to reviewers."""
     if not isinstance(references, list) or len(references) != len(required):
         raise ValueError("Review pass requires executed evidence for every acceptance criterion")
     by_id = {event.event_id: event for event in events if event.kind is E.CHECK_RECORDED and event.session_id == episode["sessionId"]}
     latest = {event.data.get("case_id"): event.event_id for event in by_id.values()}
     context = ToolContext(episode["sessionId"], episode["turnId"], Path(workspace))
     seen = set()
+    accepted = []
     for ref in references:
         if not isinstance(ref, dict):
             raise ValueError("Invalid check reference")
@@ -210,6 +217,21 @@ def assess(run, episode, reply, expected, source, workspace, events):
         if not any(value is not None and source_hashes.get(os.path.normcase(path)) == value for path, value in tested_files.items()):
             raise ValueError("Check must cover candidate source files")
         seen.add(criterion_id)
-        result["checks"].append({"criterionId": criterion_id, "eventId": event_id, "turnId": event.turn_id,
+        accepted.append({"criterionId": criterion_id, "eventId": event_id, "turnId": event.turn_id,
                                  "source": data["assessment_source"]})
-    return result
+    return accepted
+
+
+def review_progress(run, session_id, expected, workspace, events):
+    """Only current executed evidence from this candidate's own review session counts."""
+    passed, pending = [], []
+    if expected["definitionHash"] != definition_hash(run) or candidate_view(workspace, expected) != expected["files"]:
+        return {"candidateId": expected["id"], "passed": [], "remainingCriteria": [item["id"] for item in criteria(run)]}
+    episode = {"sessionId": session_id, "turnId": "progress"}
+    for item in criteria(run):
+        try:
+            passed.extend(accepted_evidence(episode, expected, workspace, events,
+                          [{"criterionId": item["id"]}], {item["id"]: item}))
+        except (ValueError, OSError, TypeError, KeyError):
+            pending.append(item["id"])
+    return {"candidateId": expected["id"], "passed": passed, "remainingCriteria": pending}

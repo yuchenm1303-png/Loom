@@ -225,9 +225,9 @@ class ProjectRunner:
             except Exception as exc:
                 self.error = f"{type(exc).__name__}: {exc}"
 
-    def prompt(self, run, kept=(), references=()):
+    def prompt(self, run, kept=(), references=(), progress=None):
         note = run.get("replyNote")
-        text = self._prompt(run, list(kept))
+        text = self._prompt(run, list(kept), progress)
         if references:
             # Files the person attached to the program (a spec, sample data): copies in this session's scratch.
             text = ("The person attached reference files for this project. Read them where they bear on your work; "
@@ -255,7 +255,7 @@ class ProjectRunner:
         except ValueError:
             return []
 
-    def _prompt(self, run, kept):
+    def _prompt(self, run, kept, progress=None):
         if run["phase"] == "planning":
             if run.get("maxWorkers", 1) > 1:
                 return ('Plan this project as ordered task IDs task-1, task-2, etc. Return only JSON {"tasks":[{"instructions":"scoped implementation",'
@@ -288,8 +288,11 @@ class ProjectRunner:
                     "Use blocked if the environment cannot verify behavior; continue if more checking needs another episode.\n"
                     + (f"The runner rejected your previous verdict: {run['reviewNote']} Record the missing or corrected evidence, then report again. "
                        if run.get("reviewNote") else "")
+                    + "reviewProgress lists current passing evidence already recorded in YOUR session for this frozen candidate. "
+                    "Continue with remainingCriteria; do not repeat passed checks unless their source or definition changed. "
+                    "When none remain, judge coverage of the full objective and report your verdict; do not start the checklist again. "
                     + ("acceptedChecks are commands an earlier independent review ran and accepted for these criteria. Re-run them "
-                       "first (they are cheap), with the same verification fields, and judge whether each still exercises its "
+                       "only for remainingCriteria, with the same verification fields, and judge whether each still exercises its "
                        "criterion; then probe what they miss. They are evidence only once you run them here. A check whose "
                        "command changes after it was recorded is not evidence in this episode: if one fails for an "
                        "environment reason (a sandbox denial, a missing path) rather than behavior, fix it and report "
@@ -298,6 +301,7 @@ class ProjectRunner:
                     + encoded({"objective": run["objective"], "scope": run["reviewScope"], "criteria": criteria(run),
                                "plan": run["plan"], "candidate": run["reviewCandidate"],
                                "acceptedChecks": self._scoped(kept, run, review=True),
+                               "reviewProgress": progress,
                                "projectNotes": checks.notes_for(self.store, run)}))
         task = run["plan"][run["taskIndex"]]
         return ("Continue this persistent project in its isolated workspace. Preserve prior work. "
@@ -396,8 +400,10 @@ class ProjectRunner:
             references = attached(run, session_id) if attached else []
         except (OSError, ValueError):
             references = []
+        progress_reader = getattr(self.executor, "review_progress", None)
+        progress = progress_reader(run, session_id) if run["phase"] == "verifying" and progress_reader else None
         episode = {"id": str(uuid.uuid4()), "runId": run["id"], "turnId": str(uuid.uuid4()), "sessionId": session_id,
-                   "phase": run["phase"], "taskIndex": run["taskIndex"], "prompt": self.prompt(run, kept, references), "state": "prepared"}
+                   "phase": run["phase"], "taskIndex": run["taskIndex"], "prompt": self.prompt(run, kept, references, progress), "state": "prepared"}
         # Session creation may leave an orphan after a crash; it has no execution authority.
         with self.store.transaction() as db:
             current = self.store._read(db, run["id"])
@@ -454,6 +460,8 @@ class ProjectRunner:
         elif verdict == "blocked":
             run.update(state="needs_review", control="paused", reason=assessment["summary"])
         elif verdict == "passed" and run["reviewScope"] == "project":
+            if run.get("objectiveCompletionPending"):
+                run["objectiveComplete"] = True
             for task in run["plan"]:
                 task["state"] = "verified"
             run.update(state="ready_for_review", control="paused", verificationStatus="passed",
@@ -529,13 +537,16 @@ class ProjectRunner:
                 checks.add_notes(db, current, reply.get("notes"))
                 if episode["phase"] == "planning" and (current.get("milestone") or {}).get("index", 1) > 1 \
                         and reply.get("complete") is True and not reply.get("tasks"):
-                    # A later milestone's planner found the objective achieved in the
-                    # integrated repository: nothing to build, the program is done.
+                    # A planner's claim starts independent whole-objective review;
+                    # only reviewed integration can complete the program.
                     summary = reply.get("summary")
                     if not isinstance(summary, str) or not summary.strip():
                         raise ReplyFormatError("a complete objective needs a summary of the evidence")
-                    current.update(state="integrated", workflowStatus="completed", workflowControl="paused",
-                                   objectiveComplete=True, plan=[], reason=summary[:2000])
+                    pending = facts["completionReview"]
+                    for key in ("objective", "plan", "phase", "reviewScope", "taskIndex", "objectiveCompletionPending", "verificationStatus"):
+                        current[key] = pending[key]
+                    current.update(handoff=summary[:2000], objectiveComplete=False)
+                    self.store.put_candidate(db, current, facts["candidate"])
                 elif episode["phase"] == "planning":
                     # Validate the whole plan before touching the run: a rejected plan
                     # goes back to the planner and must leave the run in planning.

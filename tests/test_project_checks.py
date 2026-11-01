@@ -9,7 +9,7 @@ import uuid
 from app.agent_runtime.contracts import AgentEventKind as E
 from app.project_runner import checks
 from app.project_runner.store import ProjectStore
-from test_project_runner import create, control, cycle, reply
+from test_project_runner import create, control, cycle, reply, PLAN
 from test_project_review import setup_review, writing, checking, check_both, CANDIDATE, PASSED, PASSED_ALL, TWO_TASKS
 
 
@@ -69,6 +69,32 @@ def test_later_review_and_next_worker_receive_the_accepted_checks(tmp_path):
         with service.project_store.lock:
             kept = [json.loads(row[0]) for row in service.project_store.db.execute("SELECT data FROM project_checks")]
         assert {item["criterionId"] for item in kept} >= {"task-1:1"}
+    finally:
+        runtime.close()
+
+
+def test_continued_review_prompt_keeps_current_evidence_and_finishes_without_rerunning(tmp_path):
+    responses = [reply(PLAN), writing("fixed"), reply(CANDIDATE), checking(),
+                 reply({"verdict": "continue", "summary": "Criterion checked; finish coverage next episode"}), reply(PASSED)]
+    service, runtime, platform, _, source = setup_review(tmp_path, responses)
+    try:
+        run = create(service, source, reviewPolicy="independent", maxEpisodes=12)
+        control(service, run, "start")
+        for _ in range(10):
+            cycle(service)
+            if service.project_store.get(run["id"])["state"] != "running":
+                break
+        final = service.project_store.get(run["id"])
+        assert final["verificationStatus"] == "passed"
+        with service.project_store.lock:
+            episodes = [json.loads(row[0]) for row in service.project_store.db.execute(
+                "SELECT data FROM project_episodes WHERE run_id=? ORDER BY rowid", (run["id"],))]
+        prompt = episodes[-1]["prompt"]
+        payload = json.JSONDecoder().raw_decode(prompt, prompt.index('{"acceptedChecks"'))[0]
+        assert payload["reviewProgress"]["remainingCriteria"] == []
+        assert payload["reviewProgress"]["passed"][0]["criterionId"] == "task-1:1"
+        assert "do not start the checklist again" in prompt
+        assert len(platform.requests) == len(responses)
     finally:
         runtime.close()
 

@@ -10,6 +10,11 @@ from test_project_review import setup_review, writing, checking, PLAN, CANDIDATE
 from test_project_runner import cycle, reply
 
 COMPLETE = {"complete": True, "summary": "app.txt holds the fixed implementation the objective asks for"}
+OBJECTIVE_EXPECTATION = "The entire program objective and all additional requirements are satisfied."
+
+
+def completion():
+    return [reply(COMPLETE), checking(expectation=OBJECTIVE_EXPECTATION), reply(PASSED)]
 
 
 def run_program(service, source, **kwargs):
@@ -28,7 +33,7 @@ def test_next_milestone_plans_from_the_integrated_repository_then_reports_comple
     import test_app_server
     monkeypatch.setattr(test_app_server, "DurableAgentRuntime", ContextAgentRuntime)
     responses = [reply(PLAN), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED),  # milestone 1
-                 reply(COMPLETE)]                                                                # milestone 2's planner
+                 *completion()]
     service, runtime, platform, workspace, source = setup_review(tmp_path, responses)
     try:
         final = run_program(service, source)
@@ -38,13 +43,15 @@ def test_next_milestone_plans_from_the_integrated_repository_then_reports_comple
         first, second = (service.project_store.get(item["runId"]) for item in final["milestones"])
         assert first["milestone"]["index"] == 1 and second["milestone"]["index"] == 2
         assert second["baseCommit"] != first["baseCommit"]  # the next milestone starts from the integrated commit
-        planner_one, planner_two = str(platform.requests[0].messages), str(platform.requests[-1].messages)
+        planner_one, planner_two = str(platform.requests[0].messages), str(platform.requests[-3].messages)
         assert "This is milestone 1" in planner_one and '"complete":true' not in planner_one
         assert "This is milestone 2" in planner_two and "Milestone 1: 1 tasks integrated" in planner_two
         assert '"complete":true' in planner_two
         # One budget across milestones: the second run got what the first left.
         assert second["tokenBudget"] == 10000 - final["milestones"][0]["tokens"]
         assert len(platform.requests) == len(responses)
+        assert second["lastAssessment"]["verdict"] == "passed"
+        assert second["plan"][0]["acceptance"] == [OBJECTIVE_EXPECTATION]
     finally:
         runtime.close()
 
@@ -52,7 +59,7 @@ def test_next_milestone_plans_from_the_integrated_repository_then_reports_comple
 def test_the_first_milestone_cannot_declare_the_objective_complete(tmp_path):
     # Nothing has been built yet; a "complete" first plan is a malformed reply, sent back.
     responses = [reply(COMPLETE), reply(PLAN), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED),
-                 reply(COMPLETE)]
+                 *completion()]
     service, runtime, platform, workspace, source = setup_review(tmp_path, responses)
     try:
         final = run_program(service, source)
@@ -65,7 +72,7 @@ def test_the_first_milestone_cannot_declare_the_objective_complete(tmp_path):
 
 
 def test_a_restarted_host_never_starts_a_milestone_twice(tmp_path):
-    responses = [reply(PLAN), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED), reply(COMPLETE)]
+    responses = [reply(PLAN), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED), *completion()]
     service, runtime, platform, workspace, source = setup_review(tmp_path, responses)
     try:
         with service.project_runner.guard:
@@ -101,7 +108,7 @@ def test_attached_files_reach_every_episode_as_scratch_copies(tmp_path, monkeypa
     other = tmp_path / "outside" / "nested"
     other.mkdir()
     (other / "spec.md").write_text("second\n", encoding="utf-8")
-    responses = [reply(PLAN), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED), reply(COMPLETE)]
+    responses = [reply(PLAN), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED), *completion()]
     service, runtime, platform, workspace, source = setup_review(tmp_path, responses)
     try:
         with pytest.raises(ValueError, match="Not a file"):
@@ -125,3 +132,62 @@ def test_attached_files_reach_every_episode_as_scratch_copies(tmp_path, monkeypa
         assert [item["name"] for item in later["references"]] == ["spec.md", "spec-2.md"]
     finally:
         runtime.close()
+
+
+def test_initial_program_save_recovers_on_retry_and_scheduler(tmp_path, monkeypatch):
+    import pytest
+    from test_project_runner import build
+    service, runtime, _, _, source = build(tmp_path, [])
+    original = program._start_milestone
+    def crash(*args):
+        raise KeyboardInterrupt("Host stopped before first milestone")
+    params = {"operationId": "interrupted-create", "threadId": source,
+              "objective": "Implement a working project", "tokenBudget": 10000, "maxEpisodes": 40}
+    try:
+        monkeypatch.setattr(program, "_start_milestone", crash)
+        with pytest.raises(KeyboardInterrupt):
+            program.create(service, params)
+        saved = program.list_programs(service.project_store)[0]
+        assert saved["currentRunId"] is None
+        monkeypatch.setattr(program, "_start_milestone", original)
+        assert program.advance(service)
+        recovered = program.create(service, params)
+        assert recovered["id"] == saved["id"] and recovered["currentRunId"]
+        assert len(service.project_store.list()) == 1
+        # Also cover retry without a scheduler tick (no second run, even after its creation).
+        recovered["currentRunId"] = None
+        program._save(service.project_store, recovered)
+        assert program.create(service, params)["currentRunId"]
+        assert len(service.project_store.list()) == 1
+    finally:
+        runtime.close()
+
+
+def test_planner_completion_claim_cannot_complete_without_independent_evidence(tmp_path):
+    service, runtime, _, _, source = setup_review(tmp_path,
+        [reply(PLAN), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED),
+         reply(COMPLETE), reply(PASSED), reply(PASSED), reply(PASSED)])
+    try:
+        final = run_program(service, source)
+        assert final["state"] == "running"
+        current = service.project_store.get(final["currentRunId"])
+        assert not current.get("objectiveComplete")
+        assert current["state"] == "needs_review"
+        assert current["objectiveCompletionPending"]
+    finally:
+        runtime.close()
+
+
+def test_completion_freezes_full_requirements_without_exceeding_check_field_limit(tmp_path):
+    from app.project_runner.store import ProjectStore
+    store = ProjectStore(tmp_path)
+    try:
+        owner = {"id": "program", "objective": "full requirement " * 1000,
+                 "guidance": ["Additional requirement " * 100]}
+        program._save(store, owner)
+        pending = program.completion_review(store, {"milestone": {"programId": "program"}})
+        assert owner["objective"] in pending["objective"]
+        assert owner["guidance"][0] in pending["objective"]
+        assert len(pending["plan"][0]["acceptance"][0]) <= 2000
+    finally:
+        store.close()

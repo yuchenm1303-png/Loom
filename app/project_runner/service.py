@@ -13,7 +13,7 @@ from app.app_server_protocol import pending_approval_record
 from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
-from .review import git, candidate, review_workspace, assess, snapshot, definition_hash
+from .review import git, candidate, review_workspace, assess, snapshot, definition_hash, review_progress
 from . import delivery, integration, workflow, parallel, checks, program
 from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
@@ -114,6 +114,11 @@ class ProjectExecutor:
         scratch.mkdir(parents=True, exist_ok=True)
         return checks.provide(self.service.project_store, run, scratch, workspace)
 
+    def review_progress(self, run, session_id):
+        expected = self.service.project_store.candidate(run)
+        return review_progress(run, session_id, expected, self.service._load(session_id).workspace_dir,
+                               self.service.store.events(session_id))
+
     def references(self, run, session_id):
         """The program's attached files, copied into this session's scratch; returns their paths for the prompt."""
         store = self.service.project_store
@@ -184,6 +189,10 @@ class ProjectExecutor:
         source = self.home / "workspaces" / run["id"]
         if run.get("reviewPolicy") != "independent":
             return {}
+        if (episode["phase"] == "planning" and (run.get("milestone") or {}).get("index", 1) > 1
+                and reply.get("complete") is True and not reply.get("tasks")):
+            pending = program.completion_review(self.service.project_store, run)
+            return {"completionReview": pending, "candidate": candidate(pending, source)}
         if episode["phase"] == "working" and reply.get("action") == "candidate":
             parallel.allowed(self.service.project_store, run, source)
             return {"candidate": candidate(review_target(run), source)}
