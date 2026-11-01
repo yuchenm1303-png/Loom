@@ -507,3 +507,32 @@ def test_switch_window_by_title_reaches_the_operator_as_its_id(rig):
     rig.run({"action": {"type": "switch_window", "window_id": "Form"}})
 
     assert rig.desktop.executed[0].window_id == "0x10"
+
+
+@pytest.mark.parametrize("arguments", [
+    {"action": {"actions": [_click(FIELD), {"type": "type", "text": "hunter2"}]}},
+    {"frame_id": "f", "actions": [{"type": "type", "text": "hunter2"}]},
+    {"action": {"type": "type", "text": "hunter2"}},
+])
+def test_typed_text_is_stashed_in_any_shape_the_model_sends(arguments):
+    """A malformed call is rejected only after the response is durable, so its text must be stashed too."""
+
+    class Inner:
+        def execute_chat(self, profile_id, request):
+            return ModelResponse(tool_calls=(ToolCall("c1", "computer_action", arguments),))
+
+    platform = ComputerTransientInputPlatform(Inner())
+    stashed = platform.execute_chat("p", None).tool_calls[0].arguments
+    assert "hunter2" not in str(stashed)
+    assert "loom-transient-computer:" in str(stashed)
+
+
+def test_a_frame_id_beside_the_batch_applies_to_each_step(rig):
+    frame_id = rig.runtime.computer_sessions.latest(rig.context.session_id).observation.frame.frame_id
+    rig.desktop.controls = ()
+
+    result = rig.run({"frame_id": frame_id, "actions": [_click(FIELD), {"type": "type", "text": "Ada"}]})
+
+    assert result.ok is True and len(rig.desktop.executed) == 2
+    with pytest.raises(ValueError, match="stale frame_id"):
+        rig.run({"frame_id": "an-old-frame", "actions": [_click(FIELD)]})

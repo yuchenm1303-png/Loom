@@ -909,7 +909,14 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "If a coordinate pointer action injects successfully but causes no observable UI change, this tool "
                 "returns ok=false so you must not assume the click worked."
             ),
-            input_schema=_schema({"action": _single_action_schema(), "actions": _batch_action_schema()}),
+            input_schema=_schema({
+                "action": _single_action_schema(),
+                "actions": _batch_action_schema(),
+                # Models put the batch's frame_id beside `actions` as often as
+                # inside each step; both mean the same screenshot.
+                "frame_id": {"type": "string", "maxLength": 128,
+                             "description": "The screenshot the batched actions were planned from."},
+            }),
             handler=self._handle_single_action,
             effect=ToolEffect.SENSITIVE,
         )
@@ -1095,6 +1102,9 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         if batch is not None:
             if raw is not None:
                 raise ValueError("computer_action takes either action or actions, not both")
+            shared_frame = str(arguments.get("frame_id") or "")
+            if shared_frame and isinstance(batch, list):
+                batch = [{"frame_id": shared_frame, **item} if isinstance(item, dict) else item for item in batch]
             return self._handle_batch(context, store, batch)
         if not isinstance(raw, dict):
             raise ValueError("computer_action needs action (one object) or actions (a list)")

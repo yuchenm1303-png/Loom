@@ -72,23 +72,13 @@ class ComputerTransientInputPlatform:
                     call_changed = True
 
             if call.name == "computer_action":
-                action = arguments.get("action")
-                if isinstance(action, dict) and str(action.get("type") or "") == "type" and "text" in action:
-                    action = dict(action)
-                    action["text"] = self._stash(str(action.get("text") or ""))
-                    arguments["action"] = action
-                    call_changed = True
-                batch = arguments.get("actions")
-                if isinstance(batch, list) and any(
-                    isinstance(item, dict) and str(item.get("type") or "") == "type" and "text" in item
-                    for item in batch
-                ):
-                    arguments["actions"] = [
-                        {**item, "text": self._stash(str(item.get("text") or ""))}
-                        if isinstance(item, dict) and str(item.get("type") or "") == "type" and "text" in item
-                        else item
-                        for item in batch
-                    ]
+                # Every typed text, wherever the model nested it: a malformed
+                # call is rejected by the schema only after this response is
+                # durable, so a shape this missed (`actions` inside `action`, a
+                # live run 2026-11-01) put the literal text into history.
+                stashed = self._stash_typed_text(arguments)
+                if stashed is not arguments:
+                    arguments = stashed
                     call_changed = True
 
             if call_changed:
@@ -132,6 +122,28 @@ class ComputerTransientInputPlatform:
             self._computer_transient_owner.clear()
         with self._lock:
             self._pending.clear()
+
+    def _stash_typed_text(self, value: Any) -> Any:
+        """``value`` with every ``{"type": "type", "text": ...}`` text stashed; the same object if none."""
+
+        if isinstance(value, dict):
+            changed = False
+            result = {}
+            for key, item in value.items():
+                # A text that is already a handle is stashed too: that is how a
+                # copied handle is recognised and refused when consumed.
+                if key == "text" and str(value.get("type") or "") == "type":
+                    result[key] = self._stash(str(item or ""))
+                    changed = True
+                else:
+                    new = self._stash_typed_text(item)
+                    changed = changed or new is not item
+                    result[key] = new
+            return result if changed else value
+        if isinstance(value, list):
+            items = [self._stash_typed_text(item) for item in value]
+            return items if any(new is not old for new, old in zip(items, value)) else value
+        return value
 
     def _stash(self, value: str) -> str:
         token = uuid.uuid4().hex
