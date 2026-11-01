@@ -56,7 +56,7 @@ def start(service, params):
     ref = git(root, "symbolic-ref", "HEAD")
     if parent.get("completionPolicy") == "local_integrate" and ref != parent.get("completionRef"):
         raise ValueError("Automatic integration source branch changed")
-    if not ref.startswith("refs/heads/") or git(root, "status", "--porcelain"):
+    if not ref.startswith("refs/heads/") or user_changes(root):
         raise ValueError("Integration requires a clean source branch")
     head = git(root, "rev-parse", "HEAD")
     git(root, "merge-base", "--is-ancestor", parent["baseCommit"], head)
@@ -120,13 +120,19 @@ def adopt(store, operation, request, parent, ref, head, budget, episodes):
     return store.command(operation, request, record)
 
 
+def user_changes(root):
+    """Changes to tracked files in the person's checkout. Untracked files (scratch, checkpoints, reports)
+    are theirs and stay out of the way: a fast-forward that would overwrite one is refused by Git itself."""
+    return git(root, "status", "--porcelain", "--untracked-files=no")
+
+
 def fast_forward(run, receipt):
     root = identity(run)
     target = run["integrationTarget"]
     exported = Path(receipt["workspace"])
     if git(exported, "rev-parse", "HEAD") != receipt["commit"] or git(exported, "status", "--porcelain"):
         raise ValueError("Delivered checkout changed; inspect before integration")
-    if git(root, "symbolic-ref", "HEAD") != target["ref"] or git(root, "status", "--porcelain"):
+    if git(root, "symbolic-ref", "HEAD") != target["ref"] or user_changes(root):
         raise ValueError("Source branch changed or has uncommitted changes; integration retained")
     head = git(root, "rev-parse", "HEAD")
     if head not in {target["head"], receipt["commit"]}:
@@ -140,7 +146,7 @@ def fast_forward(run, receipt):
     # The user's checkout follows the user's Git filters (autocrlf=true writes an
     # accepted LF file as CRLF), so its bytes are not the reviewed bytes. A clean
     # status over exactly the delivered tree is what "integrated" means there.
-    if git(root, "status", "--porcelain") or git(root, "write-tree") != receipt["tree"]:
+    if user_changes(root) or git(root, "write-tree") != receipt["tree"]:
         raise ValueError("Integrated checkout differs from accepted delivery; inspect before retrying")
 
 

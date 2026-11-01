@@ -120,9 +120,9 @@ const zhText = {
   spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
     `${phase} · ${minutes} 分 · ${compact(tokens)} token${trouble ? " · 未正常结束，已重试" : ""}`,
   dirty: (n: number) => `仓库里有 ${n} 个未提交的改动`,
-  dirtyWhy: (head: string, branch: string) => `建造从最后一次提交${head ? `（${head}）` : ""}开始，完成后合并回 ${branch || "当前分支"}；未提交的改动会挡住这一步，所以先提交它们。`,
+  dirtyWhy: (head: string, branch: string) => `建造从最后一次提交${head ? `（${head}）` : ""}开始，这些改动不会带进去；可以照常开始。完成后合并回 ${branch || "当前分支"} 时，已跟踪文件还没提交的改动会让合并先等你处理，未跟踪的文件不受影响。`,
   dirtyShow: "查看并提交", dirtyHide: "收起", dirtyMore: (n: number) => `还有 ${n} 个`, commitAll: "全部提交",
-  commitMessage: "保存改动，准备开始建造", commitHint: "不想提交的文件，先加入 .gitignore 或移出仓库。", startBlocked: "先提交未提交的改动",
+  commitMessage: "保存改动，准备开始建造", commitHint: "不想提交的文件，先加入 .gitignore 或移出仓库。",
   now: "现在", files: "参考文件", filesEmpty: "需求文档、规格或样例数据，每一轮的 agent 都能读到", addFiles: "添加文件",
   remove: "移除", modelCard: "模型", modelSearch: "搜索模型", modelGroups: "模型来源", modelRecent: "最近", modelNone: "没有匹配的模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "建造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "描述一个要持续完成的目标，它会被拆成阶段和任务，独立复审后集成", steerPlaceholder: "补充要求或调整方向，下一轮生效",
@@ -140,10 +140,9 @@ const enText: typeof zhText = {
   spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
     `${phase} · ${minutes} min · ${compact(tokens)} tokens${trouble ? " · did not settle; retried" : ""}`,
   dirty: (n: number) => `The repository has ${n} uncommitted change${n === 1 ? "" : "s"}`,
-  dirtyWhy: (head: string, branch: string) => `Weave starts from the last commit${head ? ` (${head})` : ""} and merges back into ${branch || "the current branch"} when done; uncommitted changes would block that, so commit them first.`,
+  dirtyWhy: (head: string, branch: string) => `Weave starts from the last commit${head ? ` (${head})` : ""}; these changes are not included, and you can start anyway. When it merges back into ${branch || "the current branch"}, uncommitted changes to tracked files make the merge wait for you; untracked files do not matter.`,
   dirtyShow: "Review and commit", dirtyHide: "Hide", dirtyMore: (n: number) => `${n} more`, commitAll: "Commit all",
   commitMessage: "Save work before Weave", commitHint: "Add files you do not want committed to .gitignore, or move them out of the repository.",
-  startBlocked: "Commit the uncommitted changes first",
   now: "now", files: "Reference files", filesEmpty: "Specs, documents or sample data; every episode can read them",
   addFiles: "Add files", remove: "Remove", modelCard: "Model", modelSearch: "Search models", modelGroups: "Model sources", modelRecent: "Recent", modelNone: "No matching models", vision: "vision",
   modelHint: "Agents already started keep their model; new ones use the choice", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
@@ -459,11 +458,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const slot = (id: string) => ({ "data-leaving": leaving.has(id) || undefined });
   const hover = (id: string) => ({ onPointerEnter: () => setHot(id), onPointerLeave: () => setHot("") });
   const shownWorkers = draftMode ? workers : data.workers;
-  // Uncommitted changes would stop the Host at the start (and at the merge back): the start waits for them.
-  const blocked = draftMode && Boolean(data.workspace?.changeCount);
   const submit = () => {
     const value = draft.trim();
-    if (!value || actions.busy || blocked) return;
+    if (!value || actions.busy) return;
     if (draftMode) { actions.onStart?.(value, workers, tokens, picked); setPicked([]); } else actions.onSteer?.(value);
     setDraft("");
   };
@@ -589,9 +586,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             </div>
           ) : null}
           {draftMode && data.workspace?.changeCount ? (
-            // What would stop a start, shown before it is tried, with the one way through it.
+            // A reminder, never a lock: the start builds from the last commit, so these stay out of it.
             <div className="pf-attention pf-dirty" role="status" data-open={dirtyOpen || undefined}>
-              {/* One line until opened; why it blocks is read with the files, not before them. */}
+              {/* One line until opened; why it matters is read with the files, not before them. */}
               <div className="pf-dirty-line">
                 <span className="pf-attention-dot" />
                 <span className="pf-attention-text" title={text.dirtyWhy(data.workspace.head, data.workspace.branch)}>{text.dirty(data.workspace.changeCount)}</span>
@@ -694,8 +691,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 <ChevronDown size={11} />
               </button>
             ) : null}
-            <button type="button" className="pf-send" disabled={!draft.trim() || actions.busy || blocked} aria-label={draftMode ? text.start : text.send}
-                    title={blocked ? text.startBlocked : undefined}
+            <button type="button" className="pf-send" disabled={!draft.trim() || actions.busy} aria-label={draftMode ? text.start : text.send}
                     onClick={submit}>{actions.busy ? <LoaderCircle size={15} className="pf-busy" /> : <ArrowUp size={15} />}</button>
           </footer>
         </section>

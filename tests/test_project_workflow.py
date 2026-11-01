@@ -95,7 +95,7 @@ def test_saved_prepare_command_recovers_child_after_reopen_without_duplicate(aut
 def test_dirty_source_blocks_once_and_explicit_resume_retries_after_fix(automatic):
     service, run_id, root, platform = automatic
     run = until(service, run_id, lambda r: r.get("workflowStep", {}).get("action") == "prepare" if r.get("workflowStep") else False)
-    (root / "user.txt").write_text("user work")
+    (root / "README.md").write_text("user work")  # a tracked edit; untracked files do not hold the merge
     blocked = until(service, run_id, lambda r: r.get("workflowStatus") == "blocked")
     assert not (root / "app.txt").exists()
     revision, count = blocked["revision"], len(platform.requests)
@@ -103,14 +103,14 @@ def test_dirty_source_blocks_once_and_explicit_resume_retries_after_fix(automati
         cycle(service)
     assert service.project_store.get(run_id)["revision"] == revision
     assert len(platform.requests) == count
-    git(root, "add", "user.txt")
+    git(root, "add", "README.md")
     git(root, "commit", "-m", "Preserve user work")
     # The source advanced, so the merged result differs from what was accepted:
     # integration needs its own fresh review this time.
     platform.responses.extend([checking(), reply(PASSED)])
     control(service, blocked, "resume")
     final = until(service, run_id, lambda r: r.get("workflowStatus") == "completed")
-    assert (root / "user.txt").read_text() == "user work"
+    assert (root / "README.md").read_text() == "user work"
     child = service.project_store.get(final["integrationRunId"])
     assert "reviewReused" not in child["integrationTarget"] and child["verificationStatus"] == "passed"
     assert len(platform.requests) == 7

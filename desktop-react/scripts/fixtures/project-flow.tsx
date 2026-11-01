@@ -105,7 +105,7 @@ function play(count: number, workers: number) {
 function variant(data: FlowData): FlowData {
   if (params.has("draft")) return { ...data, phase: "draft", objective: "", narration: { summary: "", text: "描述一个大目标，它会被拆成阶段和任务，并行开发、独立复审后集成。" },
     tasks: [], agents: [], scope: [], knowledge: { checks: 0, notes: 0, latest: "" }, controls: { pause: false, resume: false, cancel: false },
-    // &dirty=1: the repository has uncommitted changes, so the start waits for a commit.
+    // &dirty=1: the repository has uncommitted changes, shown as a reminder; the start still goes.
     workspace: params.has("dirty") ? { changeCount: 11, head: "0a1d215", branch: "main",
       changes: [{ status: "M", path: "src/relay/server.py" }, { status: "M", path: "src/relay/client.py" }, { status: "A", path: "src/relay/auth.py" },
               { status: "D", path: "docs/old-setup.md" }, { status: "??", path: "scratch/" }, { status: "M", path: "README.md" },

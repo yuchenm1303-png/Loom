@@ -211,7 +211,7 @@ def test_workspace_project_create_and_project_run_create_are_distinct(tmp_path):
         runtime.close()
 
 
-def test_rpc_exposes_run_and_event_cursor_and_rejects_dirty_source(tmp_path):
+def test_rpc_exposes_run_and_event_cursor_and_starts_beside_uncommitted_changes(tmp_path):
     service, runtime, _, workspace, source = build(tmp_path, [])
     try:
         rpc = Controller(service)
@@ -220,9 +220,13 @@ def test_rpc_exposes_run_and_event_cursor_and_rejects_dirty_source(tmp_path):
         events = rpc._dispatch("projectRun/events", {"runId": run["id"]})["events"]
         assert events[0]["kind"] == "created"
         assert rpc._dispatch("projectRun/events", {"runId": run["id"], "afterSequence": events[0]["sequence"]}) == {"events": []}
+        # Changes in the person's checkout (theirs, another conversation's) never stop a start: the project
+        # builds from the last commit and leaves them where they are.
+        head = git(workspace, "rev-parse", "HEAD")
         (workspace / "README.md").write_text("uncommitted")
-        with pytest.raises(ValueError, match="existing workspace"):
-            create(service, source)
+        (workspace / "notes.md").write_text("untracked")
+        assert create(service, source)["baseCommit"] == head
+        assert (workspace / "README.md").read_text() == "uncommitted"
     finally:
         runtime.close()
 

@@ -92,6 +92,21 @@ def test_source_advancement_and_dirty_files_stop_apply_without_overwrite(accepte
     assert not (root / "app.txt").exists()
 
 
+def test_untracked_files_do_not_hold_the_merge_back_and_are_never_overwritten(accepted):
+    service, child, root, platform = prepare(accepted)
+    delivered = accept_child(service, child, platform)
+    params = request(delivered)
+    (root / "notes.md").write_text("scratch the person keeps")
+    (root / "app.txt").write_text("an untracked file the delivery would replace")
+    with pytest.raises(ValueError, match="untracked"):
+        integration.apply(service, params)
+    assert (root / "app.txt").read_text() == "an untracked file the delivery would replace"
+    (root / "app.txt").unlink()
+    assert integration.apply(service, params)["state"] == "integrated"
+    assert (root / "app.txt").read_text() == "fixed"
+    assert (root / "notes.md").read_text() == "scratch the person keeps"
+
+
 def test_conflict_keeps_source_and_has_no_new_review_or_model_call(accepted):
     service, run, root, platform = accepted
     delivered = service.project_deliver(request(run))

@@ -160,6 +160,7 @@ def test_an_approval_asked_before_a_restart_ends_the_episode_and_work_continues(
 
 def test_uncommitted_changes_show_before_a_start_and_commit_all_at_once(tmp_path):
     import pytest
+    # Shown as a reminder only: a start is never refused for them (test_project_runner covers that).
     service, runtime, platform, workspace, source = build(tmp_path, [])
     try:
         (workspace / "README.md").write_text("edited\n")
@@ -167,13 +168,11 @@ def test_uncommitted_changes_show_before_a_start_and_commit_all_at_once(tmp_path
         state = service.project_overview({"threadId": source})["workspace"]
         assert state["changeCount"] == 2 and state["branch"]
         assert sorted(item["path"] for item in state["changes"]) == ["README.md", "notes 笔记.txt"]  # not quoted
-        with pytest.raises(ValueError, match="uncommitted|commit or separate"):
-            create(service, source)
         with pytest.raises(ValueError, match="moved"):
             service.project_commit_workspace({"threadId": source, "message": "Save", "expectedCount": 1})
         after = service.project_commit_workspace({"threadId": source, "message": "  Save work   before Weave ", "expectedCount": 2})
         assert after["changeCount"] == 0 and after["head"] != state["head"]
         assert git(workspace, "log", "-1", "--format=%s") == "Save work before Weave"
-        create(service, source)  # starts now
+        create(service, source)
     finally:
         runtime.close()

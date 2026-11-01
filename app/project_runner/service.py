@@ -426,8 +426,8 @@ class ProjectServiceMixin:
         root = Path(source.workspace_dir).resolve()
         if Path(git(root, "rev-parse", "--show-toplevel")).resolve() != root:
             raise ValueError("first project-runner version requires a Git repository root")
-        if git(root, "status", "--porcelain"):
-            raise ValueError("commit or separate existing workspace changes before creating a project run")
+        # Uncommitted changes do not stop a start: the project builds from the last commit in its own
+        # checkout and never touches this one until the merge back, which checks it again then.
         completion_ref = git(root, "symbolic-ref", "HEAD") if completion == "local_integrate" else None
         return self.project_store.create(params.get("operationId"), {
             "sourceThreadId": source.session_id, "objective": objective, "tokenBudget": budget, "maxEpisodes": episodes,
