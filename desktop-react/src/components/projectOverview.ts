@@ -13,7 +13,7 @@ export interface OverviewAgent {
 }
 export interface OverviewEvent { sequence: number; runId: string; kind: string; at?: number | null; reason?: string; taskId?: string | null }
 export interface ProjectProgram {
-  id: string; objective: string; state: string; reason?: string; maxWorkers?: number; createdAt?: number;
+  id: string; objective: string; state: string; reason?: string; maxWorkers?: number; permissionMode?: string; createdAt?: number;
   milestones: { index: number; runId: string; complete: boolean; tokens: number; episodes: number; summary: string }[];
   tokenBudget: number; maxEpisodes: number; currentRunId?: string | null;
   references?: { name: string; bytes: number }[];
@@ -232,6 +232,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     }),
     budget: { tokens, tokenLimit: program?.tokenBudget || run.tokenBudget },
     workers: program?.maxWorkers || run.maxWorkers || 1,
+    fullAccess: (program?.permissionMode || run.permissionMode) === "full-access",
     maxWorkers: 2,
     controls: { pause: state === "running", resume: state === "paused" && !stopped && !finished, cancel: !finished && !stopped },
     agents: overview.agents.map((agent, index) => {

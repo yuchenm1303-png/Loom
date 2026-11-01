@@ -150,7 +150,8 @@ def start(service, params):
         "operationId": params.get("operationId") or f"weave:{proposal['id']}", "threadId": thread_id,
         "objective": proposal["objective"], "tokenBudget": params.get("tokenBudget", proposal["tokenBudget"]),
         "maxEpisodes": params.get("maxEpisodes", 400), "maxWorkers": params.get("maxWorkers", proposal["maxWorkers"]),
-        "maxMilestones": params.get("maxMilestones", 20), "attachments": params.get("attachments")})
+        "maxMilestones": params.get("maxMilestones", 20), "attachments": params.get("attachments"),
+        "permissionMode": params.get("permissionMode", "workspace")})
     service.weave_proposals.take(thread_id, proposal["id"])
     return created
 

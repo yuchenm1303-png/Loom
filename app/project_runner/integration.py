@@ -77,7 +77,7 @@ def start(service, params):
     commit = git(root, "-c", "user.name=Loom Project Runner", "-c", "user.email=loom@localhost",
                  "commit-tree", tree, "-p", head, "-p", receipt["commit"], "-m", f"Prepare integration of project {run_id}")
     child = {key: copy.deepcopy(parent[key]) for key in ("sourceThreadId", "objective", "repository", "gitCommonDir",
-        "budgetEnforcement", "reviewPolicy", "maxReviewCycles", "plan", "tokensUsed", "episodesUsed")}
+        "budgetEnforcement", "reviewPolicy", "maxReviewCycles", "plan", "tokensUsed", "episodesUsed", "permissionMode") if key in parent}
     child.update(id=str(uuid.uuid4()), revision=0, state="running", control="active", phase="verifying",
         reviewScope="project", taskIndex=len(child["plan"]), sessions={}, activeEpisode=None,
         reviewFailures={}, feedback=[], verificationStatus="pending", reason="Merged content requires fresh independent acceptance",

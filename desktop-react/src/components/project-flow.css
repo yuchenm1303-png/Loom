@@ -584,6 +584,10 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-chip-button:hover { background: var(--pf-raise); }
 .pf-chip-value { color: var(--pl-ink); font-variant-numeric: tabular-nums; animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards; }
 .pf-chip-unit { color: var(--pl-muted); }
+/* Full access is the one setting that widens what agents can reach: it reads as a caution, not an alarm. */
+.pf-chip[data-full] { color: var(--pf-warn); }
+.pf-chip[data-full] svg { color: var(--pf-warn); }
+.pf-chip-button .pf-chip-label { animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards; }
 
 .pf-stepper { gap: 6px; padding: 0 8px; }
 .pf-stepper[data-editable] { padding: 0 3px; }

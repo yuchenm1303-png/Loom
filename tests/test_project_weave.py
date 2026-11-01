@@ -90,8 +90,10 @@ def test_the_agent_proposes_and_only_the_persons_start_runs_it(tmp_path):
         assert len(platform.requests) == 2
 
         started = weave.start(service, {"threadId": source, "proposalId": proposal["id"], "tokenBudget": 2_000_000,
-                                        "maxWorkers": 1, "operationId": "op-1"})
+                                        "maxWorkers": 1, "operationId": "op-1", "permissionMode": "full-access"})
         assert started["objective"] == objective and started["tokenBudget"] == 2_000_000
+        assert started["permissionMode"] == "full-access"  # the person's choice in the hub reaches the run
+        assert service.project_store.get(started["currentRunId"])["permissionMode"] == "full-access"
         assert service.weave_proposals.get(source) is None
         overview = service.project_overview({"threadId": source})
         assert overview["run"] is not None and overview["proposal"] is None

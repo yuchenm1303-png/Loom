@@ -118,7 +118,8 @@ function talk(data: FlowData): FlowData {
 
 // ?draft=1: nothing started yet (&proposal=1: the agent proposed a project); ?attention=1: stopped at the budget and waiting.
 function variant(data: FlowData): FlowData {
-  return talk(variantOf(data));
+  // &full=1: the run was started with full access.
+  return talk({ ...variantOf(data), fullAccess: params.has("full") });
 }
 function variantOf(data: FlowData): FlowData {
   if (params.has("draft")) return { ...data, phase: "draft", objective: "", narration: { summary: "", text: "描述一个大目标，它会被拆成阶段和任务，并行开发、独立复审后集成。" },
@@ -166,7 +167,7 @@ function Preview() {
       {mode === "project"
         ? <div className="project-mode-stage" style={{ gridRow: "2" }}>
             <ProjectFlow data={{ ...variant(play(count, workers)), models, references: REFERENCES }}
-                         actions={{ onChat: () => {}, onInterrupt: () => {}, onStart: () => {}, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {},
+                         actions={{ onChat: () => {}, onInterrupt: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {},
                                     error: params.has("error") ? "Lost the Host; reconnecting…" : undefined,
                                     onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
           </div>

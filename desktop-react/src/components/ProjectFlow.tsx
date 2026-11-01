@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowUp, Bot, BookMarked, ChartGantt, Check, ChevronDown, Circle, CircleDot, Compass, File, FileCode, FileImage,
-  FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldCheck,
+  FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldAlert, ShieldCheck,
   History, Search, Sparkles, Square, X,
 } from "lucide-react";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -80,6 +80,8 @@ export interface FlowData {
   };
   budget: { tokens: number; tokenLimit: number };
   workers: number;
+  /** Builders and reviewers run unsandboxed (chosen when the project started). */
+  fullAccess?: boolean;
   maxWorkers: number;
   controls: { pause: boolean; resume: boolean; cancel: boolean };
   agents: FlowAgent[];
@@ -102,7 +104,7 @@ export interface FlowActions {
   /** Stop the agent's answer. */
   onInterrupt?(): void;
   /** Start the proposed project, with the budget and agents set in the footer. */
-  onStart?(objective: string, workers: number, tokens: number, attachments: string[]): void;
+  onStart?(objective: string, workers: number, tokens: number, attachments: string[], fullAccess: boolean): void;
   /** Set the proposal aside. */
   onDismiss?(): void;
   /** The system file dialog; resolves to the chosen paths (none when cancelled). */
@@ -149,7 +151,8 @@ const zhText = {
   draftPlaceholder: "和它聊聊，或描述一个想持续完成的大目标", steerPlaceholder: "继续对话：问进度、补充要求或调整方向",
   proposal: "建造提案", startProposal: "开始建造", dismissProposal: "不用了", replying: "正在回复…", stopReply: "停止回复",
   proposalHint: "从最后一次提交开始，在独立的检出里分阶段开发，每个任务独立复审后集成回当前分支",
-  review: "沙箱 · 复审", reviewHint: "开发和复审 agent 只能改写自己的独立检出，读不到你的其他文件夹；每个任务合入前都由另一个 agent 独立复审", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
+  review: "沙箱 · 复审", reviewHint: "开发和复审 agent 只能改写自己的独立检出，读不到你的其他文件夹；每个任务合入前都由另一个 agent 独立复审",
+  fullAccess: "完全访问 · 复审", fullAccessHint: "开发和复审 agent 不受沙箱限制，可以联网、安装依赖、读写你电脑上的任何文件；每个任务合入前仍由另一个 agent 独立复审", accessToggle: "点击切换沙箱 / 完全访问", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "建造",
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
@@ -173,7 +176,8 @@ const enText: typeof zhText = {
   steerPlaceholder: "Keep talking: ask about progress, add requirements or change direction",
   proposal: "Proposed project", startProposal: "Start weaving", dismissProposal: "Not now", replying: "Replying…", stopReply: "Stop the reply",
   proposalHint: "Builds from the last commit in its own checkout, milestone by milestone; every task is reviewed before it is merged into the current branch",
-  review: "Sandbox · review", reviewHint: "Builders and reviewers can change only their own isolated checkout and cannot read your other folders; every task is reviewed by a separate agent before it is integrated", settings: "Run settings", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
+  review: "Sandbox · review", reviewHint: "Builders and reviewers can change only their own isolated checkout and cannot read your other folders; every task is reviewed by a separate agent before it is integrated",
+  fullAccess: "Full access · review", fullAccessHint: "Builders and reviewers run outside the sandbox: they can use the network, install dependencies and read or change any file on this computer; every task is still reviewed by a separate agent before it is integrated", accessToggle: "Click to switch between sandbox and full access", settings: "Run settings", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
@@ -426,12 +430,14 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   }, [draft]);
   const [workers, setWorkers] = useState(data.workers);
   const [tokens, setTokens] = useState(START_BUDGETS[2]);
+  const [fullAccess, setFullAccess] = useState(false);
   // A new proposal brings the agent's suggestion for both; the person may change them before starting.
   const proposal = data.proposal;
   useEffect(() => {
     if (!proposal) return;
     setWorkers(Math.min(data.maxWorkers, Math.max(1, proposal.maxWorkers || 1)));
     setTokens(START_BUDGETS.includes(proposal.tokenBudget) ? proposal.tokenBudget : START_BUDGETS[2]);
+    setFullAccess(false);  // the sandbox unless the person chooses otherwise, every time
   }, [proposal?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
   const register = useCallback((id: string, side: Side, node: HTMLElement | null) => {
     if (node) cards.current.set(id, { side, node }); else cards.current.delete(id);
@@ -501,7 +507,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   };
   const startProposal = () => {
     if (!proposal || actions.busy) return;
-    actions.onStart?.(proposal.objective, workers, tokens, picked);
+    actions.onStart?.(proposal.objective, workers, tokens, picked, fullAccess);
     setPicked([]);
   };
   const stopping = Boolean(data.chatting && !draft.trim() && actions.onInterrupt);
@@ -747,7 +753,19 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 Before there is a project or a proposal there is nothing to set: the hub is a chat composer. */}
             {!draftMode || proposal ? (
             <span className="pf-settings" role="group" aria-label={text.settings}>
-              <span className="pf-chip" title={text.reviewHint}><ShieldCheck size={13} /><span className="pf-chip-label">{text.review}</span></span>
+              {settingUp ? (
+                <button type="button" className="pf-chip pf-chip-button" data-full={fullAccess || undefined} aria-pressed={fullAccess}
+                        title={`${fullAccess ? text.fullAccessHint : text.reviewHint}\n${text.accessToggle}`}
+                        onClick={() => setFullAccess((value) => !value)}>
+                  {fullAccess ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />}
+                  <span className="pf-chip-label" key={String(fullAccess)}>{fullAccess ? text.fullAccess : text.review}</span>
+                </button>
+              ) : (
+                <span className="pf-chip" data-full={data.fullAccess || undefined} title={data.fullAccess ? text.fullAccessHint : text.reviewHint}>
+                  {data.fullAccess ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />}
+                  <span className="pf-chip-label">{data.fullAccess ? text.fullAccess : text.review}</span>
+                </span>
+              )}
               {settingUp ? (
                 <button type="button" className="pf-chip pf-chip-button" title={text.budgetHint}
                         onClick={() => setTokens((value) => START_BUDGETS[(START_BUDGETS.indexOf(value) + 1) % START_BUDGETS.length])}>

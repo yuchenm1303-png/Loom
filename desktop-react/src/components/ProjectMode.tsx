@@ -164,9 +164,9 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       onReasoning: onReasoning ? async (kind, value) => { await onReasoning(kind, value); } : undefined,
       onCommitWorkspace: (message, count) => act(() => window.loom.call("projectRun/commitWorkspace", { threadId, message, expectedCount: count })),
       // The proposal the agent wrote, started by the person with the budget and agents set in the footer.
-      onStart: proposal && workspaceReady ? (_objective, workers, tokens, attachments) => act(() => window.loom.call("projectWeave/start", {
+      onStart: proposal && workspaceReady ? (_objective, workers, tokens, attachments, fullAccess) => act(() => window.loom.call("projectWeave/start", {
         attachments, operationId: `weave:${proposal.id}`, threadId, proposalId: proposal.id, tokenBudget: tokens,
-        maxEpisodes: START_EPISODES, maxWorkers: workers, maxMilestones: 20 })) : undefined,
+        maxEpisodes: START_EPISODES, maxWorkers: workers, maxMilestones: 20, permissionMode: fullAccess ? "full-access" : "workspace" })) : undefined,
       onDismiss: proposal ? () => act(() => window.loom.call("projectWeave/dismiss", { threadId, proposalId: proposal.id })) : undefined,
       onChat: onChat ? (text) => { setError(""); void onChat(text).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
       onInterrupt: onInterrupt ? () => { void onInterrupt(); } : undefined,

@@ -104,6 +104,22 @@ def test_real_runtime_plans_continues_and_returns_candidate_in_isolated_director
         runtime.close()
 
 
+def test_full_access_is_the_runs_own_choice_and_the_planner_still_only_reads(tmp_path):
+    service, runtime, platform, _, source = build(tmp_path, [reply(PLAN), reply({"action": "continue", "summary": "progress"})])
+    try:
+        with pytest.raises(ValueError, match="permissionMode"):
+            create(service, source, permissionMode="approval")
+        run = create(service, source, permissionMode="full-access")
+        control(service, run, "start")
+        for _ in range(2):
+            cycle(service)
+        final = service.project_store.get(run["id"])
+        assert runtime.get_session(final["sessions"]["planner"]).permission_mode.value == "read-only"
+        assert runtime.get_session(final["sessions"]["worker-0"]).permission_mode.value == "full-access"
+    finally:
+        runtime.close()
+
+
 def test_pause_is_durable_and_budget_stops_automatic_continuation(tmp_path):
     service, runtime, platform, _, source = build(tmp_path, [reply(PLAN), reply({"action": "continue", "summary": "progress"})])
     try:

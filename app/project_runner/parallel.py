@@ -104,7 +104,7 @@ def eligible(store, run, active):
 def spawn(service, root, task, source):
     store = service.project_store
     child = {key: copy.deepcopy(root[key]) for key in ("sourceThreadId", "repository", "gitCommonDir", "budgetEnforcement",
-        "tokenBudget", "maxEpisodes", "maxReviewCycles")}
+        "tokenBudget", "maxEpisodes", "maxReviewCycles", "permissionMode") if key in root}
     child.update(id=str(uuid.uuid4()), revision=0, state="running", control="active", phase="working",
         objective="Implement only this assigned task: " + task["instructions"] + "\nProject context (other tasks are outside this run): " + root["objective"],
         baseCommit=git(source, "rev-parse", "HEAD"), teamOwnerId=root["id"], plan=[{**copy.deepcopy(task), "state": "pending"}],

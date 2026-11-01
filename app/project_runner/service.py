@@ -82,11 +82,12 @@ class ProjectExecutor:
             return run["sessions"][key]
         source = self.service._load(run["sourceThreadId"])
         # Never the conversation's own mode: nobody sits at these threads for days, so
-        # "approval" would stall on every command and "full-access" would reach past the
-        # checkout the review and crash recovery rely on.
+        # "approval" would stall on every command. Full access is the run's own choice,
+        # made when it starts, for work the sandbox cannot do (installs, network).
+        mode = PermissionMode.FULL_ACCESS if run.get("permissionMode") == "full-access" else self.service.project_permission_mode
         session = self.service.runtime.create_session(source.profile_id, workspace_dir=workspace,
             system_prompt=source.system_prompt,
-            permission_mode=PermissionMode.READ_ONLY if run["phase"] == "planning" else self.service.project_permission_mode)
+            permission_mode=PermissionMode.READ_ONLY if run["phase"] == "planning" else mode)
         for field in ("model_selection", "model", "model_provider", "model_base_url", "model_vision",
                       "reasoning_kind", "reasoning_value", "tool_selection", "communication_language"):
             setattr(session, field, copy.deepcopy(getattr(source, field)))
@@ -431,9 +432,12 @@ class ProjectServiceMixin(WorkspaceMixin):
             raise ValueError("tokenBudget must be a positive integer")
         if type(episodes) is not int or not 1 <= episodes <= 10000:
             raise ValueError("maxEpisodes must be within 1..10000")
+        permission = params.get("permissionMode", "workspace")
+        if permission not in ("workspace", "full-access"):
+            raise ValueError("permissionMode must be workspace or full-access")
         request = {"threadId": source.session_id, "objective": objective, "tokenBudget": budget, "maxEpisodes": episodes}
         # Omitted fields preserve retry fingerprints for already-created v1 runs.
-        for key in ("reviewPolicy", "maxReviewCycles", "completionPolicy", "maxWorkers"):
+        for key in ("reviewPolicy", "maxReviewCycles", "completionPolicy", "maxWorkers", "permissionMode"):
             if key in params:
                 request[key] = params[key]
         previous = self.project_store.lookup(params.get("operationId"), {"action": "create", **request})
@@ -459,7 +463,8 @@ class ProjectServiceMixin(WorkspaceMixin):
             "gitCommonDir": str(Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve()),
             "budgetEnforcement": "request_boundary", "delivery": "isolated_candidate_only",
             "reviewPolicy": policy, "maxReviewCycles": cycles, "completionPolicy": completion,
-            "workflowControl": "paused", "workflowStatus": "idle", "completionRef": completion_ref, "maxWorkers": workers}, request=request)
+            "workflowControl": "paused", "workflowStatus": "idle", "completionRef": completion_ref, "maxWorkers": workers,
+            "permissionMode": permission}, request=request)
 
     def project_control(self, params, action):
         with self.project_runner.guard:
