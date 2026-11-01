@@ -71,6 +71,18 @@ class ComputerTransientInputPlatform:
                     action["text"] = self._stash(str(action.get("text") or ""))
                     arguments["action"] = action
                     call_changed = True
+                batch = arguments.get("actions")
+                if isinstance(batch, list) and any(
+                    isinstance(item, dict) and str(item.get("type") or "") == "type" and "text" in item
+                    for item in batch
+                ):
+                    arguments["actions"] = [
+                        {**item, "text": self._stash(str(item.get("text") or ""))}
+                        if isinstance(item, dict) and str(item.get("type") or "") == "type" and "text" in item
+                        else item
+                        for item in batch
+                    ]
+                    call_changed = True
 
             if call_changed:
                 calls.append(ToolCall(call_id=call.call_id, name=call.name, arguments=arguments))

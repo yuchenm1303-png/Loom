@@ -53,7 +53,7 @@ def test_browser_resource_receipt_is_contribution_not_system_instruction(monkeyp
 def test_computer_observation_contributes_once_with_source_identity(monkeypatch):
     from app.agent_runtime.computer_single_loop_runtime import ComputerUseRuntime
     monkeypatch.setattr(ComputerUseRuntime, "_collect_model_observations", lambda *_a: ([], {}), raising=False)
-    monkeypatch.setattr("app.agent_runtime.computer_single_loop_runtime._model_observation_text", lambda _s: "snapshot")
+    monkeypatch.setattr("app.agent_runtime.computer_single_loop_runtime._model_observation_text", lambda _s, **_k: "snapshot")
     runtime = object.__new__(SingleLoopComputerRuntime)
     image = NS(image_data=b"png", image_media_type="image/png", image_data_url=lambda: "data:image/png;base64,AA==",
                frame=NS(width=5, height=7), windows=(), controls=())

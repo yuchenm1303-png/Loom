@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 from collections import defaultdict, deque
 from dataclasses import dataclass, replace
@@ -90,6 +91,33 @@ def _destructive_hotkey(action: ComputerAction) -> str:
 _VISUAL_SAMPLE_SIZE = (128, 72)
 _VISUAL_PIXEL_DELTA = 12
 _VISUAL_CHANGE_RATIO = 0.0015
+
+# A batch is the actions one screenshot is enough for: click a field and type,
+# fill a form, confirm with Enter. Model round trips are ~90% of a Computer Use
+# turn's time, so each action that rides along saves one. Six covers a form
+# without letting a stale plan run far past what the screenshot showed.
+MAX_BATCH_ACTIONS = 6
+_BATCH_EXCLUDED = frozenset({"screenshot", "done", "call_user"})
+_KEYBOARD_ACTIONS = frozenset(
+    {ComputerActionType.TYPE, ComputerActionType.CLEAR_TEXT, ComputerActionType.HOTKEY, ComputerActionType.KEY}
+)
+
+# Before a later batch action acts on a point, the patch around that point must
+# still look as it did in the screenshot the model planned from. A wide change
+# there means the layout moved or something now covers the target. The patch is
+# a few percent of the frame; JPEG noise stays far below the change ratio.
+_TARGET_PATCH_FRACTION = 0.025
+_TARGET_PATCH_MIN_PX = 12
+_TARGET_PIXEL_DELTA = 16
+_TARGET_CHANGE_RATIO = 0.25
+
+_BATCH_STOP_MESSAGES = {
+    "foreground_changed": "the foreground window changed, so later actions could reach a different application",
+    "window_moved": "the window moved or resized, so the planned coordinates no longer point where they did",
+    "target_region_changed": "the area around the next target changed since the screenshot, so it may have moved or be covered",
+    "target_unverifiable": "the next target could not be compared with the screenshot",
+    "action_not_confirmed": "the previous action failed or its effect could not be confirmed",
+}
 
 _DIAGNOSTIC_SENSITIVE_KEYS = frozenset(
     {
@@ -193,6 +221,31 @@ def _single_action_schema() -> dict[str, Any]:
     )
 
 
+def _batch_action_schema() -> dict[str, Any]:
+    # Items are described by reference rather than repeating every field of
+    # `action`: the full copy doubled this tool's schema on every request, and
+    # the handler validates each item as strictly as a single action anyway.
+    allowed = [
+        name for name in _single_action_schema()["properties"]["type"]["enum"] if name not in _BATCH_EXCLUDED
+    ]
+    return {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {"type": {"type": "string", "enum": allowed}},
+            "required": ["type"],
+            "description": "One action with the same fields as `action`.",
+        },
+        "minItems": 1,
+        "maxItems": MAX_BATCH_ACTIONS,
+        "description": (
+            "Several actions planned from the same screenshot, run in order. Loom stops at the first action that "
+            "fails or cannot be confirmed, when the foreground window changes or moves, or when the area around a "
+            "later target no longer matches the screenshot; the rest are not sent."
+        ),
+    }
+
+
 def _safe_diagnostic_data(value: Any, *, key: str = "") -> Any:
     folded = str(key or "").casefold()
     if folded in _DIAGNOSTIC_SENSITIVE_KEYS:
@@ -255,6 +308,149 @@ def _visual_delta_ratio(before, after) -> float:
         # If an embedder supplies another encoding/backend, a byte change remains
         # useful evidence but is deliberately called uncertain by the classifier.
         return -1.0
+
+
+def _target_region_changed(planned, current, point: ComputerPoint) -> bool | None:
+    """Whether the patch around ``point`` changed between two same-frame observations.
+
+    None means the comparison could not be made, which a caller must not read
+    as "unchanged".
+    """
+
+    try:
+        from PIL import Image
+
+        with Image.open(BytesIO(planned.image_data)) as left_image:
+            left = left_image.convert("L")
+        with Image.open(BytesIO(current.image_data)) as right_image:
+            right = right_image.convert("L")
+        if left.size != right.size:
+            right = right.resize(left.size)
+        width, height = left.size
+        radius = max(_TARGET_PATCH_MIN_PX, round(_TARGET_PATCH_FRACTION * width))
+        cx, cy = round(point.x * (width - 1)), round(point.y * (height - 1))
+        box = (max(0, cx - radius), max(0, cy - radius), min(width, cx + radius + 1), min(height, cy + radius + 1))
+        before_bytes = left.crop(box).tobytes()
+        after_bytes = right.crop(box).tobytes()
+        if not before_bytes or len(before_bytes) != len(after_bytes):
+            return None
+        changed = sum(1 for a, b in zip(before_bytes, after_bytes) if abs(a - b) >= _TARGET_PIXEL_DELTA)
+        return changed / len(before_bytes) > _TARGET_CHANGE_RATIO
+    except Exception:
+        return None
+
+
+def _same_frame_geometry(left: ComputerFrame, right: ComputerFrame) -> bool:
+    return (left.origin_x, left.origin_y, left.width, left.height) == (
+        right.origin_x, right.origin_y, right.width, right.height
+    )
+
+
+def _batch_stop_reason(planned: ComputerStateSnapshot, current: ComputerStateSnapshot, action: ComputerAction) -> str:
+    """Why the next batch action must not run on a plan made from ``planned``, or ""."""
+
+    if action.type is ComputerActionType.SWITCH_WINDOW or action.type is ComputerActionType.WAIT:
+        return ""
+    if ComputerSessionStore._window_id_key(planned.observation.frame.window_id) != ComputerSessionStore._window_id_key(
+        current.observation.frame.window_id
+    ):
+        return "foreground_changed"
+    points = [point for point in (action.point, action.end_point) if point is not None]
+    if not points:
+        return ""
+    if not _same_frame_geometry(planned.observation.frame, current.observation.frame):
+        return "window_moved"
+    for point in points:
+        changed = _target_region_changed(planned.observation, current.observation, point)
+        if changed is None:
+            return "target_unverifiable"
+        if changed:
+            return "target_region_changed"
+    return ""
+
+
+_HINT_PRIORITY = frozenset(
+    {"Button", "Edit", "Hyperlink", "CheckBox", "ComboBox", "MenuItem", "RadioButton", "TabItem", "Slider"}
+)
+_HINT_LIMIT = 40
+
+
+def _hint_controls(observation) -> list:
+    """The UIA controls the model is shown this step, actionable kinds first."""
+
+    frame = observation.frame
+    hints = []
+    for control in sorted(observation.controls, key=lambda c: c.control_type not in _HINT_PRIORITY):
+        if len(hints) >= _HINT_LIMIT:
+            break
+        if not control.enabled:
+            continue
+        try:
+            control.rect.center_in(frame)
+        except Exception:
+            continue
+        hints.append(control)
+    return hints
+
+
+def _mark_label(control) -> str:
+    return str(control.control_id).rsplit(":", 1)[-1]
+
+
+def _set_of_mark_enabled() -> bool:
+    return str(os.environ.get("LOOM_COMPUTER_SET_OF_MARK", "1")).strip().casefold() not in {"0", "false", "off", "no"}
+
+
+def _set_of_mark_image(observation, controls) -> tuple[bytes, str] | None:
+    """The screenshot with each hinted control boxed and numbered (Set-of-Mark).
+
+    Coordinates the model estimates by eye are the weak point of a screenshot
+    loop; a numbered box lets it name a control instead, and Loom clicks the
+    control's real center. Only the model-facing copy is marked: verification
+    keeps comparing the untouched captures.
+    """
+
+    if not controls:
+        return None
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+
+        frame = observation.frame
+        with Image.open(BytesIO(observation.image_data)) as source:
+            image = source.convert("RGB")
+        scale_x = image.width / max(1, frame.width)
+        scale_y = image.height / max(1, frame.height)
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.load_default(size=max(11, round(13 * min(1.0, scale_x * 1.4))))
+        colour = (230, 0, 160)
+        for control in controls:
+            rect = control.rect
+            left = (rect.left - frame.origin_x) * scale_x
+            top = (rect.top - frame.origin_y) * scale_y
+            right = (rect.right - frame.origin_x) * scale_x
+            bottom = (rect.bottom - frame.origin_y) * scale_y
+            if right <= 0 or bottom <= 0 or left >= image.width or top >= image.height:
+                continue
+            draw.rectangle((left, top, right, bottom), outline=colour, width=2)
+            label = _mark_label(control)
+            text_box = draw.textbbox((0, 0), label, font=font)
+            tag_w, tag_h = text_box[2] - text_box[0] + 4, text_box[3] - text_box[1] + 3
+            # The tag sits above the box so it does not cover the control's own label.
+            tag_x = max(0, left)
+            tag_y = top - tag_h if top >= tag_h else max(0, top)
+            draw.rectangle((tag_x, tag_y, tag_x + tag_w, tag_y + tag_h), fill=colour)
+            draw.text((tag_x + 2, tag_y + 1 - text_box[1]), label, fill=(255, 255, 255), font=font)
+        output = BytesIO()
+        media_type = str(observation.image_media_type or "image/png")
+        if media_type == "image/jpeg":
+            # Same settings as the capture encoder: no chroma subsampling keeps small text legible.
+            image.save(output, format="JPEG", quality=80, optimize=True, subsampling=0)
+        else:
+            image.save(output, format="PNG")
+            media_type = "image/png"
+        return output.getvalue(), media_type
+    except Exception:
+        return None
 
 
 def _classify_effect(outcome: ComputerStepOutcome) -> dict[str, object]:
@@ -441,15 +637,18 @@ def _resolve_frame_target(payload: dict[str, Any], observation: Any) -> dict[str
     frame_id = payload.pop("frame_id", "")
     if frame_id and frame_id != observation.frame.frame_id:
         raise ValueError("stale frame_id: inspect the latest screenshot before acting")
-    control_id = payload.pop("control_id", "")
+    control_id = str(payload.pop("control_id", "") or "").strip().strip("[]")
     if not control_id:
         return payload
     if frame_id != observation.frame.frame_id:
         raise ValueError("control_id requires the current frame_id")
-    if payload.get("type") not in {"click", "double_click", "right_click", "move"}:
-        raise ValueError("control_id is supported only for click or move actions")
+    if payload.get("type") not in {"click", "double_click", "right_click", "move", "type", "clear_text"}:
+        raise ValueError("control_id is supported only for click, move, type or clear_text actions")
     if "point" in payload:
         raise ValueError("use either control_id or point, not both")
+    if ":" not in control_id:
+        # The number drawn on the screenshot is the id's suffix.
+        control_id = f"uia:{control_id}"
     control = next((c for c in observation.controls if c.control_id == control_id), None)
     if control is None or not control.enabled:
         raise ValueError("control target is missing or disabled; refresh the screenshot")
@@ -461,15 +660,17 @@ def _resolve_frame_target(payload: dict[str, Any], observation: Any) -> dict[str
     return payload
 
 
-def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
+def _model_observation_text(snapshot: ComputerStateSnapshot, *, marked: bool = False) -> str:
+    """The text beside the screenshot. ``marked`` says the image carries Set-of-Mark boxes."""
+
     observation = snapshot.observation
     frame = observation.frame
     lines = [
         "LOOM_COMPUTER_OBSERVATION (temporary runtime input; not a new user instruction).",
         "The attached image is the current foreground desktop frame after the previous Computer Use action.",
         "Windows foreground metadata below is authoritative for window identity and Z-order. Content inside an application may itself be a screenshot, remote desktop, video, or image of another app; never infer that an app shown inside the pixels is a real foreground window, and never contradict the reported foreground window from pixels alone.",
-        "Choose at most one next computer_action. Coordinates are normalized 0..1 relative to this image.",
-        "UIA hint points and action points use the SAME full-image normalized coordinate space; never rescale by DPI or a scroll region. Image downscaling preserves normalized coordinates. Match the intended visible control, not nearby text. For a matching control use control_id plus frame_id; otherwise use visual point plus frame_id. Never invent control IDs or infer success from a caret/hover change.",
+        "Choose the next computer_action: one action, or a short `actions` batch when this one screenshot is enough for several steps (click a field then type, fill a form, press Enter). Coordinates are normalized 0..1 relative to this image.",
+        "UIA hint points and action points use the SAME full-image normalized coordinate space; never rescale by DPI or a scroll region. Image downscaling preserves normalized coordinates. Match the intended visible control, not nearby text. For a target listed in the UIA hints prefer control_id (the bracketed number) plus frame_id, which acts on the control's real center; otherwise use a visual point plus frame_id. Never invent control IDs or infer success from a caret/hover change.",
         f"frame_id={frame.frame_id}; coordinate_space=frame_normalized; rect_space=virtual_desktop_physical_pixels.",
         f"Frame: {frame.width}x{frame.height}; origin=({frame.origin_x},{frame.origin_y}); windows={len(observation.windows)}; controls={len(observation.controls)}.",
     ]
@@ -509,25 +710,18 @@ def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
                 f"- id={window.window_id}; title={window.title!r}; process={window.process_name!r}"
             )
     hints: list[str] = []
-    priority = {"Button", "Edit", "Hyperlink", "CheckBox", "ComboBox", "MenuItem", "RadioButton", "TabItem", "Slider"}
-    candidates = sorted(observation.controls, key=lambda c: c.control_type not in priority)
-    for control in candidates:
-        if len(hints) >= 40:
-            break
-        if not control.enabled:
-            continue
-        try:
-            point = control.rect.center_in(frame)
-        except Exception:
-            continue
+    for control in _hint_controls(observation):
+        point = control.rect.center_in(frame)
         hints.append(
-            f"- id={control.control_id}; {control.control_type or 'control'} {control.name!r} near "
+            f"- [{_mark_label(control)}] id={control.control_id}; {control.control_type or 'control'} {control.name!r} near "
             f"({point.x:.3f},{point.y:.3f})"
         )
     if hints:
-        lines.append("Advisory UIA hints:")
+        lines.append(
+            "UIA hints (each is boxed in magenta on the image with its number):" if marked else "UIA hints:"
+        )
         lines.extend(hints)
-        if len(candidates) > len(hints) or observation.semantics.get("state") == "partial":
+        if len(observation.controls) > len(hints) or observation.semantics.get("state") == "partial":
             lines.append("UIA hints are incomplete. An omitted target is not absent; do not invent its type or coordinates. Inspect the full attached image, not a cropped preview, and verify the intended application result after clicking.")
     else:
         # Say why the hints are missing rather than letting the model infer that
@@ -604,9 +798,13 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "more reliable through exec than through clicking, and exec has no application allowlist. Use this "
                 "tool for what only the GUI can do. "
                 "It uses the current conversation model and the normal "
-                "TurnRunner: request screenshot first, then choose exactly one visual action from the returned image. "
-                "Coordinates are normalized 0..1. Coordinate input is the primary execution path; UIA is only an "
-                "advisory visual hint and no control id is accepted here. If a target application already appears in "
+                "TurnRunner: request screenshot first, then choose the next step from the returned image. "
+                "Send one `action`, or an `actions` batch when the same screenshot is enough for several steps - "
+                "click a field and type, fill a form, confirm with Enter - since every separate call costs a full "
+                "model round trip. Loom stops a batch at the first action that fails or cannot be confirmed, or when "
+                "the window or the area around the next target changed, and the remaining actions are not sent. "
+                "Coordinates are normalized 0..1. A UIA hint can be targeted by control_id (its number) plus frame_id "
+                "for click, move, type and clear_text; Loom acts on the control's real center. If a target application already appears in "
                 "the known-window list, use switch_window rather than searching the desktop or taskbar; hidden/tray "
                 "windows may be recoverable this way. Every non-terminal action is followed by a fresh screenshot. "
                 "Treat the reported Windows foreground id/process as authoritative for window identity: an image, "
@@ -618,7 +816,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "If a coordinate pointer action injects successfully but causes no observable UI change, this tool "
                 "returns ok=false so you must not assume the click worked."
             ),
-            input_schema=_schema({"action": _single_action_schema()}, ("action",)),
+            input_schema=_schema({"action": _single_action_schema(), "actions": _batch_action_schema()}),
             handler=self._handle_single_action,
             effect=ToolEffect.SENSITIVE,
         )
@@ -631,7 +829,8 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "model_control": "current conversation model via Loom TurnRunner",
                 "model_facing_tools": ["computer_status", "computer_action"],
                 "coordinate_execution": "primary",
-                "uia_role": "advisory hints only for the single-loop path",
+                "uia_role": "advisory numbered hints (Set-of-Mark on the screenshot); control_id resolves to the control center",
+                "batch_actions": f"up to {MAX_BATCH_ACTIONS}, guarded between actions",
                 "visual_feedback": "fresh screenshot attached ephemerally to the next model request",
                 "window_reuse": "prefer switch_window for known visible/minimized/tray-hidden app windows",
                 "legacy_grounder_active": False,
@@ -671,9 +870,14 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                                if message.role is MessageRole.TOOL
                                and (message.name or "").startswith("computer_")), "")
         from .tool_observation import attach_observation
-        messages = attach_observation(messages, _model_observation_text(snapshot),
+        marked = _set_of_mark_image(observation, _hint_controls(observation)) if _set_of_mark_enabled() else None
+        if marked is not None:
+            image_url = f"data:{marked[1]};base64,{base64.b64encode(marked[0]).decode('ascii')}"
+        else:
+            image_url = observation.image_data_url()
+        messages = attach_observation(messages, _model_observation_text(snapshot, marked=marked is not None),
             tool_prefix="computer_", tool_call_id=source_call_id,
-            image=ImagePart(observation.image_data_url(), detail="auto"))
+            image=ImagePart(image_url, detail="auto"))
         safe_extra = dict(extra) if isinstance(extra, dict) else {}
         safe_extra["computer_observation"] = {
             "source_call_id": source_call_id,
@@ -684,6 +888,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             "frame_height": observation.frame.height,
             "windows_total": len(observation.windows),
             "controls_total": len(observation.controls),
+            "set_of_mark": marked is not None,
         }
         return messages, safe_extra
 
@@ -792,23 +997,23 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         store = self.computer_sessions
         if store is None:
             return ToolResult(False, "Computer Use is unavailable on this host.")
+        batch = arguments.get("actions")
         raw = arguments.get("action")
+        if batch is not None:
+            if raw is not None:
+                raise ValueError("computer_action takes either action or actions, not both")
+            return self._handle_batch(context, store, batch)
         if not isinstance(raw, dict):
-            raise ValueError("computer_action action must be an object")
+            raise ValueError("computer_action needs action (one object) or actions (a list)")
         action_payload = dict(raw)
         action_name = str(action_payload.get("type") or "").strip().casefold()
-
-        button = str(action_payload.pop("button", "") or "").strip().casefold()
-        if action_name == "click" and button == "right":
-            action_name = "right_click"
-            action_payload["type"] = action_name
 
         if action_name == "screenshot":
             snapshot = store.observe(context.session_id)
             self._mark_visual_feedback(context)
             return ToolResult(
                 True,
-                "Desktop screenshot captured. Inspect the attached screenshot in the next model step and choose exactly one next action.",
+                "Desktop screenshot captured. Inspect the attached screenshot in the next model step and choose the next action.",
                 {"observation": _safe_snapshot_data(snapshot), "effect": "observed"},
             )
 
@@ -825,8 +1030,21 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 {"effect": "not_applicable", "terminal_hint": "call_user"},
             )
 
+        before = self._current_or_observe(context, store)
+        if isinstance(before, ToolResult):
+            return before
+        action = self._prepare_action(context, action_payload, before)
+        refusal = self._refusal(context, action, before)
+        if refusal is not None:
+            self._mark_visual_feedback(context)
+            return refusal
+        outcome, ok, content = self._run_action(context, store, action, before)
+        self._mark_visual_feedback(context)
+        return ToolResult(ok, content, _safe_outcome_data(outcome))
+
+    def _current_or_observe(self, context: ToolContext, store) -> ComputerStateSnapshot | ToolResult:
         try:
-            before = store.latest(context.session_id)
+            return store.latest(context.session_id)
         except RuntimeError:
             snapshot = store.observe(context.session_id)
             self._mark_visual_feedback(context)
@@ -836,22 +1054,39 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 {"observation": _safe_snapshot_data(snapshot), "effect": "not_executed"},
             )
 
-        if action_name == "type" and "text" in action_payload:
+    def _prepare_action(
+        self,
+        context: ToolContext,
+        payload: dict[str, Any],
+        before: ComputerStateSnapshot,
+    ) -> ComputerAction:
+        payload = dict(payload)
+        name = str(payload.get("type") or "").strip().casefold()
+        button = str(payload.pop("button", "") or "").strip().casefold()
+        if name == "click" and button == "right":
+            payload["type"] = "right_click"
+        if str(payload.get("type") or "") == "type" and "text" in payload:
             # The session id is not optional here. Typed text is stashed by the
             # platform that produced the response, and a session with its own
             # model has its own platform wrapper; consuming without the session
             # id looks the handle up in the default platform instead, never
             # finds it, and fails every type action with "no longer available".
-            action_payload["text"] = self.consume_computer_transient(
-                str(action_payload.get("text") or ""),
+            payload["text"] = self.consume_computer_transient(
+                str(payload.get("text") or ""),
                 context.session_id,
             )
-        action_payload = _resolve_frame_target(action_payload, before.observation)
-        action = ComputerAction.from_dict(action_payload)
+        return ComputerAction.from_dict(_resolve_frame_target(payload, before.observation))
+
+    def _refusal(
+        self,
+        context: ToolContext,
+        action: ComputerAction,
+        before: ComputerStateSnapshot,
+    ) -> ToolResult | None:
+        """A ToolResult when this action must not be injected at all, else None."""
 
         destructive = _destructive_hotkey(action)
         if destructive:
-            self._mark_visual_feedback(context)
             return ToolResult(
                 False,
                 f"Not executed: that shortcut {destructive}. It acts on the whole session rather than on "
@@ -866,7 +1101,6 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             )
 
         if _window_switch_hotkey(action):
-            self._mark_visual_feedback(context)
             known = [
                 f"{window.window_id} ({window.process_name})"
                 for window in before.observation.windows[:12]
@@ -886,7 +1120,6 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             )
 
         if self._should_block_repeat(context, action, before):
-            self._mark_visual_feedback(context)
             self._record_attempt(context, action, before, "unchanged")
             return ToolResult(
                 False,
@@ -899,13 +1132,20 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                     "observation": _safe_snapshot_data(before),
                 },
             )
+        return None
 
+    def _run_action(
+        self,
+        context: ToolContext,
+        store,
+        action: ComputerAction,
+        before: ComputerStateSnapshot,
+    ) -> tuple[ComputerStepOutcome, bool, str]:
         outcome = store.execute(context.session_id, before.state_revision, action)
         outcome.verification.update(_classify_effect(outcome))
         effect = str(outcome.verification.get("effect") or "uncertain")
         self._record_attempt(context, action, outcome.before,
                              "unobserved_pointer" if outcome.verification.get("effect_reason") == "no_observable_change_after_pointer_input" else effect)
-        self._mark_visual_feedback(context)
         self._trace_effect(context, outcome)
 
         execution_ok = bool(outcome.execution is not None and outcome.execution.ok)
@@ -919,6 +1159,8 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
 
         if not execution_ok:
             content = "The desktop input failed to execute. Inspect the attached current screenshot and choose another action."
+            if outcome.execution is not None and outcome.execution.message:
+                content += f" ({outcome.execution.message})"
         elif pointer_no_effect:
             content = (
                 "Input was injected successfully, but no observable UI change was detected after this pointer action. "
@@ -937,8 +1179,106 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             )
         else:
             content = "Computer action executed. Its visible effect is uncertain; inspect the attached fresh screenshot before choosing the next action."
+        return outcome, ok, content
 
-        return ToolResult(ok, content, _safe_outcome_data(outcome))
+    def _handle_batch(self, context: ToolContext, store, batch: Any) -> ToolResult:
+        """Run several actions planned from one screenshot, stopping at the first doubt.
+
+        Every action goes through the same refusals, repeat block, execution and
+        effect classification as a single action. Between actions the batch
+        checks that the plan still applies (UFO2's speculative execution, with
+        the screenshot standing in for UIA where controls are not exposed): the
+        foreground window and its geometry are unchanged, the previous action
+        executed and did not lose the foreground, and the area around the next
+        target still looks as it did when the model planned. Anything else ends
+        the batch with the remaining actions unsent and a fresh screenshot.
+        """
+
+        if not isinstance(batch, list) or not batch:
+            raise ValueError("actions must be a non-empty list")
+        if len(batch) > MAX_BATCH_ACTIONS:
+            raise ValueError(f"actions takes at most {MAX_BATCH_ACTIONS} steps; send the rest after the next screenshot")
+        payloads: list[dict[str, Any]] = []
+        for item in batch:
+            if not isinstance(item, dict):
+                raise ValueError("each entry of actions must be an action object")
+            name = str(item.get("type") or "").strip().casefold()
+            if name in _BATCH_EXCLUDED:
+                raise ValueError(f"{name} cannot be part of an actions batch; send it as a single action")
+            payloads.append(dict(item))
+
+        planned = self._current_or_observe(context, store)
+        if isinstance(planned, ToolResult):
+            return planned
+        # Everything is validated against the screenshot the model planned from
+        # before any input, so a malformed fourth step never leaves three done.
+        actions = [self._prepare_action(context, payload, planned) for payload in payloads]
+
+        steps: list[dict[str, Any]] = []
+        last_outcome: ComputerStepOutcome | None = None
+        last_ok, last_content = True, ""
+        current = planned
+        stopped_reason = ""
+        refusal: ToolResult | None = None
+        for index, action in enumerate(actions):
+            context.raise_if_cancelled()
+            if index:
+                stopped_reason = _batch_stop_reason(planned, current, action)
+                if stopped_reason:
+                    break
+            refusal = self._refusal(context, action, current)
+            if refusal is not None:
+                stopped_reason = f"refused:{refusal.data.get('effect_reason', 'refused')}"
+                break
+            outcome, last_ok, last_content = self._run_action(context, store, action, current)
+            last_outcome = outcome
+            current = outcome.after or current
+            steps.append(
+                {
+                    "action": action.safe_dict(),
+                    "ok": last_ok,
+                    "effect": outcome.verification.get("effect"),
+                    "effect_reason": outcome.verification.get("effect_reason"),
+                    **(
+                        {"delivery": outcome.execution.delivery}
+                        if outcome.execution is not None and outcome.execution.delivery
+                        else {}
+                    ),
+                }
+            )
+            # A lost foreground window is caught by the guard before the next
+            # action, which also covers a planned switch_window followed by
+            # steps that were aimed at the window it left.
+            if index + 1 < len(actions) and not last_ok:
+                stopped_reason = "action_not_confirmed"
+                break
+        self._mark_visual_feedback(context)
+
+        executed = len(steps)
+        stopped_at = executed + 1 if stopped_reason else None
+        data: dict[str, Any] = (
+            _safe_outcome_data(last_outcome) if last_outcome is not None else {"observation": _safe_snapshot_data(current)}
+        )
+        data["batch"] = {
+            "requested": len(actions),
+            "executed": executed,
+            "stopped_reason": stopped_reason,
+            "stopped_at": stopped_at,
+            "steps": steps,
+        }
+        summary = f"Executed {executed} of {len(actions)} batched actions."
+        if stopped_reason.startswith("refused:") and refusal is not None:
+            summary += f" Action {stopped_at} was refused and nothing after it was sent: {refusal.content}"
+        elif stopped_reason:
+            why = _BATCH_STOP_MESSAGES.get(stopped_reason, stopped_reason)
+            summary += (
+                f" Stopped before action {stopped_at} because {why}; actions {stopped_at}-{len(actions)} were not sent. "
+                "Inspect the attached fresh screenshot and plan the rest from it."
+            )
+        if last_content:
+            summary += f" Last executed action: {last_content}"
+        ok = not stopped_reason and last_ok
+        return ToolResult(ok, summary, data)
 
     def clear_computer_single_loop_state(self, session_id: str) -> None:
         self._computer_feedback_turns.pop(str(session_id or ""), None)
