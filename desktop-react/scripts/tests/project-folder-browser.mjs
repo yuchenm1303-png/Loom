@@ -8,7 +8,7 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   const open = async query => {
     await page.goto(`${origin}/scripts/fixtures/project-folder.html${query}`);
-    await page.locator(".pf-folder-picker").waitFor();
+    await page.locator(".pf-folder-picker").first().waitFor();
   };
   await open("");
   assert.equal(await page.locator(".pf-branch").textContent(), "—");
@@ -25,6 +25,20 @@ try {
   assert.ok(await page.getByText("C:\\Projects\\original", { exact: true }).isVisible());
   await open("?live=1");
   assert.ok(await page.locator(".pf-folder-picker").isDisabled());
+  assert.ok(await page.locator(".pf-workspace-controls select").isDisabled());
+  await open("");
+  await page.locator(".pf-workspace-controls select").selectOption("existing");
+  await page.getByText("C:\\Projects\\已有项目", { exact: true }).waitFor();
+  assert.deepEqual(await page.evaluate(() => window.folderFixture.calls), ["project:existing"]);
+  for (const [status, action] of [["not_git", "initialize"], ["unborn", "initialize"], ["detached", "branch"]]) {
+    await open(`?setup=${status}`);
+    assert.ok(await page.locator(".pf-proposal-start").isDisabled());
+    assert.deepEqual(await page.evaluate(() => window.folderFixture.calls), []); // never initialize on read
+    await page.locator(".pf-workspace-setup summary").click();
+    await page.locator(".pf-workspace-setup button").click();
+    await page.waitForFunction(() => !document.querySelector(".pf-proposal-start").disabled);
+    assert.deepEqual(await page.evaluate(() => window.folderFixture.calls), [`prepare:${action}:true`]);
+  }
   await page.goto(`${origin}/scripts/fixtures/project-folder.html?sidebar=1`);
   await page.locator(".project-section .sidebar-section-title button").click();
   assert.deepEqual(await page.evaluate(() => window.folderFixture.calls), ["pick", "C:\\Projects\\我的新项目"]);

@@ -2,6 +2,7 @@
  * Pure functions, so the mapping is tested without a Host (scripts/tests/project-overview.test.mjs). */
 import type { FlowAgent, FlowData, FlowTaskState } from "./ProjectFlow";
 import type { ProjectRun } from "./projectRuns";
+import type { WorkspaceState } from "./ProjectWorkspacePicker";
 import type { ModelProfile, ModelSnapshot, TranscriptItem } from "../types/loom";
 
 export interface OverviewAgent {
@@ -27,7 +28,7 @@ export interface ProjectOverview {
   agents: OverviewAgent[];
   events: OverviewEvent[];
   /** Before a start: the repository a project would start from (uncommitted changes block it). */
-  workspace?: { git: boolean; branch?: string; head?: string; changeCount: number; changes: { status: string; path: string }[] };
+  workspace?: WorkspaceState & { git: boolean; branch?: string; head?: string; changeCount: number; changes: { status: string; path: string }[] };
   /** The milestone's episodes on a clock (seconds since the epoch; end null while running). */
   timeline?: OverviewSpan[];
   /** A project the conversation's agent proposed (weave_propose); the person starts or dismisses it. */

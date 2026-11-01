@@ -19,6 +19,7 @@ from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
 from app.agent_runtime.context_budget import estimate_tokens
+from .workspace import WorkspaceMixin, describe as describe_workspace
 
 # History a continued episode may carry before the runner compacts it at the boundary.
 EPISODE_CARRY_TOKENS = 12000
@@ -349,7 +350,7 @@ def confined_in_flight(events):
     return [str(call.get("tool")) for call in running]
 
 
-class ProjectServiceMixin:
+class ProjectServiceMixin(WorkspaceMixin):
     # Builders and reviewers write only their own sandboxed checkout; planners read only.
     project_permission_mode = PermissionMode.WORKSPACE
 
@@ -439,6 +440,8 @@ class ProjectServiceMixin:
         if previous:
             return previous
         root = Path(source.workspace_dir).resolve()
+        if describe_workspace(root)["status"] == "unborn":
+            raise ValueError("Prepare this folder's initial Git baseline from the Repository card before starting")
         if Path(git(root, "rev-parse", "--show-toplevel")).resolve() != root:
             raise ValueError("first project-runner version requires a Git repository root")
         # Uncommitted changes do not stop a start: the project builds from the last commit in its own
@@ -572,27 +575,7 @@ class ProjectServiceMixin:
                 "proposal": proposal, "workspace": self._project_workspace_state(thread_id) if proposal else None}
 
     def _project_workspace_state(self, thread_id):
-        """The conversation's repository as a project would start from it: branch, commit, uncommitted changes."""
-        try:
-            folder = Path(self._load(thread_id).workspace_dir).resolve()
-            top = Path(git(folder, "rev-parse", "--show-toplevel")).resolve()
-        except (OSError, ValueError, TypeError):
-            return {"git": False, "changes": [], "changeCount": 0}
-        if top != folder:
-            return {"git": False, "changes": [], "changeCount": 0}
-        # A read beside other requests: without optional locks, status never takes the index lock a commit needs.
-        lines = [line for line in git(folder, "--no-optional-locks", "-c", "core.quotepath=false", "status", "--porcelain=v1",
-                                      raw=True).splitlines() if line.strip()]
-        try:
-            branch = git(folder, "symbolic-ref", "--short", "HEAD")
-        except ValueError:
-            branch = "detached HEAD"
-        try:
-            head = git(folder, "rev-parse", "--short", "HEAD")
-        except ValueError:
-            head = ""  # a repository without a commit yet
-        return {"git": True, "branch": branch, "head": head, "changeCount": len(lines),
-                "changes": [{"status": line[:2].strip() or "?", "path": line[3:].strip().strip('"')} for line in lines[:40]]}
+        return describe_workspace(self._load(thread_id).workspace_dir)
 
     def project_commit_workspace(self, params):
         """Commit every uncommitted change of the conversation's repository, so a project can start from it.
@@ -875,6 +858,8 @@ class ProjectControllerMixin:
     def _dispatch(self, method, params):
         if method == "projectRun/create":
             return {"run": self.service.project_run_create(params)}
+        if method == "projectRun/prepareWorkspace":
+            return self.service.project_prepare_workspace(params)
         if method == "projectRun/overview":
             return self.service.project_overview(params)
         if method == "projectRun/steer":

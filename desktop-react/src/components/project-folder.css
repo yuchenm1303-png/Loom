@@ -3,3 +3,9 @@
 .pf-folder-picker:hover:not(:disabled) { background: rgb(128 128 128 / 10%); }
 .pf-folder-picker:disabled { opacity: .4; cursor: default; }
 .pf-folder-picker:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.pf-workspace-controls { font-size: 11px; margin-top: 10px; line-height: 1.6; }
+.pf-workspace-controls label { display: grid; gap: 5px; }
+.pf-workspace-controls select { min-width: 0; width: 100%; padding: 7px; border: 1px solid rgb(128 128 128 / 25%); border-radius: 8px; background: var(--pl-surface, #202329); color: inherit; font: inherit; text-overflow: ellipsis; }
+.pf-workspace-controls p { opacity: .7; overflow-wrap: anywhere; margin: 7px 0; }
+.pf-workspace-setup { margin-top: 10px; }
+.pf-workspace-setup summary { cursor: pointer; }

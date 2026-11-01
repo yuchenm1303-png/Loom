@@ -95,6 +95,7 @@ export interface FlowData {
 export interface ModelOption { selection: string; name: string; group: string; groupId: string }
 
 export interface FlowActions {
+  workspaceControls?: ReactNode;
   onChooseWorkspace?(): void;
   /** A message to the conversation's agent. */
   onChat?(text: string): void;
@@ -548,6 +549,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                       onClick={() => actions.onChooseWorkspace?.()}>
                 <FolderOpen size={14} />{lang === "zh" ? "选择文件夹" : "Choose folder"}
               </button>
+              {actions.workspaceControls}
             </Card>
           </div>
         ) : null}
@@ -668,7 +670,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               ) : null}
             </div>
           ) : null}
-          {draftMode && proposal && data.workspace?.changeCount ? (
+          {draftMode && data.workspace?.changeCount ? (
             // A reminder, never a lock: the start builds from the last commit, so these stay out of it.
             <div className="pf-attention pf-dirty" role="status" data-open={dirtyOpen || undefined}>
               {/* One line until opened; why it matters is read with the files, not before them. */}

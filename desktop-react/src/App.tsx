@@ -1694,6 +1694,7 @@ export default function App() {
           <div className="project-mode-stage" inert={threadSwitching || modeMorph?.to === "chat"}>
             <Suspense fallback={null}>
               <ProjectMode key={thread.id} threadId={thread.id} workspace={selectedThread?.workspace || workspace} model={currentModel}
+                           projects={loom.projects} onSelectProject={!running ? id => handleMoveProject(thread.id, id) : undefined}
                            onChangeWorkspace={!running ? async (root) => {
                              const project = await loom.createProject(root);
                              await handleMoveProject(thread.id, project.id);

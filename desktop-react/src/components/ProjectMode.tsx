@@ -8,7 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
 import { raisedBudget, readableError, toConversation, toFlowData, toModelChoice, type ProjectOverview } from "./projectOverview";
-import type { ModelSnapshot, TranscriptItem } from "../types/loom";
+import type { ModelSnapshot, TranscriptItem, ProjectRecord } from "../types/loom";
+import { ProjectWorkspacePicker } from "./ProjectWorkspacePicker";
 
 const LIVE_POLL_MS = 2000;
 const REST_POLL_MS = 12000;
@@ -21,9 +22,10 @@ const START_EPISODES = 400;
  *  (the composer's morph lands on it) and the first read then refreshes it. */
 const lastOverview = new Map<string, ProjectOverview>();
 
-export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt, onChangeWorkspace }: {
+export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt, onChangeWorkspace, projects = [], onSelectProject }: {
   threadId: string; workspace?: string; model?: string;
   onChangeWorkspace?(path: string): Promise<unknown>;
+  projects?: ProjectRecord[]; onSelectProject?(id: string): Promise<unknown>;
   /** The app's model snapshot and switch: a project's agents take the conversation's model. */
   models?: ModelSnapshot | null; onSwitchModel?(selection: string): Promise<unknown>; onReasoning?(kind: string, value: string): Promise<unknown>;
   /** The conversation's transcript and whether its agent is answering now. */
@@ -138,10 +140,18 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   data.repository.path = run?.repository || workspace;
   if (!run) data.repository.branch = overview.workspace?.branch || "—";
   const programId = overview.program?.id;
+  const workspaceLocked = Boolean(run) || chatting || busy;
+  const workspaceReady = !overview.workspace?.status || overview.workspace.status === "ready";
+  const workBranch = `codex/build-${threadId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12)}`;
 
   return (
     <ProjectFlow lang={lang} data={data} actions={{
-      onChooseWorkspace: !run && onChangeWorkspace && window.loom.pickDirectory ? () => void act(async () => {
+      workspaceControls: <ProjectWorkspacePicker projects={projects} workspace={{ ...overview.workspace, path: data.repository.path }}
+        locked={workspaceLocked} lang={lang} branch={workBranch}
+        onSelect={onSelectProject ? id => void act(() => onSelectProject(id)) : undefined}
+        onPrepare={!workspaceLocked ? action => void act(() => window.loom.call("projectRun/prepareWorkspace", {
+          threadId, action, confirmed: true, expectedPath: overview.workspace?.path, branch: workBranch })) : undefined} />,
+      onChooseWorkspace: !run && !chatting && onChangeWorkspace && window.loom.pickDirectory ? () => void act(async () => {
         const picked = await window.loom.pickDirectory!();
         if (picked) await onChangeWorkspace(picked);
       }) : undefined,
@@ -154,7 +164,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       onReasoning: onReasoning ? async (kind, value) => { await onReasoning(kind, value); } : undefined,
       onCommitWorkspace: (message, count) => act(() => window.loom.call("projectRun/commitWorkspace", { threadId, message, expectedCount: count })),
       // The proposal the agent wrote, started by the person with the budget and agents set in the footer.
-      onStart: proposal ? (_objective, workers, tokens, attachments) => act(() => window.loom.call("projectWeave/start", {
+      onStart: proposal && workspaceReady ? (_objective, workers, tokens, attachments) => act(() => window.loom.call("projectWeave/start", {
         attachments, operationId: `weave:${proposal.id}`, threadId, proposalId: proposal.id, tokenBudget: tokens,
         maxEpisodes: START_EPISODES, maxWorkers: workers, maxMilestones: 20 })) : undefined,
       onDismiss: proposal ? () => act(() => window.loom.call("projectWeave/dismiss", { threadId, proposalId: proposal.id })) : undefined,
