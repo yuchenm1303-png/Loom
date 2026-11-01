@@ -23,7 +23,7 @@ export function verifyPackagedRuntime(resources) {
       if (base) args.push("--base-url", base);
       const frames = ["initialize", "thread/list"].map((method, index) =>
         ({ jsonrpc: "2.0", id: index + 1, method, params: method === "initialize" ? { protocolVersion: 1 } : { limit: 1 } }));
-      const result = spawnSync(path.join(resources, "python.exe"), args, {
+      const result = spawnSync(path.join(resources, process.platform === "win32" ? "python.exe" : "python"), args, {
         cwd: resources, env: { ...env, LOOM_HOME: home, PYTHONUTF8: "1" },
         input: frames.map(frame => JSON.stringify(frame) + "\n").join(""),
         encoding: "utf8", windowsHide: true, timeout: 60_000, maxBuffer: 2 * 1024 * 1024,
@@ -40,5 +40,5 @@ export function verifyPackagedRuntime(resources) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  verifyPackagedRuntime(path.resolve(process.argv[2] || fileURLToPath(new URL("../release/win-unpacked/resources", import.meta.url))));
+  verifyPackagedRuntime(path.resolve(process.argv[2] || fileURLToPath(new URL(process.platform === "darwin" ? "../release/mac-arm64/Loom.app/Contents/Resources" : "../release/win-unpacked/resources", import.meta.url))));
 }

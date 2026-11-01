@@ -73,7 +73,7 @@ def _action_schema() -> dict[str, Any]:
 def _store(runtime: "ComputerUseRuntime") -> "ComputerSessionStore":
     store = runtime.computer_sessions
     if store is None:
-        raise RuntimeError("Computer Use is unavailable; install Loom with the computer extra on Windows")
+        raise RuntimeError("Computer Use is unavailable; install the platform computer extra and grant OS permissions")
     return store
 
 

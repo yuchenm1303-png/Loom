@@ -49,13 +49,14 @@ export function readHostRuntimeManifest(root: string): HostRuntimeManifest | nul
   const parsed = safeJson<Partial<HostRuntimeManifest>>(path.join(root, "manifest.json"));
   if (!parsed || parsed.schema !== HOST_RUNTIME_SCHEMA) return null;
   if (!validVersion(parsed.version) || !validProtocol(parsed.protocol)) return null;
-  if (String(parsed.platform || "") !== "win32" || String(parsed.arch || "") !== "x64") return null;
+  // Never load a runtime built for another operating system or CPU architecture.
+  if (parsed.platform !== process.platform || parsed.arch !== process.arch) return null;
   return {
     schema: HOST_RUNTIME_SCHEMA,
     version: parsed.version,
     protocol: parsed.protocol,
-    platform: "win32",
-    arch: "x64",
+    platform: parsed.platform,
+    arch: parsed.arch,
     minBootstrapVersion: String(parsed.minBootstrapVersion || "").trim() || undefined,
     sourceSha: String(parsed.sourceSha || "").trim() || undefined,
     publishedAt: String(parsed.publishedAt || "").trim() || undefined,
@@ -64,10 +65,11 @@ export function readHostRuntimeManifest(root: string): HostRuntimeManifest | nul
 
 function runtimeRootLooksUsable(root: string): boolean {
   if (!root || !fs.existsSync(root)) return false;
-  if (process.platform !== "win32") return true;
-  return fs.existsSync(path.join(root, "python.exe"))
-    && fs.existsSync(path.join(root, "wxc-exec.exe"))
-    && fs.existsSync(path.join(root, "browser-current-tab", "manifest.json"));
+  const python = path.join(root, process.platform === "win32" ? "python.exe" : "python");
+  if (!fs.existsSync(python)) return false;
+  if (!fs.existsSync(path.join(root, "browser-current-tab", "manifest.json"))) return false;
+  // MXC is a required Windows-only sandbox helper. macOS has no MXC binary.
+  return process.platform !== "win32" || fs.existsSync(path.join(root, "wxc-exec.exe"));
 }
 
 function descriptorFromRoot(root: string, source: HostRuntimeSource): HostRuntimeDescriptor | null {

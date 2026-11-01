@@ -1,0 +1,39 @@
+"""Native macOS bridge contract, intentionally does not capture screen or post input."""
+from __future__ import annotations
+
+import platform
+import sys
+
+
+def main() -> None:
+    if platform.system() != "Darwin":
+        raise RuntimeError("macOS bridge contract requires Darwin")
+    import Quartz
+    import AppKit
+    import ApplicationServices
+
+    assert AppKit.NSWorkspace is not None
+    assert callable(Quartz.CGWindowListCopyWindowInfo)
+    assert callable(Quartz.CGPreflightScreenCaptureAccess)
+    assert callable(ApplicationServices.AXIsProcessTrusted)
+
+    text = "你好😀"
+    raw = text.encode("utf-16-le")
+    units = tuple(int.from_bytes(raw[i:i + 2], "little") for i in range(0, len(raw), 2))
+    event = Quartz.CGEventCreateKeyboardEvent(None, 0, True)
+    if event is None:
+        raise RuntimeError("Quartz could not allocate a keyboard event")
+    # Test PyObjC's UniChar* argument conversion, NOT posting to the user's input.
+    Quartz.CGEventKeyboardSetUnicodeString(event, len(units), tuple(chr(unit) for unit in units))
+    length, readback = Quartz.CGEventKeyboardGetUnicodeString(event, 20, None, None)
+    assert length == len(units), (length, len(units))
+    # PyObjC decodes UTF-16 surrogate pairs when returning the event payload:
+    # length measures UTF-16 units, whereas readback is a Python Unicode string.
+    assert len(readback.encode("utf-16-le")) // 2 == length, (readback, length)
+    assert tuple(int.from_bytes(readback.encode("utf-16-le")[i:i + 2], "little")
+                 for i in range(0, len(readback.encode("utf-16-le")), 2)) == units, (readback, units)
+    print("loom-macos-native-bridge-ok")
+
+
+if __name__ == "__main__":
+    main()
