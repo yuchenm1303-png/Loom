@@ -274,6 +274,8 @@ html[data-loom-theme="light"] .pf-stage {
   margin-bottom: 16px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* ProjectFlow follows the newest line itself; the browser's anchoring would hold an older one in place. */
+  overflow-anchor: none;
 }
 .pf-composer { flex: none; }
 
@@ -338,22 +340,104 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-reply {
   justify-self: stretch;
   min-width: 0;
-  padding: 2px 2px 4px;
+  padding: 2px 2px 0;
   color: var(--pl-ink);
   font-size: 14px;
   line-height: 22px;
   animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
 }
-.pf-activity {
+.pf-reply[data-streaming] { padding-bottom: 4px; }
+
+/* An answer's tools sit under it and show while the pointer (or focus) is on it. */
+.pf-reply-tools {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
+  height: 22px;
+  margin: 0 0 0 -4px;
+  opacity: 0;
+  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-out);
+}
+.pf-reply:is(:hover, :focus-within) .pf-reply-tools { opacity: 1; transition-duration: var(--loom-dur-fast); }
+@media (hover: none) { .pf-reply-tools { opacity: 1; } }
+.pf-reply-tools button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--pl-muted);
-  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-reply-tools button:hover { background: var(--pf-raise); color: var(--pl-ink); }
+.pf-reply-tools button:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 1px; }
+.pf-reply-tools button[data-copied] { color: var(--pf-live); }
+/* The check is a mark: it springs in where the copy glyph was. */
+.pf-reply-tools svg { animation: pf-mark-in var(--loom-dur-slow) var(--loom-spring-pop) backwards; }
+.pf-reply-tools button:not([data-copied]) svg { animation: none; }
+
+/* The steps between two messages: the chat's work log (weave.css) at the thread's width. */
+.pf-work {
+  justify-self: stretch;
+  min-width: 0;
+  margin: 2px 0;
   animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
 }
-.pf-activity svg { flex: none; }
+.pf-work .wv-stage { width: 100%; }
+
+/* An approval the agent waits on, or the error that ended a turn: the chat's own card and row. */
+.pf-notice {
+  justify-self: stretch;
+  min-width: 0;
+  margin: 4px 0;
+  animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
+}
+.pf-notice[data-leaving] { opacity: 0; transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit); }
+
+/* The quiet moments of a turn: the chat's thinking row (inline-thinking.css), its label one line wide. */
+.pf-thinking { display: flex; justify-self: stretch; margin: 2px 0; }
+.pf-thinking .thinking-shimmer {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+/* Back to the newest line, while the reader has scrolled up: it rides the bottom of the thread. */
+.pf-latest {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  justify-self: center;
+  height: 0;
+}
+.pf-latest button {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--pf-raise);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--loom-workspace-ink) 8%, transparent), 0 6px 16px rgb(0 0 0 / .22);
+  color: var(--pl-secondary);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  translate: -50% 0;
+  animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards;
+  transition: color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-latest button:hover { color: var(--pl-ink); }
+.pf-latest button:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 2px; }
 /* The objective the agent wrote, once the project runs: a brief, not something the person said. */
 .pf-bubble.pf-objective {
   justify-self: stretch;
@@ -1292,6 +1376,10 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   .pf-loom-span,
   .pf-attention-dot,
   .pf-busy,
+  .pf-reply-tools svg,
+  .pf-work,
+  .pf-notice,
+  .pf-latest button,
   .pf-pulse,
   .pf-dashes-glint { animation: none; }
 }

@@ -18,16 +18,20 @@
  * The data comes from projectOverview.ts (projectRun/overview); this file only draws it. */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowUp, Bot, BookMarked, ChartGantt, Check, ChevronDown, Circle, CircleDot, Compass, File, FileCode, FileImage,
+  ArrowDown, ArrowUp, Bot, BookMarked, ChartGantt, Check, ChevronDown, Circle, CircleDot, Compass, Copy, File, FileCode, FileImage,
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldAlert, ShieldCheck,
   History, Search, Sparkles, Square, X,
 } from "lucide-react";
 import { MarkdownMessage } from "./MarkdownMessage";
+import { ApprovalCard, ErrorRow } from "./Transcript";
+import { ThinkingGlyph } from "./ThinkingGlyph";
+import { WeaveStage } from "./WeaveFlow";
+import { isExecutingActivityStatus, itemStatus } from "./activityModel";
 import { ProviderMark } from "./ModelPanel";
 import type { FlowMessage, WeaveProposal } from "./projectOverview";
 import { useGlide, visibleBox } from "./projectArrange";
 import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
-import type { ModelReasoningState } from "../types/loom";
+import type { ApprovalDecision, ModelReasoningState, TranscriptItem } from "../types/loom";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./project-flow.css";
@@ -103,6 +107,8 @@ export interface FlowActions {
   onChat?(text: string): void;
   /** Stop the agent's answer. */
   onInterrupt?(): void;
+  /** Answer a step the agent asks the person to allow, as the chat's approval card does. */
+  onApproval?(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void;
   /** Start the proposed project, with the budget and agents set in the footer. */
   onStart?(objective: string, workers: number, tokens: number, attachments: string[], fullAccess: boolean): void;
   /** Set the proposal aside. */
@@ -149,7 +155,7 @@ const zhText = {
   now: "现在", files: "参考文件", filesEmpty: "需求文档、规格或样例数据，每一轮的 agent 都能读到", addFiles: "添加文件",
   remove: "移除", modelCard: "模型", modelSearch: "搜索模型", modelGroups: "模型来源", modelRecent: "最近", modelNone: "没有匹配的模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "建造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "和它聊聊，或描述一个想持续完成的大目标", steerPlaceholder: "继续对话：问进度、补充要求或调整方向",
-  proposal: "建造提案", startProposal: "开始建造", dismissProposal: "不用了", replying: "正在回复…", stopReply: "停止回复",
+  proposal: "建造提案", startProposal: "开始建造", dismissProposal: "不用了", replying: "正在思考…", stopReply: "停止回复", copy: "复制", copied: "已复制", latest: "最新",
   proposalHint: "从最后一次提交开始，在独立的检出里分阶段开发，每个任务独立复审后集成回当前分支",
   review: "沙箱 · 复审", reviewHint: "开发和复审 agent 只能改写自己的独立检出，读不到你的其他文件夹；每个任务合入前都由另一个 agent 独立复审",
   fullAccess: "完全访问 · 复审", fullAccessHint: "开发和复审 agent 不受沙箱限制，可以联网、安装依赖、读写你电脑上的任何文件；每个任务合入前仍由另一个 agent 独立复审", accessToggle: "点击切换沙箱 / 完全访问", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
@@ -174,7 +180,7 @@ const enText: typeof zhText = {
   modelHint: "Agents already started keep their model; new ones use the choice", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
   draftPlaceholder: "Talk it through, or describe a large objective to pursue",
   steerPlaceholder: "Keep talking: ask about progress, add requirements or change direction",
-  proposal: "Proposed project", startProposal: "Start weaving", dismissProposal: "Not now", replying: "Replying…", stopReply: "Stop the reply",
+  proposal: "Proposed project", startProposal: "Start weaving", dismissProposal: "Not now", replying: "Thinking…", stopReply: "Stop the reply", copy: "Copy", copied: "Copied", latest: "Latest",
   proposalHint: "Builds from the last commit in its own checkout, milestone by milestone; every task is reviewed before it is merged into the current branch",
   review: "Sandbox · review", reviewHint: "Builders and reviewers can change only their own isolated checkout and cannot read your other folders; every task is reviewed by a separate agent before it is integrated",
   fullAccess: "Full access · review", fullAccessHint: "Builders and reviewers run outside the sandbox: they can use the network, install dependencies and read or change any file on this computer; every task is still reviewed by a separate agent before it is integrated", accessToggle: "Click to switch between sandbox and full access", settings: "Run settings", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
@@ -358,6 +364,27 @@ function Inline({ text }: { text: string }) {
   return <>{parts.map((part, index) => index % 2 ? <code key={index} className="pf-code">{part}</code> : part)}</>;
 }
 
+// The work log's narration stays out of the thread: the thinking row reads the latest line of it.
+const noNote = () => null;
+
+/** An answer's copy button: it shows on hover (or focus) under the answer, and says so once it has copied. */
+function CopyReply({ value, label, done }: { value: string; label: string; done: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1400);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  return (
+    <div className="pf-reply-tools">
+      <button type="button" aria-label={copied ? done : label} title={copied ? done : label} data-copied={copied || undefined}
+              onClick={() => void navigator.clipboard.writeText(value).then(() => setCopied(true), () => undefined)}>
+        {copied ? <Check key="done" size={12} /> : <Copy key="copy" size={12} />}
+      </button>
+    </div>
+  );
+}
+
 function Pulse({ d, step, back = false }: { d: string; step: number; back?: boolean }) {
   const moment = useMoment(step);
   return moment ? <path key={moment} className="pf-pulse" data-back={back || undefined} d={d} pathLength={100} /> : null;
@@ -481,11 +508,65 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                   data.conversation?.length ?? 0, proposal?.id ?? "", data.chatting ? 1 : 0].join("|");
   const { cables, measure } = useCables(stage, hub, cards, layout);
   // A low stage squeezes the thread above the hub: it shows the newest line, and scrolls up to the objective.
+  // It follows what arrives (an answer being written, a step) while the reader is at the bottom; scrolled up, it
+  // stays where they read and offers the way back down.
   const thread = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
+  const gliding = useRef(false);
+  const [behind, setBehind] = useState(false);
   useLayoutEffect(() => {
     const box = thread.current;
-    if (box && box.scrollHeight > box.clientHeight) box.scrollTop = box.scrollHeight;
+    if (box && following.current && box.scrollHeight > box.clientHeight) box.scrollTop = box.scrollHeight;
   }, [layout, data.narration.text, dirtyOpen, objectiveOpen]);
+  useEffect(() => {
+    const box = thread.current;
+    if (!box) return;
+    let height = box.scrollHeight;
+    const grew = () => {
+      if (box.scrollHeight === height) return;
+      height = box.scrollHeight;
+      if (following.current) box.scrollTop = box.scrollHeight;
+      else setBehind(true);
+    };
+    let top = box.scrollTop;
+    const onScroll = () => {
+      const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
+      const up = box.scrollTop < top - 1;
+      top = box.scrollTop;
+      if (atEnd) {
+        gliding.current = false;
+        following.current = true;
+        setBehind(false);
+        return;
+      }
+      // Only the reader leaves the end, by scrolling up: a stage folding above or a glide back down does not.
+      if (gliding.current || !up) return;
+      following.current = false;
+      setBehind(true);
+    };
+    // Text grows inside a message without the thread's own box changing: watch every entry.
+    const sizes = new ResizeObserver(grew);
+    const watch = () => { sizes.disconnect(); sizes.observe(box); for (const child of box.children) sizes.observe(child); };
+    const entries = new MutationObserver(() => { watch(); grew(); });
+    watch();
+    entries.observe(box, { childList: true });
+    box.addEventListener("scroll", onScroll, { passive: true });
+    return () => { sizes.disconnect(); entries.disconnect(); box.removeEventListener("scroll", onScroll); };
+  }, []);
+  const toLatest = () => {
+    const box = thread.current;
+    following.current = true;
+    gliding.current = true;
+    setBehind(false);
+    box?.scrollTo({ top: box.scrollHeight, behavior: prefersReducedMotionNow() ? "auto" : "smooth" });
+  };
+  const conversation = data.conversation || [];
+  const tail = conversation[conversation.length - 1];
+  // The quiet moments of a turn (before its first word, between steps) are said by the thinking row; a step that
+  // runs, an answer being written or a question for the person says so already.
+  const thinking = Boolean(data.chatting) && !(tail?.streaming
+    || (tail?.role === "work" && tail.live && tail.items!.some((item) => isExecutingActivityStatus(itemStatus(item))))
+    || (tail?.role === "notice" && tail.items![0].type === "approval"));
   useGlide(stage, layout, measure);
   const share = Math.min(1, data.budget.tokens / Math.max(1, data.budget.tokenLimit));
   const done = data.tasks.filter((task) => task.state === "integrated").length;
@@ -503,6 +584,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     const value = draft.trim();
     if (!value) return;
     if (actions.onChat) actions.onChat(value); else if (!draftMode) actions.onSteer?.(value);
+    // What the person just said is where they are reading.
+    following.current = true;
+    setBehind(false);
     setDraft("");
   };
   const startProposal = () => {
@@ -613,15 +697,38 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
       <div className="pf-col pf-center">
         <div className="pf-thread" ref={thread} data-glide="thread">
           {/* The conversation: Weave is chat first, so what was said reads here like the chat's transcript. */}
-          {(data.conversation || []).map((message) => message.role === "user" ? (
+          {conversation.map((message) => message.role === "user" ? (
             <div key={message.id} className="pf-bubble pf-said"><span className="pf-said-text">{message.text}</span></div>
+          ) : message.role === "work" ? (
+            // The steps between two messages, drawn by the chat's own work log: live rows while they run, one line after.
+            <div key={message.id} className="pf-work">
+              <WeaveStage items={message.items!} keepOpen={Boolean(message.live && !message.superseded)} superseded={message.superseded}
+                          live={message.live} workspace={data.repository.path} renderNote={noNote} />
+            </div>
+          ) : message.role === "notice" ? (
+            <div key={message.id} className="pf-notice" data-leaving={message.items![0].leaving || undefined} inert={Boolean(message.items![0].leaving)}>
+              {message.items![0].type === "approval"
+                ? (actions.onApproval ? <ApprovalCard item={message.items![0]} onApproval={actions.onApproval} /> : null)
+                : <ErrorRow item={message.items![0]} />}
+            </div>
           ) : (
-            <div key={message.id} className="pf-reply">
-              <MarkdownMessage content={message.text} compact streaming={message.streaming} messageKey={message.id} />
+            <div key={message.id} className="pf-reply" data-streaming={message.streaming || undefined}>
+              <MarkdownMessage content={message.text} compact glow streaming={message.streaming} messageKey={message.id}
+                               workspace={data.repository.path} />
+              {message.streaming ? null : <CopyReply value={message.text} label={text.copy} done={text.copied} />}
             </div>
           ))}
-          {data.chatting && !data.conversation?.[data.conversation.length - 1]?.streaming ? (
-            <p className="pf-activity" key={data.activity || "replying"}><LoaderCircle size={12} className="pf-busy" />{data.activity || text.replying}</p>
+          {thinking ? (
+            // The chat's thinking row: the bead and a lit label, which reads the agent's latest commentary when it has one.
+            <div className="inline-thinking pf-thinking" role="status" aria-live="polite">
+              <ThinkingGlyph />
+              <span className="thinking-shimmer" key={data.activity || ""} title={data.activity || undefined}>{data.activity || text.replying}</span>
+            </div>
+          ) : null}
+          {behind ? (
+            <div className="pf-latest">
+              <button type="button" onClick={toLatest}><ArrowDown size={12} />{text.latest}</button>
+            </div>
           ) : null}
           {proposal ? (
             // What the agent proposes to build: the person reads it whole and starts it, or not.

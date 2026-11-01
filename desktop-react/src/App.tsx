@@ -1726,7 +1726,7 @@ export default function App() {
                              await handleMoveProject(thread.id, project.id);
                            } : undefined}
                            models={loom.models} onSwitchModel={loom.switchModelProfile} onReasoning={loom.setReasoning}
-                           items={loom.items} chatting={running} onInterrupt={loom.interrupt}
+                           items={transcriptItems} chatting={running} onInterrupt={loom.interrupt} onApproval={handleApproval}
                            onChat={(input) => loom.send(input, [], undefined, { weave: true })} />
             </Suspense>
           </div>

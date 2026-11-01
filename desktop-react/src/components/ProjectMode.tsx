@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
 import { raisedBudget, readableError, toConversation, toFlowData, toModelChoice, type ProjectOverview } from "./projectOverview";
-import type { ModelSnapshot, TranscriptItem, ProjectRecord } from "../types/loom";
+import type { ApprovalDecision, ModelSnapshot, TranscriptItem, ProjectRecord } from "../types/loom";
 import { ProjectWorkspacePicker } from "./ProjectWorkspacePicker";
 
 const LIVE_POLL_MS = 2000;
@@ -22,7 +22,7 @@ const START_EPISODES = 400;
  *  (the composer's morph lands on it) and the first read then refreshes it. */
 const lastOverview = new Map<string, ProjectOverview>();
 
-export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt, onChangeWorkspace, projects = [], onSelectProject }: {
+export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt, onApproval, onChangeWorkspace, projects = [], onSelectProject }: {
   threadId: string; workspace?: string; model?: string;
   onChangeWorkspace?(path: string): Promise<unknown>;
   projects?: ProjectRecord[]; onSelectProject?(id: string): Promise<unknown>;
@@ -32,6 +32,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   items?: TranscriptItem[]; chatting?: boolean;
   /** A message to the conversation's agent, as a Weave turn; and stopping its answer. */
   onChat?(input: string): Promise<unknown>; onInterrupt?(): Promise<unknown> | void;
+  /** Answering a step the agent asks the person to allow (the chat's approval card). */
+  onApproval?(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): unknown;
 }) {
   const { language } = useI18n();
   const lang = language === "zh-CN" ? "zh" : "en";
@@ -170,6 +172,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       onDismiss: proposal ? () => act(() => window.loom.call("projectWeave/dismiss", { threadId, proposalId: proposal.id })) : undefined,
       onChat: onChat ? (text) => { setError(""); void onChat(text).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
       onInterrupt: onInterrupt ? () => { void onInterrupt(); } : undefined,
+      onApproval: onApproval ? (item, decision, feedback) => { void onApproval(item, decision, feedback); } : undefined,
       onPause: () => run && control("pause"),
       onResume: () => run && control("resume"),
       onCancel: () => run && control("cancel"),

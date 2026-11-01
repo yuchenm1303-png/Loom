@@ -24,6 +24,8 @@ interface MarkdownMessageProps {
   /** A newly opened disclosure starts at current text, without replaying its backlog. */
   revealOnMount?: boolean;
   workspace?: string;
+  /** The typing light at the edge of the text being written; on unless compact (the quiet reasoning copy). */
+  glow?: boolean;
 }
 
 interface LocalImagePayload {
@@ -302,17 +304,19 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   workspace,
   streaming,
   receiving,
+  glow,
 }: {
   content: string;
   compact: boolean;
   workspace?: string;
   streaming: boolean;
   receiving: boolean;
+  glow: boolean;
 }) {
   const components = useMemo(() => markdownComponents(workspace, receiving), [workspace, receiving]);
   const root = useRef<HTMLDivElement>(null);
   // The edge of the text being written glows (the quiet reasoning copy does not).
-  useTypingLight(root, !compact && (streaming || receiving), content);
+  useTypingLight(root, glow && (streaming || receiving), content);
   return (
     <div ref={root} className={`markdown-body ${compact ? "markdown-compact" : ""} ${streaming ? "is-streaming" : ""} ${receiving ? "is-receiving" : ""}`} aria-busy={receiving}>
       <ReactMarkdown
@@ -328,8 +332,8 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   );
 });
 
-export function MarkdownMessage({ content, compact = false, workspace, streaming = false, messageKey, interrupted = false, revealOnMount = false }: MarkdownMessageProps) {
+export function MarkdownMessage({ content, compact = false, workspace, streaming = false, messageKey, interrupted = false, revealOnMount = false, glow = !compact }: MarkdownMessageProps) {
   const presentation = useStreamingPresentation(content, streaming, messageKey, interrupted, revealOnMount);
   return <MarkdownRenderer content={presentation.visible} compact={compact} workspace={workspace}
-    streaming={presentation.painting} receiving={streaming && !interrupted} />;
+    streaming={presentation.painting} receiving={streaming && !interrupted} glow={glow} />;
 }

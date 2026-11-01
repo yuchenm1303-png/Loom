@@ -251,3 +251,23 @@ test("the conversation reads what was said and answered; commentary is the live 
   assert.equal(answered.messages.at(-1).streaming, true);
   assert.equal(toConversation(items, false).activity, "");
 });
+
+test("the conversation keeps the work between messages: one stage per run of steps, folded once anything follows", () => {
+  const items = [
+    { id: "u1", threadId: "t", turnId: "a", type: "user_message", text: "跑测试" },
+    { id: "s1", threadId: "t", turnId: "a", type: "tool_call", toolName: "read_workspace_text", status: "completed" },
+    { id: "c1", threadId: "t", turnId: "a", type: "assistant_message", phase: "commentary", text: "再跑一遍" },
+    { id: "p1", threadId: "t", turnId: "a", type: "process", status: "running", argv: ["pytest"] },
+  ];
+  const live = toConversation(items, true);
+  assert.deepEqual(live.messages.map((m) => [m.role, m.items?.map((item) => item.id) ?? null]),
+    [["user", null], ["work", ["s1", "p1"]]]);
+  assert.equal(live.messages[1].live, true);
+  assert.equal(live.messages[1].superseded, false);
+  const asked = toConversation([...items, { id: "ap", threadId: "t", turnId: "a", type: "approval", status: "pending" }], true);
+  assert.deepEqual(asked.messages.map((m) => m.role), ["user", "work", "notice"]);
+  assert.equal(asked.messages[1].superseded, true);
+  const over = toConversation([...items, { id: "a1", threadId: "t", turnId: "a", type: "assistant_message", text: "都过了" }], false);
+  assert.deepEqual(over.messages.map((m) => [m.role, Boolean(m.live), Boolean(m.superseded), Boolean(m.streaming)]),
+    [["user", false, false, false], ["work", false, true, false], ["assistant", false, false, false]]);
+});

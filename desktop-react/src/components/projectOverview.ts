@@ -342,9 +342,21 @@ export function raisedBudget(run: { tokenBudget: number; maxEpisodes: number }, 
   return { tokenBudget: run.tokenBudget + tokens, maxEpisodes: run.maxEpisodes + episodes };
 }
 
-export interface FlowMessage { id: string; role: "user" | "assistant"; text: string; turnId?: string | null; streaming?: boolean }
+/** One entry of the conversation above the hub. "work" is a run of tool steps between two messages (`items`);
+ *  "notice" is an approval waiting for the person or the error that ended a turn (`items[0]`). */
+export interface FlowMessage {
+  id: string; role: "user" | "assistant" | "work" | "notice"; text: string; turnId?: string | null; streaming?: boolean;
+  items?: TranscriptItem[];
+  /** A work stage of the turn that runs now. */
+  live?: boolean;
+  /** A work stage something came after (or whose turn is over): it reads as one line until opened. */
+  superseded?: boolean;
+}
 
-/** The conversation as the hub reads it: what the person said and the agent's answers, newest last.
+// Tool steps, as the transcript's work log groups them (executionSequence.isActivityItem; repeated so this file stays pure).
+const WORK = new Set(["tool_call", "process", "file_edit"]);
+
+/** The conversation as the hub reads it: what the person said, the agent's answers and the work between them, newest last.
  *  Commentary (the agent narrating its work) is not an answer; while a turn runs its latest line is `activity`. */
 export function toConversation(items: TranscriptItem[], chatting: boolean, limit = 40): { messages: FlowMessage[]; activity: string } {
   const messages: FlowMessage[] = [];
@@ -352,12 +364,25 @@ export function toConversation(items: TranscriptItem[], chatting: boolean, limit
   const lastTurn = [...items].reverse().find((item) => item.turnId)?.turnId;
   for (const item of items) {
     const text = String(item.text || "").trim();
-    if (item.type === "user_message" && text) messages.push({ id: item.clientMessageId || item.id, role: "user", text });
+    const previous = messages[messages.length - 1];
+    if (WORK.has(item.type)) {
+      // Steps join the stage before them until a message, an approval or an error comes between.
+      if (previous?.role === "work" && previous.turnId === item.turnId) previous.items = [...previous.items!, item];
+      else messages.push({ id: `work:${item.id}`, role: "work", text: "", turnId: item.turnId, items: [item] });
+    } else if (item.type === "approval" || item.type === "error") {
+      messages.push({ id: item.id, role: "notice", text, turnId: item.turnId, items: [item] });
+    } else if (item.type === "user_message" && text) messages.push({ id: item.clientMessageId || item.id, role: "user", text });
     else if (item.type === "assistant_message" && text && !item.runtimeAuthored) {
       if (item.phase === "commentary") { if (chatting && item.turnId === lastTurn) activity = text; continue; }
       messages.push({ id: item.id, role: "assistant", text, turnId: item.turnId });
     }
   }
+  // A stage folds to one line once anything follows it or its turn is over; the stage at the live edge stays open.
+  messages.forEach((message, index) => {
+    if (message.role !== "work") return;
+    message.live = chatting && message.turnId === lastTurn;
+    message.superseded = !message.live || index < messages.length - 1;
+  });
   // As the transcript does: while a turn runs, its newest answer is the one still arriving.
   const last = messages[messages.length - 1];
   if (chatting && last?.role === "assistant" && last.turnId === lastTurn) last.streaming = true;

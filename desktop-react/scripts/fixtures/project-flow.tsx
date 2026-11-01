@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ProjectFlow, type FlowAgent, type FlowData, type ModelOption } from "../../src/components/ProjectFlow";
 import { ProjectModeToggle } from "../../src/components/ProjectModeToggle";
+import { toConversation } from "../../src/components/projectOverview";
+import type { TranscriptItem } from "../../src/types/loom";
 import { applyThemePreference } from "../../src/theme";
 import { I18nProvider } from "../../src/i18n";
 import "../../src/renderer-styles";
@@ -116,6 +118,63 @@ function talk(data: FlowData): FlowData {
   return { ...data, conversation: CHAT, chatting: params.has("chatting"), activity: params.has("chatting") ? "读取 ledger/parser.py" : "" };
 }
 
+// &turn=1: the same conversation as the Host's transcript items, through the real mapping (toConversation): the
+// agent read the repository before it answered. &live=1 adds a turn that plays: it thinks, runs steps, then writes
+// its answer (&hold=N stops at scene N); &ask=1 ends that turn on an approval instead.
+const T = "t1";
+const at = (s: number) => new Date(Date.UTC(2026, 10, 1, 9, 0, s)).toISOString();
+const HISTORY: TranscriptItem[] = [
+  { id: "u1", threadId: T, turnId: "a", type: "user_message", text: "你好" },
+  { id: "a1", threadId: T, turnId: "a", type: "assistant_message", text: "你好！在建造模式里可以直接聊天，也可以交给我一个要持续好几天的大目标。想做点什么？" },
+  { id: "u2", threadId: T, turnId: "b", type: "user_message", text: "帮我把 ledger 做成一个能导入银行流水、按月出报表的记账工具，要有测试" },
+  { id: "b-c1", threadId: T, turnId: "b", type: "assistant_message", phase: "commentary", text: "先看看仓库里已有什么" },
+  { id: "b-r1", threadId: T, turnId: "b", type: "tool_call", toolName: "read_workspace_text", status: "completed", arguments: { path: "ledger/parser.py" }, createdAt: at(1), updatedAt: at(2) },
+  { id: "b-r2", threadId: T, turnId: "b", type: "tool_call", toolName: "read_workspace_text", status: "completed", arguments: { path: "ledger/cli.py" }, createdAt: at(2), updatedAt: at(3) },
+  { id: "b-p1", threadId: T, turnId: "b", type: "process", status: "completed", argv: ["git", "log", "--oneline", "-5"], stdout: "0a1d215 Integrate task-3 CLI", createdAt: at(3), updatedAt: at(4) },
+  { id: "a2", threadId: T, turnId: "b", type: "assistant_message", text: "明白。我先看了仓库：已有 `ledger/parser.py` 和基础 CLI。我把目标整理成了下面的提案，**确认后点「开始建造」**。" },
+];
+const ANSWER = "测试现在**能过**：`pytest -q` 共 14 项全部通过，用时 0.8 秒。\n\n不过有两处值得注意：\n\n1. `parser.py` 遇到空行会直接跳过，没有计入行号，报错时行号会偏一行。\n2. 汇总用的是 `float`，金额多了会有分位误差，建议换成 `Decimal`。\n\n要我把这两处也写进提案吗？";
+function liveTurn(scene: number): { items: TranscriptItem[]; chatting: boolean } {
+  const turn = "c";
+  const items: TranscriptItem[] = [{ id: "u3", threadId: T, turnId: turn, type: "user_message", text: "跑一下测试，看看现在能不能过" }];
+  const step = (id: string, done: boolean, extra: Partial<TranscriptItem>) =>
+    items.push({ id, threadId: T, turnId: turn, status: done ? "completed" : "running", createdAt: done ? at(10) : undefined, updatedAt: done ? at(12) : undefined, ...extra } as TranscriptItem);
+  if (scene >= 1) items.push({ id: "c-c1", threadId: T, turnId: turn, type: "assistant_message", phase: "commentary", text: "先找到测试入口，再跑一遍" });
+  if (scene >= 2) step("c-s1", scene >= 3, { type: "tool_call", toolName: "search_workspace", arguments: { query: "def test_", path: "tests" } });
+  if (scene >= 3) step("c-p1", scene >= 5, { type: "process", argv: ["python", "-m", "pytest", "-q"], stdout: scene >= 4 ? "..............                       [100%]\n14 passed in 0.81s" : "collecting ..." });
+  if (scene >= 5 && params.has("ask")) {
+    items.push({ id: "c-ap", threadId: T, turnId: turn, type: "approval", status: "pending", toolName: "exec", reason: "pip install -e . 需要联网",
+                 availableDecisions: ["accept", "decline"] } as TranscriptItem);
+    return { items, chatting: true };
+  }
+  if (scene >= 6) step("c-r1", scene >= 7, { type: "tool_call", toolName: "read_workspace_text", arguments: { path: "ledger/parser.py" } });
+  if (scene >= 8) {
+    // The answer arrives a few characters at a time, as a stream does.
+    const shown = Math.min(ANSWER.length, (scene - 8) * 9);
+    items.push({ id: "c-a", threadId: T, turnId: turn, type: "assistant_message", text: ANSWER.slice(0, shown) });
+    return { items, chatting: shown < ANSWER.length };
+  }
+  return { items, chatting: true };
+}
+const SCENES = 8 + Math.ceil(ANSWER.length / 9) + 1;
+function useScene(): number {
+  const hold = params.has("hold") ? Number(params.get("hold")) : null;
+  const [scene, setScene] = useState(hold ?? 0);
+  useEffect(() => {
+    if (hold != null || !params.has("live")) return;
+    // A step takes about a second; the answer streams nine characters a frame of 60 ms.
+    const timer = setTimeout(() => setScene((value) => (value >= SCENES + 6 ? 0 : value + 1)), scene < 8 ? 1100 : 60);
+    return () => clearTimeout(timer);
+  }, [scene, hold]);
+  return scene;
+}
+function turnTalk(data: FlowData, scene: number): FlowData {
+  if (!params.has("turn")) return data;
+  const live = params.has("live") || params.has("hold") ? liveTurn(scene) : { items: [], chatting: false };
+  const { messages, activity } = toConversation([...HISTORY, ...live.items], live.chatting);
+  return { ...data, conversation: messages, chatting: live.chatting, activity };
+}
+
 // ?draft=1: nothing started yet (&proposal=1: the agent proposed a project); ?attention=1: stopped at the budget and waiting.
 function variant(data: FlowData): FlowData {
   // &full=1: the run was started with full access.
@@ -139,6 +198,7 @@ function Preview() {
   const frozen = params.has("at") ? Number(params.get("at")) : null;
   const [mode, setMode] = useState<"chat" | "project">(params.get("mode") === "chat" ? "chat" : "project");
   const [count, setCount] = useState(frozen ?? 0);
+  const scene = useScene();
   const [workers, setWorkers] = useState(Number(params.get("workers") || 2));
   const [model, setModel] = useState(MODELS[0].selection);
   const [picks, setPicks] = useState(0);
@@ -166,8 +226,8 @@ function Preview() {
       </header>
       {mode === "project"
         ? <div className="project-mode-stage" style={{ gridRow: "2" }}>
-            <ProjectFlow data={{ ...variant(play(count, workers)), models, references: REFERENCES }}
-                         actions={{ onChat: () => {}, onInterrupt: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {},
+            <ProjectFlow data={{ ...turnTalk(variant(play(count, workers)), scene), models, references: REFERENCES }}
+                         actions={{ onChat: () => {}, onInterrupt: () => {}, onApproval: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {},
                                     error: params.has("error") ? "Lost the Host; reconnecting…" : undefined,
                                     onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
           </div>

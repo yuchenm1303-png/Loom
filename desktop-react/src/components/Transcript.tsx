@@ -830,7 +830,7 @@ function AssistantMessage({ item, streaming, onPrompt, decisionInteractive, prom
   );
 }
 
-function ApprovalCard({ item, onApproval }: { item: TranscriptItem; onApproval(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void }) {
+export function ApprovalCard({ item, onApproval }: { item: TranscriptItem; onApproval(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void }) {
   const copy = useRuntimeCopy();
   const [declining, setDeclining] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -899,7 +899,7 @@ function ApprovalCard({ item, onApproval }: { item: TranscriptItem; onApproval(i
 }
 
 /** A turn's ending: a failure reads as an error, the user's own stop does not. */
-function ErrorRow({ item }: { item: TranscriptItem }) {
+export function ErrorRow({ item }: { item: TranscriptItem }) {
   const copy = useRuntimeCopy();
   const ending = copy.turnEnding(String(item.error || item.text || ""));
   const stopped = ending.tone === "stopped";
