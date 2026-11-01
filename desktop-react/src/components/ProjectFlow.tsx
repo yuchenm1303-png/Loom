@@ -129,6 +129,7 @@ const zhText = {
   review: "独立复审", reviewHint: "每个任务合入前都由另一个 agent 独立复审", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "建造",
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
+  branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
@@ -151,6 +152,7 @@ const enText: typeof zhText = {
   review: "Reviewed", reviewHint: "Every task is reviewed by a separate agent before it is integrated", settings: "Run settings", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
+  branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
 };
 const stateWord = {
   zh: { running: "运行中", paused: "已暂停", needs_you: "等你处理", completed: "已完成", starting: "启动中" },
@@ -159,6 +161,18 @@ const stateWord = {
 
 type Side = "left" | "right" | "below";
 interface Cable { id: string; side: Side; d: string; socket: { x: number; y: number } }
+
+// The branches the person folded away, by id. Storage may be missing or refuse; then nothing is folded.
+const FOLDED_KEY = "loom.buildFolded";
+function readFolded(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(FOLDED_KEY) || "[]");
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  } catch { return []; }
+}
+function writeFolded(ids: string[]) {
+  try { localStorage.setItem(FOLDED_KEY, JSON.stringify(ids)); } catch { /* kept for this session only */ }
+}
 
 function compact(value: number) {
   // 16M, 2.4M: a whole number of millions has no ".0".
@@ -367,8 +381,19 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     if (node) cards.current.set(id, { side, node }); else cards.current.delete(id);
   }, []);
   const draftMode = data.phase === "draft";
-  const agents = useDeparting(data.agents);
+  // Every branch has its button in the hub's head: folded, the card unplugs (exit, cable back into
+  // the hub) and the rest glide into its room. Remembered across sessions, like the panels' widths.
+  const [folded, setFolded] = useState(readFolded);
+  const fold = (id: string) => setFolded((list) => {
+    const next = list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
+    writeFolded(next);
+    return next;
+  });
+  const open = (id: string) => !folded.includes(id);
+  const agents = useDeparting(open("agents") ? data.agents : []);
   const branches = useDeparting(modelOpen && data.models ? [{ id: "model" }] : []);
+  const below = useDeparting(open("plan") ? [{ id: "plan" }] : []);
+  const loom = useDeparting(data.timeline && open("loom") ? [{ id: "loom" }] : []);
   // Files the person picked before starting; once started, the Host's copies are what count.
   const [picked, setPicked] = useState<string[]>([]);
   const files = draftMode ? picked.map((path) => ({ name: path.split(/[\\/]/).pop() || path, bytes: undefined as number | undefined, path }))
@@ -376,8 +401,17 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const filesShown = draftMode ? Boolean(actions.onPickFiles) : files.length > 0 || Boolean(actions.onAttach);
   const contextList = [{ id: "repo" }, ...(data.scope.length ? [{ id: "scope" }] : []), ...(filesShown ? [{ id: "files" }] : []),
                        ...(data.knowledge.checks + data.knowledge.notes ? [{ id: "knowledge" }] : [])];
-  const context = useDeparting(contextList);
+  const context = useDeparting(contextList.filter((item) => open(item.id)));
+  // The buttons, in the order the cards hang: the context on the left, the plan below, the agents and the timeline.
+  const toggles: { id: string; icon: typeof Check; label: string }[] = [
+    ...contextList.map(({ id }) => ({ id, ...{ repo: { icon: GitBranch, label: text.repository }, scope: { icon: FolderOpen, label: text.scope },
+                                              files: { icon: Paperclip, label: text.files }, knowledge: { icon: BookMarked, label: text.knowledge } }[id]! })),
+    data.outcome ? { id: "plan", icon: Check, label: text.outcome } : { id: "plan", icon: Compass, label: text.plan(data.milestone) },
+    ...(data.agents.length ? [{ id: "agents", icon: Bot, label: text.agentCards }] : []),
+    ...(data.timeline ? [{ id: "loom", icon: ChartGantt, label: text.loom }] : []),
+  ];
   const layout = [context.map((item) => item.id).join(","), branches.map((item) => item.id).join(","), agents.map((agent) => agent.id).join(","), files.length,
+                  below.length, loom.length,
                   modelTotal, modelView, query, reasoningState?.value ?? "",
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase].join("|");
   const { cables, measure } = useCables(stage, hub, cards, layout);
@@ -392,6 +426,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const done = data.tasks.filter((task) => task.state === "integrated").length;
   const leaving = new Set([...context.filter((item) => item.leaving).map((item) => item.id),
                            ...branches.filter((item) => item.leaving).map((item) => item.id),
+                           ...below.filter((item) => item.leaving).map((item) => item.id),
+                           ...loom.filter((item) => item.leaving).map((item) => item.id),
                            ...agents.filter((item) => item.leaving).map((item) => `agent:${item.id}`)]);
   const shown = (id: string) => context.some((item) => item.id === id);
   const slot = (id: string) => ({ "data-leaving": leaving.has(id) || undefined });
@@ -565,9 +601,20 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
 
         <section className="pf-composer" ref={hub} aria-label={text.hub} data-hot={hot.startsWith("agent:") || undefined}>
           <header className="pf-composer-head">
-            <span className="pf-mode">
+            {/* The header switch already says 建造; the hub names the stage and its state (the words give way first when narrow). */}
+            <span className="pf-mode" title={draftMode ? text.notStarted : `${text.stage(data.milestone)} · ${stateWord[lang][data.state]}`}>
               <span className="pf-mode-dot" data-state={data.state} />
-              {text.mode} · {draftMode ? text.notStarted : `${text.stage(data.milestone)} · ${stateWord[lang][data.state]}`}
+              <span className="pf-mode-text">{draftMode ? text.notStarted : `${text.stage(data.milestone)} · ${stateWord[lang][data.state]}`}</span>
+            </span>
+            {/* One button per branch, lit in its card's colour while the card is plugged in. */}
+            <span className="pf-branch-toggles" role="group" aria-label={text.branches}>
+              {toggles.map(({ id, icon: Icon, label }) => (
+                <button key={id} type="button" className="pf-branch-toggle" data-branch={id} aria-pressed={open(id)} aria-label={label}
+                        title={open(id) ? text.foldBranch(label) : text.unfoldBranch(label)} onClick={() => fold(id)}
+                        {...(id === "agents" ? {} : hover(id))}>
+                  <Icon size={12} />
+                </button>
+              ))}
             </span>
             {!data.models && data.model ? <span className="pf-model">{data.model}</span> : null}
             {!draftMode ? (
@@ -627,7 +674,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           </footer>
         </section>
 
-        <div className="pf-slot pf-below" ref={plan} data-glide="plan" {...hover("plan")}>
+        {below.length ? (
+        <div className="pf-slot pf-below" ref={plan} data-glide="plan" {...hover("plan")} {...slot("plan")}>
           {data.outcome ? (
             <Card id="plan" side="below" className="pf-outcome" icon={<Check size={12} />} label={text.outcome}
                   count={text.outcomeCount(data.outcome.milestones.length)} register={register}>
@@ -670,6 +718,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           </Card>
           )}
         </div>
+        ) : null}
       </div>
 
       {/* With the model card open, the agents under it fold to one line each, so both fit the column. */}
@@ -761,12 +810,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             </div>
           );
         })}
-        {!agents.length && data.phase === "live" && data.state === "running" ? <p className="pf-empty pf-agents-empty">{text.noAgents}</p> : null}
+        {!agents.length && open("agents") && data.phase === "live" && data.state === "running" ? <p className="pf-empty pf-agents-empty">{text.noAgents}</p> : null}
       </div>
 
-      {data.timeline ? (
+      {data.timeline && loom.length ? (
         // The milestone woven so far: a lane per task, a span per episode, the clock along the bottom.
-        <section className="pf-loom" aria-label={text.loom}>
+        <section className="pf-loom" aria-label={text.loom} {...slot("loom")}>
           <header className="pf-card-head pf-loom-head">
             <span className="pf-card-icon"><ChartGantt size={12} /></span><span>{text.loom}</span>
             <span className="pf-loom-legend" aria-hidden="true">
