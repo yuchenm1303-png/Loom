@@ -68,15 +68,17 @@ def test_transient_handle_is_not_the_literal_input_and_cannot_be_recycled():
         platform.consume(platform._stash(handle))
 
 
-def test_ime_unavailable_reports_unknown_and_uses_escape(monkeypatch):
+def test_ime_unavailable_reports_unknown_and_sends_no_escape(monkeypatch):
+    # A blind Escape closed the Save dialog whose field clear_text was clearing
+    # (live run, 2026-11-01). Unknown stays unknown; no key is sent.
     calls = []
     monkeypatch.setitem(sys.modules, "pyautogui", SimpleNamespace(press=calls.append))
     monkeypatch.setitem(sys.modules, "win32gui", SimpleNamespace())
     monkeypatch.setattr("app.agent_runtime.computer_windows.time.sleep", lambda t: None)
     details = object.__new__(PyWinAutoWindowsOperator)._cancel_ime_composition(ComputerFrame("f", 0, 0, 100, 100))
-    assert calls == ["esc"]
+    assert calls == []
     assert details["after_ime_composition"] is None
-    assert "escape_cancel" in details["ime_clear_steps"]
+    assert "escape_cancel" not in details["ime_clear_steps"]
 
 
 @pytest.mark.parametrize("remaining", [0, 2])

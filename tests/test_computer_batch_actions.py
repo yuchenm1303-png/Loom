@@ -439,7 +439,13 @@ def test_a_repaint_in_another_row_is_not_evidence_for_this_click(rig):
     assert len(rig.desktop.executed) == 1
 
 
-def test_past_handles_reach_the_model_as_a_placeholder_and_the_placeholder_cannot_be_typed():
+def test_the_model_sees_its_own_earlier_text_while_the_session_keeps_only_handles():
+    """A handle or a placeholder in history reads as a value and models copied it into
+    new calls (live runs, 2026-11-01). The model is shown the text it wrote; the
+    durable session keeps the handle; a forgotten handle reads as the placeholder,
+    and typing the placeholder is refused.
+    """
+
     from app.agent_runtime.computer_transient import _WITHHELD
     from app.ai import AIMessage, ChatRequest, MessageRole
 
@@ -453,18 +459,33 @@ def test_past_handles_reach_the_model_as_a_placeholder_and_the_placeholder_canno
 
     platform = ComputerTransientInputPlatform(Inner())
     handle = platform._stash("hunter2")
+    forgotten = "loom-transient-computer:" + "0" * 32
     past = AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(
-        ToolCall("c1", "computer_action", {"actions": [_click(FIELD), {"type": "type", "text": handle}]}),))
+        ToolCall("c1", "computer_action", {"actions": [_click(FIELD), {"type": "type", "text": handle},
+                                                       {"type": "type", "text": forgotten}]}),))
     request = ChatRequest(messages=(AIMessage(role=MessageRole.USER, content="go"), past))
 
+    assert platform.consume(handle) == "hunter2"  # typed already; still shown back
     response = platform.execute_chat("p", request)
 
     sent = seen[0].messages[1].tool_calls[0].arguments["actions"]
-    assert sent[1]["text"] == _WITHHELD and sent[0] == _click(FIELD)
+    assert sent[1]["text"] == "hunter2" and sent[2]["text"] == _WITHHELD and sent[0] == _click(FIELD)
     assert request.messages[1].tool_calls[0].arguments["actions"][1]["text"] == handle  # the session keeps it
-    assert platform.consume(handle) == "hunter2"
+    with pytest.raises(RuntimeError):
+        platform.consume(handle)  # still one-shot for typing
     with pytest.raises(RuntimeError, match="history placeholder"):
         platform.consume(response.tool_calls[0].arguments["action"]["text"])
+    platform.clear()
+    assert platform._recall(handle) == _WITHHELD
+
+
+def test_a_copied_handle_is_never_shown_back_as_typed_text():
+    from app.agent_runtime.computer_transient import _WITHHELD
+
+    platform = ComputerTransientInputPlatform(object())
+    original = platform._stash("hunter2")
+    copy = platform._stash(original)
+    assert platform._recall(copy) == _WITHHELD
 
 
 @pytest.mark.parametrize(
@@ -536,3 +557,21 @@ def test_a_frame_id_beside_the_batch_applies_to_each_step(rig):
     assert result.ok is True and len(rig.desktop.executed) == 2
     with pytest.raises(ValueError, match="stale frame_id"):
         rig.run({"frame_id": "an-old-frame", "actions": [_click(FIELD)]})
+
+
+def test_a_batch_nested_inside_action_runs_as_a_batch(rig):
+    result = rig.run({"action": {"actions": [_click(FIELD), {"type": "type", "text": "Ada"}]}})
+
+    assert result.ok is True and len(rig.desktop.executed) == 2
+    with pytest.raises(ValueError, match="not both"):
+        rig.run({"action": {"type": "click", "actions": [_click(FIELD)]}})
+
+
+def test_a_frame_id_beside_a_single_action_is_its_frame_id(rig):
+    rig.desktop.controls = (ComputerControl("uia:3", "Go", "Button", ComputerRect(250, 150, 330, 190)),)
+    store = rig.runtime.computer_sessions
+    frame_id = store.observe(rig.context.session_id).observation.frame.frame_id
+
+    rig.run({"frame_id": frame_id, "action": {"type": "click", "control_id": "3"}})
+
+    assert rig.desktop.executed[0].point is not None

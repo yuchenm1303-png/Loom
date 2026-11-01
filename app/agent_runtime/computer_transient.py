@@ -14,11 +14,11 @@ _TEXT_FIELDS_BY_TOOL: dict[str, tuple[str, ...]] = {
     "computer_run_task": ("task", "stop_when"),
 }
 
-# What a past call's stashed text looks like to the model. A handle in history
-# looks like a value, and models copied it into new calls - the largest single
-# cause of failed computer_action calls in the field logs and in live runs
-# (2026-11-01), each costing a model round trip. This placeholder says what it
-# is; it is the same string every time, so the request prefix stays cacheable.
+# What a past call's stashed text looks like to the model when the text itself
+# is no longer in memory (a restarted Host). Normally the model is shown its own
+# earlier text: a handle or a placeholder in history looks like a value, and
+# models copied it into new calls - the largest single cause of failed
+# computer_action calls in the field logs and in live runs (2026-11-01).
 _WITHHELD = "[typed text withheld from history; write the literal text again]"
 
 
@@ -49,12 +49,17 @@ class ComputerTransientInputPlatform:
         self._max_pending = max(1, int(max_pending))
         self._lock = threading.RLock()
         self._pending: OrderedDict[str, str] = OrderedDict()
+        # Text by handle for showing the model its own earlier calls. It came
+        # from the model and goes back only to the model, in RAM; the session
+        # store keeps the handles. Unlike _pending it survives consumption.
+        self._recalled: OrderedDict[str, str] = OrderedDict()
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._delegate, name)
 
     def execute_chat(self, profile_id, request) -> ModelResponse:
-        response = self._delegate.execute_chat(profile_id, _without_handles(request))
+        owner = self._computer_transient_owner
+        response = self._delegate.execute_chat(profile_id, _without_handles(request, owner._recall))
         if self._computer_transient_owner is not self:
             return response
         if not isinstance(response, ModelResponse) or not response.tool_calls:
@@ -122,6 +127,7 @@ class ComputerTransientInputPlatform:
             self._computer_transient_owner.clear()
         with self._lock:
             self._pending.clear()
+            self._recalled.clear()
 
     def _stash_typed_text(self, value: Any) -> Any:
         """``value`` with every ``{"type": "type", "text": ...}`` text stashed; the same object if none."""
@@ -151,21 +157,33 @@ class ComputerTransientInputPlatform:
             self._pending[token] = value
             while len(self._pending) > self._max_pending:
                 self._pending.popitem(last=False)
+            # A copied handle or placeholder is never shown back as if typed.
+            copied = value.startswith(_TRANSIENT_PREFIX) or _WITHHELD in value
+            self._recalled[token] = _WITHHELD if copied else value
+            while len(self._recalled) > self._max_pending * 4:
+                self._recalled.popitem(last=False)
         return _TRANSIENT_PREFIX + token
 
+    def _recall(self, handle: str) -> str:
+        with self._lock:
+            return self._recalled.get(handle[len(_TRANSIENT_PREFIX):], _WITHHELD)
 
-def _withhold(value: Any) -> Any:
+
+def _withhold(value: Any, recall) -> Any:
     if isinstance(value, str):
-        return _WITHHELD if value.startswith(_TRANSIENT_PREFIX) else value
+        return recall(value) if value.startswith(_TRANSIENT_PREFIX) else value
     if isinstance(value, dict):
-        return {key: _withhold(item) for key, item in value.items()}
+        return {key: _withhold(item, recall) for key, item in value.items()}
     if isinstance(value, list):
-        return [_withhold(item) for item in value]
+        return [_withhold(item, recall) for item in value]
     return value
 
 
-def _without_handles(request: Any) -> Any:
-    """The request as the model should see it: past calls' handles replaced by a placeholder.
+def _without_handles(request: Any, recall=lambda handle: _WITHHELD) -> Any:
+    """The request as the model should see it: past calls carry the text they typed.
+
+    A handle becomes the model's own text again while this process remembers
+    it, and the placeholder otherwise.
 
     Only the outgoing request changes. The session keeps the handles, and every
     call has executed before its message is sent back, so nothing that still
@@ -183,7 +201,7 @@ def _without_handles(request: Any) -> Any:
         calls = getattr(message, "tool_calls", ()) or ()
         if calls and any(_TRANSIENT_PREFIX in str(call.arguments) for call in calls):
             message = replace(message, tool_calls=tuple(
-                replace(call, arguments=_withhold(call.arguments)) if _TRANSIENT_PREFIX in str(call.arguments) else call
+                replace(call, arguments=_withhold(call.arguments, recall)) if _TRANSIENT_PREFIX in str(call.arguments) else call
                 for call in calls
             ))
             changed = True

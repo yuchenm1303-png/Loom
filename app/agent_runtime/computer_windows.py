@@ -924,8 +924,9 @@ class PyWinAutoWindowsOperator:
     def _cancel_ime_composition(self, frame: ComputerFrame) -> dict[str, object]:
         """Cancel, never commit, composition before selecting document text.
 
-        TSF/cross-process IMEs may not expose an IMM context. In that case Escape
-        is the bounded fallback and the reported state remains unknown, not false.
+        TSF/cross-process IMEs may not expose an IMM context. In that case the
+        reported state stays unknown, not false, and no key is sent: Escape is
+        reserved for a composition that was seen and survived the cancel.
         No global keyboard layout or IME open mode is changed.
         """
         import pyautogui
@@ -968,7 +969,12 @@ class PyWinAutoWindowsOperator:
         finally:
             if context:
                 imm.ImmReleaseContext(focus, context)
-        if details["after_ime_composition"] is not False:
+        # Escape only against a composition that was seen and survived the IMM
+        # cancel. With the state unknown (TSF input methods expose no IMM
+        # context) a blind Escape closed the Save dialog it was clearing a field
+        # in (live run, 2026-11-01), and Loom's own text input is Unicode
+        # SendInput, which never opens a composition.
+        if details["after_ime_composition"] is True:
             pyautogui.press("esc")
             steps.append("escape_cancel")
             time.sleep(0.05)

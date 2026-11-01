@@ -224,11 +224,17 @@ def _single_action_schema() -> dict[str, Any]:
                 "maxItems": 8,
             },
             "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
-            "amount": {"type": "integer", "minimum": 1, "maximum": 10000},
+            "amount": {"type": "integer", "minimum": 1, "maximum": 10000,
+                       "description": "scroll: wheel units at point, 120 per notch (about 3 list rows); one "
+                                      "scroll moves a list further than clicking its arrows row by row."},
             "duration_ms": {"type": "integer", "minimum": 0, "maximum": 30000},
             "button": {"type": "string", "enum": ["left", "right"]},
+            # Models nest a batch inside `action` about as often as they send it
+            # beside it (live runs, 2026-11-01); both mean the same thing. `type`
+            # is checked by the handler, so this shape is not refused.
+            "actions": {"type": "array", "items": {"type": "object"},
+                        "description": "Same as the top-level actions batch."},
         },
-        ("type",),
     )
 
 
@@ -1099,17 +1105,25 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             return ToolResult(False, "Computer Use is unavailable on this host.")
         batch = arguments.get("actions")
         raw = arguments.get("action")
+        shared_frame = str(arguments.get("frame_id") or "")
+        if isinstance(raw, dict) and "actions" in raw and batch is None:
+            if raw.get("type"):
+                raise ValueError("an action is either one action (type) or a batch (actions), not both")
+            batch, raw = raw["actions"], None
         if batch is not None:
             if raw is not None:
                 raise ValueError("computer_action takes either action or actions, not both")
-            shared_frame = str(arguments.get("frame_id") or "")
             if shared_frame and isinstance(batch, list):
                 batch = [{"frame_id": shared_frame, **item} if isinstance(item, dict) else item for item in batch]
             return self._handle_batch(context, store, batch)
         if not isinstance(raw, dict):
             raise ValueError("computer_action needs action (one object) or actions (a list)")
         action_payload = dict(raw)
+        if shared_frame and "frame_id" not in action_payload:
+            action_payload["frame_id"] = shared_frame
         action_name = str(action_payload.get("type") or "").strip().casefold()
+        if not action_name:
+            raise ValueError("action needs a type, such as click, type or screenshot")
 
         if action_name == "screenshot":
             snapshot = store.observe(context.session_id)
