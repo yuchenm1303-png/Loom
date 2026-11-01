@@ -398,6 +398,8 @@ class ProjectServiceMixin:
 
     def project_run_create(self, params):
         source = self._load(self._required_text(params, "threadId"))
+        if self.project_store.session_run(source.session_id):
+            raise ValueError("This is an internal project agent session. Open the project's original conversation to start a project; do not change this agent's branch.")
         objective = self._required_text(params, "objective")
         if len(objective) > 20000:
             raise ValueError("objective is too long")
@@ -428,7 +430,13 @@ class ProjectServiceMixin:
             raise ValueError("first project-runner version requires a Git repository root")
         # Uncommitted changes do not stop a start: the project builds from the last commit in its own
         # checkout and never touches this one until the merge back, which checks it again then.
-        completion_ref = git(root, "symbolic-ref", "HEAD") if completion == "local_integrate" else None
+        completion_ref = None
+        if completion == "local_integrate":
+            try:
+                completion_ref = git(root, "symbolic-ref", "--quiet", "HEAD")
+            except ValueError:
+                git(root, "rev-parse", "--verify", "HEAD")
+                raise ValueError("The source repository is in detached HEAD state. Open a conversation in the original repository on a named branch before starting automatic integration.") from None
         return self.project_store.create(params.get("operationId"), {
             "sourceThreadId": source.session_id, "objective": objective, "tokenBudget": budget, "maxEpisodes": episodes,
             "repository": str(root), "baseCommit": git(root, "rev-parse", "HEAD"),
@@ -510,14 +518,20 @@ class ProjectServiceMixin:
         """
         thread_id = self._required_text(params, "threadId")
         store = self.project_store
-        current = program.for_thread(store, thread_id)
+        internal = store.session_run(thread_id)
+        internal_root = store.get(checks.registry_root(internal)) if internal else None
+        if internal:
+            thread_id = internal["sourceThreadId"]
+        milestone = (internal_root or {}).get("milestone") or {}
+        current = (program.get(store, milestone["programId"]) if milestone.get("programId")
+                   else None if internal else program.for_thread(store, thread_id))
         runs = store.list()
         roots = [run for run in runs if run.get("sourceThreadId") == thread_id
                  and not run.get("teamOwnerId") and not run.get("integrationTarget")]
         if current and current.get("currentRunId"):
             root = store.get(current["currentRunId"])
         else:
-            root = max(roots, key=lambda run: run.get("createdAt", 0)) if roots else None
+            root = internal_root or (max(roots, key=lambda run: run.get("createdAt", 0)) if roots else None)
         if root is None:
             # Nothing started yet: what would stop a start (uncommitted changes) is shown before it is tried.
             return {"run": None, "program": current, "children": [], "agents": [], "events": [],
@@ -557,7 +571,7 @@ class ProjectServiceMixin:
         try:
             branch = git(folder, "symbolic-ref", "--short", "HEAD")
         except ValueError:
-            branch = ""
+            branch = "detached HEAD"
         try:
             head = git(folder, "rev-parse", "--short", "HEAD")
         except ValueError:
