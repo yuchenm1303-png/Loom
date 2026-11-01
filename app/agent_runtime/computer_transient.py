@@ -14,6 +14,13 @@ _TEXT_FIELDS_BY_TOOL: dict[str, tuple[str, ...]] = {
     "computer_run_task": ("task", "stop_when"),
 }
 
+# What a past call's stashed text looks like to the model. A handle in history
+# looks like a value, and models copied it into new calls - the largest single
+# cause of failed computer_action calls in the field logs and in live runs
+# (2026-11-01), each costing a model round trip. This placeholder says what it
+# is; it is the same string every time, so the request prefix stays cacheable.
+_WITHHELD = "[typed text withheld from history; write the literal text again]"
+
 
 class ComputerTransientInputPlatform:
     """Replace model-produced Computer Use text with one-shot RAM references.
@@ -47,7 +54,7 @@ class ComputerTransientInputPlatform:
         return getattr(self._delegate, name)
 
     def execute_chat(self, profile_id, request) -> ModelResponse:
-        response = self._delegate.execute_chat(profile_id, request)
+        response = self._delegate.execute_chat(profile_id, _without_handles(request))
         if self._computer_transient_owner is not self:
             return response
         if not isinstance(response, ModelResponse) or not response.tool_calls:
@@ -113,6 +120,11 @@ class ComputerTransientInputPlatform:
             )
         if raw.startswith(_TRANSIENT_PREFIX):
             raise RuntimeError("computer input contains a copied transient reference, not literal text; supply a fresh literal test string")
+        if _WITHHELD in raw:
+            raise RuntimeError(
+                "computer input is the history placeholder for earlier typed text, not text to type; nothing was "
+                "typed. Write the literal characters to type (Loom never shows typed text back in history)"
+            )
         return raw
 
     def clear(self) -> None:
@@ -128,6 +140,43 @@ class ComputerTransientInputPlatform:
             while len(self._pending) > self._max_pending:
                 self._pending.popitem(last=False)
         return _TRANSIENT_PREFIX + token
+
+
+def _withhold(value: Any) -> Any:
+    if isinstance(value, str):
+        return _WITHHELD if value.startswith(_TRANSIENT_PREFIX) else value
+    if isinstance(value, dict):
+        return {key: _withhold(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_withhold(item) for item in value]
+    return value
+
+
+def _without_handles(request: Any) -> Any:
+    """The request as the model should see it: past calls' handles replaced by a placeholder.
+
+    Only the outgoing request changes. The session keeps the handles, and every
+    call has executed before its message is sent back, so nothing that still
+    needs a handle reads this copy.
+    """
+
+    from dataclasses import replace
+
+    messages = getattr(request, "messages", None)
+    if not messages:
+        return request
+    changed = False
+    projected = []
+    for message in messages:
+        calls = getattr(message, "tool_calls", ()) or ()
+        if calls and any(_TRANSIENT_PREFIX in str(call.arguments) for call in calls):
+            message = replace(message, tool_calls=tuple(
+                replace(call, arguments=_withhold(call.arguments)) if _TRANSIENT_PREFIX in str(call.arguments) else call
+                for call in calls
+            ))
+            changed = True
+        projected.append(message)
+    return replace(request, messages=tuple(projected)) if changed else request
 
 
 __all__ = ["ComputerTransientInputPlatform"]

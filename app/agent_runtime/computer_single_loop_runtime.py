@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, replace
 from io import BytesIO
@@ -110,6 +111,16 @@ _TARGET_PATCH_FRACTION = 0.025
 _TARGET_PATCH_MIN_PX = 12
 _TARGET_PIXEL_DELTA = 16
 _TARGET_CHANGE_RATIO = 0.25
+
+# Evidence that a pointer action's own target repainted (a caret, a focus ring,
+# a checkbox tick) when the coarse whole-frame sample saw nothing. A caret is
+# about 1x16 px; JPEG re-encoding of unchanged pixels is deterministic, so a
+# handful of strongly changed pixels at the target is a real repaint. Carets
+# blink, so a click that shows nothing is looked at once more after a pause.
+_LOCAL_PIXEL_DELTA = 24
+_LOCAL_MIN_CHANGED = 8
+_RECHECK_DELAY_S = 0.35
+_ROW_BAND_FRACTION = 0.3
 
 _BATCH_STOP_MESSAGES = {
     "foreground_changed": "the foreground window changed, so later actions could reach a different application",
@@ -310,6 +321,39 @@ def _visual_delta_ratio(before, after) -> float:
         return -1.0
 
 
+def _patch_change(
+    earlier, later, point: ComputerPoint, *, delta: int, half_width_fraction: float = 0.0
+) -> tuple[int, int] | None:
+    """(changed, total) pixels at full resolution in the patch around ``point``, or None.
+
+    The patch is square unless ``half_width_fraction`` widens it into a band of
+    the same rows.
+    """
+
+    try:
+        from PIL import Image
+
+        with Image.open(BytesIO(earlier.image_data)) as left_image:
+            left = left_image.convert("L")
+        with Image.open(BytesIO(later.image_data)) as right_image:
+            right = right_image.convert("L")
+        if left.size != right.size:
+            right = right.resize(left.size)
+        width, height = left.size
+        radius = max(_TARGET_PATCH_MIN_PX, round(_TARGET_PATCH_FRACTION * width))
+        half_width = max(radius, round(half_width_fraction * width))
+        cx, cy = round(point.x * (width - 1)), round(point.y * (height - 1))
+        box = (max(0, cx - half_width), max(0, cy - radius), min(width, cx + half_width + 1), min(height, cy + radius + 1))
+        before_bytes = left.crop(box).tobytes()
+        after_bytes = right.crop(box).tobytes()
+        if not before_bytes or len(before_bytes) != len(after_bytes):
+            return None
+        changed = sum(1 for a, b in zip(before_bytes, after_bytes) if abs(a - b) >= delta)
+        return changed, len(before_bytes)
+    except Exception:
+        return None
+
+
 def _target_region_changed(planned, current, point: ComputerPoint) -> bool | None:
     """Whether the patch around ``point`` changed between two same-frame observations.
 
@@ -317,27 +361,36 @@ def _target_region_changed(planned, current, point: ComputerPoint) -> bool | Non
     as "unchanged".
     """
 
-    try:
-        from PIL import Image
-
-        with Image.open(BytesIO(planned.image_data)) as left_image:
-            left = left_image.convert("L")
-        with Image.open(BytesIO(current.image_data)) as right_image:
-            right = right_image.convert("L")
-        if left.size != right.size:
-            right = right.resize(left.size)
-        width, height = left.size
-        radius = max(_TARGET_PATCH_MIN_PX, round(_TARGET_PATCH_FRACTION * width))
-        cx, cy = round(point.x * (width - 1)), round(point.y * (height - 1))
-        box = (max(0, cx - radius), max(0, cy - radius), min(width, cx + radius + 1), min(height, cy + radius + 1))
-        before_bytes = left.crop(box).tobytes()
-        after_bytes = right.crop(box).tobytes()
-        if not before_bytes or len(before_bytes) != len(after_bytes):
-            return None
-        changed = sum(1 for a, b in zip(before_bytes, after_bytes) if abs(a - b) >= _TARGET_PIXEL_DELTA)
-        return changed / len(before_bytes) > _TARGET_CHANGE_RATIO
-    except Exception:
+    counts = _patch_change(planned, current, point, delta=_TARGET_PIXEL_DELTA)
+    if counts is None:
         return None
+    return counts[0] / counts[1] > _TARGET_CHANGE_RATIO
+
+
+def _local_change_at(before, after, action: ComputerAction) -> bool:
+    """Whether the action's own target repainted, seen at full resolution.
+
+    The whole-frame check samples 128x72, where a text caret or a checkbox tick
+    vanishes: a live run (2026-11-01) reported both a focus click into an empty
+    field and a click that really ticked a checkbox as "no observable change",
+    which ended a batch after its first step and sent the model back to one
+    action per round trip.
+    """
+
+    for point in (action.point, action.end_point):
+        if point is None:
+            continue
+        counts = _patch_change(before, after, point, delta=_LOCAL_PIXEL_DELTA)
+        if counts is not None and counts[0] >= _LOCAL_MIN_CHANGED:
+            return True
+        # The caret of an empty field appears at its start, not under the
+        # click in its middle (the second live run, 2026-11-01): accept a
+        # repaint in the same rows across the width a text field can span.
+        counts = _patch_change(before, after, point, delta=_LOCAL_PIXEL_DELTA,
+                               half_width_fraction=_ROW_BAND_FRACTION)
+        if counts is not None and counts[0] >= _LOCAL_MIN_CHANGED:
+            return True
+    return False
 
 
 def _same_frame_geometry(left: ComputerFrame, right: ComputerFrame) -> bool:
@@ -516,6 +569,10 @@ def _classify_effect(outcome: ComputerStepOutcome) -> dict[str, object]:
     elif visual_changed:
         effect = "changed"
         reason = "observable_visual_change"
+    elif action.type in _POINTER_ACTIONS and _local_change_at(before.observation, after.observation, action):
+        visual_changed = True
+        effect = "changed"
+        reason = "local_change_at_target"
     elif action.type in _POINTER_ACTIONS and not execution.native:
         effect = "uncertain"
         reason = "no_observable_change_after_pointer_input"
@@ -1143,6 +1200,8 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
     ) -> tuple[ComputerStepOutcome, bool, str]:
         outcome = store.execute(context.session_id, before.state_revision, action)
         outcome.verification.update(_classify_effect(outcome))
+        if outcome.verification.get("effect_reason") == "no_observable_change_after_pointer_input":
+            outcome = self._look_again(context, store, action, outcome)
         effect = str(outcome.verification.get("effect") or "uncertain")
         self._record_attempt(context, action, outcome.before,
                              "unobserved_pointer" if outcome.verification.get("effect_reason") == "no_observable_change_after_pointer_input" else effect)
@@ -1180,6 +1239,31 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         else:
             content = "Computer action executed. Its visible effect is uncertain; inspect the attached fresh screenshot before choosing the next action."
         return outcome, ok, content
+
+    def _look_again(self, context: ToolContext, store, action: ComputerAction, outcome: ComputerStepOutcome):
+        """One more look at a pointer action that showed nothing: carets blink and repaints lag.
+
+        Costs one short pause and one observation, against a model round trip
+        (and, in a batch, every step after it) when a real effect was missed.
+        """
+
+        time.sleep(_RECHECK_DELAY_S)
+        try:
+            later = store.observe(context.session_id)
+        except Exception:
+            return outcome
+        before = outcome.before.observation
+        ratio = _visual_delta_ratio(before, later.observation)
+        moved = ComputerSessionStore._window_id_key(before.frame.window_id) != ComputerSessionStore._window_id_key(
+            later.observation.frame.window_id
+        )
+        if moved or not (ratio >= _VISUAL_CHANGE_RATIO or _local_change_at(before, later.observation, action)):
+            return replace(outcome, after=later)
+        outcome.verification.update(
+            {"effect": "changed", "effect_reason": "delayed_change_at_target", "visual_changed": True,
+             "visual_delta_ratio": round(float(max(ratio, 0.0)), 6)}
+        )
+        return replace(outcome, after=later)
 
     def _handle_batch(self, context: ToolContext, store, batch: Any) -> ToolResult:
         """Run several actions planned from one screenshot, stopping at the first doubt.

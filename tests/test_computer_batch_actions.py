@@ -68,11 +68,14 @@ class Desktop:
         self.results = {}
         self.observe_count = 0
         self.controls = ()
+        self.before_observe = []  # callables run (once) before the next observations
 
     def status(self):
         return {"backend": self.name}
 
     def observe(self):
+        if self.before_observe:
+            self.before_observe.pop(0)(self)
         self.observe_count += 1
         buffer = io.BytesIO()
         self.image.save(buffer, format="PNG")
@@ -383,3 +386,82 @@ def test_jpeg_noise_around_an_unchanged_target_does_not_stop_the_batch():
 
     assert _target_region_changed(planned, current, ComputerPoint(0.75, 0.66)) is False
     assert _target_region_changed(planned, current, ComputerPoint(0.15, 0.15)) is True
+
+
+def _caret(screen, point):
+    x, y = round(point[0] * 399), round(point[1] * 299)
+    ImageDraw.Draw(screen.image).line((x, y - 8, x, y + 8), fill=(0, 0, 0), width=1)
+
+
+def test_a_caret_at_the_click_point_counts_as_the_click_working(rig):
+    rig.desktop.effects[0] = lambda screen, action: _caret(screen, FIELD)
+
+    result = rig.run({"actions": [_click(FIELD), {"type": "type", "text": "Ada"}]})
+
+    assert result.ok is True and len(rig.desktop.executed) == 2
+    assert result.data["batch"]["steps"][0]["effect_reason"] == "local_change_at_target"
+
+
+def test_a_caret_elsewhere_is_not_evidence_for_this_click(rig):
+    rig.desktop.effects[0] = lambda screen, action: _caret(screen, BUTTON)
+
+    result = rig.run({"actions": [_click(FIELD), {"type": "type", "text": "Ada"}]})
+
+    assert len(rig.desktop.executed) == 1
+    assert result.data["batch"]["stopped_reason"] == "action_not_confirmed"
+
+
+def test_a_repaint_that_lags_is_caught_by_the_second_look(rig):
+    # Nothing at the post-action capture; the caret blinks on for the next one.
+    rig.desktop.effects[0] = lambda screen, action: screen.before_observe.extend(
+        [lambda s: None, lambda s: _caret(s, FIELD)])
+
+    result = rig.run({"actions": [_click(FIELD), {"type": "type", "text": "Ada"}]})
+
+    assert result.ok is True and len(rig.desktop.executed) == 2
+    assert result.data["batch"]["steps"][0]["effect_reason"] == "delayed_change_at_target"
+
+
+def test_the_caret_of_an_empty_field_appears_at_its_start_not_under_the_click(rig):
+    # A click in the middle of an empty 0.30..0.70-wide field; its caret shows at the left edge.
+    rig.desktop.effects[0] = lambda screen, action: _caret(screen, (0.31, FIELD[1]))
+
+    result = rig.run({"actions": [_click((0.5, FIELD[1])), {"type": "type", "text": "Ada"}]})
+
+    assert result.ok is True and len(rig.desktop.executed) == 2
+
+
+def test_a_repaint_in_another_row_is_not_evidence_for_this_click(rig):
+    rig.desktop.effects[0] = lambda screen, action: _caret(screen, (0.31, FIELD[1] + 0.2))
+
+    result = rig.run({"actions": [_click((0.5, FIELD[1])), {"type": "type", "text": "Ada"}]})
+
+    assert len(rig.desktop.executed) == 1
+
+
+def test_past_handles_reach_the_model_as_a_placeholder_and_the_placeholder_cannot_be_typed():
+    from app.agent_runtime.computer_transient import _WITHHELD
+    from app.ai import AIMessage, ChatRequest, MessageRole
+
+    seen = []
+
+    class Inner:
+        def execute_chat(self, profile_id, request):
+            seen.append(request)
+            return ModelResponse(tool_calls=(ToolCall("c2", "computer_action", {
+                "action": {"type": "type", "text": _WITHHELD}}),))
+
+    platform = ComputerTransientInputPlatform(Inner())
+    handle = platform._stash("hunter2")
+    past = AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(
+        ToolCall("c1", "computer_action", {"actions": [_click(FIELD), {"type": "type", "text": handle}]}),))
+    request = ChatRequest(messages=(AIMessage(role=MessageRole.USER, content="go"), past))
+
+    response = platform.execute_chat("p", request)
+
+    sent = seen[0].messages[1].tool_calls[0].arguments["actions"]
+    assert sent[1]["text"] == _WITHHELD and sent[0] == _click(FIELD)
+    assert request.messages[1].tool_calls[0].arguments["actions"][1]["text"] == handle  # the session keeps it
+    assert platform.consume(handle) == "hunter2"
+    with pytest.raises(RuntimeError, match="history placeholder"):
+        platform.consume(response.tool_calls[0].arguments["action"]["text"])
