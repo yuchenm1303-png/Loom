@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import { chromium } from "playwright-core";
+const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
+const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.addInitScript(() => localStorage.setItem("loom.sidebar.expandedProjects", JSON.stringify(["loom", "agent", "relay"])));
+  await page.goto(`${origin}/scripts/fixtures/workspace-visual.html?theme=dark&empty=1`);
+  const toggle = page.locator(".thread-header-actions .pf-toggle");
+  await toggle.waitFor();
+  await page.locator(".sidebar-new-conversation").click();
+  await page.locator(".composer").waitFor();
+  assert.ok(await toggle.isVisible(), "mode control stays in the header on a new draft");
+  const bounds = await toggle.boundingBox();
+  assert.ok(bounds.x > 700 && bounds.y < 90, "mode control stays at the upper right");
+  await page.evaluate(() => { window.modeFixture.fail = true; });
+  await toggle.getByRole("radio").nth(1).click();
+  await page.getByRole("alert").filter({ hasText: "Fixture could not create conversation" }).waitFor();
+  assert.equal(await toggle.getByRole("radio").nth(0).getAttribute("aria-checked"), "true");
+  await page.evaluate(() => { window.modeFixture.fail = false; });
+  await toggle.getByRole("radio").nth(1).click();
+  await page.locator(".pf-folder-picker").first().waitFor();
+  assert.equal(await toggle.getByRole("radio").nth(1).getAttribute("aria-checked"), "true");
+  assert.deepEqual(await page.evaluate(() => ({ starts: window.modeFixture.starts.length, turns: window.modeFixture.turns })), { starts: 2, turns: 0 });
+  await toggle.getByRole("radio").nth(0).click();
+  await page.locator(".composer").waitFor();
+  assert.ok(await toggle.isVisible());
+  await page.locator(".sidebar-new-conversation").click();
+  assert.ok(await toggle.isVisible());
+  assert.equal(await toggle.getByRole("radio").nth(0).getAttribute("aria-checked"), "true");
+  await toggle.getByRole("radio").nth(1).click();
+  await page.locator('.compact-thread-row[data-thread-id="visual-1"] .compact-thread-main').click({ position: { x: 12, y: 14 } });
+  await page.waitForTimeout(600);
+  assert.equal(await page.locator(".compact-thread-row.active").getAttribute("data-thread-id"), "visual-1", "late creation must not replace the conversation opened meanwhile");
+  const agentProject = page.locator(".project-group").filter({ has: page.locator(".project-group-main", { hasText: "loom-agent-test" }) });
+  // Exercise the existing project action's callback; this fixture's hover layer covers its glyph.
+  await agentProject.locator(".project-group-actions button").first().evaluate(button => button.click());
+  await toggle.getByRole("radio").nth(1).click();
+  await page.locator(".pf-folder-picker").first().waitFor();
+  assert.equal(await page.evaluate(() => window.modeFixture.starts.at(-1).projectId), "agent", "draft mode creation keeps the chosen sidebar project");
+  assert.equal(await page.evaluate(() => window.modeFixture.turns), 0);
+  assert.deepEqual(errors, []);
+  console.log("Header mode toggle stays on new drafts, enters build without a turn, recovers errors and switches back");
+} finally { await browser.close(); }

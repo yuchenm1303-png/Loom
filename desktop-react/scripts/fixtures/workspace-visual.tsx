@@ -96,7 +96,21 @@ function threadSnapshot(id: string) {
       startedAt: at, completedAt: at, finalItemId: "answer", items: items.map(item => ({ ...item, threadId: id,
         ...(params.get("navigation") === "1" && item.type === "assistant_message" ? { text: `Loaded ${id}` } : {}) })) }] };
 }
+const modeFixture = { starts: [] as Record<string, unknown>[], turns: 0, fail: false };
+Object.assign(window, { modeFixture });
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
+  "thread/start": async args => {
+    modeFixture.starts.push(args);
+    await new Promise(resolve => setTimeout(resolve, 250));
+    if (modeFixture.fail) throw new Error("Fixture could not create conversation");
+    const project = projects.find(project => project.id === args.projectId);
+    const thread = { ...threads[0], id: `mode-draft-${modeFixture.starts.length}`, title: "New conversation",
+      projectId: String(args.projectId || ""), workspace: String(args.workspace || project?.root || workspace), status: "idle" };
+    threads.unshift(thread);
+    return { thread };
+  },
+  "projectRun/overview": () => ({ run: null, program: null, agents: [], children: [], events: [],
+    workspace: { path: workspace, git: true, status: "ready", branch: "main", head: "abcdef", changeCount: 0, changes: [] } }),
   "project/workspace_status": args => ({ projectId: args.projectId, root: workspace, exists: true, isDirectory: true,
     git: { available: true, isRepo: false, branch: "", summary: "", changedCount: 0, changedFiles: [], truncated: false },
     tree: { entries: [], truncated: false, limit: 100, maxDepth: 2 } }),
@@ -132,7 +146,10 @@ const bridge: Record<string, unknown> = {
   connect: async () => ({ protocolVersion: 1, serverInfo: { name: "visual-fixture", version: "0" }, capabilities: {},
     runtime: { model: profile.name, defaultWorkspace: workspace, defaultPermissionMode: "full-access",
       permissionModes: ["read-only", "approval", "workspace", "full-access"] } }),
-  call: async (method: string, args: Record<string, unknown> = {}) => handlers[method]?.(args) || {},
+  call: async (method: string, args: Record<string, unknown> = {}) => {
+    if (method === "turn/start") modeFixture.turns += 1;
+    return handlers[method]?.(args) || {};
+  },
   listModels: async () => models,
   accountStatus: async () => ({ ok: true, snapshot: { configured: true, reachable: true, authenticated: true,
     user: { id: "visual-user", name: "Loom Designer", email: "visual@example.invalid" }, serviceUrl: "" } }),

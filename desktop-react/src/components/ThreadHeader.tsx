@@ -28,6 +28,8 @@ interface ThreadHeaderProps {
   onCompactContext?(): void;
   /** The conversation, or the persistent project behind it (ProjectMode.tsx); omitted where there is none to switch to. */
   mode?: "chat" | "project";
+  modePending?: boolean;
+  modeError?: string;
   onModeChange?(mode: "chat" | "project"): void;
 }
 
@@ -69,6 +71,8 @@ export function ThreadHeader({
   compactionProgress = null,
   onCompactContext,
   mode,
+  modePending = false,
+  modeError,
   onModeChange,
 }: ThreadHeaderProps) {
   const { language, t } = useI18n();
@@ -129,7 +133,8 @@ export function ThreadHeader({
       </div>
 
       <div className="thread-header-actions polished-thread-header-actions">
-        {mode && onModeChange ? <ProjectModeToggle value={mode} onChange={onModeChange} lang={language === "zh-CN" ? "zh" : "en"} /> : null}
+        {modeError ? <span role="alert" title={modeError} style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{modeError}</span> : null}
+        {mode && onModeChange ? <ProjectModeToggle key={modePending ? "pending" : "ready"} value={mode} disabled={modePending} onChange={onModeChange} lang={language === "zh-CN" ? "zh" : "en"} /> : null}
         <span className={`thread-status-chip ${state.tone}`} title={`Conversation status: ${state.label}`}>
           {archived ? <Archive size={12.5} strokeWidth={1.8} /> : <span className="thread-status-orb" aria-hidden="true" />}
           <span className="thread-status-label">{state.label}</span>

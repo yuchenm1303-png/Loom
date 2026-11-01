@@ -804,6 +804,20 @@ export function useLoom() {
     return result.thread;
   }, [installItems, refreshThreads]);
 
+  // A mode choice can materialize the draft without sending a user turn or model request.
+  const createEmptyThread = useCallback(async () => {
+    if (homeSendPendingRef.current) throw new Error("正在创建对话，请稍后重试。");
+    homeSendPendingRef.current = true;
+    const draftParams = { ...draftThreadParamsRef.current };
+    const navigationVersion = openRequestRef.current;
+    try {
+      while (modelSwitchTasks.current.has("draft")) await modelSwitchTasks.current.get("draft");
+      return await startThread(undefined, draftParams, navigationVersion);
+    } finally {
+      homeSendPendingRef.current = false;
+    }
+  }, [startThread]);
+
   const renameThread = useCallback(async (threadId: string, title: string) => {
     const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/rename", { threadId, title });
     const updated = result.thread;
@@ -1483,6 +1497,7 @@ export function useLoom() {
     prefetchThread,
     loadOlderTurns,
     newThread,
+    createEmptyThread,
     renameThread,
     archiveThread,
     deleteThread,
@@ -1527,6 +1542,7 @@ export function useLoom() {
     modelBusy,
     activeModels,
     newThread,
+    createEmptyThread,
     openThread,
     openingThreadId,
     loadingOlderTurns,

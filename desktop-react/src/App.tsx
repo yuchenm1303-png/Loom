@@ -639,6 +639,30 @@ export default function App() {
   }, [thread?.id]);
   // The header's switch carries the composer into the hub and back (modeMorph.ts); both views stay mounted for it.
   const { morph: modeMorph, change: changeMode } = useModeMorph(thread?.id, setProjectMode);
+  const [modeStarting, setModeStarting] = useState(false);
+  const [modeError, setModeError] = useState("");
+  const modeStartPending = useRef(false);
+  const chooseMode = async (mode: "chat" | "project") => {
+    if (modeStartPending.current) return;
+    setModeError("");
+    if (thread?.id) { changeMode(mode); return; }
+    if (mode === "chat") return;
+    modeStartPending.current = true;
+    setModeStarting(true);
+    try {
+      const created = await loom.createEmptyThread();
+      setProjectModeIds(ids => {
+        const next = [...ids.filter(id => id !== created.id), created.id].slice(-50);
+        try { localStorage.setItem("loom.projectMode", JSON.stringify(next)); } catch { /* private window */ }
+        return next;
+      });
+    } catch (cause) {
+      setModeError(errorMessage(cause));
+    } finally {
+      modeStartPending.current = false;
+      setModeStarting(false);
+    }
+  };
   const showProject = projectMode || modeMorph?.to === "chat";
   // The conversation goes once the morph is over: unmounting it on the landing frame cost that frame.
   const showChat = !projectMode || modeMorph?.to === "project";
@@ -1655,8 +1679,10 @@ export default function App() {
           compacting={!threadSwitching && loom.compacting}
           compactionProgress={threadSwitching ? null : loom.compactionProgress}
           onCompactContext={() => void loom.compactContext()}
-          mode={thread ? (projectMode ? "project" : "chat") : undefined}
-          onModeChange={changeMode}
+          mode={projectMode || (!thread && modeStarting) ? "project" : "chat"}
+          modePending={modeStarting || threadSwitching || loom.connection !== "ready"}
+          modeError={modeError}
+          onModeChange={chooseMode}
         />
 
         {terminalMounted && <Suspense fallback={null}><TerminalPanel

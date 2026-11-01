@@ -20,7 +20,7 @@ const WeaveGlyph = createIcon("mode-weave", "ModeWeave", <>
   <path d="M11.4 4.4 14.2 7l-2.8 2.6" />
 </>);
 
-export function ProjectModeToggle({ value, onChange, lang = "zh" }: { value: "chat" | "project"; onChange(value: "chat" | "project"): void; lang?: "zh" | "en" }) {
+export function ProjectModeToggle({ value, onChange, lang = "zh", disabled = false }: { value: "chat" | "project"; onChange(value: "chat" | "project"): void; lang?: "zh" | "en"; disabled?: boolean }) {
   const words = lang === "en" ? { chat: "Chat", project: "Weave", label: "Mode", hint: "Weave · pursue one objective over days, task by task" }
                               : { chat: "对话", project: "建造", label: "工作方式", hint: "建造 · 一个目标拆成任务持续推进，独立复审后集成" };
   const items = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -34,13 +34,13 @@ export function ProjectModeToggle({ value, onChange, lang = "zh" }: { value: "ch
     if (node) setThumb({ x: node.offsetLeft, width: node.offsetWidth });
   }, [chosen, lang]);
   return (
-    <div className="pf-toggle" role="radiogroup" aria-label={words.label} data-at={chosen}>
+    <div className="pf-toggle" role="radiogroup" aria-label={words.label} data-at={chosen} aria-busy={disabled || undefined}>
       <span className="pf-toggle-thumb" aria-hidden="true" data-ready={thumb ? "" : undefined}
             style={thumb ? { transform: `translateX(${thumb.x}px)`, width: thumb.width } : undefined} />
       {(["chat", "project"] as const).map((option) => {
         const Glyph = option === "chat" ? ChatGlyph : WeaveGlyph;
         return (
-          <button key={option} type="button" role="radio" aria-checked={chosen === option} data-on={chosen === option || undefined}
+          <button key={option} type="button" role="radio" disabled={disabled} aria-checked={chosen === option} data-on={chosen === option || undefined}
                   ref={(node) => { items.current[option] = node; }} aria-label={words[option]}
                   title={option === "project" ? words.hint : words.chat} onClick={() => { if (option === chosen) return; setChosen(option); onChange(option); }}>
             <Glyph size={16} strokeWidth={1.75} aria-hidden="true" />
