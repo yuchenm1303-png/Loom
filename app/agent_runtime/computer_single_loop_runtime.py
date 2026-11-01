@@ -1045,7 +1045,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         messages = attach_observation(messages, _model_observation_text(snapshot, marked=marked is not None),
             tool_prefix="computer_", tool_call_id=source_call_id,
             image=ImagePart(image_url, detail="auto"))
-        view = self._computer_extra_views.pop(session.session_id, None)
+        view = getattr(self, "_computer_extra_views", {}).pop(session.session_id, None)
         if view is not None and view[0] == session.current_turn_id:
             _turn, data, media_type, caption = view
             messages = attach_observation(messages, caption, tool_prefix="computer_", tool_call_id=source_call_id,
