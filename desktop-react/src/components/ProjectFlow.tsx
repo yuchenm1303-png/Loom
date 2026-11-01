@@ -160,6 +160,8 @@ const stateWord = {
 };
 
 type Side = "left" | "right" | "below";
+/** A cable's corner radius, the most its lanes stand apart (a cable's 9px plus a gap), and its plugs apart on the hub. */
+const CABLE_R = 12, LANE_STEP = 15, PLUG_APART = 22;
 interface Cable { id: string; side: Side; d: string; socket: { x: number; y: number } }
 
 // The branches the person folded away, by id. Storage may be missing or refuse; then nothing is folded.
@@ -236,23 +238,43 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
     const entries = [...cards.current.entries()];
     const next: Cable[] = [];
     for (const side of ["left", "right"] as const) {
+      const toward = side === "left" ? 1 : -1;  // the direction from the cards to the hub
       const list = entries.filter(([, item]) => item.side === side)
-        .map(([id, item]) => ({ id, b: box(item.node.getBoundingClientRect()) }))
-        .sort((a, b) => a.b.top - b.b.top);
-      list.forEach(({ id, b }, index) => {
-        const y1 = Math.min(b.top + 34, b.top + b.height / 2);
-        // Plugs spread down the composer's side in card order; turns stagger like cables on a loom.
-        const y2 = m.top + 34 + (m.height - 68) * (list.length > 1 ? index / (list.length - 1) : 0.5);
-        const x1 = side === "left" ? b.right : b.left, x2 = side === "left" ? m.left : m.right;
-        const turn = side === "left" ? x2 - 18 - index * 15 : x2 + 18 + index * 15;  // a cable's width plus a gap
-        const dir = y2 >= y1 ? 1 : -1, sx = x2 > x1 ? 1 : -1;
-        const r = Math.max(0, Math.min(12, Math.abs(y2 - y1) / 2, Math.abs(turn - x1) - 2));
-        const d = Math.abs(y2 - y1) < 1 ? `M${x1},${y1} L${x2},${y2}`
-          : `M${x1},${y1} L${turn - sx * r},${y1} Q${turn},${y1} ${turn},${y1 + dir * r} L${turn},${y2 - dir * r} `
-            + `Q${turn},${y2} ${turn + sx * r},${y2} L${x2},${y2}`;
-        // Agents' cables run from the composer outward, so a pulse can travel to the hub reversed.
+        .map(([id, item]) => {
+          const b = box(item.node.getBoundingClientRect());
+          return { id, x1: side === "left" ? b.right : b.left, y1: Math.min(b.top + 34, b.top + b.height / 2), y2: 0, lane: 0 };
+        })
+        .sort((a, b) => a.y1 - b.y1);
+      if (!list.length) continue;
+      const x2 = side === "left" ? m.left : m.right;
+      // Plugs: level with their card where the hub's side allows (a straight cable), kept in card
+      // order and a plug apart, inside the side's ends.
+      const top = m.top + 24, bottom = m.bottom - 24, apart = Math.min(PLUG_APART, (bottom - top) / Math.max(1, list.length - 1));
+      list.forEach((item, index) => { item.y2 = Math.max(top + index * apart, Math.min(item.y1, bottom - (list.length - 1 - index) * apart)); });
+      for (let index = 1; index < list.length; index += 1) list[index].y2 = Math.max(list[index].y2, list[index - 1].y2 + apart);
+      // Lanes: the turns stand in the gap, nearest the hub first. A cable running down takes a nearer
+      // lane than every card below it, a cable running up a nearer lane than every card above it:
+      // then no cable crosses another (the two groups never share a height).
+      const down = list.filter((item) => item.y2 - item.y1 > 1);
+      const up = list.filter((item) => item.y1 - item.y2 > 1).reverse();
+      down.forEach((item, index) => { item.lane = index; });
+      up.forEach((item, index) => { item.lane = index; });
+      const lanes = Math.max(down.length, up.length);
+      // The lanes share what the gap has between the nearest card edge and the plugs, a cable's width
+      // plus a gap apart at most, so no turn stands behind a card.
+      const near = x2 - toward * (CABLE_R + 2);
+      const edge = side === "left" ? Math.max(...list.map((item) => item.x1)) : Math.min(...list.map((item) => item.x1));
+      const room = Math.abs(near - (edge + toward * (CABLE_R + 4)));
+      const step = lanes > 1 ? Math.max(4, Math.min(LANE_STEP, room / (lanes - 1))) : 0;
+      for (const { id, x1, y1, y2, lane } of list) {
+        const turn = near - toward * lane * step;
+        const dir = y2 >= y1 ? 1 : -1;
+        const r = Math.max(0, Math.min(CABLE_R, Math.abs(y2 - y1) / 2, (turn - x1) * toward - 2, (x2 - turn) * toward));
+        const d = Math.abs(y2 - y1) <= 1 ? `M${x1},${y2} L${x2},${y2}`
+          : `M${x1},${y1} L${turn - toward * r},${y1} Q${turn},${y1} ${turn},${y1 + dir * r} L${turn},${y2 - dir * r} `
+            + `Q${turn},${y2} ${turn + toward * r},${y2} L${x2},${y2}`;
         next.push({ id, side, d, socket: { x: x2, y: y2 } });
-      });
+      }
     }
     for (const [id, item] of entries.filter(([, item]) => item.side === "below")) {
       const b = box(item.node.getBoundingClientRect());
@@ -263,8 +285,11 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
   }, [stage, hub, cards]);
   useLayoutEffect(() => {
     measure();
+    // The stage has a fixed size, so watching it alone missed every reflow inside it (a card growing,
+    // the thread pushing the hub down) and left the cables where the cards had been. Watch what moves.
     const observer = new ResizeObserver(measure);
-    if (stage.current) observer.observe(stage.current);
+    const root = stage.current;
+    if (root) for (const node of [root, ...root.querySelectorAll<HTMLElement>(".pf-col, .pf-composer, .pf-card")]) observer.observe(node);
     return () => observer.disconnect();
   }, [measure, layout]);
   return { cables, measure };
@@ -410,8 +435,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     ...(data.agents.length ? [{ id: "agents", icon: Bot, label: text.agentCards }] : []),
     ...(data.timeline ? [{ id: "loom", icon: ChartGantt, label: text.loom }] : []),
   ];
-  const layout = [context.map((item) => item.id).join(","), branches.map((item) => item.id).join(","), agents.map((agent) => agent.id).join(","), files.length,
-                  below.length, loom.length,
+  // A card that starts leaving changes the layout already (it is lifted out and the others close up), not only once it is gone.
+  const ids = (list: { id: string; leaving?: boolean }[]) => list.map((item) => `${item.id}${item.leaving ? "~" : ""}`).join(",");
+  const layout = [ids(context), ids(branches), ids(agents), ids(below), ids(loom), files.length,
                   modelTotal, modelView, query, reasoningState?.value ?? "",
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase].join("|");
   const { cables, measure } = useCables(stage, hub, cards, layout);
@@ -815,7 +841,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
 
       {data.timeline && loom.length ? (
         // The milestone woven so far: a lane per task, a span per episode, the clock along the bottom.
-        <section className="pf-loom" aria-label={text.loom} {...slot("loom")}>
+        <section className="pf-loom" aria-label={text.loom} data-glide="loom" {...slot("loom")}>
           <header className="pf-card-head pf-loom-head">
             <span className="pf-card-icon"><ChartGantt size={12} /></span><span>{text.loom}</span>
             <span className="pf-loom-legend" aria-hidden="true">

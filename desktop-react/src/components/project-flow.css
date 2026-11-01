@@ -109,7 +109,18 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-slot[data-fit],
 .pf-model-slot,
 .pf-below { display: flex; flex: 0 1 auto; flex-direction: column; }
-.pf-below > .pf-card { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.pf-below > .pf-card { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+/* What scrolls in the hub wears the sidebar's bar: 4px, no arrow buttons, seen only while the
+   pointer is over it. The global `* { scrollbar-width: thin }` would bring back Windows' native
+   bar with its arrows, so these name `auto` with a more specific selector. */
+.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options) { scrollbar-width: auto; scrollbar-color: auto; }
+.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar { width: 4px; height: 4px; }
+.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar-button { display: none; }
+.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar-track { background: transparent; }
+.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar-thumb { border-radius: 999px; background: transparent; }
+.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options):hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--loom-workspace-ink) 18%, transparent);
+}
 /* Scope and files: the head (and the add button) stay; the rows between them scroll, one stays in sight. */
 .pf-slot[data-fit] { min-height: 80px; }
 .pf-slot[data-glide="files"] { min-height: 118px; }
@@ -123,7 +134,6 @@ html[data-loom-theme="light"] .pf-stage {
   min-height: 30px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
 }
 
 /* Leaving: the card fades and its cable unplugs from the hub, on the shorter exit step. */
@@ -249,7 +259,6 @@ html[data-loom-theme="light"] .pf-stage {
   margin-bottom: 16px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
 }
 .pf-composer { flex: none; }
 
@@ -779,7 +788,6 @@ html[data-loom-theme="light"] .pf-stage {
   max-height: 216px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
   animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards;
 }
 .pf-model-option {
