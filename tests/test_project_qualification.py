@@ -240,7 +240,8 @@ def test_cancelled_approval_usage_settles_once_without_dispatching_more_models(t
     service, runtime, platform, _, source = build(tmp_path, [reply(PLAN), ModelResponse(
         tool_calls=(ToolCall(call_id="approval-call", name=tool.name, arguments={}),), usage=ModelUsage(11, 0, 11))], tools=(tool,))
     try:
-        runtime.set_permission_mode(source, PermissionMode.APPROVAL)
+        # Projects run in workspace mode; approval mode is the simplest way to park an episode on a request.
+        service.project_permission_mode = PermissionMode.APPROVAL
         run = create(service, source, completionPolicy="local_integrate", reviewPolicy="independent")
         control(service, run, "start")
         for _ in range(5):

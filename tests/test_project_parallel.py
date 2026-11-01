@@ -57,6 +57,7 @@ def setup(tmp_path, *, dependencies=False, barrier=True, outside=False, budget=4
         "properties": {"path": {"type": "string"}, "value": {"type": "string"}}, "required": ["path", "value"]}, effect=ToolEffect.MUTATING, handler=write)
     service, runtime, platform, root, source = build(tmp_path, [], tools=(tool, exec_tool()))
     runtime.set_permission_mode(source, PermissionMode.FULL_ACCESS)
+    service.project_permission_mode = PermissionMode.FULL_ACCESS  # no sandbox for exec in tests
     seen = {}
     def execute(_profile, request):
         platform.requests.append(request)

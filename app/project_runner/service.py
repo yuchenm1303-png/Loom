@@ -80,9 +80,12 @@ class ProjectExecutor:
             self.compact_between_episodes(run, run["sessions"][key])
             return run["sessions"][key]
         source = self.service._load(run["sourceThreadId"])
+        # Never the conversation's own mode: nobody sits at these threads for days, so
+        # "approval" would stall on every command and "full-access" would reach past the
+        # checkout the review and crash recovery rely on.
         session = self.service.runtime.create_session(source.profile_id, workspace_dir=workspace,
             system_prompt=source.system_prompt,
-            permission_mode=PermissionMode.READ_ONLY if run["phase"] == "planning" else source.permission_mode)
+            permission_mode=PermissionMode.READ_ONLY if run["phase"] == "planning" else self.service.project_permission_mode)
         for field in ("model_selection", "model", "model_provider", "model_base_url", "model_vision",
                       "reasoning_kind", "reasoning_value", "tool_selection", "communication_language"):
             setattr(session, field, copy.deepcopy(getattr(source, field)))
@@ -347,6 +350,9 @@ def confined_in_flight(events):
 
 
 class ProjectServiceMixin:
+    # Builders and reviewers write only their own sandboxed checkout; planners read only.
+    project_permission_mode = PermissionMode.WORKSPACE
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         home = runtime_home_from_store(self.store) / "project-runner"

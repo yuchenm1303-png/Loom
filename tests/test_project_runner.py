@@ -8,7 +8,7 @@ import uuid
 import pytest
 
 from app.ai import ModelResponse, ModelUsage, ToolCall
-from app.agent_runtime import AgentTool, ToolEffect, ToolResult, DurableAgentRuntime, FileAgentSessionStore, ToolRegistry
+from app.agent_runtime import AgentTool, PermissionMode, ToolEffect, ToolResult, DurableAgentRuntime, FileAgentSessionStore, ToolRegistry
 from app.app_server import LoomAppServerService, LoomRpcController
 from app.project_runner.service import ProjectServiceMixin, ProjectControllerMixin, git
 from app.project_runner.store import ProjectStore
@@ -79,6 +79,8 @@ def test_real_runtime_plans_continues_and_returns_candidate_in_isolated_director
         reply({"action": "continue", "summary": "First part saved; finish the app"}),
         reply({"action": "candidate", "summary": "App implemented and checked"})], tools=(tool,))
     try:
+        # The conversation's own mode is not inherited: an unattended builder never gets full access.
+        runtime.set_permission_mode(source, PermissionMode.FULL_ACCESS)
         run = create(service, source)
         cycle(service)
         assert not platform.requests  # creation/idle never samples
@@ -95,6 +97,7 @@ def test_real_runtime_plans_continues_and_returns_candidate_in_isolated_director
         assert Path(worker.workspace_dir, "app.txt").read_text() == "implemented in isolated workspace"
         assert not (workspace / "app.txt").exists()
         assert runtime.get_session(final["sessions"]["planner"]).permission_mode.value == "read-only"
+        assert worker.permission_mode.value == "workspace"
         assert len(platform.requests) == 4
         assert "First part saved" in str(platform.requests[-1].messages)
     finally:

@@ -59,6 +59,7 @@ def setup_review(tmp_path, responses, *, service_class=None):
         options["service_class"] = service_class
     service, runtime, platform, workspace, source = build(tmp_path, responses, **options)
     runtime.set_permission_mode(source, PermissionMode.FULL_ACCESS)
+    service.project_permission_mode = PermissionMode.FULL_ACCESS  # no sandbox for the checks in tests
     return service, runtime, platform, workspace, source
 
 
