@@ -120,6 +120,15 @@ _TARGET_CHANGE_RATIO = 0.25
 _LOCAL_PIXEL_DELTA = 24
 _LOCAL_MIN_CHANGED = 8
 _RECHECK_DELAY_S = 0.35
+# A visible change anywhere in the frame, at full resolution: a short label
+# rewritten is a few hundred pixels; a blinking caret (about 16) stays below.
+_FULL_RES_PIXEL_DELTA = 32
+_FULL_RES_MIN_CHANGED = 60
+# After a visible change, observe again every poll until two captures agree,
+# for at most the cap: a dialog opening or a long text being typed is caught at
+# its end rather than half way, which used to cost the model a "wait" round trip.
+_SETTLE_POLL_S = 0.3
+_SETTLE_MAX_S = 1.2
 _ROW_BAND_FRACTION = 0.3
 
 _BATCH_STOP_MESSAGES = {
@@ -327,6 +336,37 @@ def _visual_delta_ratio(before, after) -> float:
         return -1.0
 
 
+def _changed_pixels(before, after) -> int:
+    """Pixels that changed strongly, counted at full resolution; -1 when unknown.
+
+    The 128x72 sample behind ``_visual_delta_ratio`` cannot see a status line
+    changing from "Selected F6" to "Selected F7" away from the click (live run,
+    2026-11-01), so a working click read as "no observable change" and cost a
+    model round trip. Pillow counts in C, so the whole frame is cheap.
+    """
+
+    if before.image_sha256 == after.image_sha256:
+        return 0
+    try:
+        from PIL import Image, ImageChops
+
+        with Image.open(BytesIO(before.image_data)) as left_image:
+            left = left_image.convert("L")
+        with Image.open(BytesIO(after.image_data)) as right_image:
+            right = right_image.convert("L")
+        if left.size != right.size:
+            return -1
+        histogram = ImageChops.difference(left, right).histogram()
+        return int(sum(histogram[_FULL_RES_PIXEL_DELTA:]))
+    except Exception:
+        return -1
+
+
+def _visibly_changed(before, after) -> bool:
+    ratio = _visual_delta_ratio(before, after)
+    return ratio >= _VISUAL_CHANGE_RATIO or _changed_pixels(before, after) >= _FULL_RES_MIN_CHANGED
+
+
 def _patch_change(
     earlier, later, point: ComputerPoint, *, delta: int, half_width_fraction: float = 0.0
 ) -> tuple[int, int] | None:
@@ -431,7 +471,10 @@ def _batch_stop_reason(planned: ComputerStateSnapshot, current: ComputerStateSna
 _HINT_PRIORITY = frozenset(
     {"Button", "Edit", "Hyperlink", "CheckBox", "ComboBox", "MenuItem", "RadioButton", "TabItem", "Slider"}
 )
-_HINT_LIMIT = 40
+# Every control the walk returned (the operator caps it at 80): a hint list cut
+# at 40 left half of a dense seat grid unnumbered, and the model clicked the
+# nearest numbered neighbour (live run, 2026-11-01). Lines are kept short.
+_HINT_LIMIT = 80
 
 
 def _hint_controls(observation) -> list:
@@ -549,7 +592,8 @@ def _classify_effect(outcome: ComputerStepOutcome) -> dict[str, object]:
         != ComputerSessionStore._window_id_key(after_window)
     )
     ratio = _visual_delta_ratio(before.observation, after.observation)
-    visual_changed = ratio >= _VISUAL_CHANGE_RATIO if ratio >= 0 else bool(base.get("visual_changed"))
+    visual_changed = (ratio >= _VISUAL_CHANGE_RATIO or _changed_pixels(before.observation, after.observation)
+                      >= _FULL_RES_MIN_CHANGED) if ratio >= 0 else bool(base.get("visual_changed"))
     target_confirmed = base.get("target_confirmed")
 
     semantic_verified = bool(execution.native)
@@ -745,10 +789,9 @@ def _resolve_frame_target(payload: dict[str, Any], observation: Any) -> dict[str
         raise ValueError("control_id is supported only for click, move, type or clear_text actions")
     if "point" in payload:
         raise ValueError("use either control_id or point, not both")
-    if ":" not in control_id:
-        # The number drawn on the screenshot is the id's suffix.
-        control_id = f"uia:{control_id}"
-    control = next((c for c in observation.controls if c.control_id == control_id), None)
+    # The number drawn on the screenshot is the id's suffix.
+    control = next((c for c in observation.controls if c.control_id == control_id), None) or next(
+        (c for c in observation.controls if c.control_id == f"uia:{control_id}"), None)
     if control is None or not control.enabled:
         raise ValueError("control target is missing or disabled; refresh the screenshot")
     rect, frame = control.rect, observation.frame
@@ -812,8 +855,7 @@ def _model_observation_text(snapshot: ComputerStateSnapshot, *, marked: bool = F
     for control in _hint_controls(observation):
         point = control.rect.center_in(frame)
         hints.append(
-            f"- [{_mark_label(control)}] id={control.control_id}; {control.control_type or 'control'} {control.name!r} near "
-            f"({point.x:.3f},{point.y:.3f})"
+            f"- [{_mark_label(control)}] {control.control_type or 'control'} {control.name!r} ({point.x:.3f},{point.y:.3f})"
         )
     if hints:
         lines.append(
@@ -1264,6 +1306,8 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         outcome.verification.update(_classify_effect(outcome))
         if outcome.verification.get("effect_reason") == "no_observable_change_after_pointer_input":
             outcome = self._look_again(context, store, action, outcome)
+        elif outcome.verification.get("effect") == "changed" and action.type is not ComputerActionType.WAIT:
+            outcome = self._settle(context, store, outcome)
         effect = str(outcome.verification.get("effect") or "uncertain")
         self._record_attempt(context, action, outcome.before,
                              "unobserved_pointer" if outcome.verification.get("effect_reason") == "no_observable_change_after_pointer_input" else effect)
@@ -1319,13 +1363,44 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         moved = ComputerSessionStore._window_id_key(before.frame.window_id) != ComputerSessionStore._window_id_key(
             later.observation.frame.window_id
         )
-        if moved or not (ratio >= _VISUAL_CHANGE_RATIO or _local_change_at(before, later.observation, action)):
+        if moved or not (_visibly_changed(before, later.observation) or _local_change_at(before, later.observation, action)):
             return replace(outcome, after=later)
         outcome.verification.update(
             {"effect": "changed", "effect_reason": "delayed_change_at_target", "visual_changed": True,
              "visual_delta_ratio": round(float(max(ratio, 0.0)), 6)}
         )
         return replace(outcome, after=later)
+
+    def _settle(self, context: ToolContext, store, outcome: ComputerStepOutcome):
+        """Keep observing while the screen is still changing, so the model sees where it ends up.
+
+        The post-action capture is taken after a fixed short pause, which catches
+        a dialog half open or a long path half typed; the model then spends a
+        round trip (several seconds) on "wait" or another screenshot. A few
+        cheap captures until two agree cost far less. Bounded, because some
+        windows never stop moving.
+        """
+
+        latest = outcome.after
+        if latest is None:
+            return outcome
+        deadline = time.monotonic() + _SETTLE_MAX_S
+        settled = False
+        while time.monotonic() < deadline:
+            time.sleep(_SETTLE_POLL_S)
+            try:
+                later = store.observe(context.session_id)
+            except Exception:
+                break
+            ratio = _visual_delta_ratio(latest.observation, later.observation)
+            latest = later
+            if 0 <= ratio < _VISUAL_CHANGE_RATIO:
+                settled = True
+                break
+        if latest is outcome.after:
+            return outcome
+        outcome.verification["settled"] = settled
+        return replace(outcome, after=latest)
 
     def _handle_batch(self, context: ToolContext, store, batch: Any) -> ToolResult:
         """Run several actions planned from one screenshot, stopping at the first doubt.

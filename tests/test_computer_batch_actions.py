@@ -105,7 +105,12 @@ class Desktop:
 
 
 @pytest.fixture
-def rig(tmp_path):
+def rig(tmp_path, monkeypatch):
+    import app.agent_runtime.computer_single_loop_runtime as loop
+
+    monkeypatch.setattr(loop, "_SETTLE_POLL_S", 0.01)
+    monkeypatch.setattr(loop, "_SETTLE_MAX_S", 0.2)
+    monkeypatch.setattr(loop, "_RECHECK_DELAY_S", 0.01)
     desktop = Desktop()
     runtime = SingleLoopComputerRuntime(
         platform=SimpleNamespace(execute_chat=lambda *a, **k: ModelResponse(text="done")),
@@ -331,7 +336,7 @@ def test_set_of_mark_leaves_the_capture_alone_and_says_so_in_the_text():
     assert observation.image_data == original
 
     snapshot = SimpleNamespace(observation=observation)
-    assert "[17] id=uia:17" in _model_observation_text(snapshot, marked=True)
+    assert "[17] Button 'Save'" in _model_observation_text(snapshot, marked=True)
     assert "boxed in magenta" in _model_observation_text(snapshot, marked=True)
     assert "boxed in magenta" not in _model_observation_text(snapshot, marked=False)
 
@@ -575,3 +580,81 @@ def test_a_frame_id_beside_a_single_action_is_its_frame_id(rig):
     rig.run({"frame_id": frame_id, "action": {"type": "click", "control_id": "3"}})
 
     assert rig.desktop.executed[0].point is not None
+
+
+def test_a_screen_still_changing_is_observed_until_it_stops(rig):
+    # The click opens something that keeps repainting for two more captures.
+    frames = iter([(0.6, 0.2), (0.6, 0.5), (0.6, 0.8)])
+
+    def keeps_painting(screen, action):
+        visible_feedback(screen, action)
+        screen.before_observe.extend([lambda s: _mark(s, next(frames), size=30)] * 3)
+
+    rig.desktop.effects[0] = keeps_painting
+    result = rig.run({"action": _click(FIELD)})
+
+    assert result.data["verification"]["settled"] is True
+    final = rig.runtime.computer_sessions.latest(rig.context.session_id).observation
+    assert result.data["after"]["image_sha256"] == final.image_sha256
+    assert not rig.desktop.before_observe  # every repaint was waited out
+
+
+def test_a_screen_that_never_stops_changing_is_not_waited_on_forever(rig):
+    import time as clock
+
+    def forever(screen, action):
+        visible_feedback(screen, action)
+        screen.before_observe.extend(
+            [lambda s, i=i: _mark(s, (0.05 + (i % 20) * 0.045, 0.95), size=12, colour=(i * 7 % 255, 0, 0))
+             for i in range(400)])
+
+    rig.desktop.effects[0] = forever
+    started = clock.monotonic()
+    result = rig.run({"action": _click(FIELD)})
+
+    assert result.data["verification"]["settled"] is False
+    assert clock.monotonic() - started < 2.0
+
+
+def test_a_small_status_change_away_from_the_click_counts_as_an_effect(rig):
+    # Clicking seat F7 rewrites a short status label at the bottom of the window:
+    # a few hundred pixels, invisible in the 128x72 sample.
+    def status_label(screen, action):
+        # About 80 changed pixels: over the full-resolution threshold, under what
+        # the 128x72 sample can register.
+        ImageDraw.Draw(screen.image).rectangle((20, 270, 29, 277), fill=(0, 0, 0))
+
+    rig.desktop.effects[0] = status_label
+    result = rig.run({"actions": [_click(BUTTON), _click(FIELD)]})
+
+    assert result.data["batch"]["steps"][0]["effect"] == "changed"
+    assert len(rig.desktop.executed) == 2
+
+
+def test_a_lone_blinking_caret_elsewhere_is_not_an_effect():
+    from app.agent_runtime.computer_single_loop_runtime import _changed_pixels, _FULL_RES_MIN_CHANGED
+
+    def png(draw_caret):
+        image = Image.new("RGB", (400, 300), (235, 235, 235))
+        if draw_caret:
+            ImageDraw.Draw(image).line((50, 40, 50, 56), fill=(0, 0, 0))
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return SimpleNamespace(image_data=buffer.getvalue(), image_sha256=str(draw_caret))
+
+    assert 0 < _changed_pixels(png(False), png(True)) < _FULL_RES_MIN_CHANGED
+
+
+def test_every_walked_control_is_numbered_on_a_dense_window():
+    # A 10x8 seat grid: cut at 40, half the seats had no number and the model
+    # clicked a numbered neighbour.
+    from app.agent_runtime.computer_single_loop_runtime import _hint_controls
+
+    frame = ComputerFrame("f", 0, 0, 800, 600)
+    controls = tuple(
+        ComputerControl(f"uia:{i}", f"S{i}", "Button", ComputerRect(10 + (i % 10) * 70, 10 + (i // 10) * 60,
+                                                                     60 + (i % 10) * 70, 50 + (i // 10) * 60))
+        for i in range(80))
+    observation = SimpleNamespace(frame=frame, controls=controls)
+
+    assert [c.control_id for c in _hint_controls(observation)] == [c.control_id for c in controls]

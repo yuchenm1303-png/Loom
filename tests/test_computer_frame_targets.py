@@ -46,7 +46,7 @@ def test_actionable_controls_survive_shell_hint_limit():
     panes = tuple(ComputerControl(str(i), "", "Pane", ComputerRect(0, 0, 20, 20)) for i in range(50))
     obs.controls = panes + obs.controls
     text = _model_observation_text(SimpleNamespace(observation=obs))
-    assert "id=uia:80; Button '+1'" in text
+    assert "[80] Button '+1'" in text
     assert "frame_id=current" in text
     assert "SAME full-image" in text
 
