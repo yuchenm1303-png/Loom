@@ -101,6 +101,28 @@ try {
     }
     assert.equal(await page.locator('[data-glide][style*="clip-path"]').count(), 0, "no cut is left behind");
 
+    // An arriving card hangs from the top of its room: its head is in sight from the first frames, the rows unroll under it.
+    for (const id of ["scope", "plan", "loom"]) {
+      await toggle(page, id).click();
+      await settle(page);
+      const head = await page.evaluate(async (id) => {
+        document.querySelector(`[data-branch="${id}"]`).click();
+        const seen = [];
+        for (let i = 0; i < 6; i += 1) {
+          await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+          const node = document.querySelector(`[data-glide="${id}"]`);
+          const match = /inset\(([\d.]+)px/.exec(node.style.clipPath || "");
+          if (!match) continue;
+          const top = node.getBoundingClientRect().top + parseFloat(match[1]);
+          seen.push(node.querySelector(".pf-card-head").getBoundingClientRect().top - top);
+        }
+        return seen;
+      }, id);
+      assert.ok(head.length && head.every((gap) => gap >= -1 && gap < 24), `${id}: the head leads the unroll: ${head.map((gap) => gap.toFixed(1))}`);
+      await settle(page);
+    }
+    assert.equal(await page.locator('[data-glide] [style*="translate"]').count(), 0, "no hung part is left displaced");
+
     // Model opening compresses the agent's own details continuously rather than display:none.
     const expanded = await page.locator('.pf-agent').first().evaluate(node => node.getBoundingClientRect().height);
     await page.locator('.pf-model-chip').click();

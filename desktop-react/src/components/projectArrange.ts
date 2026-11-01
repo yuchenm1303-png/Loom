@@ -5,7 +5,8 @@
  *   - every card that changed place glides there from where it was seen last (FLIP on transform);
  *   - a card that arrives, leaves or grows is clipped, every frame, to the room its neighbours
  *     leave it: it unrolls into the gap as they part and is folded away as they close in, so no
- *     card is ever painted over another one;
+ *     card is ever painted over another one; its surface hangs from the top of that room, so its head
+ *     shows first and the rows unroll under it (and, leaving, roll up in reverse, head last);
  *   - the cables are re-measured each frame against what is visible, so they stay plugged in.
  * A card that leaves is lifted out of its column at the place it was seen and held there (its
  * column may re-centre under it) while it folds and fades. */
@@ -32,6 +33,8 @@ interface Reveal {
   to: Edges;
   /** The corner of the card's surface, which the cut keeps. */
   round: number;
+  /** What moves with the top of the cut: the card's surface, or the parts of a card that is its own slot. */
+  hung: HTMLElement[];
 }
 
 // What each card shows now, in client px; the cables plug into this, not into the clipped-away part.
@@ -92,7 +95,11 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
   const clock = useRef<Animation | null>(null);
 
   const clear = () => {
-    for (const { node } of reveals.current) { node.style.clipPath = ""; shownEdges.delete(node); }
+    for (const { node, hung } of reveals.current) {
+      node.style.clipPath = "";
+      shownEdges.delete(node);
+      for (const part of hung) part.style.translate = "";
+    }
     reveals.current = [];
   };
   useLayoutEffect(() => () => { cancelAnimationFrame(frame.current); clock.current?.cancel(); }, []);
@@ -161,7 +168,7 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
 
     // Who reveals what: the cards that arrive, leave or grew, each between its neighbours in its column.
     const previous = new Map(reveals.current.map((reveal) => [reveal.node, shownEdges.get(reveal.node)]));
-    for (const { node } of reveals.current) node.style.clipPath = "";
+    for (const { node, hung } of reveals.current) { node.style.clipPath = ""; for (const part of hung) part.style.translate = ""; }
     const next: Reveal[] = [];
     const staying = (node: HTMLElement) => !node.hasAttribute("data-leaving");
     const columnOf = (node: HTMLElement) => node.parentElement;
@@ -209,7 +216,8 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
       }
       const surface = node.querySelector<HTMLElement>(":scope > .pf-card") ?? node;
       const round = parseFloat(getComputedStyle(surface).borderTopLeftRadius) || 0;
-      next.push({ node, kind, prev, next: after, gapPrev, gapNext, from: fromEdges, to: toEdges, round });
+      const hung = surface === node ? [...node.children].filter((part): part is HTMLElement => part instanceof HTMLElement) : [surface];
+      next.push({ node, kind, prev, next: after, gapPrev, gapNext, from: fromEdges, to: toEdges, round, hung });
     }
     reveals.current = next;
     if (!moved && !next.length && !held.current.size) { onFrame(); return; }
@@ -235,6 +243,8 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
       });
       for (const { reveal, box, top, bottom } of cuts) {
         const above = Math.max(0, top - box.top), below = Math.max(0, box.bottom - bottom);
+        // An arriving or leaving card hangs from the top of its room: its head shows first and goes last.
+        if (reveal.kind !== "grow") for (const part of reveal.hung) part.style.translate = above < 0.5 ? "" : `0 ${above.toFixed(1)}px`;
         if (above < 0.5 && below < 0.5) { reveal.node.style.clipPath = ""; shownEdges.delete(reveal.node); continue; }
         // The card's own corners go with the cut, so a card unrolls as a card, not as a slice of one.
         reveal.node.style.clipPath = `inset(${above.toFixed(1)}px 0 ${below.toFixed(1)}px 0 round ${reveal.round}px)`;
