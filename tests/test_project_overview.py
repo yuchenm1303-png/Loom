@@ -58,7 +58,8 @@ def test_tool_calls_read_as_a_short_line():
 
 def test_guidance_reaches_the_next_prompt_and_later_milestones(tmp_path):
     responses = [reply(PLAN), writing("fixed"), reply(CANDIDATE), checking(), reply(PASSED),
-                 reply({"complete": True, "summary": "app.txt is fixed"})]
+                     reply({"complete": True, "summary": "app.txt is fixed"}),
+                     checking(expectation="The entire program objective and all additional requirements are satisfied."), reply(PASSED)]
     service, runtime, platform, workspace, source = setup_review(tmp_path, responses)
     try:
         with service.project_runner.guard:
@@ -75,7 +76,7 @@ def test_guidance_reaches_the_next_prompt_and_later_milestones(tmp_path):
         assert all("Keep the public API stable." in text for text in later)
         assert "Keep the public API stable." not in str(platform.requests[0].messages)
         assert "The person directing this project added guidance" in later[0]
-        assert "Guidance the person added while the program ran" in later[-1]  # milestone 2's planner
+        assert "Guidance the person added while the program ran" in later[-3]  # milestone 2's planner
         assert service.project_store.get(first)["guidance"] == ["Keep the public API stable."]
     finally:
         runtime.close()
