@@ -168,7 +168,7 @@ def test_shortlist_order_does_not_depend_on_the_title_alphabet(monkeypatch):
 
     Sorting by casefolded title put CJK, Cyrillic and Arabic titles after every
     ASCII one, so on a busy desktop those applications fell past the cutoff
-    however prominent they were. Ranking is by geometry, which has no alphabet.
+    however prominent they were. Ranking is by Z-order, which has no alphabet.
     """
 
     handles = [1, 2, 3]
@@ -378,3 +378,41 @@ def test_the_hud_emitter_prefers_the_screen_point():
     # that wrong place on every action and snapped back afterwards. The caller
     # converts the pending point against the live frame instead.
     assert S._hud_point("computer_action", {}, {"action": result["action"]}) is None
+
+
+def test_a_small_window_just_behind_the_foreground_is_listed_first(monkeypatch):
+    """The screenshot shows the foreground window only, so a window behind it is
+    reachable through the list or not at all. Ranked by area, a just-opened small
+    form fell past the cutoff behind every larger window on a live run.
+    """
+
+    big = list(range(3, 30))
+    handles = [1, 2, *big]  # EnumWindows order is Z-order: 2 sits right behind 1
+    titles = {hwnd: f"Big {hwnd}" for hwnd in big}
+    titles.update({1: "Claude", 2: "Loom Form Test"})
+    rects = {hwnd: (0, 0, 1900, 1100) for hwnd in big}
+    rects.update({1: (0, 0, 1900, 1100), 2: (200, 150, 720, 570)})
+    _fake_window_modules(monkeypatch, handles=handles, visible=set(handles), titles=titles, rects=rects)
+    operator = object.__new__(SingleLoopWindowsOperator)
+    operator.max_windows = 48
+    monkeypatch.setattr(operator, "_process_name_for_window", lambda hwnd: f"app-{hwnd}.exe")
+
+    background = [w for w in operator._enumerate_windows(1) if not w.foreground]
+
+    assert background[0].title == "Loom Form Test"
+
+
+def test_hidden_apps_and_recent_covered_windows_both_fit_the_model_shortlist(monkeypatch):
+    covered = list(range(2, 30))
+    hidden = list(range(60, 70))
+    handles = [1, *covered, *hidden]
+    titles = {hwnd: f"Window {hwnd}" for hwnd in handles}
+    _fake_window_modules(monkeypatch, handles=handles, visible=set(handles), titles=titles, iconic=set(hidden))
+    operator = object.__new__(SingleLoopWindowsOperator)
+    operator.max_windows = 48
+    monkeypatch.setattr(operator, "_process_name_for_window", lambda hwnd: f"app-{hwnd}.exe")
+
+    shown = [w for w in operator._enumerate_windows(1) if not w.foreground][:MODEL_WINDOW_LIMIT]
+
+    assert "0x2" in {w.window_id for w in shown}  # right behind the foreground window
+    assert sum(w.window_id in {hex(h) for h in hidden} for w in shown) >= 6

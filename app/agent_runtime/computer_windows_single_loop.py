@@ -23,6 +23,12 @@ _HIDDEN_PROCESS_DENYLIST = frozenset(
     }
 )
 
+# Early shortlist slots, inside the 12 background windows the model is shown:
+# hidden/minimized applications first, then on-screen windows behind the
+# foreground one, most recent in Z-order first.
+_LEADING_RECOVERABLE = 6
+_RECENT_ONSCREEN = 5
+
 
 class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
     """Windows operator tuned for Loom's direct visual single-loop runtime.
@@ -130,35 +136,16 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
             # absence of evidence is not enough to hide a legitimate tray app.
             return False
 
-    @staticmethod
-    def _onscreen_rank(window: ComputerWindow) -> tuple:
-        """Order windows the model can already see, largest first.
-
-        Title order was the previous rule. Sorting by codepoint is not a
-        relevance signal and it systematically demotes every non-Latin script:
-        a CJK, Cyrillic or Arabic window title sorts after every ASCII one, so on
-        a busy desktop those applications fell past the shortlist cutoff no
-        matter how prominent they were on screen. Area is language-neutral.
-        """
-
-        rect = window.rect
-        area = 0 if rect is None else max(0, rect.width) * max(0, rect.height)
-        return (-area, window.window_id)
-
     def _enumerate_windows(self, foreground_hwnd: int) -> tuple[ComputerWindow, ...]:
         """Shortlist top-level windows, offscreen applications first.
 
-        The screenshot already shows the model every window that is presenting
-        pixels, and it can click those directly. The list therefore earns its
+        The screenshot shows the foreground window only, so the list earns its
         place in the prompt by naming what the screenshot cannot show, which is
-        also the only thing ``switch_window`` is for. So the partition is "can
-        the model see this in the current frame", not ``IsWindowVisible``.
-
-        Those differ in the ordinary case. A window minimized to the taskbar or
-        the notification area stays ``IsWindowVisible``; the shell just parks it
-        far outside the desktop. Bucketing on ``IsWindowVisible`` filed such
-        windows with the on-screen ones, where they competed for a bounded
-        shortlist against windows the model could already see.
+        also what ``switch_window`` is for: windows behind the foreground one
+        and windows parked off screen. They are partitioned on presenting pixels,
+        not ``IsWindowVisible``: a window minimized to the taskbar or the
+        notification area stays ``IsWindowVisible``; the shell just parks it far
+        outside the desktop.
         """
 
         import win32con
@@ -276,11 +263,22 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
             )
         ]
 
-        onscreen.sort(key=self._onscreen_rank)
+        # The screenshot covers the foreground window only, so an on-screen
+        # window behind it is as invisible to the model as a minimized one. A
+        # live run (2026-11-01) lost a small just-opened form this way: ranked
+        # by area behind every larger window, it fell past the shortlist and the
+        # model spent three minutes hunting for it. EnumWindows walks Z-order,
+        # topmost first, so the most recently used covered windows come first
+        # among their kind. Both kinds get early slots in the shortlist the
+        # model reads: the leading hidden applications, then the most recent
+        # covered windows, then the rest of each.
+        background = [item for item in onscreen if not item.foreground]
         ordered = (
             *(item for item in onscreen if item.foreground),
-            *recoverable,
-            *(item for item in onscreen if not item.foreground),
+            *recoverable[:_LEADING_RECOVERABLE],
+            *background[:_RECENT_ONSCREEN],
+            *recoverable[_LEADING_RECOVERABLE:],
+            *background[_RECENT_ONSCREEN:],
         )
         return tuple(ordered[: self.max_windows])
 

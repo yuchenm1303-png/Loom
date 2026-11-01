@@ -688,6 +688,42 @@ def _safe_outcome_data(outcome: ComputerStepOutcome) -> dict[str, object]:
     }
 
 
+def _resolve_window_reference(value: str, observation: Any) -> str:
+    """A switch_window target as a window id; a title or process name is looked up.
+
+    The model is shown a token-bounded part of the window list and, when its
+    target is not in that part, names the window instead. That used to fail as
+    "invalid literal for int()". A name now resolves against every window Loom
+    enumerated - only to a single match, so a vague name never picks a window.
+    """
+
+    text = str(value or "").strip()
+    folded = text.casefold()
+    if folded.startswith("0x") or folded.isdigit():
+        return text
+    windows = tuple(getattr(observation, "windows", ()) or ())
+
+    def names(window) -> tuple[str, str]:
+        process = str(window.process_name or "").casefold()
+        return str(window.title or "").casefold(), process.removesuffix(".exe")
+
+    for match in (
+        lambda title, process: title == folded,
+        lambda title, process: process == folded.removesuffix(".exe"),
+        lambda title, process: folded in title,
+    ):
+        found = [window for window in windows if match(*names(window))]
+        if len(found) == 1:
+            return found[0].window_id
+        if len(found) > 1:
+            listed = "; ".join(f"{w.window_id} {w.title!r} ({w.process_name})" for w in found[:6])
+            raise ValueError(f"switch_window: {text!r} matches several windows, pass one id: {listed}")
+    raise ValueError(
+        f"switch_window: no known window is named {text!r}. window_id takes an id from the window list "
+        "(like 0x1a2b), a window's exact title, or its process name"
+    )
+
+
 def _resolve_frame_target(payload: dict[str, Any], observation: Any) -> dict[str, Any]:
     """Resolve observation-scoped targets to physical clicks, never UIA Invoke."""
     payload = dict(payload)
@@ -1132,6 +1168,8 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 str(payload.get("text") or ""),
                 context.session_id,
             )
+        if str(payload.get("type") or "") == "switch_window" and payload.get("window_id"):
+            payload["window_id"] = _resolve_window_reference(str(payload["window_id"]), before.observation)
         return ComputerAction.from_dict(_resolve_frame_target(payload, before.observation))
 
     def _refusal(

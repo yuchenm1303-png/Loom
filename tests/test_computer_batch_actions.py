@@ -465,3 +465,45 @@ def test_past_handles_reach_the_model_as_a_placeholder_and_the_placeholder_canno
     assert platform.consume(handle) == "hunter2"
     with pytest.raises(RuntimeError, match="history placeholder"):
         platform.consume(response.tool_calls[0].arguments["action"]["text"])
+
+
+@pytest.mark.parametrize(
+    "reference, expected",
+    [
+        ("0x30", "0x30"),
+        ("Loom Form Test", "0x30"),
+        ("loom form test", "0x30"),
+        ("pythonw.exe", "0x30"),
+        ("pythonw", "0x30"),
+        ("Form", "0x30"),
+    ],
+)
+def test_switch_window_takes_a_title_or_process_that_names_one_window(reference, expected):
+    from app.agent_runtime.computer_single_loop_runtime import _resolve_window_reference
+
+    observation = SimpleNamespace(windows=(
+        ComputerWindow("0x10", "Claude", process_name="claude.exe"),
+        ComputerWindow("0x20", "Loom", process_name="Loom.exe"),
+        ComputerWindow("0x30", "Loom Form Test", process_name="pythonw.exe"),
+    ))
+    assert _resolve_window_reference(reference, observation) == expected
+
+
+@pytest.mark.parametrize("reference, message", [("Lo", "several windows"), ("Notepad", "no known window")])
+def test_a_vague_or_unknown_window_name_is_refused_not_guessed(reference, message):
+    from app.agent_runtime.computer_single_loop_runtime import _resolve_window_reference
+
+    observation = SimpleNamespace(windows=(
+        ComputerWindow("0x20", "Loom", process_name="Loom.exe"),
+        ComputerWindow("0x30", "Loom Form Test", process_name="pythonw.exe"),
+    ))
+    with pytest.raises(ValueError, match=message):
+        _resolve_window_reference(reference, observation)
+
+
+def test_switch_window_by_title_reaches_the_operator_as_its_id(rig):
+    rig.desktop.effects[0] = lambda screen, action: None
+
+    rig.run({"action": {"type": "switch_window", "window_id": "Form"}})
+
+    assert rig.desktop.executed[0].window_id == "0x10"
