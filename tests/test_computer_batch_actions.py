@@ -759,3 +759,39 @@ def test_a_negative_scroll_amount_scrolls_the_other_way(rig):
     rig.run({"action": {"type": "scroll", "direction": "down", "amount": -360, "point": {"x": 0.5, "y": 0.5}}})
     action = rig.desktop.executed[0]
     assert action.direction == "up" and action.amount == 360
+
+
+# -- shapes other models send (minimax-m3.1-flash, live 2026-11-01) ---------
+
+
+def test_item_wrapped_arrays_and_chained_action_lists_are_unwrapped(rig):
+    chained = {"action": {"actions": [{
+        "action": _click(FIELD),
+        "item": {"action": {"type": "key", "keys": {"item": ["ctrl", "a"]}},
+                 "item": {"action": {"type": "type", "text": "Ada"}}},
+    }]}}
+
+    result = rig.run(chained)
+
+    assert [a.type.value for a in rig.desktop.executed] == ["click", "key", "type"]
+    assert rig.desktop.executed[1].keys == ("ctrl", "a")
+    assert result.data["batch"]["executed"] == 3
+
+
+@pytest.mark.parametrize("alias, expected", [("text", "type"), ("left_click", "click"), ("keypress", "key")])
+def test_other_tools_action_names_are_understood(rig, alias, expected):
+    step = {"type": alias, "text": "Ada"} if expected == "type" else (
+        {"type": alias, "point": {"x": 0.25, "y": 0.33}} if expected == "click" else {"type": alias, "keys": ["tab"]})
+    rig.run({"action": {"actions": [step]}})
+    assert rig.desktop.executed[0].type.value == expected
+
+
+def test_every_text_field_is_stashed_whatever_the_action_is_called():
+    class Inner:
+        def execute_chat(self, profile_id, request):
+            return ModelResponse(tool_calls=(ToolCall("c1", "computer_action", {
+                "action": {"actions": [_click(FIELD), {"type": "text", "text": "hunter2"},
+                                       {"action": {"type": "input", "text": "hunter3"}}]}}),))
+
+    stashed = ComputerTransientInputPlatform(Inner()).execute_chat("p", None).tool_calls[0].arguments
+    assert "hunter2" not in str(stashed) and "hunter3" not in str(stashed)

@@ -130,7 +130,13 @@ class ComputerTransientInputPlatform:
             self._recalled.clear()
 
     def _stash_typed_text(self, value: Any) -> Any:
-        """``value`` with every ``{"type": "type", "text": ...}`` text stashed; the same object if none."""
+        """``value`` with every ``text`` string stashed; the same object if none.
+
+        Whatever the action is called: models name it ``type``, ``text``,
+        ``input`` or nest it in their own wrappers, and a type check here let
+        ``{"type": "text", "text": ...}`` (a live run, 2026-11-01) put the
+        literal text into history.
+        """
 
         if isinstance(value, dict):
             changed = False
@@ -138,7 +144,7 @@ class ComputerTransientInputPlatform:
             for key, item in value.items():
                 # A text that is already a handle is stashed too: that is how a
                 # copied handle is recognised and refused when consumed.
-                if key == "text" and str(value.get("type") or "") == "type":
+                if key == "text" and isinstance(item, str):
                     result[key] = self._stash(str(item or ""))
                     changed = True
                 else:

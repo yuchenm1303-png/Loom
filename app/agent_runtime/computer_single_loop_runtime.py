@@ -744,6 +744,49 @@ def _safe_outcome_data(outcome: ComputerStepOutcome) -> dict[str, object]:
     }
 
 
+# Other computer-use tools' names for Loom's actions (Anthropic's toolset,
+# OpenAI's computer tool), which models trained on them send here.
+_ACTION_ALIASES = {
+    "text": "type", "input": "type", "type_text": "type", "write": "type",
+    "left_click": "click", "mouse_move": "move", "left_click_drag": "drag",
+    "keypress": "key", "press": "key", "key_press": "key",
+}
+
+
+def _normalize_call(value: Any) -> Any:
+    """Undo serialization quirks in a computer_action call before it is read.
+
+    A live run with minimax-m3.1-flash (2026-11-01) sent arrays wrapped as
+    {"item": [...]}, an action list as a chain {"action": A, "item": {"action":
+    B, ...}}, and other tools' action names; each was a failed call and a model
+    round trip. Only shapes with one meaning are rewritten.
+    """
+
+    if isinstance(value, dict):
+        if set(value) == {"item"}:
+            return _normalize_call(value["item"])
+        result = {key: _normalize_call(item) for key, item in value.items()}
+        kind = result.get("type")
+        if isinstance(kind, str) and kind.strip().casefold() in _ACTION_ALIASES:
+            result["type"] = _ACTION_ALIASES[kind.strip().casefold()]
+        actions = result.get("actions")
+        if isinstance(actions, dict):
+            result["actions"] = _flatten_chain(actions)
+        elif isinstance(actions, list):
+            result["actions"] = [step for item in actions for step in _flatten_chain(item)]
+        return result
+    if isinstance(value, list):
+        return [_normalize_call(item) for item in value]
+    return value
+
+
+def _flatten_chain(node: Any) -> list:
+    if isinstance(node, dict) and "action" in node and set(node) <= {"action", "item"}:
+        rest = node.get("item")
+        return [node["action"], *(_flatten_chain(rest) if rest is not None else [])]
+    return [node]
+
+
 def _resolve_window_reference(value: str, observation: Any) -> str:
     """A switch_window target as a window id; a title or process name is looked up.
 
@@ -860,7 +903,7 @@ def _model_observation_text(snapshot: ComputerStateSnapshot, *, marked: bool = F
     background = [window for window in observation.windows if not window.foreground][:12]
     if background:
         lines.append(
-            f"Other known top-level application windows (showing {len(background)} of {max(0, len(observation.windows) - 1)} non-foreground windows). This display is a token-bounded shortlist, not proof that omitted applications are closed. It may include minimized or tray-hidden recoverable windows; use switch_window with the id instead of searching the desktop/taskbar when the target app is already listed:"
+            f"Other known top-level application windows (showing {len(background)} of {max(0, len(observation.windows) - 1)} non-foreground windows). This display is a token-bounded shortlist, not proof that omitted applications are closed. It may include minimized or tray-hidden recoverable windows; use switch_window with the id instead of searching the desktop/taskbar when the target app is already listed, or screenshot with its window_id to read it without switching:"
         )
         for window in background:
             lines.append(
@@ -963,8 +1006,9 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "model round trip. Loom stops a batch at the first action that fails or cannot be confirmed, or when "
                 "the window or the area around the next target changed, and the remaining actions are not sent. "
                 "Coordinates are normalized 0..1. A UIA hint can be targeted by control_id (its number, or its exact name) plus frame_id "
-                "for click, move, type and clear_text; Loom acts on the control's real center. To read small text or "
-                "pick a small target, zoom with a region of the current screenshot; to read a window behind the "
+                "for click, move, type and clear_text; Loom acts on the control's real center. Only when text or a "
+                "target is too small to make out, zoom with a region of the current screenshot (each zoom is a "
+                "round trip; do not zoom to re-check what is already legible); to read a window behind the "
                 "foreground one without switching to it, screenshot with its window_id. If a target application already appears in "
                 "the known-window list, use switch_window rather than searching the desktop or taskbar; hidden/tray "
                 "windows may be recoverable this way. Every non-terminal action is followed by a fresh screenshot. "
@@ -1171,12 +1215,14 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         store = self.computer_sessions
         if store is None:
             return ToolResult(False, "Computer Use is unavailable on this host.")
+        arguments = _normalize_call(arguments)
         batch = arguments.get("actions")
         raw = arguments.get("action")
         shared_frame = str(arguments.get("frame_id") or "")
         if isinstance(raw, dict) and "actions" in raw and batch is None:
             if raw.get("type"):
                 raise ValueError("an action is either one action (type) or a batch (actions), not both")
+            shared_frame = shared_frame or str(raw.get("frame_id") or "")
             batch, raw = raw["actions"], None
         if batch is not None:
             if raw is not None:

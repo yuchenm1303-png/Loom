@@ -51,6 +51,23 @@ The single-loop path (the default) spends ~90% of a Computer Use turn waiting on
 
 Measure before and after with `python scripts/computer_use_report.py --since <date>`: actions per call, model share of time, failure share and how batches ended.
 
+## What the live suite changed (2026-11-01)
+
+`scripts/computer_use_suite/` runs nine tasks against throwaway local apps with a real vision model and the real Windows operator, and checks each from facts the app wrote: tkinter forms, a settings dialog, a form covered by another window, a native Save As dialog, a long list, a dense 80-seat grid, copying a code between two windows, renaming (select-all and replace), and a Chromium form in Edge (temporary profile) with a dropdown, radios, a number and a date field. It drives the real mouse and keyboard. Every change below came from reading what a run actually did (`digest.py`).
+
+Per step, the provider takes 3–6 s to its first chunk even with 80–95% of the input cached; uncached input is 2–3k tokens and output is small. So step time is the provider's, and the lever Loom holds is the number of steps. What cost steps, and the fix:
+
+- Clicks into an empty field or onto a checkbox read as "no observable change" (a caret or a tick vanishes in the 128x72 sample), ending batches after their first step. Now: a full-resolution check at the target and across its row, one second look after 0.35 s, and a full-resolution changed-pixel count for small changes elsewhere (a status label).
+- Mid-change captures (a dialog half open, a long path half typed) made the model "wait" or look again. Now a visible change is observed again every 0.3 s until two captures agree, at most 1.2 s.
+- Models copied a handle or placeholder from their own history into new `type` actions. The outgoing request now shows the model its own earlier text from RAM; the session keeps handles; handles stay one-shot.
+- A covered small window fell off the window list the model sees (the screenshot is the foreground window only, the list was sorted by area). Now Z-order, with early slots for both covered and hidden windows; `switch_window` accepts an exact title or process name.
+- `clear_text` pressed Escape whenever the IME state was unknown (normal with TSF input methods) and closed the Save dialog it was clearing a field in. Escape is now sent only for a composition that was seen and survived the IMM cancel.
+- Call shapes models commonly send are accepted instead of rejected: `actions` nested in `action`, a top-level `frame_id`, a trailing `screenshot` in a batch, a negative scroll amount. Typed text is stashed in any shape (a nested batch had put literal text into history).
+- Hints cover every walked control (up to 80) in short lines, and `control_id` also takes a hint's exact name: cut at 40, half a dense grid had no number; with 80 numbers the model spent 34 s working out which one was "F7".
+- New read-only views, attached once beside the screenshot: `zoom {region}` (full-resolution crop, up to 4x) and `screenshot {window_id}` for a window behind the foreground one (PrintWindow, no activation).
+
+Results with deepseek-v4.1-flash, all tasks passing throughout: baseline 611 s and 76 model steps with 9 failed calls for the nine tasks; after the first fixes 442 s, 60 steps, 3 failed calls (mean of two runs per task). Run-to-run variance per task is large (one task ranged 24–68 s), so compare means over repeats.
+
 ## Alibaba GUI-Plus grounding
 
 Loom supports Alibaba Cloud Model Studio GUI-Plus as a dedicated Computer Grounding backend. The default model is `gui-plus-2026-02-26` and the default OpenAI-compatible endpoint is the existing Beijing DashScope endpoint. Alibaba recommends its newer workspace-specific Beijing domain for higher stability; set `LOOM_COMPUTER_BASE_URL` to that endpoint when a Workspace ID is available.
