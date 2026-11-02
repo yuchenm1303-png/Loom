@@ -152,3 +152,25 @@ out of this run (3869fa2c, 8940668d):
   its scroll event. Read straight after the scroll, the state also still ended at the old last row. A scroll
   now fronts the tab, as a click does, and a scroll that reaches the bottom waits up to 1.2 s for the page to
   grow. In the user's Edge, five scrolls now load rows 21–101 at 0.9 s each; before, they stayed at row 20.
+
+### Frames (extension 0.1.36–0.1.37)
+
+The extension now reads every frame in one `executeScript({allFrames: true})`. The top frame lists its
+visible iframes, each frame's elements are matched to one (by URL, then in order), and they are listed
+under a `Frame N (url) at x,y` heading in page coordinates. Element refs carry their frame:
+- **click** places the point by the iframe's offset;
+- **type** clicks the field natively first, because a cross-origin frame takes focus from a gesture, not
+  from script;
+- **select and hover** run inside the frame.
+
+A read waits up to 1.5 s for a visible frame that is still on its blank document. Without that wait, a
+payment frame that arrived after the page was absent from the first state, and the model fell back to
+coordinates for up to 28 steps. The suite's payment frame now arrives 0.8 s late, and there is a
+cross-origin variant (`xframe`: a `localhost` frame on a `127.0.0.1` page).
+
+In the user's Edge, three runs per task, all passing:
+
+| | before | after |
+| --- | --- | --- |
+| deepseek iframe / xframe | 155 s, 16 steps / 97 s, 11 steps | 21 s, 4 steps / 30 s, 4 steps |
+| minimax iframe / xframe | 134 s, 14 steps / 197 s, 14.5 steps | 46 s, 6.3 steps / 53 s, 6.7 steps |
