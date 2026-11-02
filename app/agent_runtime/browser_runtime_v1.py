@@ -224,8 +224,10 @@ def _visual_surfaces(state: BrowserPageState) -> list[dict[str, Any]]:
     return surfaces
 
 
-_TAG_LINE = re.compile(r"^(\[\d+\])?<[^>]*>$")
-_INDEX = re.compile(r"\[\d+\]")
+_TAG_LINE = re.compile(r"^<[^>]*>$")
+# Index markers and browser-use's prefixes ("|SHADOW(open)|", "*" for new) carry
+# no text of the page.
+_INDEX = re.compile(r"(?:\|[^|\n]*\|)*\*?\[\d+\]")
 _MAX_ADDED_LINES = 8
 _MAX_REMOVED_LINES = 5
 

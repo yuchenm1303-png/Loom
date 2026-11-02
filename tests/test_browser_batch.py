@@ -21,10 +21,15 @@ from app.agent_runtime.tools import ToolContext
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import ModelResponse
 
+# The real browser-use format (dom_probe on the suite's login page, 2026-11-01):
+# form fields carry a "|SHADOW(open)|" prefix, which an index pattern anchored at
+# "[" missed - every live batch failed with "index 2 is not in this state".
 LOGIN = (
     "Sign in\n"
-    "[2]<input id=u />\n"
-    "[3]<input id=p type=password />\n"
+    "Username\n"
+    "|SHADOW(open)|[2]<input id=u autocomplete=off />\n"
+    "Password\n"
+    "|SHADOW(open)|[3]<input id=p type=password />\n"
     "[5]<button id=go />\n"
     "\tSign in\n"
 )
@@ -186,3 +191,7 @@ def test_descriptors_ignore_the_number_and_refuse_ambiguity():
     twins = "[7]<button id=go />\n\tSign in\n[8]<button id=go />\n\tSign in\n"
     assert _relocate(planned[5], 5, _element_descriptors(twins)) is None
     assert _relocate(planned[5], 5, _element_descriptors("[9]<button id=go />\n\tSign in\n")) == 9
+
+
+def test_new_element_markers_are_read_too():
+    assert _element_descriptors("*[7]<button id=ok />\n\tOK\n") == {7: "<button id=ok /> OK"}

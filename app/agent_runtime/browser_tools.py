@@ -246,7 +246,10 @@ def _store(runtime: "BrowserRuntime") -> "BrowserSessionStore":
     return store
 
 
-_ELEMENT_LINE = re.compile(r"^(\s*)\[(\d+)\](<[^>]*>)")
+# browser-use writes markers before an index: "|SHADOW(open)|[2]<input ...>" for a
+# field with a built-in shadow root, "*[7]" for an element new since the last
+# state. A pattern anchored at "[" missed every form field (live suite).
+_ELEMENT_LINE = re.compile(r"^(\s*)(?:\|[^|\n]*\|)*\*?\[(\d+)\](<[^>]*>)")
 _BATCH_STEPS = frozenset({"click", "type", "press", "select", "scroll"})
 MAX_BROWSER_BATCH = 8
 

@@ -35,3 +35,9 @@ def test_the_change_line_rides_in_the_transient_observation():
     text = _observation_text(snapshot, effect="changed", effect_reason="dom", changes='+ ["Saved"]')
     assert 'text_changes_since_previous_observation: + ["Saved"]' in text
     assert "text_changes" not in _observation_text(snapshot, effect="changed", effect_reason="dom")
+
+
+def test_browser_use_prefixes_are_not_page_text():
+    before = "|SHADOW(open)|[2]<input id=u />\nSign in\n"
+    after = "|SHADOW(open)|[9]<input id=u />\n*[11]<div />\nSign in\n"
+    assert _visible_changes(state(before), state(after)) == "no visible text changed"
