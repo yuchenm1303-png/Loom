@@ -87,3 +87,56 @@ backend's format.
   port (39333) at start and end.
 - Run-to-run variance is large (one MiniMax response took 230 s). Compare means over repeats, and run
   before and after side by side.
+
+## The user's own browser and the Loom app (2026-11-02)
+
+`run_suite.py --backend live` joins the bridge the running Loom shares and drives the user's own browser
+through the extension (Edge here); each task's tabs are closed afterwards. `run_app.py` sends the tasks as
+conversations to the running desktop Host over local IPC, so they use the app's model, settings and browser
+route, and archives them. Edge loads the unpacked extension from `%APPDATA%\Electron\browser\current-tab-extension`.
+Writing a new token to that copy's `extension-update.json` makes the extension reload itself within about a
+minute; `last_client_version` in the bridge status shows which version is running.
+
+What the live path found, each fixed with a test:
+
+- **Native clicks on a background tab stalled.** Loom opens its tabs in the background, and Chromium holds
+  mouse input for a hidden widget. Every click waited 5.4 s and landed, if at all, the next time the tab was
+  shown: a sign-in "did not submit", then had, two steps later. A click now fronts the tab only for the
+  click and hands the user's tab back, as screenshots do. A click now takes 0.5 s. Typing (`insertText`)
+  was never affected.
+- **Element lines said too little.**
+  - A checkbox was `<input> type="checkbox" value="on"`, ticked or not, and inputs had no label. Lines now
+    carry `label=`, `checked=` and aria `expanded/selected/pressed` and `disabled`; batch relocation
+    ignores those states.
+  - Open shadow roots were not read, and repeated names ("Select" ×80) gave no hint of their row. Elements
+    are now collected in composed order across shadow roots, and a repeated name gets `context=` from the
+    nearest surrounding text.
+  - Focus and hit tests go through shadow roots. The isolated backend had the same shadow focus bug in
+    `browser_native_edit.py`.
+- **Loom Browser was always offline in the app.** Its bridge and the desktop's local Host discovery both used
+  127.0.0.1:39223, and Loom.exe held the port. Since local pages started defaulting to Loom Browser
+  (bf770790), every localhost `browser_open` failed after 6 s, and the model spent two or three steps
+  finding another browser. The bridge is on 39224 now, and when Loom Browser does not answer in 3 s the
+  configured browser opens the page.
+
+Results through the user's Edge, two runs per task, all passing:
+
+| | wall time | model steps | failed calls |
+| --- | --- | --- | --- |
+| deepseek, first live run (extension 0.1.27) | 813 s | 76 | 1 |
+| deepseek, extension 0.1.32 | 552 s | 68 | 0 |
+| minimax, first live run | 822 s | 99 | 4 |
+| minimax, extension 0.1.32 | 529 s | 80 | 2 |
+
+For comparison, the isolated backend on the same code took 595 s / 62 steps (deepseek) and 701 s / 76 steps
+(minimax). The widget task went from 99 s / 8.5 steps to 13 s / 3.
+
+Nine tasks through the installed app (0.1.162, before the port fix) all passed, at 1194 s / 104 steps. Every
+task started with the offline Loom Browser failure, and iframe took 28 steps.
+
+Open:
+- The extension does not read inside iframes. The payment-form task is done by coordinates plus typed text,
+  at 11–16 steps against 5.5 on browser-use. Reading frames needs per-frame injection with each frame's
+  offset, and real payment frames are cross-origin.
+- CI is red from tests outside the browser, so the router does not release; these fixes reach the installed
+  app with the next manually dispatched release.
