@@ -1858,8 +1858,34 @@ function runPageAction(action, args = {}) {
     removeHudAfter(host, 2300);
   }
 
+  // document.activeElement stops at a shadow host; the field a web component
+  // focused is further down.
+  function deepActiveElement() {
+    let active = document.activeElement;
+    while (active && active.shadowRoot && active.shadowRoot.activeElement) active = active.shadowRoot.activeElement;
+    return active;
+  }
+
+  // elementFromPoint, like activeElement, stops at a shadow host.
+  function deepElementFromPoint(x, y) {
+    let hit = document.elementFromPoint(x, y);
+    while (hit && hit.shadowRoot && hit.id !== HUD_HOST_ID) {
+      const inner = hit.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === hit) break;
+      hit = inner;
+    }
+    return hit;
+  }
+
   function targetById(loomId) {
-    const el = document.querySelector(`[data-loom-bridge-id="${CSS.escape(String(loomId || ""))}"]`);
+    const selector = `[data-loom-bridge-id="${CSS.escape(String(loomId || ""))}"]`;
+    let el = document.querySelector(selector);
+    if (!el) {
+      for (const root of shadowRoots()) {
+        el = root.querySelector(selector);
+        if (el) break;
+      }
+    }
     if (!(el instanceof HTMLElement)) throw new Error("Element is no longer available. Refresh browser_state and retry.");
     el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
     return el;
@@ -1876,15 +1902,53 @@ function runPageAction(action, args = {}) {
   const POINTER_SELECTOR = "div,span,li,td,th,img,p,label,section,article,h1,h2,h3,h4,h5,h6";
   const MAX_POINTER_SCAN = 1500;
 
+  // Elements in composed order: the document and every open shadow root, each
+  // host's shadow content right after the host. A field inside a web component
+  // had no index, so the model drove it by coordinates and keys and set the
+  // wrong quantity (live run in the user's Edge, 2026-11-02). Loom's own HUD
+  // host is skipped.
+  function composedElements() {
+    const out = [];
+    const visit = (root) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        out.push(node);
+        if (node.shadowRoot && node.id !== HUD_HOST_ID) visit(node.shadowRoot);
+      }
+    };
+    visit(document);
+    return out;
+  }
+
+  function shadowRoots() {
+    return composedElements().filter((el) => el.shadowRoot && el.id !== HUD_HOST_ID).map((el) => el.shadowRoot);
+  }
+
+  // Eighty buttons that all read "Select" are one name for eighty things: the
+  // model could not tell which belonged to Item 73 without zooming into a
+  // screenshot. A repeated name gets the nearest surrounding text that is not
+  // its own.
+  function repeatedContext(el) {
+    const own = clean(el.innerText || el.textContent || "");
+    let node = el.parentElement;
+    for (let depth = 0; node && depth < 4; depth += 1, node = node.parentElement) {
+      const text = clean(String(node.innerText || "").replace(own, " "), 60);
+      if (text) return text;
+    }
+    return "";
+  }
+
   function collectClickableElements() {
     const picked = [];
-    for (const el of document.querySelectorAll(SEMANTIC_SELECTOR)) {
+    const all = composedElements();
+    const order = new Map(all.map((el, position) => [el, position]));
+    for (const el of all.filter((node) => node.matches(SEMANTIC_SELECTOR))) {
       if (!(el instanceof HTMLElement) || !isCandidate(el) || !visible(el)) continue;
       picked.push(el);
       if (picked.length >= MAX_ELEMENTS) return picked;
     }
     let scanned = 0;
-    for (const el of document.querySelectorAll(POINTER_SELECTOR)) {
+    for (const el of all.filter((node) => node.matches(POINTER_SELECTOR))) {
       if (picked.length >= MAX_ELEMENTS || scanned >= MAX_POINTER_SCAN) break;
       if (!(el instanceof HTMLElement)) continue;
       scanned += 1;
@@ -1898,9 +1962,7 @@ function runPageAction(action, args = {}) {
       picked.push(el);
     }
     // Indexes have to read in document order or they stop matching the page.
-    picked.sort((a, b) => (
-      a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
-    ));
+    picked.sort((a, b) => order.get(a) - order.get(b));
     return picked;
   }
 
@@ -1969,7 +2031,11 @@ function runPageAction(action, args = {}) {
     const errors = [];
     const elements = [];
     try {
-      for (const el of collectClickableElements()) {
+      const candidates = collectClickableElements();
+      const named = (el) => `${el.tagName}|${clean(el.innerText || el.textContent || "")}|${el.getAttribute("aria-label") || ""}`;
+      const seen = new Map();
+      for (const el of candidates) seen.set(named(el), (seen.get(named(el)) || 0) + 1);
+      for (const el of candidates) {
         const rect = el.getBoundingClientRect();
         const tag = el.tagName.toLowerCase();
         const type = clean(el.getAttribute("type") || "");
@@ -1998,6 +2064,7 @@ function runPageAction(action, args = {}) {
           label: valued && el.labels && el.labels.length ? clean(el.labels[0].innerText || "") : "",
           states,
           toggle,
+          context: seen.get(named(el)) > 1 ? repeatedContext(el) : "",
           // Field values are data, not prose: whitespace and control characters
           // must survive the observation. Keep the existing bounded excerpt.
           value: String(valued && !secret ? el.value : "").slice(0, 160),
@@ -2033,6 +2100,7 @@ function runPageAction(action, args = {}) {
     const elementLines = elements.map((item) => {
       const attrs = [];
       if (item.text) attrs.push(`text="${item.text}"`);
+      if (item.context) attrs.push(`context="${item.context}"`);
       if (item.aria) attrs.push(`aria="${item.aria}"`);
       if (item.placeholder) attrs.push(`placeholder="${item.placeholder}"`);
       if (item.type) attrs.push(`type="${item.type}"`);
@@ -2116,7 +2184,7 @@ function runPageAction(action, args = {}) {
     const top = Math.max(0, rect.top), bottom = Math.min(window.innerHeight, rect.bottom);
     if (right <= left || bottom <= top) throw new Error("Target element has no visible click area");
     const x = (left + right) / 2, y = (top + bottom) / 2;
-    const hit = document.elementFromPoint(x, y);
+    const hit = deepElementFromPoint(x, y);
     if (hit !== el && !el.contains(hit)) throw new Error("Target element is covered by another element");
     showTargetHud(el, `Click #${Number(args.index)}`, clean(el.innerText || el.value || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.tagName, 180), "action");
     return { x, y, navigation_expected: navigationExpectedFor(el) };
@@ -2142,7 +2210,7 @@ function runPageAction(action, args = {}) {
     if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
       throw new Error(`click_at coordinates ${x},${y} are outside viewport ${window.innerWidth}x${window.innerHeight}`);
     }
-    const target = document.elementFromPoint(x, y);
+    const target = deepElementFromPoint(x, y);
     if (!(target instanceof HTMLElement)) throw new Error("click_at found no HTML target at those coordinates");
     target.focus({ preventScroll: true });
     showTargetHud(target, `Click at ${Math.round(x)},${Math.round(y)}`, clean(target.getAttribute("aria-label") || target.tagName, 180), "action");
@@ -2177,7 +2245,7 @@ function runPageAction(action, args = {}) {
         throw new Error("Target input does not support text editing");
       }
       el.focus({ preventScroll: true });
-      if (document.activeElement !== el) throw new Error("Target element did not receive focus");
+      if (deepActiveElement() !== el) throw new Error("Target element did not receive focus");
       if (args.clear !== false) el.select();
       return true;
     }
@@ -2186,7 +2254,7 @@ function runPageAction(action, args = {}) {
       const range = selection && selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
       const inside = range && el.contains(range.startContainer) && el.contains(range.endContainer);
       el.focus({ preventScroll: true });
-      if (document.activeElement !== el && !el.contains(document.activeElement)) throw new Error("Target element did not receive focus");
+      if (deepActiveElement() !== el && !el.contains(deepActiveElement())) throw new Error("Target element did not receive focus");
       const wanted = inside && args.clear === false ? range : document.createRange();
       if (wanted !== range) {
         wanted.selectNodeContents(el);
@@ -2201,7 +2269,8 @@ function runPageAction(action, args = {}) {
 
   function sendTextInPage() {
     const text = String(args.text || "");
-    const active = document.activeElement instanceof HTMLElement ? document.activeElement : document.body;
+    const focused = deepActiveElement();
+    const active = focused instanceof HTMLElement ? focused : document.body;
     if (!(active instanceof HTMLElement)) throw new Error("send_text has no focused page target");
     showStatusHud(`Send ${text.length} characters`, "Focused visual surface");
     // Same physical-key naming as the CDP path: a handler that reads
@@ -2287,7 +2356,8 @@ function runPageAction(action, args = {}) {
   function pressKeyInPage() {
     const key = String(args.key || "");
     showStatusHud(`Press ${key || "key"}`, "Browser keyboard action");
-    const active = document.activeElement instanceof HTMLElement ? document.activeElement : document.body;
+    const focused = deepActiveElement();
+    const active = focused instanceof HTMLElement ? focused : document.body;
     const parts = key.split("+").map((part) => part.trim()).filter(Boolean);
     const main = parts.pop() || key;
     const modifierDefs = [

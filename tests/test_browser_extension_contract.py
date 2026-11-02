@@ -582,7 +582,10 @@ def test_clickable_cards_without_a_role_still_get_an_index(background):
     # cursor, and three indexes for one target is worse than none.
     assert "other.contains(el) || el.contains(other)" in body
     # Indexes have to read in document order or they stop matching the page.
-    assert "compareDocumentPosition" in body
+    # compareDocumentPosition cannot order nodes across shadow trees, so the
+    # position comes from one composed-order walk.
+    assert "order.get(a) - order.get(b)" in body
+    assert "composedElements()" in body
 
     # The style is computed once per element, not once for visibility and again
     # for the cursor.
@@ -605,7 +608,7 @@ def test_visual_surfaces_are_exposed_and_have_native_coordinate_input(background
     assert "Native browser click failed" in click
     assert '["click_at",' not in click
     fallback = _function_body(background, "clickAtInPage")
-    assert "elementFromPoint" in fallback
+    assert "deepElementFromPoint" in fallback
     assert "pointerdown" in fallback
 
 
@@ -687,6 +690,23 @@ def test_toggles_say_which_option_they_are_and_whether_they_are_on(background):
         assert f'"{name}"' in collect
     assert 'attrs.push(`label="${item.label}"`)' in collect
     assert "attrs.push(...item.states)" in collect
+
+
+def test_open_shadow_roots_are_read_and_repeated_names_get_context(background):
+    """A web component's field had no index; eighty "Select" buttons had one name."""
+
+    walk = _function_body(background, "composedElements")
+    assert "node.shadowRoot" in walk and "HUD_HOST_ID" in walk
+    assert "shadowRoots()" in _function_body(background, "targetById")
+    collect = _function_body(background, "collectPageState")
+    assert "repeatedContext(el)" in collect
+    assert 'attrs.push(`context="${item.context}"`)' in collect
+    assert "replace(own" in _function_body(background, "repeatedContext")
+    # Focus inside a web component is not document.activeElement.
+    assert "shadowRoot.activeElement" in _function_body(background, "deepActiveElement")
+    assert "deepActiveElement() !== el" in _function_body(background, "prepareType")
+    assert "shadowRoot.elementFromPoint" in _function_body(background, "deepElementFromPoint")
+    assert "deepElementFromPoint(x, y)" in _function_body(background, "clickAtInPage")
 
 
 def test_keyboard_actions_hand_focus_back_to_a_visual_surface(background):
