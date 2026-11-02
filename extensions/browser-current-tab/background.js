@@ -735,7 +735,7 @@ async function elementRefFor(tabId, index) {
 // top frame lists its visible iframes, each frame's elements are matched to one
 // (by URL, then in order) and placed in page coordinates. Frames nested deeper
 // than one level are not read.
-async function collectFrameStates(tabId, showHud) {
+async function readFrames(tabId, showHud) {
   const results = await chrome.scripting.executeScript({
     target: { tabId, allFrames: true }, func: runPageAction, args: ["state", { show_hud: showHud }],
   });
@@ -745,9 +745,6 @@ async function collectFrameStates(tabId, showHud) {
   if (page.__loomError) throw new Error(page.__loomError);
   const frames = Array.isArray(page.frames) ? page.frames : [];
   const children = results.filter((item) => item.frameId && item.result && Array.isArray(item.result.elements));
-  const refs = (page.elements || []).map((item) => String(item?.loom_id || ""));
-  if (!frames.length || !children.length) return { ...page, element_refs: refs };
-
   const paired = new Map();
   const taken = new Set();
   frames.forEach((frame, ordinal) => {
@@ -757,13 +754,50 @@ async function collectFrameStates(tabId, showHud) {
   const loose = children.filter((item) => !taken.has(item));
   const open = frames.map((_, ordinal) => ordinal).filter((ordinal) => !paired.has(ordinal));
   if (loose.length === open.length) open.forEach((ordinal, k) => paired.set(ordinal, loose[k]));
+  // A frame still on its initial blank document has not loaded what its src names.
+  const waiting = frames.map((_, ordinal) => ordinal).filter((ordinal) => {
+    const child = paired.get(ordinal);
+    const src = String(frames[ordinal].src || "");
+    return !child || (child.result.url === "about:blank" && src && !src.startsWith("about:"));
+  });
+  return { page, frames, paired, waiting };
+}
+
+// Payment forms, embedded editors and sign-in widgets live in iframes, often
+// cross-origin, and their fields had no index at all: the model typed into
+// them by screen coordinates, 11-16 steps where browser-use took 5.5 (live, in
+// the user's Edge, 2026-11-02). Every frame is read in one executeScript; the
+// top frame lists its visible iframes, each frame's elements are matched to one
+// (by URL, then in order) and placed in page coordinates. Frames nested deeper
+// than one level are not read.
+//
+// A frame that had not loaded when the page was first read was simply absent,
+// and the model concluded the form "exposes no DOM" and spent 28 steps on
+// coordinates. A read waits up to 1.5 s for visible frames, and one still
+// loading is listed as such.
+async function collectFrameStates(tabId, showHud) {
+  const started = Date.now();
+  let read = await readFrames(tabId, showHud);
+  while (read.waiting.length && Date.now() - started < 1500) {
+    await sleep(250);
+    read = await readFrames(tabId, false);
+  }
+  const { page, frames, paired, waiting } = read;
+  const refs = (page.elements || []).map((item) => String(item?.loom_id || ""));
+  if (!frames.length) return { ...page, element_refs: refs };
 
   const sections = [];
   let index = refs.length;
-  for (const [ordinal, child] of [...paired.entries()].sort((a, b) => a[0] - b[0])) {
-    const frame = frames[ordinal];
+  frames.forEach((frame, ordinal) => {
+    const where = `at ${frame.x},${frame.y} ${frame.width}x${frame.height}`;
+    if (waiting.includes(ordinal)) {
+      sections.push(`Frame ${ordinal + 1} (${frame.src || "no src"}) ${where}: its content has not loaded yet; `
+        + "read browser_state again before acting on it.");
+      return;
+    }
+    const child = paired.get(ordinal);
     const state = child.result;
-    const lines = [`Frame ${ordinal + 1} (${state.url}) at ${frame.x},${frame.y} ${frame.width}x${frame.height}:`];
+    const lines = [`Frame ${ordinal + 1} (${state.url}) ${where}:`];
     (state.elements || []).forEach((item, k) => {
       const rect = item.rect || { x: 0, y: 0, width: 0, height: 0 };
       const body = (state.element_bodies || [])[k] || `<${item.tag}>`;
@@ -773,7 +807,7 @@ async function collectFrameStates(tabId, showHud) {
     });
     if (state.text) lines.push(`Frame ${ordinal + 1} text: ${state.text}`);
     sections.push(lines.join("\n"));
-  }
+  });
   const marker = "\n\nVisual surfaces";
   const dom = String(page.dom || "");
   const at = dom.indexOf(marker);

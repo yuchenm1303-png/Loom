@@ -819,10 +819,15 @@ def test_a_scroll_that_reaches_the_end_waits_for_an_endless_list(background):
 def test_elements_inside_frames_are_read_and_acted_on(background):
     """A payment form in a (cross-origin) iframe had no index at all."""
 
+    read = _function_body(background, "readFrames")
+    assert "allFrames: true" in read
+    assert "item.result.url === frame.src" in read  # matched by URL first, then in order
     collect = _function_body(background, "collectFrameStates")
-    assert "allFrames: true" in collect
-    assert "item.result.url === frame.src" in collect  # matched by URL first, then in order
     assert "rect.x + frame.x" in collect
+    # A frame still loading when the page is read is waited for, then named.
+    assert "Date.now() - started < 1500" in collect
+    assert "has not loaded yet" in collect
+    assert 'child.result.url === "about:blank"' in read
     assert "f|${child.frameId}|${ordinal}|${item.loom_id}" in collect
     target = _function_body(background, "elementTargetFor")
     assert "frameId: Number(framed[1])" in target

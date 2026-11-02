@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import random
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
@@ -270,6 +271,10 @@ def serve(site: Site) -> ThreadingHTTPServer:
                 self.end_headers()
                 self.wfile.write(data)
                 return
+            if path == "/payframe":
+                # A third-party payment frame arrives after the page around it; a
+                # state read at load time used to miss it entirely.
+                time.sleep(0.8)
             body = site.render(path)
             if body is None:
                 self.send_response(404)
