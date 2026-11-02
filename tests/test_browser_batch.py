@@ -212,3 +212,11 @@ def test_the_extension_format_is_read_without_position_or_value():
              "[2] <button> text=\"Sign in\" rect=10,110,80x24\n")
     current = _element_descriptors(typed)
     assert [_relocate(planned[i], i, current) for i in range(3)] == [0, 1, 2]
+
+
+def test_a_toggled_checkbox_is_still_the_planned_element():
+    before = '[0] <input> type="checkbox" label="Email notifications" checked="false" rect=24,96,13x13\n'
+    after = '[0] <input> type="checkbox" label="Email notifications" checked="true" rect=24,96,13x13\n'
+    planned = _element_descriptors(before)
+    assert planned == {0: '<input> type="checkbox" label="Email notifications"'}
+    assert _relocate(planned[0], 0, _element_descriptors(after)) == 0

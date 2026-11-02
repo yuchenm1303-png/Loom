@@ -48,3 +48,10 @@ def test_extension_positions_moving_on_scroll_are_not_changes():
     before = '[0] <button> text="Select" rect=10,40,80x24\n'
     after = '[0] <button> text="Select" rect=10,-400,80x24\n[1] <div> text="Selected Item 73" rect=10,20,200x20\n'
     assert _visible_changes(state(before), state(after)) == '+ ["<div> text=\\"Selected Item 73\\""]'
+
+
+def test_a_ticked_checkbox_is_a_visible_change():
+    before = '[0] <input> type="checkbox" label="Email notifications" checked="false" rect=24,96,13x13\n'
+    after = '[0] <input> type="checkbox" label="Email notifications" checked="true" rect=24,96,13x13\n'
+    changes = _visible_changes(state(before), state(after))
+    assert 'checked=\\"true\\"' in changes and 'checked=\\"false\\"' in changes

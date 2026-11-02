@@ -676,6 +676,19 @@ def test_native_clicks_front_a_background_tab_only_for_the_click(background):
     assert "restore" in visible and "finally" in visible
 
 
+def test_toggles_say_which_option_they_are_and_whether_they_are_on(background):
+    """A checkbox line was `<input> type="checkbox" value="on"` checked or not."""
+
+    collect = _function_body(background, "collectPageState")
+    assert 'checked="${el.checked}"' in collect
+    assert "el.labels" in collect
+    assert "item.value && !item.toggle" in collect
+    for name in ("expanded", "selected", "pressed"):
+        assert f'"{name}"' in collect
+    assert 'attrs.push(`label="${item.label}"`)' in collect
+    assert "attrs.push(...item.states)" in collect
+
+
 def test_keyboard_actions_hand_focus_back_to_a_visual_surface(background):
     """Keys reach a canvas client only while its element holds focus."""
 

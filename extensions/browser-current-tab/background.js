@@ -1975,6 +1975,18 @@ function runPageAction(action, args = {}) {
         const type = clean(el.getAttribute("type") || "");
         const valued = ["input", "textarea", "select"].includes(tag);
         const secret = type === "password";
+        // A checkbox's value is "on" whether or not it is ticked, and it has no
+        // text of its own: the line said neither which option it was nor its
+        // state, so a click on one read as "no change" and the model zoomed into
+        // a screenshot to find out (live run in the user's Edge, 2026-11-02).
+        const toggle = tag === "input" && (type === "checkbox" || type === "radio");
+        const states = [];
+        if (toggle) states.push(`checked="${el.checked}"`);
+        for (const name of ["checked", "expanded", "selected", "pressed"]) {
+          const aria = el.getAttribute(`aria-${name}`);
+          if (aria !== null && !(toggle && name === "checked")) states.push(`${name}="${clean(aria)}"`);
+        }
+        if (el.disabled || el.getAttribute("aria-disabled") === "true") states.push('disabled="true"');
         const item = {
           index: elements.length,
           loom_id: ensureId(el),
@@ -1983,6 +1995,9 @@ function runPageAction(action, args = {}) {
           aria: clean(el.getAttribute("aria-label") || el.getAttribute("alt") || ""),
           placeholder: clean(el.getAttribute("placeholder") || ""),
           type,
+          label: valued && el.labels && el.labels.length ? clean(el.labels[0].innerText || "") : "",
+          states,
+          toggle,
           // Field values are data, not prose: whitespace and control characters
           // must survive the observation. Keep the existing bounded excerpt.
           value: String(valued && !secret ? el.value : "").slice(0, 160),
@@ -2021,7 +2036,9 @@ function runPageAction(action, args = {}) {
       if (item.aria) attrs.push(`aria="${item.aria}"`);
       if (item.placeholder) attrs.push(`placeholder="${item.placeholder}"`);
       if (item.type) attrs.push(`type="${item.type}"`);
-      if (item.value) attrs.push(`value=${JSON.stringify(item.value)}`);
+      if (item.label) attrs.push(`label="${item.label}"`);
+      attrs.push(...item.states);
+      if (item.value && !item.toggle) attrs.push(`value=${JSON.stringify(item.value)}`);
       // Deliberately not a stand-in value: anything that looks like text invites
       // the model to type it back. This states the fact and cannot be mistaken
       // for the content.

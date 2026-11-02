@@ -253,7 +253,9 @@ def _store(runtime: "BrowserRuntime") -> "BrowserSessionStore":
 # a space, then attributes on the line. Position and the current value are not
 # what an element is - they change when the page scrolls or a field is typed into.
 _ELEMENT_LINE = re.compile(r"^(\s*)(?:\|[^|\n]*\|)*\*?\[(\d+)\] ?(<[^>]*>)(.*)$")
-_VOLATILE_ATTRIBUTES = re.compile(r'\s*(?:rect=\S+|value=(?:"(?:[^"\\]|\\.)*"|\S+)|filled="[^"]*"|value-withheld="[^"]*")')
+_VOLATILE_ATTRIBUTES = re.compile(
+    r'\s*(?:rect=\S+|value=(?:"(?:[^"\\]|\\.)*"|\S+)|filled="[^"]*"|value-withheld="[^"]*"'
+    r'|(?:checked|expanded|selected|pressed|disabled)="[^"]*")')
 _BATCH_STEPS = frozenset({"click", "type", "press", "select", "scroll"})
 MAX_BROWSER_BATCH = 8
 
