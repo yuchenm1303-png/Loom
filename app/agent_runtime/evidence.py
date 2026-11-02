@@ -107,8 +107,11 @@ def record_check_tool(store):
         # the gate below then refused every visual check of a plain desktop task,
         # and a model retried it 23 times in one live suite (2026-11-01). Such a
         # check is recorded as the assistant's assessment, without acceptance.
-        # A check that names source paths is about development work and keeps the gate.
-        no_subjects = (service is not None and not arguments.get("subject_paths")
+        # A check that names source paths is about development work and keeps the gate;
+        # a URL or a Loom capture named as the "subject" is not source.
+        from .development_verification import loom_capture_path
+        source_paths = [path for path in arguments.get("subject_paths") or () if not loom_capture_path(path)]
+        no_subjects = (service is not None and not source_paths
                        and not service.has_subjects(service.runtime.store.load(context.session_id)))
         if kind == "visual" and arguments["verdict"] == "passed" and not no_subjects:
             if service is None or not service.visual_evidence(service.runtime.store.load(context.session_id), refs):

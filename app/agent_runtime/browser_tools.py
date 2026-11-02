@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -243,6 +244,46 @@ def _store(runtime: "BrowserRuntime") -> "BrowserSessionStore":
     if store is None:
         raise RuntimeError("browser backend is unavailable; install Loom with the browser extra")
     return store
+
+
+_ELEMENT_LINE = re.compile(r"^(\s*)\[(\d+)\](<[^>]*>)")
+_BATCH_STEPS = frozenset({"click", "type", "press", "select", "scroll"})
+MAX_BROWSER_BATCH = 8
+
+
+def _element_descriptors(dom: str) -> dict[int, str]:
+    """index -> what the element is (its tag line and first text), without the number.
+
+    Indexes are renumbered by every new state. A batch plans all of its steps
+    from one state, so each later step's element is found again in the current
+    state by what it is; a step whose element is gone, or ambiguous, stops the
+    batch rather than acting on whatever now has that number.
+    """
+
+    lines = str(dom or "").split("\n")
+    found: dict[int, str] = {}
+    for position, line in enumerate(lines):
+        match = _ELEMENT_LINE.match(line)
+        if match is None:
+            continue
+        indent = len(match.group(1))
+        text = ""
+        for child in lines[position + 1:position + 4]:
+            stripped = child.strip()
+            if len(child) - len(child.lstrip()) <= indent:
+                break
+            if stripped and not stripped.startswith(("[", "<")):
+                text = stripped
+                break
+        found[int(match.group(2))] = f"{match.group(3)} {text}".strip()
+    return found
+
+
+def _relocate(planned: str, index: int, current: dict[int, str]) -> int | None:
+    if current.get(index) == planned:
+        return index
+    matches = [candidate for candidate, descriptor in current.items() if descriptor == planned]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _backend_snapshot_action(
@@ -710,6 +751,92 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 value,
             )
             return _snapshot_result(snapshot, "Browser dropdown selection completed.")
+
+        return _with_fresh_view(context, store, browser_id, run)
+
+    def batch(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        """Several actions planned from one browser state, run in order.
+
+        Every action of the single tools costs a model round trip, and their
+        indexes only fit the state they came from, so a login form took three
+        (type, type, click). Here every step is validated first; between steps
+        the next element is found again in the current state by what it is, and
+        the batch stops - the rest not executed - if it is gone or ambiguous, or
+        a step fails. Nothing is retried.
+        """
+
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        steps = arguments.get("actions")
+        if not isinstance(steps, list) or not steps:
+            raise ValueError("browser_batch actions must be a non-empty list")
+        if len(steps) > MAX_BROWSER_BATCH:
+            raise ValueError(f"browser_batch takes at most {MAX_BROWSER_BATCH} actions")
+        for number, step in enumerate(steps, 1):
+            kind = str(step.get("type") or "") if isinstance(step, dict) else ""
+            if kind not in _BATCH_STEPS:
+                raise ValueError(f"browser_batch action {number}: type must be one of {', '.join(sorted(_BATCH_STEPS))}")
+            if kind in {"click", "type", "select"} and not isinstance(step.get("index"), int):
+                raise ValueError(f"browser_batch action {number} ({kind}) needs an element index")
+            if kind == "type" and not isinstance(step.get("text"), str):
+                raise ValueError(f"browser_batch action {number} (type) needs text")
+            if kind == "type" and str(step["text"]).startswith(_RETIRED_TRANSIENT_PREFIX):
+                raise ValueError(f"browser_batch action {number}: send the literal text, not a history placeholder")
+            if kind == "press" and not str(step.get("key") or "").strip():
+                raise ValueError(f"browser_batch action {number} (press) needs a key")
+            if kind == "select" and not isinstance(step.get("value"), str):
+                raise ValueError(f"browser_batch action {number} (select) needs a value")
+
+        def run() -> ToolResult:
+            store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+            planned = _element_descriptors(store.snapshot(context.session_id, browser_id).state.dom)
+            for number, step in enumerate(steps, 1):
+                if "index" in step and int(step["index"]) not in planned:
+                    raise ValueError(f"browser_batch action {number}: index {step['index']} is not in this state")
+            done: list[dict[str, Any]] = []
+            stopped = ""
+            for number, step in enumerate(steps, 1):
+                context.raise_if_cancelled()
+                kind = step["type"]
+                index = None
+                if "index" in step:
+                    index = int(step["index"])
+                    if done:
+                        current = _element_descriptors(store.snapshot(context.session_id, browser_id).state.dom)
+                        index = _relocate(planned[int(step["index"])], int(step["index"]), current)
+                        if index is None:
+                            stopped = f"the element of action {number} changed or disappeared after action {number - 1}"
+                            break
+                try:
+                    if kind == "click":
+                        store.click(context.session_id, browser_id, index)
+                    elif kind == "type":
+                        store.type_text(context.session_id, browser_id, index, str(step["text"]),
+                                        clear=bool(step.get("clear", True)))
+                    elif kind == "press":
+                        _backend_snapshot_action(store, context.session_id, browser_id, "press_key",
+                                                 str(step["key"]).strip())
+                    elif kind == "select":
+                        _backend_snapshot_action(store, context.session_id, browser_id, "select_option",
+                                                 index, str(step["value"]))
+                    else:
+                        store.scroll(context.session_id, browser_id, str(step.get("direction") or "down"),
+                                     int(step.get("amount") or 700))
+                except Exception as exc:
+                    if not done:
+                        raise
+                    stopped = f"action {number} failed: {type(exc).__name__}: {str(exc)[:200]}"
+                    break
+                done.append({"type": kind, **({"index": index} if index is not None else {})})
+            snapshot = store.snapshot(context.session_id, browser_id)
+            summary = f"Executed {len(done)} of {len(steps)} browser actions."
+            if stopped:
+                summary += (f" Stopped: {stopped}; the remaining actions were not executed. Choose them again "
+                            "from the attached current state.")
+            result = _snapshot_result(snapshot, summary, extra={"batch": {
+                "requested": len(steps), "executed": len(done), "stopped": stopped, "steps": done}})
+            return result if not stopped else ToolResult(False, result.content, result.data)
 
         return _with_fresh_view(context, store, browser_id, run)
 
@@ -1530,6 +1657,47 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                     ("browser_id", "index", "state_revision", "text"),
                 ),
                 handler=type_text,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_batch",
+                description=(
+                    "Run several actions planned from the same browser_state, in order, in one call: fill a form "
+                    "and submit it, tick boxes and save. Each separate browser call costs a full model round "
+                    "trip, so prefer this whenever the next steps need no new look at the page. All indexes come "
+                    "from the given state_revision; Loom finds each later step's element again by what it is, and "
+                    "stops - the rest not executed - if it changed or disappeared, or a step fails. Steps: "
+                    "click {index}, type {index, text, clear}, press {key}, select {index, value}, scroll "
+                    "{direction, amount}."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "state_revision": revision_schema,
+                        "actions": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": MAX_BROWSER_BATCH,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {"type": "string", "enum": sorted(_BATCH_STEPS)},
+                                    "index": {"type": "integer", "minimum": 0},
+                                    "text": {"type": "string", "maxLength": 20000},
+                                    "clear": {"type": "boolean"},
+                                    "key": {"type": "string", "maxLength": 64},
+                                    "value": {"type": "string", "maxLength": 2000},
+                                    "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
+                                    "amount": {"type": "integer", "minimum": 1, "maximum": 20000},
+                                },
+                                "required": ["type"],
+                                "additionalProperties": False,
+                            },
+                        },
+                    },
+                    ("browser_id", "state_revision", "actions"),
+                ),
+                handler=batch,
                 effect=sensitive,
             ),
             AgentTool(

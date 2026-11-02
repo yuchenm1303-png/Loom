@@ -345,3 +345,29 @@ def test_a_visual_check_of_a_plain_desktop_task_is_recorded_without_acceptance(t
         assert result.data["acceptance_evidence"] is False
     finally:
         runtime.close()
+
+
+def test_a_url_or_a_loom_capture_named_as_the_subject_is_not_development_work(tmp_path):
+    from app.agent_runtime.development_verification import loom_capture_path
+
+    assert loom_capture_path("http://127.0.0.1:8000/widget")
+    assert loom_capture_path("browser-screenshots/looks/look-181241.png")
+    assert loom_capture_path(r".\browser-downloads\report.csv")
+    assert not loom_capture_path("src/Panel.tsx")
+
+    runtime, session, workspace = make_runtime(tmp_path, object())
+    (workspace / "note.txt").write_text("submitted")
+    session.current_turn_id = "turn"
+    runtime.store.save(session)
+    runtime.development_verification.begin(session)
+    try:
+        context = ToolContext(session.session_id, session.current_turn_id, workspace,
+            services={"development_verification": runtime.development_verification},
+            emit_event=lambda kind, data: runtime._emit_event(session, kind, data=data))
+        for subject in ("http://127.0.0.1:8000/widget", "browser-screenshots/looks/look-1.png"):
+            result = runtime.tools.get("record_check").handler(context, {"case_id": "widget", "check_kind": "visual",
+                "expectation": "Quantity applied", "observed": "Quantity applied", "verdict": "passed",
+                "subject_paths": [subject], "evidence_refs": [{"path": "note.txt"}]})
+            assert result.ok is True and result.data["acceptance_evidence"] is False
+    finally:
+        runtime.close()

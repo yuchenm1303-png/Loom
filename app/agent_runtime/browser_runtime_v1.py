@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import math
+import re
 from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
@@ -41,6 +42,7 @@ _MUTATING_BROWSER_TOOLS = frozenset(
         "browser_click",
         "browser_click_at",
         "browser_type",
+        "browser_batch",
         "browser_send_text",
         "browser_hover",
         "browser_press",
@@ -222,8 +224,43 @@ def _visual_surfaces(state: BrowserPageState) -> list[dict[str, Any]]:
     return surfaces
 
 
+_TAG_LINE = re.compile(r"^(\[\d+\])?<[^>]*>$")
+_INDEX = re.compile(r"\[\d+\]")
+_MAX_ADDED_LINES = 8
+_MAX_REMOVED_LINES = 5
+
+
+def _visible_changes(before, after) -> str:
+    """Text lines that appeared and disappeared between two page states, briefly.
+
+    An action result said only "click completed"; when the page's confirmation
+    was outside what the model read, it spent steps finding out whether the
+    click worked - seven on one live task (2026-11-01). Index markers and bare
+    tags are ignored, so renumbering is not reported as a change.
+    """
+
+    from collections import Counter
+
+    def texts(state):
+        lines = (_INDEX.sub("", line).strip() for line in str(getattr(state, "dom", "") or "").split("\n"))
+        return Counter(line for line in lines if len(line) > 1 and not _TAG_LINE.match(line))
+
+    old, new = texts(before), texts(after)
+    added = list((new - old).elements())
+    removed = list((old - new).elements())
+    if not added and not removed:
+        return "no visible text changed"
+    parts = []
+    for sign, lines, limit in (("+", added, _MAX_ADDED_LINES), ("-", removed, _MAX_REMOVED_LINES)):
+        shown = [redact_browser_text(line)[:100] for line in lines[:limit]]
+        if shown:
+            more = f" (+{len(lines) - limit} more)" if len(lines) > limit else ""
+            parts.append(f"{sign} " + json.dumps(shown, ensure_ascii=False) + more)
+    return "; ".join(parts)
+
+
 def _observation_text(snapshot: BrowserStateSnapshot, *, effect: str, effect_reason: str,
-                      source_call_id: str = "") -> str:
+                      source_call_id: str = "", changes: str = "") -> str:
     state = snapshot.state
     dom = redact_browser_text(state.dom)
     if len(dom) > _MAX_TRANSIENT_DOM_CHARS:
@@ -254,7 +291,8 @@ def _observation_text(snapshot: BrowserStateSnapshot, *, effect: str, effect_rea
         f"visual_surfaces: {json.dumps(_visual_surfaces(state), ensure_ascii=False)}\n"
         f"effect: {effect}\n"
         f"effect_reason: {effect_reason}\n"
-        f"url: {redact_browser_url(state.url)}\n"
+        + (f"text_changes_since_previous_observation: {changes}\n" if changes else "")
+        + f"url: {redact_browser_url(state.url)}\n"
         f"title: {redact_browser_text(state.title)}\n"
         f"tabs: {json.dumps(tabs, ensure_ascii=False)}\n"
         f"errors: {json.dumps([redact_browser_text(item) for item in state.errors], ensure_ascii=False)}\n"
@@ -342,6 +380,9 @@ class BrowserRuntime(_BrowserRuntime):
         self._browser_baselines: dict[str, dict[str, str]] = {}
         self._browser_baseline_revisions: dict[str, dict[str, int]] = {}
         self._browser_feedback_effect: dict[str, tuple[str, str]] = {}
+        # What visibly changed between the previous observation and this one,
+        # transient like the DOM it is computed from.
+        self._browser_feedback_changes: dict[str, str] = {}
         self._browser_visual_feedback: dict[str, tuple[bytes, str]] = {}
 
         super().__init__(*args, **kwargs)
@@ -371,6 +412,7 @@ class BrowserRuntime(_BrowserRuntime):
         self._browser_feedback_turns.pop(session_id, None)
         self._browser_feedback_calls.pop(session_id, None)
         self._browser_feedback_effect.pop(session_id, None)
+        self._browser_feedback_changes.pop(session_id, None)
         self._browser_visual_feedback.pop(session_id, None)
 
     def _on_model_response(self, session, event):
@@ -472,6 +514,10 @@ class BrowserRuntime(_BrowserRuntime):
         result = ToolResult(result.ok, result.content, {**result.data, "action_evidence": evidence})
         baselines[snapshot.browser_id] = _state_digest(snapshot.state)
         revisions[snapshot.browser_id] = snapshot.state_revision
+        previous = self._browser_feedback.get(session.session_id)
+        self._browser_feedback_changes[session.session_id] = (
+            _visible_changes(previous.state, snapshot.state)
+            if previous is not None and previous.browser_id == snapshot.browser_id else "")
         self._browser_feedback[session.session_id] = snapshot
         self._browser_feedback_turns[session.session_id] = session.current_turn_id
         self._browser_feedback_calls[session.session_id] = call.call_id
@@ -563,7 +609,8 @@ class BrowserRuntime(_BrowserRuntime):
         from .tool_observation import attach_observation
         messages = attach_observation(messages,
             _observation_text(snapshot, effect=effect, effect_reason=reason,
-                              source_call_id=self._browser_feedback_calls.get(session.session_id, "")),
+                              source_call_id=self._browser_feedback_calls.get(session.session_id, ""),
+                              changes=self._browser_feedback_changes.get(session.session_id, "")),
             tool_prefix="browser_", image=image_part,
             tool_call_id=self._browser_feedback_calls.get(session.session_id))
         safe_extra = dict(extra) if isinstance(extra, dict) else {}

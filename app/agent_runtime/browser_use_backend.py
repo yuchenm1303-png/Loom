@@ -1094,10 +1094,44 @@ class BrowserUseBackend(BrowserBackend):
             self._runner.run(self._hide_page_hud(), timeout=_HUD_TIMEOUT_SECONDS)
 
 
+# Fixed labels of Loom's own page HUD (extensions/browser-current-tab/browser-hud.js),
+# which browser-use serializes like page content because it is a shadow root in the page.
+_PAGE_HUD_MARKERS = ("目标置信度", "动作来源")
+
+
+def _strip_page_hud(dom: str) -> str:
+    """Drop Loom's own HUD from the DOM text the model reads.
+
+    It sat at the end of every state - "Loom 正在控制浏览器", the last action's
+    coordinates - as if the page said it: tokens on every step and a second,
+    fake source of "what just happened" (live suite, 2026-11-01). A shadow block
+    is removed only when it carries both HUD labels.
+    """
+
+    if "Open Shadow" not in dom or not all(marker in dom for marker in _PAGE_HUD_MARKERS):
+        return dom
+    lines = dom.split("\n")
+    kept: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.strip() == "Open Shadow":
+            indent = line[: len(line) - len(line.lstrip())]
+            end = next((j for j in range(index + 1, len(lines)) if lines[j] == f"{indent}Shadow End"), None)
+            if end is not None:
+                block = "\n".join(lines[index:end + 1])
+                if all(marker in block for marker in _PAGE_HUD_MARKERS):
+                    index = end + 1
+                    continue
+        kept.append(line)
+        index += 1
+    return "\n".join(kept)
+
+
 def _serialize_state(state: Any) -> BrowserPageState:
     dom_state = getattr(state, "dom_state", None)
     try:
-        dom = str(dom_state.llm_representation()) if dom_state is not None else ""
+        dom = _strip_page_hud(str(dom_state.llm_representation())) if dom_state is not None else ""
     except Exception as exc:
         dom = f"DOM unavailable: {type(exc).__name__}: {exc}"
     if len(dom) > 120_000:

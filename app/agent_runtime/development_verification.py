@@ -17,6 +17,16 @@ from pathlib import Path
 
 from app.ai import AIMessage, MessageRole
 from .contracts import AgentEventKind as E, ToolEffect
+
+# Where Loom's own tools write captures into a workspace; never development work.
+_LOOM_CAPTURE_DIRS = ("browser-screenshots/", "browser-downloads/", "browser-state/")
+
+
+def loom_capture_path(path: str) -> bool:
+    """Whether ``path`` is a Loom-owned capture or a URL rather than a source file."""
+
+    text = str(path or "").replace("\\", "/").lstrip("./")
+    return "://" in text or text.startswith(_LOOM_CAPTURE_DIRS)
 from .tools import AgentTool, ToolContext, ToolResult
 from .verification import subject_snapshot, check_freshness
 
@@ -406,7 +416,7 @@ class DevelopmentVerification:
         if not result.ok:
             return
         name = call.name
-        action = name in {"browser_click", "browser_click_at", "browser_type", "browser_press", "browser_hover",
+        action = name in {"browser_click", "browser_click_at", "browser_type", "browser_batch", "browser_press", "browser_hover",
                           "browser_drag", "browser_scroll", "browser_select", "browser_send_text", "browser_run_check", "exec",
                           "browser_measure_motion"}
         action = action or (name == "computer_action" and call.arguments.get("action", {}).get("type") not in
@@ -456,9 +466,16 @@ class DevelopmentVerification:
             self.runtime._emit_event(session, E.VERIFICATION_UPDATED, data={**state, "observations": receipts})
 
     def has_subjects(self, session) -> bool:
-        """Whether this turn has development work (changed source) to verify."""
+        """Whether this turn has development work (changed source) to verify.
 
-        return bool((self.latest(session) or {}).get("subjects"))
+        Captures Loom writes into the workspace itself (browser_look and
+        browser_screenshot images, downloads, saved browser state) are not
+        source: counted as subjects, they made a plain web task look like
+        development work and switched the visual gate on (live suite, 2026-11-01).
+        """
+
+        subjects = (self.latest(session) or {}).get("subjects") or {}
+        return any(not loom_capture_path(path) for path in subjects)
 
     def visual_evidence(self, session, refs, *, delivered_ids=()):
         state = self.latest(session) or {}
