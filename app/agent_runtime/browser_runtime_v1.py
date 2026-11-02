@@ -228,6 +228,9 @@ _TAG_LINE = re.compile(r"^<[^>]*>$")
 # Index markers and browser-use's prefixes ("|SHADOW(open)|", "*" for new) carry
 # no text of the page.
 _INDEX = re.compile(r"(?:\|[^|\n]*\|)*\*?\[\d+\]")
+# The extension backend puts each element's position on its line; scrolling moves
+# every one of them, which is not a change of what the page says.
+_RECT = re.compile(r"\s*rect=\S+")
 _MAX_ADDED_LINES = 8
 _MAX_REMOVED_LINES = 5
 
@@ -244,7 +247,7 @@ def _visible_changes(before, after) -> str:
     from collections import Counter
 
     def texts(state):
-        lines = (_INDEX.sub("", line).strip() for line in str(getattr(state, "dom", "") or "").split("\n"))
+        lines = (_RECT.sub("", _INDEX.sub("", line)).strip() for line in str(getattr(state, "dom", "") or "").split("\n"))
         return Counter(line for line in lines if len(line) > 1 and not _TAG_LINE.match(line))
 
     old, new = texts(before), texts(after)

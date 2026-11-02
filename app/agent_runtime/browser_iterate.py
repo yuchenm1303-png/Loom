@@ -142,7 +142,18 @@ def browser_look_tool(runtime):
                 target = store.state(context.session_id, browser_id).url
                 if not target or target == "about:blank":
                     raise ValueError("this browser has no page yet; pass url")
-            if target != store.snapshot(context.session_id, browser_id).state.url or arguments.get("reload", True):
+            # Reloading is how an edit reaches the page, so it is the default only
+            # when this turn changed source. In a plain web task a reload threw away
+            # what the model had just done: an infinite feed went back to the top
+            # and its click with it, three times in one live run (2026-11-01).
+            reload_default = True
+            service = getattr(runtime, "development_verification", None)
+            if service is not None:
+                try:
+                    reload_default = service.has_subjects(runtime.store.load(context.session_id))
+                except Exception:
+                    pass
+            if target != store.snapshot(context.session_id, browser_id).state.url or arguments.get("reload", reload_default):
                 store.navigate(context.session_id, browser_id, target)
             context.raise_if_cancelled()
             try:
@@ -231,7 +242,8 @@ def browser_look_tool(runtime):
                            "viewport": {k: page.get(k) for k in ("width", "height", "dpr")}}})
 
     return AgentTool("browser_look",
-        "Look at a page while you edit it: reload it (reload=false keeps in-page state, e.g. with hot reload), "
+        "Look at a page while you edit it: reload it - by default only when you changed source in this turn; "
+        "otherwise the page is kept as it is (reload=true forces it, reload=false keeps in-page state, e.g. with hot reload) - "
         "wait until it has loaded, fonts are ready and two frames have painted, screenshot it, and attach the "
         "image. From the second look on, the same page (and selector) is compared with the previous look: the "
         "result says what share of pixels changed and where, attaches both side by side, and says so when "

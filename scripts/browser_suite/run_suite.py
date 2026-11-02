@@ -34,12 +34,38 @@ parser.add_argument("--max-steps", type=int, default=30)
 parser.add_argument("--browser", default=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
                     help="browser executable for the isolated backend (a temporary profile is used)")
 parser.add_argument("--headless", action="store_true")
+parser.add_argument("--backend", choices=("isolated", "extension"), default="isolated",
+                    help="extension: a throwaway Chrome profile with a copy of the Loom extension, paired to a "
+                         "suite-only bridge port; the user's Chrome and Loom's own bridge are not touched")
+parser.add_argument("--bridge-port", type=int, default=39333)
 args = parser.parse_args()
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 os.environ.setdefault("LOOM_BUNDLED_BROWSER", args.browser)
+
+extension_chrome = None
+if args.backend == "extension":
+    import secrets
+    import shutil
+    import subprocess
+
+    work = Path(args.out).resolve()
+    copy = work / "extension"
+    shutil.rmtree(copy, ignore_errors=True)
+    shutil.copytree(ROOT / "extensions" / "browser-current-tab", copy)
+    token = secrets.token_urlsafe(24)
+    (copy / "bridge-config.json").write_text(json.dumps(
+        {"bridgeUrl": f"http://127.0.0.1:{args.bridge_port}", "token": token}), encoding="utf-8")
+    os.environ.update({"LOOM_BROWSER_BACKEND": "extension", "LOOM_BROWSER_EXTENSION_PORT": str(args.bridge_port),
+                       "LOOM_BROWSER_EXTENSION_TOKEN": token})
+    profile = work / "chrome-profile"
+    shutil.rmtree(profile, ignore_errors=True)
+    # Branded Chrome ignores --load-extension unless this feature is switched off.
+    extension_chrome = subprocess.Popen([args.browser, f"--user-data-dir={profile}", f"--load-extension={copy}",
+                                         "--disable-features=DisableLoadExtensionCommandLineSwitch",
+                                         "--no-first-run", "--no-default-browser-check", "about:blank"])
 
 from loom_cli import _build_runtime, build_parser  # noqa: E402
 from app.ai import AGENT_FAST_ROLE  # noqa: E402
@@ -157,3 +183,5 @@ for _ in range(args.repeat):
                           "status": status, "error": error, "wall_s": wall, "mismatch": mismatch,
                           "session": session.session_id[:8], **row}, ensure_ascii=False), flush=True)
 runtime.close()
+if extension_chrome is not None:
+    subprocess.run(["taskkill", "/T", "/F", "/PID", str(extension_chrome.pid)], capture_output=True)

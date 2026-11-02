@@ -249,7 +249,11 @@ def _store(runtime: "BrowserRuntime") -> "BrowserSessionStore":
 # browser-use writes markers before an index: "|SHADOW(open)|[2]<input ...>" for a
 # field with a built-in shadow root, "*[7]" for an element new since the last
 # state. A pattern anchored at "[" missed every form field (live suite).
-_ELEMENT_LINE = re.compile(r"^(\s*)(?:\|[^|\n]*\|)*\*?\[(\d+)\](<[^>]*>)")
+# The extension backend writes "[0] <button> text=\"Sign in\" rect=12,40,80x24" instead:
+# a space, then attributes on the line. Position and the current value are not
+# what an element is - they change when the page scrolls or a field is typed into.
+_ELEMENT_LINE = re.compile(r"^(\s*)(?:\|[^|\n]*\|)*\*?\[(\d+)\] ?(<[^>]*>)(.*)$")
+_VOLATILE_ATTRIBUTES = re.compile(r'\s*(?:rect=\S+|value=(?:"(?:[^"\\]|\\.)*"|\S+)|filled="[^"]*"|value-withheld="[^"]*")')
 _BATCH_STEPS = frozenset({"click", "type", "press", "select", "scroll"})
 MAX_BROWSER_BATCH = 8
 
@@ -270,6 +274,10 @@ def _element_descriptors(dom: str) -> dict[int, str]:
         if match is None:
             continue
         indent = len(match.group(1))
+        inline = _VOLATILE_ATTRIBUTES.sub("", match.group(4)).strip()
+        if inline:
+            found[int(match.group(2))] = f"{match.group(3)} {inline}"
+            continue
         text = ""
         for child in lines[position + 1:position + 4]:
             stripped = child.strip()

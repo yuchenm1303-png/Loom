@@ -195,3 +195,20 @@ def test_descriptors_ignore_the_number_and_refuse_ambiguity():
 
 def test_new_element_markers_are_read_too():
     assert _element_descriptors("*[7]<button id=ok />\n\tOK\n") == {7: "<button id=ok /> OK"}
+
+
+EXTENSION_LOGIN = (
+    "[0] <input> placeholder=\"Username\" rect=10,40,200x24\n"
+    "[1] <input> type=\"password\" rect=10,80,200x24\n"
+    "[2] <button> text=\"Sign in\" rect=10,120,80x24\n"
+)
+
+
+def test_the_extension_format_is_read_without_position_or_value():
+    planned = _element_descriptors(EXTENSION_LOGIN)
+    assert planned == {0: '<input> placeholder="Username"', 1: '<input> type="password"', 2: '<button> text="Sign in"'}
+    typed = ("[0] <input> placeholder=\"Username\" value=\"tester\" rect=10,30,200x24\n"
+             "[1] <input> type=\"password\" filled=\"true\" value-withheld=\"password\" rect=10,70,200x24\n"
+             "[2] <button> text=\"Sign in\" rect=10,110,80x24\n")
+    current = _element_descriptors(typed)
+    assert [_relocate(planned[i], i, current) for i in range(3)] == [0, 1, 2]

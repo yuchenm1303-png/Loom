@@ -110,12 +110,24 @@ def look(runtime, context, opened, **extra):
     return tool.handler(context, args)
 
 
-def test_first_look_reloads_and_attaches_the_page(page):
+def test_a_look_reloads_by_default_only_after_a_source_edit(page, monkeypatch):
+    # A reload is how an edit reaches the page; in a plain web task it threw away
+    # what the model had just done (live run, 2026-11-01).
     runtime, session, context, opened, backend = page
     before = len(backend.navigations)
+    look(runtime, context, opened)
+    assert backend.navigations[before:] == []
+    look(runtime, context, opened, reload=True)
+    assert backend.navigations[before:] == ["http://127.0.0.1:5199/app"]
+    monkeypatch.setattr(runtime.development_verification, "has_subjects", lambda session: True)
+    look(runtime, context, opened)
+    assert backend.navigations[before:] == ["http://127.0.0.1:5199/app"] * 2
+
+
+def test_first_look_attaches_the_page(page):
+    runtime, session, context, opened, backend = page
     result = look(runtime, context, opened)
     assert result.ok and result.data["look"]["first_look"] is True
-    assert backend.navigations[before:] == ["http://127.0.0.1:5199/app"]
     assert (context.workspace / result.data["look"]["path"]).exists()
     runtime._append_tool_result(session, ToolCall("look", "browser_look", {}), result, failed=False)
     messages, metadata = runtime._prepare_model_request(session, runtime._build_step_context(session, next_model_step=True), None)

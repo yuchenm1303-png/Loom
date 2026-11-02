@@ -41,3 +41,9 @@ def test_browser_use_prefixes_are_not_page_text():
     before = "|SHADOW(open)|[2]<input id=u />\nSign in\n"
     after = "|SHADOW(open)|[9]<input id=u />\n*[11]<div />\nSign in\n"
     assert _visible_changes(state(before), state(after)) == "no visible text changed"
+
+
+def test_extension_positions_moving_on_scroll_are_not_changes():
+    before = '[0] <button> text="Select" rect=10,40,80x24\n'
+    after = '[0] <button> text="Select" rect=10,-400,80x24\n[1] <div> text="Selected Item 73" rect=10,20,200x20\n'
+    assert _visible_changes(state(before), state(after)) == '+ ["<div> text=\\"Selected Item 73\\""]'
