@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, WebContentsView } from "electron";
+import { app, BrowserWindow, session, WebContentsView, type WebFrameMain } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -51,6 +51,26 @@ const PARTITION = "persist:loom-embedded-browser";
 // sign-ins of the user's own tabs and leave nothing behind on exit.
 const AGENT_PARTITION = "loom-embedded-agent";
 const MAX_TABS = 16;
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** An element the last state listed: its frame, the frame's iframe ordinal (-1 = top), its page-code id. */
+interface ElementRef { frame: WebFrameMain; ordinal: number; loomId: string }
+
+// Text into the focused field of a document Chromium is not delivering input to.
+function insertTextScript(text: string): string {
+  return "((text) => { let el = document.activeElement;"
+    + " while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement;"
+    + " if (!el) return false;"
+    + " if (document.execCommand && document.execCommand('insertText', false, text)) return true;"
+    + " if (!('value' in el)) return false;"
+    + " const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;"
+    + " const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;"
+    + " const start = el.selectionStart ?? el.value.length, end = el.selectionEnd ?? el.value.length;"
+    + " const next = el.value.slice(0, start) + text + el.value.slice(end);"
+    + " if (setter) setter.call(el, next); else el.value = next;"
+    + " el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));"
+    + " el.dispatchEvent(new Event('change', { bubbles: true })); return true; })(" + JSON.stringify(text) + ")";
+}
 const STATE_FILE = "embedded-browser-tabs.json";
 
 function validNavigation(url: string): boolean {
@@ -71,7 +91,8 @@ export class EmbeddedBrowserManager {
   private readonly order: string[] = [];
   private readonly aiAllowed = new Set<string>();
   private readonly aiLeases = new Map<string,string>();
-  private readonly aiSignatures = new Map<string,string>();
+  private readonly aiRefs = new Map<string, ElementRef[]>();
+  private pageActionSource = "";
   // The user revoked an AI tab: stop opening new ones until they allow AI again.
   private agentTabsBlocked = false;
   private readonly statePath: string;
@@ -81,7 +102,8 @@ export class EmbeddedBrowserManager {
   private disposed = false;
   private readonly hud: EmbeddedBrowserHud;
 
-  constructor(private readonly window: BrowserWindow, loadHudSource?: () => string | Promise<string>) {
+  constructor(private readonly window: BrowserWindow, loadHudSource?: () => string | Promise<string>,
+    private readonly loadPageActions?: () => Promise<string>) {
     this.hud = new EmbeddedBrowserHud(loadHudSource);
     this.statePath = path.join(app.getPath("userData"), STATE_FILE);
     for (const partition of [PARTITION, AGENT_PARTITION]) {
@@ -140,7 +162,14 @@ export class EmbeddedBrowserManager {
     view.setBackgroundColor("#101114");
     // A task keeps working in its tab while the user looks at another one;
     // a throttled (then frozen) background page would never answer it.
-    if (agentOwned) view.webContents.setBackgroundThrottling(false);
+    if (agentOwned) {
+      view.webContents.setBackgroundThrottling(false);
+      // A view that was never on screen lays its page out at 0x0, where nothing
+      // is visible and the state listed no elements at all; give it the panel's
+      // size (or a common window size) before it loads anything.
+      view.setBounds({ x: 0, y: 0, width: Math.max(800, Math.floor(this.viewport?.width || 1280)),
+        height: Math.max(600, Math.floor(this.viewport?.height || 800)) });
+    }
     const state: EmbeddedBrowserTab = {
       id, url: url || "", title: tabLabel(url), loading: false, canGoBack: false, canGoForward: false,
       ...(agentOwned ? { agentOwned: true } : {}),
@@ -296,7 +325,7 @@ export class EmbeddedBrowserManager {
     this.tabs.delete(id);
     this.aiAllowed.delete(id);
     this.aiLeases.delete(id);
-    this.aiSignatures.delete(id);
+    this.aiRefs.delete(id);
     const index = this.order.indexOf(id);
     if (index !== -1) this.order.splice(index, 1);
     entry.view.webContents.close();
@@ -375,7 +404,7 @@ export class EmbeddedBrowserManager {
         if (command.enabled) { this.aiAllowed.add(command.tabId); this.agentTabsBlocked = false; }
         else {
           if (this.tabs.get(command.tabId)!.state.agentOwned) this.agentTabsBlocked = true;
-          this.aiAllowed.delete(command.tabId); this.aiLeases.delete(command.tabId); this.aiSignatures.delete(command.tabId);
+          this.aiAllowed.delete(command.tabId); this.aiLeases.delete(command.tabId); this.aiRefs.delete(command.tabId);
           await this.hud.hide(this.tabs.get(command.tabId)!.view.webContents, true);
         }
         break;
@@ -434,52 +463,173 @@ export class EmbeddedBrowserManager {
   }
 
 
-  private async agentDom(entry: InternalTab): Promise<{ dom: string; signature: string; viewport: unknown }> {
-    if (!entry.state.url || !validNavigation(entry.state.url)) {
-      return { dom: "", signature: "", viewport: {} };
+  /** Run the extension's page code in one frame of a Loom Browser tab. */
+  private async pageAction(frame: WebFrameMain, action: string, args: Record<string, unknown>): Promise<Record<string, any>> {
+    this.pageActionSource ||= this.loadPageActions ? await this.loadPageActions() : "";
+    if (!this.pageActionSource) throw new Error("Loom Browser page actions are unavailable.");
+    let result: unknown;
+    try {
+      result = await frame.executeJavaScript("(" + this.pageActionSource + ")(" + JSON.stringify(action) + ","
+        + JSON.stringify({ ...args, page_hud: false }) + ")");
+    } catch (cause) {
+      throw new Error("The page could not run this action (" + (cause instanceof Error ? cause.message : String(cause))
+        + "). Refresh browser_state and retry.");
     }
-    const script = "(() => {"
-      + "const nodes=[...document.querySelectorAll('a[href],button,input,textarea,select,[role=\"button\"],[contenteditable=\"true\"],[tabindex]')].filter(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}).slice(0,250);"
-      + "const dom=(document.body?.innerText||'').slice(0,8000)+'\\nElements:\\n'+nodes.map((e,i)=>i+': <'+e.tagName.toLowerCase()+'> '+(e.getAttribute('aria-label')||e.innerText||e.getAttribute('placeholder')||'').trim().slice(0,140)).join('\\n');"
-      + "const signature=nodes.map(e=>e.tagName+':'+(e.getAttribute('href')||'')+':'+(e.getAttribute('aria-label')||'')+':'+e.outerHTML.slice(0,100)).join('|').slice(0,20000);"
-      + "return {dom,signature,viewport:{width:innerWidth,height:innerHeight}}"
-      + "})()";
-    const payload = await entry.view.webContents.executeJavaScript(script);
-    return { dom: String(payload?.dom || "").slice(0,29000),
-      signature: String(payload?.signature || ""),
-      viewport: payload?.viewport || {} };
+    const value = (result && typeof result === "object" ? result : {}) as Record<string, any>;
+    if (value.__loomError) throw new Error(String(value.__loomError));
+    return value;
   }
 
-  private async agentElement(entry: InternalTab, index: number, signature: string,
-    action: string, value: string, clear: boolean): Promise<void> {
-    if (!Number.isInteger(index) || index < 0 || index > 249) {
-      throw new Error("Invalid element index; refresh browser_state.");
-    }
-    const current = await this.agentDom(entry);
-    if (current.signature !== signature) throw new Error("Page elements changed; refresh browser_state.");
-    const argumentsJson = JSON.stringify({ index, action, value, clear });
-    const script = "(() => {const opts=" + argumentsJson + ";"
-      + "const nodes=[...document.querySelectorAll('a[href],button,input,textarea,select,[role=\"button\"],[contenteditable=\"true\"],[tabindex]')].filter(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}).slice(0,250);"
-      + "const e=nodes[opts.index];if(!e)return false;const rect=e.getBoundingClientRect();const point={x:Math.floor(rect.left+rect.width/2),y:Math.floor(rect.top+rect.height/2)};"
-      + "if(opts.action==='click'||opts.action==='hover'){const r=e.getBoundingClientRect();return {x:Math.floor(r.left+r.width/2),y:Math.floor(r.top+r.height/2)}}"
-      + ""
-      + "if(opts.action==='select_option'){if(!(e instanceof HTMLSelectElement))return false;e.value=opts.value;e.dispatchEvent(new Event('change',{bubbles:true}));return point}"
-      + "if(opts.action==='type_text'){e.focus();if(opts.clear&&'value' in e){const p=e instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;const setter=Object.getOwnPropertyDescriptor(p,'value')?.set;if(setter)setter.call(e,'');else e.value='';e.dispatchEvent(new Event('input',{bubbles:true}))}return point}"
-      + "return false})()";
-    const found = await entry.view.webContents.executeJavaScript(script);
-    if (!found) throw new Error("Element is no longer available; refresh browser_state.");
-    if (typeof found === "object") await this.hud.show(entry.view.webContents, action,
-      { point: found as { x: number; y: number }, click: action === "click" });
-    if ((action === "click" || action === "hover") && typeof found === "object") {
-      const pos = found as { x: number; y: number };
-      if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y)) throw new Error("Element has no clickable location.");
-      entry.view.webContents.sendInputEvent({ type:"mouseMove", x:pos.x, y:pos.y });
-      if (action === "click") {
-        entry.view.webContents.sendInputEvent({ type:"mouseDown", x:pos.x, y:pos.y, button:"left", clickCount:1 });
-        entry.view.webContents.sendInputEvent({ type:"mouseUp", x:pos.x, y:pos.y, button:"left", clickCount:1 });
+  private async readFrames(main: WebFrameMain) {
+    const page = await this.pageAction(main, "state", { show_hud: false });
+    const frames: Array<{ src: string; x: number; y: number; width: number; height: number }> =
+      Array.isArray(page.frames) ? page.frames : [];
+    const children: Array<{ frame: WebFrameMain; result: Record<string, any> }> = [];
+    if (frames.length) {
+      for (const frame of main.frames) {
+        try {
+          const result = await this.pageAction(frame, "state", { show_hud: false });
+          if (Array.isArray(result.elements)) children.push({ frame, result });
+        } catch { /* a frame that will not run script is left out */ }
       }
     }
-    if (action === "type_text" && value) await entry.view.webContents.insertText(value);
+    const paired = new Map<number, { frame: WebFrameMain; result: Record<string, any> }>();
+    const taken = new Set<unknown>();
+    frames.forEach((frame, ordinal) => {
+      const child = children.find(item => !taken.has(item) && frame.src && item.result.url === frame.src);
+      if (child) { paired.set(ordinal, child); taken.add(child); }
+    });
+    const loose = children.filter(item => !taken.has(item));
+    const open = frames.map((_, ordinal) => ordinal).filter(ordinal => !paired.has(ordinal));
+    if (loose.length === open.length) open.forEach((ordinal, k) => paired.set(ordinal, loose[k]));
+    const waiting = frames.map((_, ordinal) => ordinal).filter(ordinal => {
+      const child = paired.get(ordinal);
+      const src = String(frames[ordinal].src || "");
+      return !child || (child.result.url === "about:blank" && Boolean(src) && !src.startsWith("about:"));
+    });
+    return { page, frames, paired, waiting };
+  }
+
+  /**
+   * The tab's state as the browser extension reports it, frames included: one
+   * page code and one format for every route a task's browser can take. Loom
+   * Browser had its own 250-node "N: <tag> text" list, with no labels or
+   * states, that browser_batch could not read (live app run, 2026-11-02).
+   */
+  private async agentDom(entry: InternalTab): Promise<{ dom: string; refs: ElementRef[]; viewport: unknown }> {
+    if (!entry.state.url || !validNavigation(entry.state.url)) {
+      return { dom: "", refs: [], viewport: {} };
+    }
+    const main = entry.view.webContents.mainFrame;
+    const started = Date.now();
+    let read = await this.readFrames(main);
+    while (read.waiting.length && Date.now() - started < 1500) {
+      await sleep(250);
+      read = await this.readFrames(main);
+    }
+    const { page, frames, paired, waiting } = read;
+    const refs: ElementRef[] = (page.elements || []).map((item: { loom_id?: string }) => (
+      { frame: main, ordinal: -1, loomId: String(item?.loom_id || "") }));
+    const sections: string[] = [];
+    frames.forEach((frame, ordinal) => {
+      const where = `at ${frame.x},${frame.y} ${frame.width}x${frame.height}`;
+      if (waiting.includes(ordinal)) {
+        sections.push(`Frame ${ordinal + 1} (${frame.src || "no src"}) ${where}: its content has not loaded yet; `
+          + "read browser_state again before acting on it.");
+        return;
+      }
+      const child = paired.get(ordinal)!;
+      const state = child.result;
+      const lines = [`Frame ${ordinal + 1} (${state.url}) ${where}:`];
+      (state.elements || []).forEach((item: { tag?: string; loom_id?: string; rect?: { x: number; y: number; width: number; height: number } }, k: number) => {
+        const rect = item.rect || { x: 0, y: 0, width: 0, height: 0 };
+        const body = (state.element_bodies || [])[k] || `<${item.tag}>`;
+        lines.push(`[${refs.length}] ${body} rect=${rect.x + frame.x},${rect.y + frame.y},${rect.width}x${rect.height}`);
+        refs.push({ frame: child.frame, ordinal, loomId: String(item.loom_id || "") });
+      });
+      if (state.text) lines.push(`Frame ${ordinal + 1} text: ${state.text}`);
+      sections.push(lines.join("\n"));
+    });
+    let dom = String(page.dom || "");
+    if (sections.length) {
+      const at = dom.indexOf("\n\nVisual surfaces");
+      const block = sections.join("\n\n");
+      dom = at < 0 ? `${dom}\n\n${block}` : `${dom.slice(0, at)}\n\n${block}${dom.slice(at)}`;
+    }
+    const info = (page.page_info || {}) as { viewport_width?: number; viewport_height?: number };
+    return { dom: dom.slice(0, 60000), refs, viewport: { width: info.viewport_width, height: info.viewport_height } };
+  }
+
+  /**
+   * Chromium delivers mouse and key input only to a view on screen: a click sent
+   * to a tab that was not attached was dropped without a trace, so "Next" never
+   * paged (live app run, 2026-11-02; Electron probe: detached views take no
+   * input, render no frames and fire no scroll events). An AI tab is put in
+   * the panel when the panel is open and not showing one of the user's own
+   * tabs; otherwise its input is dispatched by the page code instead.
+   */
+  private async agentOnScreen(entry: InternalTab): Promise<boolean> {
+    if (this.attached === entry.view) return true;
+    const active = this.tabs.get(this.activeId || "");
+    if (this.viewport && entry.state.agentOwned && entry.state.url && (!active || active.state.agentOwned)) {
+      this.activeId = entry.state.id;
+      this.syncView();
+      this.publish();
+      if (this.attached === entry.view) {
+        await sleep(120);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async agentElement(entry: InternalTab, tabId: string, index: number,
+    action: string, value: string, clear: boolean): Promise<void> {
+    const ref = this.aiRefs.get(tabId)?.[index];
+    if (!ref) throw new Error("Element index is not available. Refresh browser_state and retry.");
+    const wc = entry.view.webContents;
+    const live = await this.agentOnScreen(entry);
+    const point = async () => {
+      const inner = await this.pageAction(ref.frame, "prepare_click", { loom_id: ref.loomId, index });
+      const offset = ref.ordinal >= 0
+        ? await this.pageAction(wc.mainFrame, "frame_offset", { ordinal: ref.ordinal }) : { x: 0, y: 0 };
+      return { inner: { x: Number(inner.x), y: Number(inner.y) }, x: Number(inner.x) + Number(offset.x), y: Number(inner.y) + Number(offset.y) };
+    };
+    const nativeClick = (x: number, y: number) => {
+      wc.sendInputEvent({ type: "mouseMove", x, y });
+      wc.sendInputEvent({ type: "mouseDown", x, y, button: "left", clickCount: 1 });
+      wc.sendInputEvent({ type: "mouseUp", x, y, button: "left", clickCount: 1 });
+    };
+    if (action === "select_option") {
+      await this.pageAction(ref.frame, "select_option", { loom_id: ref.loomId, index, value });
+      return;
+    }
+    if (action === "click" || action === "hover") {
+      const at = await point();
+      if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) throw new Error("Element has no clickable location.");
+      await this.hud.show(wc, action, { point: { x: at.x, y: at.y }, click: action === "click" });
+      // A native click on screen did not reach a cross-origin (out-of-process)
+      // frame's button in a live probe, though the same click by the frame's own
+      // page code did; frames take the page-code path.
+      if (live && ref.ordinal < 0) {
+        if (action === "click") nativeClick(at.x, at.y);
+        else wc.sendInputEvent({ type: "mouseMove", x: at.x, y: at.y });
+      } else if (action === "click") {
+        await this.pageAction(ref.frame, "click_at", { x: at.inner.x, y: at.inner.y });
+      }
+      return;
+    }
+    if (action === "type_text") {
+      await this.pageAction(ref.frame, "prepare_type", { loom_id: ref.loomId, index, clear });
+      await this.hud.show(wc, action);
+      if (!value) return;
+      // webContents.insertText never returned for a field in a cross-origin
+      // (out-of-process) frame; the frame inserts its own text there.
+      if (live && ref.ordinal < 0) await wc.insertText(value);
+      else await ref.frame.executeJavaScript(insertTextScript(value));
+      return;
+    }
+    throw new Error("Unsupported element action: " + action);
   }
 
   // Browser-use tool handlers still enforce user entitlements, approval and URL
@@ -579,13 +729,14 @@ export class EmbeddedBrowserManager {
       case "go_forward": if (wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward(); break;
       case "refresh": wc.reload(); break;
       case "click": case "type_text": case "hover": case "select_option":
-        await this.agentElement(entry, Number(args.index), this.aiSignatures.get(tabId) || "",
+        await this.agentElement(entry, tabId, Number(args.index),
           action, action === "type_text" ? String(args.text || "") : String(args.value || ""), args.clear !== false);
         break;
       case "send_text": {
         const value = String(args.text || "");
         if (!value || value.length > 8000) throw new Error("Invalid input text.");
-        await wc.insertText(value);
+        if (await this.agentOnScreen(entry)) await wc.insertText(value);
+        else await wc.executeJavaScript(insertTextScript(value));
         break;
       }
       case "scroll": {
@@ -594,7 +745,11 @@ export class EmbeddedBrowserManager {
         // An endless list appends rows a moment after a scroll reaches the end;
         // a scroll that hit the bottom waits (at most 1.2 s) for the page to grow,
         // so the state read next includes them (extension scrollPage does the same).
+        // Off screen the page renders no frames and never sees its scroll event,
+        // so one is dispatched for it (an IntersectionObserver still waits).
+        const live = await this.agentOnScreen(entry);
         await wc.executeJavaScript("new Promise(done => { window.scrollBy(0," + signed + ");"
+          + (live ? "" : " dispatchEvent(new Event('scroll'));")
           + " const root = document.scrollingElement || document.documentElement;"
           + " if (!(" + signed + " > 0 && innerHeight + scrollY >= root.scrollHeight - 60)) return done(true);"
           + " const height = root.scrollHeight, started = Date.now();"
@@ -608,8 +763,12 @@ export class EmbeddedBrowserManager {
         if (!/^[A-Za-z0-9]$|^(Enter|Tab|Escape|Backspace|ArrowUp|ArrowDown|ArrowLeft|ArrowRight)$/.test(key)) {
           throw new Error("Unsupported keyboard key.");
         }
-        wc.sendInputEvent({ type:"keyDown", keyCode:key });
-        wc.sendInputEvent({ type:"keyUp", keyCode:key });
+        if (await this.agentOnScreen(entry)) {
+          wc.sendInputEvent({ type:"keyDown", keyCode:key });
+          wc.sendInputEvent({ type:"keyUp", keyCode:key });
+        } else {
+          await this.pageAction(wc.mainFrame, "press_key", { key });
+        }
         break;
       }
       case "click_at": {
@@ -618,8 +777,12 @@ export class EmbeddedBrowserManager {
           throw new Error("Invalid click coordinates.");
         }
         await this.hud.show(wc, action, { point: { x, y }, click: true });
-        wc.sendInputEvent({ type:"mouseDown", x, y, button:"left", clickCount:1 });
-        wc.sendInputEvent({ type:"mouseUp", x, y, button:"left", clickCount:1 });
+        if (await this.agentOnScreen(entry)) {
+          wc.sendInputEvent({ type:"mouseDown", x, y, button:"left", clickCount:1 });
+          wc.sendInputEvent({ type:"mouseUp", x, y, button:"left", clickCount:1 });
+        } else {
+          await this.pageAction(wc.mainFrame, "click_at", { x, y });
+        }
         break;
       }
       case "find_text": {
@@ -664,13 +827,9 @@ export class EmbeddedBrowserManager {
         return { cleared:cookies.length };
       }
       case "dropdown_options": {
-        const index = Number(args.index);
-        if (!Number.isInteger(index) || index < 0 || index > 249) throw new Error("Invalid dropdown index.");
-        const payload = await wc.executeJavaScript(
-          "(() => { const nodes=[...document.querySelectorAll('a[href],button,input,textarea,select,[role=button],[contenteditable=true],[tabindex]')].filter(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}).slice(0,250);"
-          + "const e=nodes[" + index + "];if(!(e instanceof HTMLSelectElement))return {control_kind:'unknown',options:[]};"
-          + "return {control_kind:'select',options:[...e.options].slice(0,300).map(o=>({value:o.value,text:o.text,selected:o.selected,disabled:o.disabled}))}})()");
-        return payload as Record<string, unknown>;
+        const ref = this.aiRefs.get(tabId)?.[Number(args.index)];
+        if (!ref) throw new Error("Element index is not available. Refresh browser_state and retry.");
+        return await this.pageAction(ref.frame, "dropdown_options", { loom_id: ref.loomId, index: Number(args.index) });
       }
       case "wait_for": {
         const seconds = Math.min(60, Math.max(0, Number(args.seconds) || 0));
@@ -692,7 +851,7 @@ export class EmbeddedBrowserManager {
     // switch_tab and new-tab update entry explicitly above.
     if (!this.aiAllowed.has(entry.state.id)) throw new Error("AI authorization was revoked.");
     const dom = await this.agentDom(entry);
-    this.aiSignatures.set(entry.state.id, dom.signature);
+    this.aiRefs.set(entry.state.id, dom.refs);
     this.publish();
     return {
       ...(action === "find_text" ? { found: true } : {}),

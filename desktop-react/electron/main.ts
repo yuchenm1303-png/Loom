@@ -1,5 +1,6 @@
 import { installWindowChrome } from "./windowChrome.js";
 import { EmbeddedBrowserManager, type EmbeddedBrowserCommand } from "./embeddedBrowser.js";
+import { loadRunPageAction } from "./pageActions.js";
 import { EmbeddedBrowserAgentClient } from "./embeddedBrowserAgentBridge.js";
 import { ModelSwitchQueue, type ModelPreferenceTicket } from "./modelSwitchQueue.js";
 import { isManagedBuiltinSelection, modelPolicyGroup } from "./modelPolicySelection.js";
@@ -1675,7 +1676,8 @@ ipcMain.handle("loom:embedded-browser", async (event, command: EmbeddedBrowserCo
 function ensureEmbeddedBrowserManager(window: BrowserWindow): EmbeddedBrowserManager {
   if (!embeddedBrowserManager) {
     embeddedBrowserManager = new EmbeddedBrowserManager(window,
-      () => fs.readFile(path.join(browserExtensionSource(), "browser-hud.js"), "utf8"));
+      () => fs.readFile(path.join(browserExtensionSource(), "browser-hud.js"), "utf8"),
+      () => loadRunPageAction(path.join(browserExtensionSource(), "background.js")));
   }
   return embeddedBrowserManager;
 }

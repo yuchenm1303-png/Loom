@@ -62,3 +62,48 @@ def test_a_scroll_that_reaches_the_end_waits_for_an_endless_list():
     source = MANAGER.read_text(encoding="utf-8")
     assert "root.scrollHeight > height" in source
     assert "innerHeight + scrollY >= root.scrollHeight - 60" in source
+
+
+def test_loom_browser_runs_the_extension_page_code():
+    # Its own 250-node "N: <tag> text" list had no labels or states and browser_batch
+    # could not read it; one page code now serves every route.
+    import re
+    import shutil
+    import subprocess
+    import tempfile
+
+    loader = (ROOT / "desktop-react/electron/pageActions.ts").read_text(encoding="utf-8")
+    assert r'"\nfunction runPageAction("' in loader and r'replace(/\r\n/g, "\n")' in loader
+    background = (ROOT / "extensions/browser-current-tab/background.js").read_text(encoding="utf-8").replace("\r\n", "\n")
+    start = background.index("\nfunction runPageAction(")
+    body = background[start + 1:background.index("\n}\n", start + 1) + 2]
+    assert body.startswith("function runPageAction(") and body.rstrip().endswith("}")
+    if shutil.which("node"):
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as handle:
+            handle.write("(" + body + ");\n")
+        assert subprocess.run(["node", "--check", handle.name], capture_output=True).returncode == 0
+
+    source = MANAGER.read_text(encoding="utf-8")
+    for action in ('"state"', '"prepare_click"', '"prepare_type"', '"select_option"', '"frame_offset"', '"click_at"'):
+        assert action in source
+    assert "aiSignatures" not in source
+    assert "page_hud: false" in source
+    main = MAIN.read_text(encoding="utf-8")
+    assert 'loadRunPageAction(path.join(browserExtensionSource(), "background.js"))' in main
+    assert "args.page_hud === false" in background
+
+
+def test_loom_browser_input_reaches_tabs_that_are_not_on_screen():
+    # Electron delivers mouse and key input only to an attached view: clicks on a
+    # task's tab that the panel was not showing were dropped (live, 2026-11-02).
+    source = MANAGER.read_text(encoding="utf-8")
+    on_screen = source[source.index("private async agentOnScreen"):]
+    assert "this.attached === entry.view" in on_screen
+    assert "(!active || active.state.agentOwned)" in on_screen  # never over the user's own tab
+    element = source[source.index("private async agentElement"):]
+    assert "live && ref.ordinal < 0" in element  # frames and off-screen tabs use page code
+    assert "insertTextScript(value)" in element
+    # A tab never shown lays out at 0x0 with nothing visible.
+    assert "view.setBounds({ x: 0, y: 0, width: Math.max(800" in source
+    bridge = BRIDGE.read_text(encoding="utf-8")
+    assert 'const VERSION = "0.1.27";' in bridge

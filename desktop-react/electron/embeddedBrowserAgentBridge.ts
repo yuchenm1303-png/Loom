@@ -5,7 +5,10 @@ import type { EmbeddedBrowserManager } from "./embeddedBrowser.js";
 // which answered every poll with not_found and left Loom Browser offline.
 const ORIGIN = "http://127.0.0.1:39224";
 const BASE = "/browser-extension/v1";
-const VERSION = "0.1.19";
+// Loom Browser answers every command with a definite result. As 0.1.19 its
+// errors were taken for unknown settlements, each told the model to "reload
+// browser extension 0.1.27+", and retrying was discouraged.
+const VERSION = "0.1.27";
 
 /**
  * Dedicated, authenticated loopback CLIENT. Python owns the queue and applies

@@ -1814,6 +1814,11 @@ function runPageAction(action, args = {}) {
   }
 
   function ensureHud() {
+    if (args.page_hud === false) {
+      // Loom Browser draws its own HUD; the page code runs there without one.
+      const host = document.createElement("loom-hud-off");
+      return { host, root: host.attachShadow({ mode: "open" }) };
+    }
     let host = document.getElementById(HUD_HOST_ID);
     if (!host) {
       host = document.createElement("loom-browser-page-hud");
