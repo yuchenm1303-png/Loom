@@ -45,8 +45,26 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 os.environ.setdefault("LOOM_BUNDLED_BROWSER", args.browser)
 
+def stop_suite_bridge(port: int) -> None:
+    """Stop a bridge service a previous suite run left on its port (it outlives its runtime by design)."""
+
+    try:
+        import psutil
+    except ImportError:
+        return
+    for connection in psutil.net_connections(kind="tcp"):
+        if connection.laddr and connection.laddr.port == port and connection.status == psutil.CONN_LISTEN:
+            try:
+                process = psutil.Process(connection.pid)
+                if "browser_bridge_service" in " ".join(process.cmdline()):
+                    process.kill()
+            except (psutil.Error, TypeError):
+                pass
+
+
 extension_chrome = None
 if args.backend == "extension":
+    stop_suite_bridge(args.bridge_port)
     import secrets
     import shutil
     import subprocess
@@ -185,3 +203,4 @@ for _ in range(args.repeat):
 runtime.close()
 if extension_chrome is not None:
     subprocess.run(["taskkill", "/T", "/F", "/PID", str(extension_chrome.pid)], capture_output=True)
+    stop_suite_bridge(args.bridge_port)
