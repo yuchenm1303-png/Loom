@@ -66,7 +66,18 @@ Per step, the provider takes 3–6 s to its first chunk even with 80–95% of th
 - Hints cover every walked control (up to 80) in short lines, and `control_id` also takes a hint's exact name: cut at 40, half a dense grid had no number; with 80 numbers the model spent 34 s working out which one was "F7".
 - New read-only views, attached once beside the screenshot: `zoom {region}` (full-resolution crop, up to 4x) and `screenshot {window_id}` for a window behind the foreground one (PrintWindow, no activation).
 
-Results with deepseek-v4.1-flash, all tasks passing throughout: baseline 611 s and 76 model steps with 9 failed calls for the nine tasks; after the first fixes 442 s, 60 steps, 3 failed calls (mean of two runs per task). Run-to-run variance per task is large (one task ranged 24–68 s), so compare means over repeats.
+A second model mattered: minimax-m3.1-flash failed mostly on call shapes deepseek never sent — arrays wrapped as `{"item": [...]}`, an action list sent as a chain `{"action": A, "item": {...}}`, other tools' action names (`text`, `left_click`, `keypress`), keys sent as `text`, and typed values as JSON numbers. These are normalized now, and every `text` value in a `computer_action` call (string or number, any nesting) is stashed: a probe at every platform layer showed `{"type": "text", ...}` and numeric `text` had passed into history. It also looped on `record_check`: a visual pass in a turn with no development work could never be accepted, so it is now recorded as the assistant's assessment (checks that name source paths keep the gate).
+
+Results, nine tasks, sums of per-task means over two runs, every run passing (36/36 at the end), and no typed text or number in any final session file:
+
+| | wall time | model steps | failed calls |
+| --- | --- | --- | --- |
+| deepseek-v4.1-flash, start of the pass (one run per task) | 611 s | 76 | 9 |
+| deepseek-v4.1-flash, final | 446 s | 56 | 2 |
+| minimax-m3.1-flash, start-of-pass code 3925addd | 648 s | 82 | 18 |
+| minimax-m3.1-flash, final | 454 s | 64 | 5 |
+
+Run-to-run variance per task is large (one task ranged 24–68 s), so compare means over repeats. Models rarely reach for `zoom`, `screenshot {window_id}` or names unprompted; the gains come from fewer failed calls, fewer mid-change looks and batches that are no longer cut short.
 
 ## Alibaba GUI-Plus grounding
 
