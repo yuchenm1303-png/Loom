@@ -15,6 +15,22 @@ const LABELS: Record<string, string> = {
 /** Reuse the browser HUD asset inside an isolated world of the consented page.
  * CSS coordinates stay local to that page, so the overlay cannot cover Loom's shell.
  */
+// A webContents that has never loaded a page (a task's new tab) holds a script
+// until a document exists, and the action waiting on the HUD never started the
+// navigation that would make one: the first Loom Browser command after a start
+// sat there until the Host's 45 s command timeout (live, 2026-11-02). The HUD
+// is decoration, so no wait on it may outlast this.
+const HUD_SCRIPT_LIMIT_MS = 1500;
+
+function runHudScript(wc: WebContents, code: string): Promise<unknown> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("HUD script did not run")), HUD_SCRIPT_LIMIT_MS);
+  });
+  return Promise.race([wc.executeJavaScriptInIsolatedWorld(WORLD, [{ code }]), limit])
+    .finally(() => clearTimeout(timer));
+}
+
 export class EmbeddedBrowserHud {
   private source = "";
   private readonly timers = new Map<number, ReturnType<typeof setTimeout>>();
@@ -33,8 +49,8 @@ export class EmbeddedBrowserHud {
         source: "内置浏览器 · DOM",
         ...options.point, click: Boolean(options.click),
       };
-      await wc.executeJavaScriptInIsolatedWorld(WORLD, [{ code: this.source + ";" + HUD + "?.present(" + JSON.stringify(payload) + ");"
-        + (this.captures.has(wc.id) ? "{const host=" + HOST + ";if(host)host.style.display='none'}" : "") }]);
+      await runHudScript(wc, this.source + ";" + HUD + "?.present(" + JSON.stringify(payload) + ");"
+        + (this.captures.has(wc.id) ? "{const host=" + HOST + ";if(host)host.style.display='none'}" : ""));
       if (!wc.isDestroyed()) this.timers.set(wc.id, setTimeout(() => { void this.hide(wc); }, options.settled ? 1400 : 30_000));
     } catch { /* A navigation or closed page must not turn a decorative HUD into a failed action. */ }
   }
@@ -48,7 +64,7 @@ export class EmbeddedBrowserHud {
   async hide(wc: WebContents, release = false): Promise<void> {
     this.clearTimer(wc.id);
     if (wc.isDestroyed()) return;
-    try { await wc.executeJavaScriptInIsolatedWorld(WORLD, [{ code: HUD + (release ? "?.dispose()" : "?.hide(true)") }]); } catch {}
+    try { await runHudScript(wc, HUD + (release ? "?.dispose()" : "?.hide(true)")); } catch {}
   }
 
   async capture<T>(wc: WebContents, take: () => Promise<T>): Promise<T> {
@@ -56,7 +72,7 @@ export class EmbeddedBrowserHud {
     let hidden = false;
     this.captures.set(wc.id, (this.captures.get(wc.id) || 0) + 1);
     try {
-      await wc.executeJavaScriptInIsolatedWorld(WORLD, [{ code: "{const host=" + HOST + ";if(host)host.style.display='none'}" }]);
+      await runHudScript(wc, "{const host=" + HOST + ";if(host)host.style.display='none'}");
       hidden = true;
       await new Promise(resolve => setTimeout(resolve, 32));
     } catch { /* A page without an installed HUD needs no cleanup before capture. */ }
@@ -67,7 +83,7 @@ export class EmbeddedBrowserHud {
       if (remaining) this.captures.set(wc.id, remaining);
       else this.captures.delete(wc.id);
       if (!remaining && hidden && !wc.isDestroyed()) {
-        try { await wc.executeJavaScriptInIsolatedWorld(WORLD, [{ code: "{const host=" + HOST + ";if(host)host.style.removeProperty('display')}" }]); } catch {}
+        try { await runHudScript(wc, "{const host=" + HOST + ";if(host)host.style.removeProperty('display')}"); } catch {}
       }
     }
   }

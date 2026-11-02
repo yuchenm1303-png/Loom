@@ -47,3 +47,12 @@ def test_bridge_is_isolated_and_authenticated():
     assert "this.manager().agentCommand(action, args)" in source
     assert "this.abort.abort()" in source
     assert "No CDP debug port is enabled" in source
+
+
+def test_the_decorative_hud_cannot_hold_an_action():
+    # A task's new tab has never loaded a page, and a script there waits for a
+    # document: the first navigate after a start hung behind the HUD for 45 s.
+    source = (ROOT / "desktop-react/electron/embeddedBrowserHud.ts").read_text(encoding="utf-8")
+    assert source.count("executeJavaScriptInIsolatedWorld") == 1, "every HUD script goes through runHudScript"
+    assert "Promise.race([wc.executeJavaScriptInIsolatedWorld" in source
+    assert "HUD_SCRIPT_LIMIT_MS = 1500" in source
