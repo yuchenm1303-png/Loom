@@ -260,9 +260,28 @@ def _registry():
 ])
 def test_local_previews_open_in_loom_browser_inside_desktop(monkeypatch, url, expected):
     monkeypatch.setenv("LOOM_BROWSER_EMBEDDED_TOKEN", "t")
+    monkeypatch.setattr(BrowserBackendRegistryMixin, "_embedded_browser_ready", lambda self: True)
     assert _registry().browser_default_connection(url) == expected
     monkeypatch.delenv("LOOM_BROWSER_EMBEDDED_TOKEN")
     assert _registry().browser_default_connection(url) == ""
+
+
+def test_an_offline_loom_browser_leaves_local_pages_to_the_configured_browser(monkeypatch):
+    # Every localhost browser_open failed while Loom Browser's bridge could not
+    # bind its port; the default route is a preference, not a requirement.
+    monkeypatch.setenv("LOOM_BROWSER_EMBEDDED_TOKEN", "t")
+    monkeypatch.setattr(BrowserBackendRegistryMixin, "_embedded_browser_ready", lambda self: False)
+    assert _registry().browser_default_connection("http://127.0.0.1:5199/") == ""
+
+
+def test_loom_browser_bridge_does_not_share_the_discovery_port():
+    from pathlib import Path
+    from app.agent_runtime.browser_backend_registry import EMBEDDED_BRIDGE_PORT
+    root = Path(__file__).resolve().parents[1]
+    relay = (root / "desktop-react" / "electron" / "remoteRelay.ts").read_text(encoding="utf-8")
+    bridge = (root / "desktop-react" / "electron" / "embeddedBrowserAgentBridge.ts").read_text(encoding="utf-8")
+    assert "LOOM_HOST_DISCOVERY_PORT || 39223" in relay and EMBEDDED_BRIDGE_PORT != 39223
+    assert f'"http://127.0.0.1:{EMBEDDED_BRIDGE_PORT}"' in bridge
 
 
 def test_embedded_is_selectable_only_inside_desktop(monkeypatch):

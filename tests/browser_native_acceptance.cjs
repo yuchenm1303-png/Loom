@@ -156,7 +156,17 @@ async function main() {
     await cdp.send('Input.insertText', { text: 'MID' });
     assert.equal(await value('a'), 'AAAMIDBBB');
     await assert.rejects(page.$eval('#ro', (el, source) => (0, eval)(`(${source})`).call(el, true), prepare), /readonly/);
-    console.log('Real Edge acceptance: editing, maxlength, readonly/disabled, newline, selection, clear, contenteditable, Escape, Tab, coordinate click PASS');
+    // A field inside a web component: the document's activeElement is the host.
+    await page.evaluate(() => {
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      host.attachShadow({ mode: 'open' }).innerHTML = '<input id="q" type="number" value="1">';
+      window.shadowField = host.shadowRoot.getElementById('q');
+    });
+    await page.evaluate((source) => (0, eval)(`(${source})`).call(window.shadowField, true), prepare);
+    await cdp.send('Input.insertText', { text: '4' });
+    assert.equal(await page.evaluate(() => window.shadowField.value), '4');
+    console.log('Real Edge acceptance: editing, maxlength, readonly/disabled, newline, selection, clear, contenteditable, Escape, Tab, coordinate click, shadow field PASS');
   } finally { await browser.close(); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

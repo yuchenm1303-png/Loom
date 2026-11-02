@@ -42,7 +42,7 @@ def test_tabs_a_task_opens_are_its_own_and_never_the_users():
 
 def test_bridge_is_isolated_and_authenticated():
     source = BRIDGE.read_text(encoding="utf-8")
-    assert 'http://127.0.0.1:39223' in source
+    assert 'http://127.0.0.1:39224' in source  # 39223 is Host discovery
     assert '"X-Loom-Token": this.token' in source
     assert "this.manager().agentCommand(action, args)" in source
     assert "this.abort.abort()" in source

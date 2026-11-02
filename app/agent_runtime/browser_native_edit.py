@@ -8,19 +8,22 @@ PREPARE_EDIT = r"""function(clear) {
     if (!el.isConnected) throw new Error('Target element is no longer available');
     if (el.matches(':disabled') || el.readOnly) throw new Error('Target element is disabled or readonly');
     const doc = el.ownerDocument;
+    // Inside a web component the focused field is its shadow root's activeElement;
+    // the document's is the host, so typing there always "did not receive focus".
+    const root = el.getRootNode();
     el.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
         if (el instanceof HTMLInputElement && !['text','search','tel','url','email','password','number'].includes(el.type))
             throw new Error('Target input does not support text editing');
         el.focus({preventScroll: true});
-        if (doc.activeElement !== el) throw new Error('Target element did not receive focus');
+        if (root.activeElement !== el) throw new Error('Target element did not receive focus');
         if (clear) el.select();
     } else if (el.isContentEditable) {
         const selection = doc.getSelection();
         const saved = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
         const inside = saved && el.contains(saved.startContainer) && el.contains(saved.endContainer);
         el.focus({preventScroll: true});
-        if (doc.activeElement !== el && !el.contains(doc.activeElement)) throw new Error('Target element did not receive focus');
+        if (root.activeElement !== el && !el.contains(root.activeElement)) throw new Error('Target element did not receive focus');
         const range = !clear && inside ? saved : doc.createRange();
         if (range !== saved) {
             range.selectNodeContents(el);

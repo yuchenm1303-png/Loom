@@ -1,7 +1,9 @@
 import crypto from "node:crypto";
 import type { EmbeddedBrowserManager } from "./embeddedBrowser.js";
 
-const ORIGIN = "http://127.0.0.1:39223";
+// Not 39223: that is the desktop's local Host discovery port (remoteRelay.ts),
+// which answered every poll with not_found and left Loom Browser offline.
+const ORIGIN = "http://127.0.0.1:39224";
 const BASE = "/browser-extension/v1";
 const VERSION = "0.1.19";
 

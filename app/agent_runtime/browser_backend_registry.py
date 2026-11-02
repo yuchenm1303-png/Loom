@@ -17,6 +17,10 @@ CURRENT_BROWSER = "current-browser"
 ISOLATED_BROWSER = "isolated"
 DEVELOPER_CDP = "cdp"
 EMBEDDED_BROWSER = "embedded"
+# Loom Browser's bridge. 39223 is the desktop's local Host discovery port: it
+# held the port, the bridge never bound, and every localhost browser_open
+# failed with "embedded browser is offline" after a six-second wait.
+EMBEDDED_BRIDGE_PORT = 39224
 
 _BROWSER_BACKEND_ALIASES = {
     "auto": CURRENT_BROWSER,
@@ -132,7 +136,7 @@ class BrowserBackendRegistryMixin:
         secret = os.environ.get("LOOM_BROWSER_EMBEDDED_TOKEN") or hashlib.sha256(
             (_load_or_create_install_token() + ":loom-embedded-v1").encode("utf-8")
         ).hexdigest()
-        bridge = BrowserExtensionBridge(host="127.0.0.1", port=39223, token=secret, shared_service=True)
+        bridge = BrowserExtensionBridge(host="127.0.0.1", port=EMBEDDED_BRIDGE_PORT, token=secret, shared_service=True)
         bridge.start()
         self._loom_embedded_bridge = bridge
         return bridge
@@ -153,7 +157,23 @@ class BrowserBackendRegistryMixin:
         if not self._embedded_browser_present():
             return ""
         host = (urlsplit(str(url or "").strip()).hostname or "").casefold()
-        return "embedded" if host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".localhost") else ""
+        if not (host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".localhost")):
+            return ""
+        # A preference, not the user's setting: when Loom Browser cannot answer,
+        # the configured browser opens the page instead of the call failing.
+        return "embedded" if self._embedded_browser_ready() else ""
+
+    def _embedded_browser_ready(self, wait_seconds: float = 3.0) -> bool:
+        """Start Loom Browser's bridge and give the desktop poller (1.5 s retry) time to reach it."""
+
+        try:
+            bridge = self._embedded_browser_bridge()
+        except Exception:
+            return False
+        deadline = time.monotonic() + max(0.0, wait_seconds)
+        while not bridge.connected and time.monotonic() < deadline:
+            time.sleep(0.1)
+        return bool(bridge.connected)
 
     def _backend_model_selectable(self, backend: str) -> bool:
         selected = str(getattr(self, "_browser_requested_backend", ISOLATED_BROWSER))
