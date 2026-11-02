@@ -226,8 +226,8 @@ function Preview() {
       </header>
       {mode === "project"
         ? <div className="project-mode-stage" style={{ gridRow: "2" }}>
-            <ProjectFlow data={{ ...turnTalk(variant(play(count, workers)), scene), models, references: REFERENCES }}
-                         actions={{ onChat: () => {}, onInterrupt: () => {}, onApproval: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {},
+            <ProjectFlow data={{ ...turnTalk(variant(play(count, workers)), scene), models, references: REFERENCES, history: THREADS }}
+                         actions={{ onChat: () => {}, onInterrupt: () => {}, onApproval: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {}, onOpenThread: (id) => { (window as unknown as { opened: unknown }).opened = id; }, onNewThread: () => {},
                                     error: params.has("error") ? "Lost the Host; reconnecting…" : undefined,
                                     onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
           </div>
@@ -235,5 +235,14 @@ function Preview() {
     </div>
   );
 }
+
+// ?history=0: no other 建造 conversations yet.
+const THREADS = params.get("history") === "0" ? [] : [
+  { id: "t1", title: "账本解析和导入", when: "刚刚", current: true, live: false },
+  { id: "t2", title: "电力报价系统第二阶段", when: "12 分钟", current: false, live: true },
+  { id: "t3", title: "把设置页拆成独立模块，并补齐所有交互测试", when: "3 小时", current: false, live: false },
+  { id: "t4", title: "Loom 贴纸商店", when: "2 天", current: false, live: false },
+  { id: "t5", title: "termrelay 服务器迁移", when: "10月28日", current: false, live: false },
+];
 
 createRoot(document.getElementById("root")!).render(<I18nProvider><Preview /></I18nProvider>);

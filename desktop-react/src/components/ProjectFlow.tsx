@@ -96,6 +96,8 @@ export interface FlowData {
   activity?: string;
   /** A project the agent proposed, waiting for the person to start it. */
   proposal?: WeaveProposal;
+  /** The 建造 conversations, newest first; `when` is said already, `live` while one answers or runs. */
+  history?: { id: string; title: string; when: string; current: boolean; live: boolean }[];
 }
 
 export interface ModelOption { selection: string; name: string; group: string; groupId: string }
@@ -107,6 +109,9 @@ export interface FlowActions {
   onChat?(text: string): void;
   /** Stop the agent's answer. */
   onInterrupt?(): void;
+  /** Open another 建造 conversation from the history card, or begin a new one. */
+  onOpenThread?(id: string): void;
+  onNewThread?(): void;
   /** Answer a step the agent asks the person to allow, as the chat's approval card does. */
   onApproval?(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void;
   /** Start the proposed project, with the budget and agents set in the footer. */
@@ -162,6 +167,7 @@ const zhText = {
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "建造",
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
+  history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
@@ -187,6 +193,7 @@ const enText: typeof zhText = {
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
+  history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
 };
 const stateWord = {
   zh: { running: "运行中", paused: "已暂停", needs_you: "等你处理", completed: "已完成", starting: "启动中" },
@@ -208,6 +215,12 @@ function readFolded(): string[] {
 }
 function writeFolded(ids: string[]) {
   try { localStorage.setItem(FOLDED_KEY, JSON.stringify(ids)); } catch { /* kept for this session only */ }
+}
+// The history card is the one branch that starts folded; opened, it stays open across conversations,
+// so the person can walk through them from it.
+const HISTORY_KEY = "loom.buildHistoryOpen";
+function readHistoryOpen() {
+  try { return localStorage.getItem(HISTORY_KEY) === "1"; } catch { return false; }
 }
 
 function compact(value: number) {
@@ -478,9 +491,18 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     writeFolded(next);
     return next;
   });
-  const open = (id: string) => !folded.includes(id);
+  const [historyOpen, setHistoryOpen] = useState(readHistoryOpen);
+  const history = data.history;
+  const open = (id: string) => id === "history" ? historyOpen : !folded.includes(id);
+  const toggle = (id: string) => {
+    if (id !== "history") { fold(id); return; }
+    setHistoryOpen((value) => {
+      try { localStorage.setItem(HISTORY_KEY, value ? "0" : "1"); } catch { /* kept for this session only */ }
+      return !value;
+    });
+  };
   const agents = useDeparting(open("agents") ? data.agents : []);
-  const branches = useDeparting(modelOpen && data.models ? [{ id: "model" }] : []);
+  const branches = useDeparting([...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : [])]);
   const below = useDeparting(open("plan") ? [{ id: "plan" }] : []);
   const loom = useDeparting(data.timeline && open("loom") ? [{ id: "loom" }] : []);
   // Files the person picked before starting; once started, the Host's copies are what count.
@@ -498,10 +520,11 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     data.outcome ? { id: "plan", icon: Check, label: text.outcome } : { id: "plan", icon: Compass, label: text.plan(data.milestone) },
     ...(data.agents.length ? [{ id: "agents", icon: Bot, label: text.agentCards }] : []),
     ...(data.timeline ? [{ id: "loom", icon: ChartGantt, label: text.loom }] : []),
+    ...(history ? [{ id: "history", icon: History, label: text.history }] : []),
   ];
   // A card that starts leaving changes the layout already (it is lifted out and the others close up), not only once it is gone.
   const ids = (list: { id: string; leaving?: boolean }[]) => list.map((item) => `${item.id}${item.leaving ? "~" : ""}`).join(",");
-  const layout = [ids(context), ids(branches), ids(agents), ids(below), ids(loom), files.length,
+  const layout = [ids(context), ids(branches), ids(agents), ids(below), ids(loom), files.length, history?.length ?? 0,
                   modelTotal, modelView, query, reasoningState?.value ?? "",
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase,
                   dirtyOpen, objectiveOpen, draft, data.narration.summary, data.narration.text,
@@ -831,7 +854,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             <span className="pf-branch-toggles" role="group" aria-label={text.branches}>
               {toggles.map(({ id, icon: Icon, label }) => (
                 <button key={id} type="button" className="pf-branch-toggle" data-branch={id} aria-pressed={open(id)} aria-label={label}
-                        title={open(id) ? text.foldBranch(label) : text.unfoldBranch(label)} onClick={() => fold(id)}
+                        title={open(id) ? text.foldBranch(label) : text.unfoldBranch(label)} onClick={() => toggle(id)}
                         {...(id === "agents" ? {} : hover(id))}>
                   <Icon size={12} />
                 </button>
@@ -958,7 +981,28 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
       </div>
 
       {/* With the model card open, the agents under it fold to one line each, so both fit the column. */}
-      <div className="pf-col pf-right" data-crowded={branches.some((item) => item.id === "model" && !item.leaving) || undefined}>
+      <div className="pf-col pf-right" data-crowded={branches.some((item) => !item.leaving) || undefined}>
+        {history && branches.some((item) => item.id === "history") ? (
+          // The other 建造 conversations: one click opens it here, in the hub.
+          <div className="pf-slot" data-glide="history" data-fit="" {...hover("history")} {...slot("history")}>
+            <Card id="history" side="right" className="pf-listed pf-history" icon={<History size={12} />} label={text.history}
+                  count={history.length || undefined} register={register}>
+              <div className="pf-list">
+                {history.map((entry) => (
+                  <button key={entry.id} type="button" className="pf-well pf-row pf-history-row" aria-current={entry.current || undefined}
+                          disabled={entry.current || !actions.onOpenThread} title={entry.title} onClick={() => actions.onOpenThread?.(entry.id)}>
+                    <span className="pf-history-title">{entry.title}</span>
+                    {entry.live ? <span className="pf-agent-live" /> : <em className="pf-history-when">{entry.when}</em>}
+                  </button>
+                ))}
+                {!history.length ? <p className="pf-empty">{text.historyEmpty}</p> : null}
+              </div>
+              {actions.onNewThread ? (
+                <button type="button" className="pf-add" disabled={actions.busy} onClick={actions.onNewThread}><Plus size={12} />{text.newThread}</button>
+              ) : null}
+            </Card>
+          </div>
+        ) : null}
         {data.models && branches.some((item) => item.id === "model") ? (
           <div className="pf-slot pf-model-slot" id="pf-model-card" data-glide="model" {...hover("model")} {...slot("model")}
                onKeyDown={(event) => { if (event.key === "Escape") setModelOpen(false); }}>

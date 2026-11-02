@@ -160,6 +160,8 @@ def _thread_record(
         "updatedAt": session.updated_at,
         "active": bool(active),
         "usage": _usage_record(session.usage),
+        # The mode of its latest turn: a conversation last spoken to in 建造 reopens there.
+        "weave": getattr(session, "weave", False) is True,
     }
 
 

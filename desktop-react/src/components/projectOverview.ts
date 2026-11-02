@@ -388,3 +388,24 @@ export function toConversation(items: TranscriptItem[], chatting: boolean, limit
   if (chatting && last?.role === "assistant" && last.turnId === lastTurn) last.streaming = true;
   return { messages: messages.slice(-limit), activity };
 }
+
+/** The history card's rows: every 建造 conversation, newest first, the one open here marked. */
+export function toHistory(threads: { id: string; title: string; updatedAt: string; live?: boolean }[], currentId: string,
+                          now: number, lang: Lang = "zh", limit = 30): NonNullable<FlowData["history"]> {
+  return [...threads].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)).slice(0, limit)
+    .map((thread) => ({ id: thread.id, title: thread.title || (lang === "zh" ? "新对话" : "New conversation"),
+                        when: whenSaid(thread.updatedAt, now, lang), current: thread.id === currentId, live: Boolean(thread.live) }));
+}
+
+/** How long ago, in the fewest words: 刚刚, 5 分钟, 3 小时, 2 天, then the date. */
+export function whenSaid(at: string, now: number, lang: Lang = "zh"): string {
+  const time = Date.parse(at);
+  if (!Number.isFinite(time)) return "";
+  const minutes = Math.max(0, Math.floor((now - time) / 60000));
+  if (minutes < 1) return lang === "zh" ? "刚刚" : "now";
+  if (minutes < 60) return lang === "zh" ? `${minutes} 分钟` : `${minutes}m`;
+  if (minutes < 24 * 60) return lang === "zh" ? `${Math.floor(minutes / 60)} 小时` : `${Math.floor(minutes / 60)}h`;
+  if (minutes < 7 * 24 * 60) return lang === "zh" ? `${Math.floor(minutes / 1440)} 天` : `${Math.floor(minutes / 1440)}d`;
+  const date = new Date(time);
+  return lang === "zh" ? `${date.getMonth() + 1}月${date.getDate()}日` : date.toLocaleDateString("en", { month: "short", day: "numeric" });
+}

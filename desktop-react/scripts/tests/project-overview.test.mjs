@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../src/components/projectOverview.ts", i
 const module = { exports: {} };
 new Function("module", "exports", "require", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(
   module, module.exports, () => ({}));
-const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice, readableError, toConversation } = module.exports;
+const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice, readableError, toConversation, toHistory, whenSaid } = module.exports;
 
 const now = Date.parse("2026-10-30T10:00:00Z");
 const run = (extra = {}) => ({
@@ -270,4 +270,20 @@ test("the conversation keeps the work between messages: one stage per run of ste
   const over = toConversation([...items, { id: "a1", threadId: "t", turnId: "a", type: "assistant_message", text: "都过了" }], false);
   assert.deepEqual(over.messages.map((m) => [m.role, Boolean(m.live), Boolean(m.superseded), Boolean(m.streaming)]),
     [["user", false, false, false], ["work", false, true, false], ["assistant", false, false, false]]);
+});
+
+test("the history card: newest first, the open one marked, time said briefly", () => {
+  const at = (minutes) => new Date(now - minutes * 60000).toISOString();
+  const rows = toHistory([
+    { id: "a", title: "Old", updatedAt: at(3 * 1440) },
+    { id: "b", title: "", updatedAt: at(0), live: true },
+    { id: "c", title: "Mid", updatedAt: at(90) },
+  ], "c", now, "zh");
+  assert.deepEqual(rows.map((row) => row.id), ["b", "c", "a"]);
+  assert.deepEqual(rows.map((row) => row.when), ["刚刚", "1 小时", "3 天"]);
+  assert.equal(rows[0].title, "新对话");
+  assert.equal(rows[0].live, true);
+  assert.deepEqual(rows.map((row) => row.current), [false, true, false]);
+  assert.equal(whenSaid(at(5), now, "en"), "5m");
+  assert.equal(whenSaid("nope", now), "");
 });

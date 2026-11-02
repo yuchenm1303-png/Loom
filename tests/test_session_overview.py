@@ -38,6 +38,15 @@ def test_overview_matches_record_and_does_not_change_full_session(tmp_path):
     assert store.load_overview("aa").usage.input_tokens == 10
 
 
+def test_overview_carries_the_build_mode(tmp_path):
+    store = FileAgentSessionStore(tmp_path)
+    write_session(store, weave=True)
+    write_session(store, "bb")
+    assert _thread_record(store.load_overview("aa"))["weave"] is True
+    assert _thread_record(store.load_overview("aa")) == _thread_record(store.load("aa"))
+    assert _thread_record(store.load_overview("bb"))["weave"] is False
+
+
 def test_unchanged_list_read_skips_snapshot_io_but_replacement_invalidates(tmp_path, monkeypatch):
     store = FileAgentSessionStore(tmp_path)
     path = write_session(store)

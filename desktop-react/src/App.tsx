@@ -91,6 +91,14 @@ const MIN_WORKSPACE_WIDTH = 520;
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 const SPLIT_RATIO_KEY = "loom.layout.splitRatio";
 
+/** Conversation ids remembered under `key`; storage may be missing or hold something else. */
+function readModeIds(key: string): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  } catch { return []; }
+}
+
 function readSplitRatio(): number {
   try {
     const saved = Number(localStorage.getItem(SPLIT_RATIO_KEY));
@@ -623,20 +631,30 @@ export default function App() {
     : t("app.newConversation"));
   const workspace = thread?.workspace || loom.runtime.defaultWorkspace || "";
   const currentModel = loom.models?.current?.name || loom.models?.current?.model || loom.runtime.model;
-  // Persistent-project mode is a per-conversation choice, remembered on this machine.
-  const [projectModeIds, setProjectModeIds] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem("loom.projectMode") || "[]"); } catch { return []; }
-  });
-  const projectMode = Boolean(thread?.id && projectModeIds.includes(thread.id));
-  const setProjectMode = useCallback((mode: "chat" | "project") => {
-    if (!thread?.id) return;
-    const id = thread.id;
-    setProjectModeIds((ids) => {
-      const next = mode === "project" ? [...ids.filter((item) => item !== id), id].slice(-50) : ids.filter((item) => item !== id);
-      try { localStorage.setItem("loom.projectMode", JSON.stringify(next)); } catch { /* private window */ }
+  // 建造 mode is a per-conversation choice. The Host records the mode of each conversation's latest
+  // turn (`weave`); this machine remembers a switch made since, which no turn has carried yet.
+  const [projectModeIds, setProjectModeIds] = useState<string[]>(() => readModeIds("loom.projectMode"));
+  const [chatModeIds, setChatModeIds] = useState<string[]>(() => readModeIds("loom.chatMode"));
+  const isBuild = useCallback((entry: { id: string; weave?: boolean }) =>
+    projectModeIds.includes(entry.id) || (Boolean(entry.weave) && !chatModeIds.includes(entry.id)), [projectModeIds, chatModeIds]);
+  const projectMode = Boolean(thread && isBuild({ id: thread.id, weave: (loom.threads.find((entry) => entry.id === thread.id) ?? thread).weave }));
+  const rememberMode = useCallback((id: string, mode: "chat" | "project") => {
+    const into = (key: string, keep: boolean) => (ids: string[]) => {
+      const next = keep ? [...ids.filter((item) => item !== id), id].slice(-50) : ids.filter((item) => item !== id);
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* private window */ }
       return next;
-    });
-  }, [thread?.id]);
+    };
+    setProjectModeIds(into("loom.projectMode", mode === "project"));
+    setChatModeIds(into("loom.chatMode", mode === "chat"));
+  }, []);
+  const setProjectMode = useCallback((mode: "chat" | "project") => {
+    if (thread?.id) rememberMode(thread.id, mode);
+  }, [thread?.id, rememberMode]);
+  // The hub's history card: the 建造 conversations, the way the sidebar holds them all.
+  const buildThreads = useMemo(() => loom.threads
+    .filter((entry) => !entry.archived && !entry.parentThreadId && isBuild(entry))
+    .map((entry) => ({ id: entry.id, title: entry.title, updatedAt: entry.updatedAt, live: Boolean(entry.active) })),
+  [loom.threads, isBuild]);
   // The header's switch carries the composer into the hub and back (modeMorph.ts); both views stay mounted for it.
   const { morph: modeMorph, change: changeMode } = useModeMorph(thread?.id, setProjectMode);
   const [modeStarting, setModeStarting] = useState(false);
@@ -651,11 +669,7 @@ export default function App() {
     setModeStarting(true);
     try {
       const created = await loom.createEmptyThread();
-      setProjectModeIds(ids => {
-        const next = [...ids.filter(id => id !== created.id), created.id].slice(-50);
-        try { localStorage.setItem("loom.projectMode", JSON.stringify(next)); } catch { /* private window */ }
-        return next;
-      });
+      rememberMode(created.id, "project");
     } catch (cause) {
       setModeError(errorMessage(cause));
     } finally {
@@ -1727,7 +1741,13 @@ export default function App() {
                            } : undefined}
                            models={loom.models} onSwitchModel={loom.switchModelProfile} onReasoning={loom.setReasoning}
                            items={transcriptItems} chatting={running} onInterrupt={loom.interrupt} onApproval={handleApproval}
-                           onChat={(input) => loom.send(input, [], undefined, { weave: true })} />
+                           onChat={(input) => loom.send(input, [], undefined, { weave: true })}
+                           history={buildThreads} onOpenThread={loom.openThread}
+                           onNewThread={async () => {
+                             // In the same project (or folder), straight into the hub.
+                             await loom.newThread(thread.projectId ? undefined : thread.workspace, thread.projectId || undefined);
+                             rememberMode((await loom.createEmptyThread()).id, "project");
+                           }} />
             </Suspense>
           </div>
         ) : null}

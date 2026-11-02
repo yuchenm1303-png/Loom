@@ -204,6 +204,7 @@ html[data-loom-theme="light"] .pf-stage {
 [data-glide="plan"], [data-branch="plan"] { --pf-hue: #85b8f2; }
 .pf-agent-slot, [data-branch="agents"] { --pf-hue: #8fc9e8; }
 .pf-loom, [data-branch="loom"] { --pf-hue: #c3a6f5; }
+[data-glide="history"], [data-branch="history"] { --pf-hue: #e8b48a; }
 .pf-card-icon { display: inline-grid; place-items: center; color: var(--pf-hue, var(--pl-muted)); }
 
 .pf-count {
@@ -830,6 +831,24 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-agent-live[data-waiting] { background: var(--pf-warn); }
 
 .pf-empty { margin: 0; padding: 6px 4px 4px; color: var(--pl-faint); font-size: 12px; }
+/* The history card: a row per 建造 conversation, the one open here marked and not a button. */
+.pf-slot[data-glide="history"] { min-height: 118px; }
+/* A button's minimum is its whole title: the track holds the rows to the card, and titles end in an ellipsis. */
+.pf-history > .pf-list { grid-template-columns: minmax(0, 1fr); overflow-x: hidden; }
+.pf-history-row {
+  min-width: 0;
+  border: 0;
+  color: var(--pl-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-history-row:hover:not(:disabled) { background: var(--pf-raise); color: var(--pl-ink); }
+.pf-history-row[aria-current] { box-shadow: inset 2px 0 0 var(--pf-hue); color: var(--pl-ink); cursor: default; }
+.pf-history-row:disabled:not([aria-current]) { opacity: .5; cursor: default; }
+.pf-row > .pf-agent-live { flex: none; }
+.pf-history-when { flex: none; color: var(--pl-faint); font-size: 11.5px; font-style: normal; }
 .pf-agents-empty { align-self: flex-start; padding-left: 4px; }
 .pf-loading { display: grid; place-items: center; min-height: 100%; }
 /* Before the first read: one quiet line once it takes a while, or why it failed and a way to try again. */
@@ -1319,6 +1338,7 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 .pf-chip-button:focus-visible,
 .pf-model-tab:focus-visible,
 .pf-model-option:focus-visible,
+.pf-history-row:focus-visible,
 .pf-bubble-more:focus-visible,
 .pf-attention button:focus-visible,
 .pf-stepper button:focus-visible,

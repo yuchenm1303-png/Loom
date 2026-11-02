@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
-import { raisedBudget, readableError, toConversation, toFlowData, toModelChoice, type ProjectOverview } from "./projectOverview";
+import { raisedBudget, readableError, toConversation, toFlowData, toHistory, toModelChoice, type ProjectOverview } from "./projectOverview";
 import type { ApprovalDecision, ModelSnapshot, TranscriptItem, ProjectRecord } from "../types/loom";
 import { ProjectWorkspacePicker } from "./ProjectWorkspacePicker";
 
@@ -22,7 +22,7 @@ const START_EPISODES = 400;
  *  (the composer's morph lands on it) and the first read then refreshes it. */
 const lastOverview = new Map<string, ProjectOverview>();
 
-export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt, onApproval, onChangeWorkspace, projects = [], onSelectProject }: {
+export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt, onApproval, onChangeWorkspace, projects = [], onSelectProject, history, onOpenThread, onNewThread }: {
   threadId: string; workspace?: string; model?: string;
   onChangeWorkspace?(path: string): Promise<unknown>;
   projects?: ProjectRecord[]; onSelectProject?(id: string): Promise<unknown>;
@@ -34,6 +34,9 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   onChat?(input: string): Promise<unknown>; onInterrupt?(): Promise<unknown> | void;
   /** Answering a step the agent asks the person to allow (the chat's approval card). */
   onApproval?(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): unknown;
+  /** The 建造 conversations for the history card; opening one, or beginning a new one. */
+  history?: { id: string; title: string; updatedAt: string; live?: boolean }[];
+  onOpenThread?(id: string): Promise<unknown> | void; onNewThread?(): Promise<unknown> | void;
 }) {
   const { language } = useI18n();
   const lang = language === "zh-CN" ? "zh" : "en";
@@ -137,7 +140,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     window.loom.call(`projectRun/${action}`, { operationId: crypto.randomUUID(), runId: run!.id, expectedRevision: run!.revision, ...extra }));
   const workspaceName = (workspace || "").split(/[\\/]/).filter(Boolean).pop() || "";
   const data = { ...toFlowData(overview, now, lang, model || "", workspaceName), models: toModelChoice(models),
-                 conversation: conversation.messages, activity: conversation.activity, chatting };
+                 conversation: conversation.messages, activity: conversation.activity, chatting,
+                 history: history ? toHistory(history, threadId, now, lang) : undefined };
   const proposal = data.phase === "draft" ? overview.proposal : null;
   data.repository.path = run?.repository || workspace;
   if (!run) data.repository.branch = overview.workspace?.branch || "—";
@@ -172,6 +176,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       onDismiss: proposal ? () => act(() => window.loom.call("projectWeave/dismiss", { threadId, proposalId: proposal.id })) : undefined,
       onChat: onChat ? (text) => { setError(""); void onChat(text).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
       onInterrupt: onInterrupt ? () => { void onInterrupt(); } : undefined,
+      onOpenThread: onOpenThread ? (id) => { void onOpenThread(id); } : undefined,
+      onNewThread: onNewThread ? () => act(async () => { await onNewThread(); }) : undefined,
       onApproval: onApproval ? (item, decision, feedback) => { void onApproval(item, decision, feedback); } : undefined,
       onPause: () => run && control("pause"),
       onResume: () => run && control("resume"),

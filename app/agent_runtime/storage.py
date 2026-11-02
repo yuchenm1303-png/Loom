@@ -618,6 +618,7 @@ class FileAgentSessionStore:
             permission_mode=PermissionMode(payload.get("permission_mode") or PermissionMode.APPROVAL.value),
             status=AgentStatus(payload.get("status") or AgentStatus.IDLE.value),
             model_vision=payload.get("model_vision") if isinstance(payload.get("model_vision"), bool) else None,
+            weave=payload.get("weave") is True,
             usage=_usage_from_dict(payload.get("usage")),
             messages=[_message_from_dict(message) for message in payload.get("messages", [])])
 

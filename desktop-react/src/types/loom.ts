@@ -71,6 +71,8 @@ export interface ThreadRecord {
   active?: boolean;
   archived?: boolean;
   usage?: Usage;
+  /** Its latest turn was spoken in 建造 mode (the Host's record of the mode). */
+  weave?: boolean;
 }
 
 export interface TranscriptItem {
