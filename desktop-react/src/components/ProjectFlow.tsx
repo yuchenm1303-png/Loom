@@ -471,13 +471,13 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const [workers, setWorkers] = useState(data.workers);
   const [tokens, setTokens] = useState(START_BUDGETS[2]);
   const [fullAccess, setFullAccess] = useState(false);
-  // A new proposal brings the agent's suggestion for both; the person may change them before starting.
+  const settingsTouched = useRef({ workers: false, tokens: false });
+  // Suggestions fill untouched controls; a proposal must not overwrite the person's draft choices.
   const proposal = data.proposal;
   useEffect(() => {
     if (!proposal) return;
-    setWorkers(Math.min(data.maxWorkers, Math.max(1, proposal.maxWorkers || 1)));
-    setTokens(START_BUDGETS.includes(proposal.tokenBudget) ? proposal.tokenBudget : START_BUDGETS[2]);
-    setFullAccess(false);  // the sandbox unless the person chooses otherwise, every time
+    if (!settingsTouched.current.workers) setWorkers(Math.min(data.maxWorkers, Math.max(1, proposal.maxWorkers || 1)));
+    if (!settingsTouched.current.tokens) setTokens(START_BUDGETS.includes(proposal.tokenBudget) ? proposal.tokenBudget : START_BUDGETS[2]);
   }, [proposal?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
   const register = useCallback((id: string, side: Side, node: HTMLElement | null) => {
     if (node) cards.current.set(id, { side, node }); else cards.current.delete(id);
@@ -618,7 +618,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     setPicked([]);
   };
   const stopping = Boolean(data.chatting && !draft.trim() && actions.onInterrupt);
-  const settingUp = draftMode && Boolean(proposal);
+  const settingUp = draftMode;
   const addFiles = async () => {
     const paths = await actions.onPickFiles?.() || [];
     if (!paths.length) return;
@@ -879,9 +879,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           </div>
           {actions.error ? <p className="pf-error" role="alert">{actions.error}</p> : null}
           <footer className="pf-composer-foot">
-            {/* The run's settings as one bar: review is a fact, budget and agents are set before a proposal starts.
-                Before there is a project or a proposal there is nothing to set: the hub is a chat composer. */}
-            {!draftMode || proposal ? (
+            {/* Settings stay visible from the first draft; a live run shows its actual immutable settings. */}
             <span className="pf-settings" role="group" aria-label={text.settings}>
               {settingUp ? (
                 <button type="button" className="pf-chip pf-chip-button" data-full={fullAccess || undefined} aria-pressed={fullAccess}
@@ -898,23 +896,22 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               )}
               {settingUp ? (
                 <button type="button" className="pf-chip pf-chip-button" title={text.budgetHint}
-                        onClick={() => setTokens((value) => START_BUDGETS[(START_BUDGETS.indexOf(value) + 1) % START_BUDGETS.length])}>
+                        onClick={() => { settingsTouched.current.tokens = true; setTokens((value) => START_BUDGETS[(START_BUDGETS.indexOf(value) + 1) % START_BUDGETS.length]); }}>
                   <span className="pf-chip-value" key={tokens}>{compact(tokens)}</span><span className="pf-chip-unit">token</span>
                 </button>
               ) : null}
               <span className="pf-stepper" role="group" aria-label={text.agents} title={text.agents} data-editable={settingUp || undefined}>
                 {settingUp ? (
                   <button type="button" aria-label={text.fewer} disabled={shownWorkers <= 1}
-                          onClick={() => setWorkers((count) => Math.max(1, count - 1))}><Minus size={10} strokeWidth={2.4} /></button>
+                          onClick={() => { settingsTouched.current.workers = true; setWorkers((count) => Math.max(1, count - 1)); }}><Minus size={10} strokeWidth={2.4} /></button>
                 ) : null}
                 <Bot size={13} /><span className="pf-stepper-value" key={shownWorkers}>{shownWorkers}</span>
                 {settingUp ? (
                   <button type="button" aria-label={text.more} disabled={shownWorkers >= data.maxWorkers}
-                          onClick={() => setWorkers((count) => Math.min(data.maxWorkers, count + 1))}><Plus size={10} strokeWidth={2.4} /></button>
+                          onClick={() => { settingsTouched.current.workers = true; setWorkers((count) => Math.min(data.maxWorkers, count + 1)); }}><Plus size={10} strokeWidth={2.4} /></button>
                 ) : null}
               </span>
             </span>
-            ) : null}
             {data.models ? (
               // The model the agents think with. The chip grows its card out of the hub on a cable, and takes it back.
               <button type="button" className="pf-model pf-model-chip" data-open={modelOpen || undefined}

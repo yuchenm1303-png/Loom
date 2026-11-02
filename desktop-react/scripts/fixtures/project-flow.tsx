@@ -202,6 +202,8 @@ function Preview() {
   const [workers, setWorkers] = useState(Number(params.get("workers") || 2));
   const [model, setModel] = useState(MODELS[0].selection);
   const [picks, setPicks] = useState(0);
+  const [draftProposal, setDraftProposal] = useState<typeof PROPOSAL | null>(null);
+  useEffect(() => { Object.assign(window, { projectControlsFixture: { propose: () => setDraftProposal({ ...PROPOSAL, id: crypto.randomUUID() }) } }); }, []);
   const current = MODELS.find((item) => item.selection === model)!;
   const [effort, setEffort] = useState("high");
   const [recent, setRecent] = useState<string[]>([MODELS[2].selection]);
@@ -226,7 +228,7 @@ function Preview() {
       </header>
       {mode === "project"
         ? <div className="project-mode-stage" style={{ gridRow: "2" }}>
-            <ProjectFlow data={{ ...turnTalk(variant(play(count, workers)), scene), models, references: REFERENCES, history: THREADS }}
+            <ProjectFlow data={{ ...turnTalk(variant(play(count, workers)), scene), ...(draftProposal ? { proposal: draftProposal } : {}), models, references: REFERENCES, history: THREADS }}
                          actions={{ onChat: () => {}, onInterrupt: () => {}, onApproval: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {}, onOpenThread: (id) => { (window as unknown as { opened: unknown }).opened = id; }, onNewThread: () => {},
                                     error: params.has("error") ? "Lost the Host; reconnecting…" : undefined,
                                     onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
