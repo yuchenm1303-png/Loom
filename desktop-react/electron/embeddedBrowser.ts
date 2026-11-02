@@ -591,7 +591,16 @@ export class EmbeddedBrowserManager {
       case "scroll": {
         const amount = Math.max(1, Math.min(3000, Number(args.amount) || 400));
         const signed = args.direction === "up" ? -amount : amount;
-        await wc.executeJavaScript("window.scrollBy(0," + signed + ")");
+        // An endless list appends rows a moment after a scroll reaches the end;
+        // a scroll that hit the bottom waits (at most 1.2 s) for the page to grow,
+        // so the state read next includes them (extension scrollPage does the same).
+        await wc.executeJavaScript("new Promise(done => { window.scrollBy(0," + signed + ");"
+          + " const root = document.scrollingElement || document.documentElement;"
+          + " if (!(" + signed + " > 0 && innerHeight + scrollY >= root.scrollHeight - 60)) return done(true);"
+          + " const height = root.scrollHeight, started = Date.now();"
+          + " const tick = () => root.scrollHeight > height ? setTimeout(() => done(true), 150)"
+          + " : Date.now() - started >= 1200 ? done(true) : setTimeout(tick, 50);"
+          + " setTimeout(tick, 50); })");
         break;
       }
       case "press_key": {

@@ -803,3 +803,14 @@ def test_field_value_observations_preserve_whitespace_and_escape_control_charact
     assert 'value: String(valued && !secret ? el.value : "").slice(0, 160)' in collect
     assert "JSON.stringify(item.value)" in collect
     assert 'value: clean(' not in collect
+
+
+def test_a_scroll_that_reaches_the_end_waits_for_an_endless_list(background):
+    """A state read right after the scroll still ended at the old last row."""
+
+    scroll = _function_body(background, "scrollPage")
+    assert "root.scrollHeight > height" in scroll
+    assert "new Promise" in scroll and "1200" in scroll
+    # A hidden tab renders no frames, so the page never sees its scroll event.
+    assert "withPointerVisible(tab, () => inject(tab.id, runPageAction, [\"scroll\"" in _function_body(background, "scroll")
+    assert "dy > 0 && window.innerHeight + window.scrollY >= root.scrollHeight - 60" in scroll

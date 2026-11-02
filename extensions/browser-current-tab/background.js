@@ -1341,7 +1341,13 @@ async function pressKey(args) {
 
 async function scroll(args) {
   const tab = await actionTab(args);
-  await inject(tab.id, runPageAction, ["scroll", { direction: String(args.direction || "down"), amount: Number(args.amount || 700) }]);
+  // A hidden tab renders no frames, so the page never sees its scroll event and
+  // an endless list or an IntersectionObserver never loads the next rows: five
+  // scrolls in a background tab stayed at row 20 (live, 2026-11-02). Front the
+  // tab for the scroll and its wait, like a click.
+  await withPointerVisible(tab, () => inject(tab.id, runPageAction, ["scroll", {
+    direction: String(args.direction || "down"), amount: Number(args.amount || 700),
+  }]));
   return afterTabAction(tab, 150);
 }
 
@@ -2408,7 +2414,23 @@ function runPageAction(action, args = {}) {
     const dx = direction === "left" ? -value : direction === "right" ? value : 0;
     const dy = direction === "up" ? -value : direction === "down" ? value : 0;
     window.scrollBy({ left: dx, top: dy, behavior: "auto" });
-    return true;
+    // An endless list appends its next rows a moment after a scroll reaches the
+    // end. Read at once, the state still ended at the old last row, the scroll
+    // read as "no change", and models tried End keys, waits and reloads instead
+    // (11-18 steps for one feed item, live 2026-11-02). Only a scroll that hit
+    // the bottom waits, and only until the page grows (at most 1.2 s).
+    const root = document.scrollingElement || document.documentElement;
+    if (!(dy > 0 && window.innerHeight + window.scrollY >= root.scrollHeight - 60)) return true;
+    const height = root.scrollHeight;
+    const started = Date.now();
+    return new Promise((resolve) => {
+      const tick = () => {
+        if (root.scrollHeight > height) setTimeout(() => resolve(true), 150);
+        else if (Date.now() - started >= 1200) resolve(true);
+        else setTimeout(tick, 50);
+      };
+      setTimeout(tick, 50);
+    });
   }
 
   function goBack() {

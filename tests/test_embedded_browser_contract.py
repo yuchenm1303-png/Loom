@@ -56,3 +56,9 @@ def test_the_decorative_hud_cannot_hold_an_action():
     assert source.count("executeJavaScriptInIsolatedWorld") == 1, "every HUD script goes through runHudScript"
     assert "Promise.race([wc.executeJavaScriptInIsolatedWorld" in source
     assert "HUD_SCRIPT_LIMIT_MS = 1500" in source
+
+
+def test_a_scroll_that_reaches_the_end_waits_for_an_endless_list():
+    source = MANAGER.read_text(encoding="utf-8")
+    assert "root.scrollHeight > height" in source
+    assert "innerHeight + scrollY >= root.scrollHeight - 60" in source
