@@ -291,7 +291,7 @@ def test_element_identity_survives_a_service_worker_restart(background):
     """
 
     assert "lastElementsByTab" not in background
-    assert "chrome.storage.session" in _function_body(background, "elementRefFor")
+    assert "chrome.storage.session" in _function_body(background, "elementTargetFor")
     assert "chrome.storage.session" in _function_body(background, "rememberElements")
 
 
@@ -814,3 +814,24 @@ def test_a_scroll_that_reaches_the_end_waits_for_an_endless_list(background):
     # A hidden tab renders no frames, so the page never sees its scroll event.
     assert "withPointerVisible(tab, () => inject(tab.id, runPageAction, [\"scroll\"" in _function_body(background, "scroll")
     assert "dy > 0 && window.innerHeight + window.scrollY >= root.scrollHeight - 60" in scroll
+
+
+def test_elements_inside_frames_are_read_and_acted_on(background):
+    """A payment form in a (cross-origin) iframe had no index at all."""
+
+    collect = _function_body(background, "collectFrameStates")
+    assert "allFrames: true" in collect
+    assert "item.result.url === frame.src" in collect  # matched by URL first, then in order
+    assert "rect.x + frame.x" in collect
+    assert "f|${child.frameId}|${ordinal}|${item.loom_id}" in collect
+    target = _function_body(background, "elementTargetFor")
+    assert "frameId: Number(framed[1])" in target
+    assert "frameIds: [frameId]" in _function_body(background, "inject")
+    point = _function_body(background, "elementPoint")
+    assert '"frame_offset"' in point and "point.x + offset.x" in point
+    # A cross-origin frame takes focus from a native click, not from script.
+    typing = _function_body(background, "typeText")
+    assert "if (element.frameId)" in typing and "dispatchNativeClick" in typing
+    assert "undefined, element.frameId" in typing
+    # Actions that cannot reach into a frame say so instead of acting on the top page.
+    assert "inside an embedded frame" in _function_body(background, "elementRefFor")

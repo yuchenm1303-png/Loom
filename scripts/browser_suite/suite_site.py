@@ -81,6 +81,7 @@ class Site:
             "feed": {"selected": "Item 73"},
             "newtab": {"api_key": self.api_key},
             "iframe": {"holder": "Grace Hopper", "amount": "25"},
+            "xframe": {"holder": "Alan Turing", "amount": "40"},
             "extract": {"answer": f"{bob_october:.2f}"},
             "widget": {"quantity": "4"},
             "modal": {"deleted": "Old notes", "remaining": 3},
@@ -212,12 +213,16 @@ saved('newtab').then(s => { if (s.api_key) document.getElementById('done').textC
         if path == "/embed":
             return page("Checkout", """<h2>Checkout</h2><p>Pay with the secure form below.</p>
 <iframe src='/payframe' style='width:420px;height:220px;border:1px solid #888'></iframe>""")
+        if path == "/embed-cross":
+            # Payment frames are usually another origin: localhost is not 127.0.0.1.
+            return page("Checkout", f"""<h2>Checkout</h2><p>Pay with the secure form below.</p>
+<iframe src='http://localhost:{self.port}/payframe?task=xframe' style='width:420px;height:220px;border:1px solid #888'></iframe>""")
         if path == "/payframe":
             return page("Payment", """<label for=h>Card holder</label><input id=h><label for=a>Amount</label><input id=a type=number>
 <button id=pay>Pay</button><div id=done class=done></div>
 <script>
 document.getElementById('pay').onclick = async () => {
-  await report('iframe', {holder: document.getElementById('h').value.trim(), amount: document.getElementById('a').value});
+  await report(new URLSearchParams(location.search).get('task') || 'iframe', {holder: document.getElementById('h').value.trim(), amount: document.getElementById('a').value});
   document.getElementById('done').textContent = 'Payment sent'; };
 </script>""")
         if path == "/orders":
@@ -289,5 +294,6 @@ def serve(site: Site) -> ThreadingHTTPServer:
             pass
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    site.port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

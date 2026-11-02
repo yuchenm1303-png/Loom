@@ -613,12 +613,12 @@ async function placeInLoomGroup(tab, { adopted = false } = {}) {
 
 const isInjectableUrl = (url) => /^https?:\/\//i.test(String(url || ""));
 
-async function inject(tabId, func, args = [], world) {
+async function inject(tabId, func, args = [], world, frameId = 0) {
   // Content scripts run in the ISOLATED world, which is governed by the
   // extension's own MV3 policy, and that policy forbids evaluating a string as
   // JavaScript. Anything that has to eval must run in MAIN, where the page's own
   // CSP applies instead - most pages allow it, a strict-CSP page does not.
-  const target = { tabId };
+  const target = frameId ? { tabId, frameIds: [frameId] } : { tabId };
   const options = { target, func, args };
   if (world) options.world = world;
   const results = await chrome.scripting.executeScript(options);
@@ -637,7 +637,7 @@ async function collectStateForTab(tab, options = {}) {
   const [tabs, observation] = await Promise.all([
     listOpenTabs(tab),
     injectable
-      ? inject(tab.id, runPageAction, ["state", { show_hud: options.showHud !== false }]).then(
+      ? collectFrameStates(tab.id, options.showHud !== false).then(
         (page) => ({ page }),
         (cause) => ({ error: cause instanceof Error ? cause.message : String(cause) }),
       )
@@ -672,7 +672,7 @@ async function collectStateForTab(tab, options = {}) {
   if ("error" in observation) return { ...base, errors: [observation.error] };
   try {
     const page = observation.page;
-    await rememberElements(tab.id, page.elements);
+    await rememberElements(tab.id, page.elements, page.element_refs);
     return {
       ...base,
       url: page.url || base.url,
@@ -686,11 +686,14 @@ async function collectStateForTab(tab, options = {}) {
   }
 }
 
-async function rememberElements(tabId, elements) {
+async function rememberElements(tabId, elements, refs = null) {
   return withOwnershipLock(async () => {
     // Only the opaque loom_id is kept: it is all elementRefFor needs, and storing
-    // the serialized element would put page text into extension storage.
-    const ids = (Array.isArray(elements) ? elements : []).map((item) => String(item?.loom_id || ""));
+    // the serialized element would put page text into extension storage. An
+    // element inside a frame is kept as "f|frameId|ordinal|loom_id".
+    const ids = Array.isArray(refs)
+      ? refs.map(String)
+      : (Array.isArray(elements) ? elements : []).map((item) => String(item?.loom_id || ""));
     const stored = await chrome.storage.session.get(ELEMENT_IDS_KEY);
     const byTab = { ...(stored[ELEMENT_IDS_KEY] || {}) };
     byTab[String(tabId)] = ids;
@@ -707,11 +710,88 @@ async function forgetElements(tabId) {
   });
 }
 
-async function elementRefFor(tabId, index) {
+async function elementTargetFor(tabId, index) {
   const stored = await chrome.storage.session.get(ELEMENT_IDS_KEY);
-  const loomId = ((stored[ELEMENT_IDS_KEY] || {})[String(tabId)] || [])[Number(index)];
-  if (!loomId) throw new Error("Element index is not available. Refresh browser_state and retry.");
-  return loomId;
+  const ref = ((stored[ELEMENT_IDS_KEY] || {})[String(tabId)] || [])[Number(index)];
+  if (!ref) throw new Error("Element index is not available. Refresh browser_state and retry.");
+  const framed = /^f\|(\d+)\|(\d+)\|(.+)$/.exec(ref);
+  return framed
+    ? { frameId: Number(framed[1]), ordinal: Number(framed[2]), loomId: framed[3] }
+    : { frameId: 0, ordinal: -1, loomId: ref };
+}
+
+async function elementRefFor(tabId, index) {
+  const target = await elementTargetFor(tabId, index);
+  if (target.frameId) {
+    throw new Error("This element is inside an embedded frame; use browser_click, browser_type or browser_select on it.");
+  }
+  return target.loomId;
+}
+
+// Payment forms, embedded editors and sign-in widgets live in iframes, often
+// cross-origin, and their fields had no index at all: the model typed into
+// them by screen coordinates, 11-16 steps where browser-use took 5.5 (live, in
+// the user's Edge, 2026-11-02). Every frame is read in one executeScript; the
+// top frame lists its visible iframes, each frame's elements are matched to one
+// (by URL, then in order) and placed in page coordinates. Frames nested deeper
+// than one level are not read.
+async function collectFrameStates(tabId, showHud) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true }, func: runPageAction, args: ["state", { show_hud: showHud }],
+  });
+  const top = results.find((item) => !item.frameId);
+  const page = top?.result;
+  if (!page || typeof page !== "object") throw new Error("The page did not answer the state read.");
+  if (page.__loomError) throw new Error(page.__loomError);
+  const frames = Array.isArray(page.frames) ? page.frames : [];
+  const children = results.filter((item) => item.frameId && item.result && Array.isArray(item.result.elements));
+  const refs = (page.elements || []).map((item) => String(item?.loom_id || ""));
+  if (!frames.length || !children.length) return { ...page, element_refs: refs };
+
+  const paired = new Map();
+  const taken = new Set();
+  frames.forEach((frame, ordinal) => {
+    const child = children.find((item) => !taken.has(item) && frame.src && item.result.url === frame.src);
+    if (child) { paired.set(ordinal, child); taken.add(child); }
+  });
+  const loose = children.filter((item) => !taken.has(item));
+  const open = frames.map((_, ordinal) => ordinal).filter((ordinal) => !paired.has(ordinal));
+  if (loose.length === open.length) open.forEach((ordinal, k) => paired.set(ordinal, loose[k]));
+
+  const sections = [];
+  let index = refs.length;
+  for (const [ordinal, child] of [...paired.entries()].sort((a, b) => a[0] - b[0])) {
+    const frame = frames[ordinal];
+    const state = child.result;
+    const lines = [`Frame ${ordinal + 1} (${state.url}) at ${frame.x},${frame.y} ${frame.width}x${frame.height}:`];
+    (state.elements || []).forEach((item, k) => {
+      const rect = item.rect || { x: 0, y: 0, width: 0, height: 0 };
+      const body = (state.element_bodies || [])[k] || `<${item.tag}>`;
+      lines.push(`[${index}] ${body} rect=${rect.x + frame.x},${rect.y + frame.y},${rect.width}x${rect.height}`);
+      refs.push(`f|${child.frameId}|${ordinal}|${item.loom_id}`);
+      index += 1;
+    });
+    if (state.text) lines.push(`Frame ${ordinal + 1} text: ${state.text}`);
+    sections.push(lines.join("\n"));
+  }
+  const marker = "\n\nVisual surfaces";
+  const dom = String(page.dom || "");
+  const at = dom.indexOf(marker);
+  const block = sections.join("\n\n");
+  const merged = at < 0 ? `${dom}\n\n${block}` : `${dom.slice(0, at)}\n\n${block}${dom.slice(at)}`;
+  return { ...page, dom: merged, element_refs: refs };
+}
+
+// The point to click for an element, in the top viewport. A frame's element is
+// placed by its iframe's offset, after the iframe is scrolled into view.
+async function elementPoint(tab, target, index) {
+  if (!target.frameId) {
+    return inject(tab.id, runPageAction, ["prepare_click", { loom_id: target.loomId, index: Number(index) }]);
+  }
+  const offset = await inject(tab.id, runPageAction, ["frame_offset", { ordinal: target.ordinal }]);
+  const point = await inject(tab.id, runPageAction, ["prepare_click", { loom_id: target.loomId, index: Number(index) }],
+    undefined, target.frameId);
+  return { ...point, x: point.x + offset.x, y: point.y + offset.y };
 }
 
 // Element actions can start a navigation. navigate() and refresh() already wait
@@ -911,10 +991,11 @@ async function waitForTabComplete(tabId) {
 
 async function withElement(args, action, extra = {}, waitMs = 200, options = {}) {
   const tab = await actionTab(args);
-  const loomId = await elementRefFor(tab.id, args.index);
+  const target = await elementTargetFor(tab.id, args.index);
   return withNavigationWatch(
     tab.id,
-    () => inject(tab.id, runPageAction, [action, { ...extra, loom_id: loomId, index: Number(args.index) }]),
+    () => inject(tab.id, runPageAction, [action, { ...extra, loom_id: target.loomId, index: Number(args.index) }],
+      undefined, target.frameId),
     waitMs,
     options,
   );
@@ -1136,13 +1217,11 @@ async function sendNativeText(target, text) {
 
 async function click(args) {
   const tab = await actionTab(args);
-  const loomId = await elementRefFor(tab.id, args.index);
+  const element = await elementTargetFor(tab.id, args.index);
   return withNavigationWatch(tab.id, async () => {
     let expected = false;
     const native = await withNativeInput(tab.id, async (target) => {
-      const point = await inject(tab.id, runPageAction, ["prepare_click", {
-        loom_id: loomId, index: Number(args.index),
-      }]);
+      const point = await elementPoint(tab, element, args.index);
       expected = point.navigation_expected;
       await withPointerVisible(tab, () => dispatchNativeClick(target, point.x, point.y, "left"));
     });
@@ -1201,13 +1280,19 @@ async function hover(args) {
 
 async function typeText(args) {
   const tab = await actionTab(args);
-  const loomId = await elementRefFor(tab.id, args.index);
+  const element = await elementTargetFor(tab.id, args.index);
   const text = String(args.text || "");
   return withNavigationWatch(tab.id, async () => {
     const native = await withNativeInput(tab.id, async (target) => {
+      if (element.frameId) {
+        // A cross-origin frame may not take focus from script without a user
+        // gesture; a native click on the field gives it both.
+        const point = await elementPoint(tab, element, args.index);
+        await withPointerVisible(tab, () => dispatchNativeClick(target, point.x, point.y, "left"));
+      }
       await inject(tab.id, runPageAction, ["prepare_type", {
-        loom_id: loomId, index: Number(args.index), clear: args.clear !== false,
-      }]);
+        loom_id: element.loomId, index: Number(args.index), clear: args.clear !== false,
+      }], undefined, element.frameId);
       // Let Chromium perform editing: constraints, selection, beforeinput/input,
       // and framework state belong to the browser, not a DOM value assignment.
       if (text) await chrome.debugger.sendCommand(target, "Input.insertText", { text });
@@ -2033,12 +2118,35 @@ function runPageAction(action, args = {}) {
     return { focused: activeTag(), changed: document.activeElement === best.el };
   }
 
+  // The iframes a person can see, in the order the state lists them.
+  function visibleFrames() {
+    return composedElements().filter((el) => el instanceof HTMLIFrameElement && visible(el)).filter((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width >= 24 && rect.height >= 24;
+    });
+  }
+
+  function frameOffset() {
+    const frame = visibleFrames()[Number(args.ordinal)];
+    if (!frame) throw new Error("The frame is no longer on the page. Refresh browser_state and retry.");
+    let rect = frame.getBoundingClientRect();
+    if (rect.top < 0 || rect.bottom > window.innerHeight || rect.left < 0 || rect.right > window.innerWidth) {
+      frame.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      rect = frame.getBoundingClientRect();
+    }
+    return { x: Math.round(rect.left + frame.clientLeft), y: Math.round(rect.top + frame.clientTop) };
+  }
+
   function collectPageState(showHud = true) {
+    if (window !== window.top) showHud = false;
     const errors = [];
     const elements = [];
     try {
       const candidates = collectClickableElements();
-      const named = (el) => `${el.tagName}|${clean(el.innerText || el.textContent || "")}|${el.getAttribute("aria-label") || ""}`;
+      // Whatever the line will show: two fields with different labels are not one name.
+      const named = (el) => [el.tagName, clean(el.innerText || el.textContent || ""), el.getAttribute("aria-label") || "",
+        el.getAttribute("placeholder") || "", el.getAttribute("type") || "",
+        el.labels && el.labels.length ? clean(el.labels[0].innerText || "") : ""].join("|");
       const seen = new Map();
       for (const el of candidates) seen.set(named(el), (seen.get(named(el)) || 0) + 1);
       for (const el of candidates) {
@@ -2103,7 +2211,7 @@ function runPageAction(action, args = {}) {
       );
     }
 
-    const elementLines = elements.map((item) => {
+    const elementBodies = elements.map((item) => {
       const attrs = [];
       if (item.text) attrs.push(`text="${item.text}"`);
       if (item.context) attrs.push(`context="${item.context}"`);
@@ -2117,8 +2225,11 @@ function runPageAction(action, args = {}) {
       // the model to type it back. This states the fact and cannot be mistaken
       // for the content.
       else if (item.filled) attrs.push('filled="true" value-withheld="password"');
-      attrs.push(`rect=${item.rect.x},${item.rect.y},${item.rect.width}x${item.rect.height}`);
-      return `[${item.index}] <${item.tag}> ${attrs.join(" ")}`;
+      return `<${item.tag}>${attrs.length ? ` ${attrs.join(" ")}` : ""}`;
+    });
+    const elementLines = elementBodies.map((body, k) => {
+      const rect = elements[k].rect;
+      return `[${elements[k].index}] ${body} rect=${rect.x},${rect.y},${rect.width}x${rect.height}`;
     });
 
     const surfaceLines = visualSurfaces.map((item) => {
@@ -2146,6 +2257,16 @@ function runPageAction(action, args = {}) {
         clean(document.body?.innerText || "", MAX_TEXT),
       ].join("\n"),
       elements,
+      element_bodies: elementBodies,
+      frames: window === window.top ? visibleFrames().map((frame) => {
+        const rect = frame.getBoundingClientRect();
+        return {
+          src: frame.src || (frame.hasAttribute("srcdoc") ? "about:srcdoc" : ""),
+          x: Math.round(rect.left + frame.clientLeft), y: Math.round(rect.top + frame.clientTop),
+          width: Math.round(frame.clientWidth), height: Math.round(frame.clientHeight),
+        };
+      }) : [],
+      text: window === window.top ? "" : clean(document.body?.innerText || "", 1200),
       page_info: {
         element_count: elements.length,
         visual_surface_count: visualSurfaces.length,
@@ -2544,6 +2665,7 @@ function runPageAction(action, args = {}) {
   function dispatchPageAction() {
   switch (action) {
     case "state": return collectPageState(args.show_hud !== false);
+    case "frame_offset": return frameOffset();
     case "hud_status":
       showStatusHud(clean(args.title || "Browser action", 80), clean(args.subtitle || "Browser Use", 140));
       return true;

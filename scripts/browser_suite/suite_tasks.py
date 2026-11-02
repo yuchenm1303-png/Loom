@@ -17,6 +17,7 @@ PROMPTS = {
     "newtab": "On {base}/docs, get the API key from the developer page (its link opens a new tab) and save it in "
               "the API key field on the docs page.",
     "iframe": "On {base}/embed, pay 25 with card holder Grace Hopper.",
+    "xframe": "On {base}/embed-cross, pay 40 with card holder Alan Turing.",
     "extract": "On {base}/orders, what is the total of all orders by Bob Ng dated in October 2026? Reply with the "
                "amount.",
     "widget": "On {base}/widget, set the quantity to 4 and apply it.",
