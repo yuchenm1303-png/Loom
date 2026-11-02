@@ -658,6 +658,24 @@ def test_typing_is_paced_for_remote_desktops_but_bounded(background):
     assert "KEY_INTERVAL_BUDGET_MS" in native
 
 
+def test_native_clicks_front_a_background_tab_only_for_the_click(background):
+    """Chromium holds mouse input for a hidden widget.
+
+    Loom's tabs open in the background, and every native click on one waited
+    about five seconds and landed, if at all, the next time the tab was shown
+    (live, 2026-11-02). Like screenshots, a click fronts the tab and hands the
+    user's tab back.
+    """
+
+    for name in ("click", "clickAt"):
+        assert "withPointerVisible(tab, () => dispatchNativeClick(" in _function_body(background, name)
+    visible = _function_body(background, "withPointerVisible")
+    assert "withWindowLock" in visible
+    assert "active: true" in visible
+    assert "keyboard_target_ready" in visible
+    assert "restore" in visible and "finally" in visible
+
+
 def test_keyboard_actions_hand_focus_back_to_a_visual_surface(background):
     """Keys reach a canvas client only while its element holds focus."""
 

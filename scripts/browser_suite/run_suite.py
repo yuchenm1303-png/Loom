@@ -34,9 +34,11 @@ parser.add_argument("--max-steps", type=int, default=30)
 parser.add_argument("--browser", default=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
                     help="browser executable for the isolated backend (a temporary profile is used)")
 parser.add_argument("--headless", action="store_true")
-parser.add_argument("--backend", choices=("isolated", "extension"), default="isolated",
+parser.add_argument("--backend", choices=("isolated", "extension", "live"), default="isolated",
                     help="extension: a throwaway Chrome profile with a copy of the Loom extension, paired to a "
-                         "suite-only bridge port; the user's Chrome and Loom's own bridge are not touched")
+                         "suite-only bridge port; the user's Chrome and Loom's own bridge are not touched. "
+                         "live: the user's own Chrome through the bridge the running Loom shares (Loom running, "
+                         "extension connected); each task works in tabs it opens and releases them")
 parser.add_argument("--bridge-port", type=int, default=39333)
 args = parser.parse_args()
 
@@ -62,7 +64,24 @@ def stop_suite_bridge(port: int) -> None:
                 pass
 
 
+def close_suite_tabs(runtime, session_id, base):
+    """Close the tabs a task opened on the test app; releasing a controller leaves pages open."""
+
+    store = runtime.browser_sessions
+    for item in store.list(session_id) if store else ():
+        try:
+            for tab in store.tabs(session_id, item["browser_id"]).state.tabs:
+                tab = tab if isinstance(tab, dict) else getattr(tab, "__dict__", {})
+                if str(tab.get("url", "")).startswith(base):
+                    store.close_tab(session_id, item["browser_id"], str(tab.get("tab_id") or tab.get("id")))
+        except Exception as exc:
+            print(f"# tab cleanup: {type(exc).__name__}: {str(exc)[:120]}", file=sys.stderr)
+
+
 extension_chrome = None
+if args.backend == "live":
+    # Join the bridge the running Loom started, with its stored pairing credential.
+    os.environ["LOOM_BROWSER_BACKEND"] = "extension"
 if args.backend == "extension":
     stop_suite_bridge(args.bridge_port)
     import secrets
@@ -190,6 +209,8 @@ for _ in range(args.repeat):
             status, error = "error", f"{type(exc).__name__}: {str(exc)[:160]}"
         wall = round(time.perf_counter() - started, 1)
         mismatch = check(task, site.expected()[task], site, final_text)
+        if args.backend == "live":
+            close_suite_tabs(runtime, session.session_id, base)
         try:
             runtime.release_session_resources(session.session_id, reason="suite task finished")
         except Exception:

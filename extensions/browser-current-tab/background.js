@@ -1144,11 +1144,41 @@ async function click(args) {
         loom_id: loomId, index: Number(args.index),
       }]);
       expected = point.navigation_expected;
-      await dispatchNativeClick(target, point.x, point.y, "left");
+      await withPointerVisible(tab, () => dispatchNativeClick(target, point.x, point.y, "left"));
     });
     if (!native.ok) throw new Error(`Native browser click failed: ${native.error}`);
     return { ok: true, native_input: true, navigation_expected: expected };
   }, 250);
+}
+
+// Chromium routes mouse input through the visible widget. On a background tab
+// Input.dispatchMouseEvent waited about five seconds and the click landed, if at
+// all, the next time the tab was shown: a live sign-in "did not submit", then
+// had, two steps later (2026-11-02). insertText edits a hidden document, so only
+// pointer input fronts Loom's tab - for the click alone - and hands the user's
+// tab back the way screenshots do.
+async function withPointerVisible(tab, work) {
+  return withWindowLock(tab.windowId, async () => {
+    const current = await chrome.tabs.get(tab.id);
+    let restore = null;
+    if (!current.active) {
+      const [previous] = await chrome.tabs.query({ active: true, windowId: current.windowId });
+      restore = previous && previous.id !== current.id ? previous.id : null;
+      await chrome.tabs.update(current.id, { active: true });
+      if (isInjectableUrl(current.url || "")) {
+        const deadline = Date.now() + 1000;
+        while (!(await inject(current.id, runPageAction, ["keyboard_target_ready", {}]).catch(() => ({ visible: true }))).visible) {
+          if (Date.now() >= deadline) break;
+          await sleep(25);
+        }
+      }
+    }
+    try {
+      return await work();
+    } finally {
+      if (restore !== null) await chrome.tabs.update(restore, { active: true }).catch(() => {});
+    }
+  });
 }
 
 async function dispatchNativeClick(target, x, y, button) {
@@ -1202,7 +1232,7 @@ async function clickAt(args) {
     tab.id,
     async () => {
       const native = await withNativeInput(tab.id, async (target) => {
-        await dispatchNativeClick(target, x, y, button);
+        await withPointerVisible(tab, () => dispatchNativeClick(target, x, y, button));
       });
       if (native.ok) return { ok: true, native_input: true };
       throw new Error(`Native browser click failed: ${native.error}`);
