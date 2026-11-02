@@ -241,7 +241,10 @@ def _visible_changes(before, after) -> str:
     An action result said only "click completed"; when the page's confirmation
     was outside what the model read, it spent steps finding out whether the
     click worked - seven on one live task (2026-11-01). Index markers and bare
-    tags are ignored, so renumbering is not reported as a change.
+    tags are ignored, so renumbering is not reported as a change. Nothing is
+    said when nothing in the state changed: the state covers the page in view,
+    and "no text changed" over a confirmation rendered below the fold sent a
+    model debugging a click that had worked for six minutes (2026-11-01).
     """
 
     from collections import Counter
@@ -254,7 +257,7 @@ def _visible_changes(before, after) -> str:
     added = list((new - old).elements())
     removed = list((old - new).elements())
     if not added and not removed:
-        return "no visible text changed"
+        return ""
     parts = []
     for sign, lines, limit in (("+", added, _MAX_ADDED_LINES), ("-", removed, _MAX_REMOVED_LINES)):
         shown = [redact_browser_text(line)[:100] for line in lines[:limit]]

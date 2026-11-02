@@ -189,7 +189,8 @@ function more(n) {
   for (let i = 0; i < n; i++) { shown++; const row = document.createElement('div');
     row.innerHTML = `<p>Item ${shown} <button>Select</button></p>`;
     const id = shown; row.querySelector('button').onclick = async () => {
-      await report('feed', {selected: 'Item ' + id}); document.getElementById('done').textContent = 'Selected Item ' + id; };
+      await report('feed', {selected: 'Item ' + id}); row.querySelector('button').textContent = 'Selected';
+      document.getElementById('done').textContent = 'Selected Item ' + id; };
     list.appendChild(row); }
 }
 setTimeout(() => { document.getElementById('loading').remove(); more(20); }, 1200);
@@ -204,6 +205,7 @@ window.addEventListener('scroll', () => {
 <script>
 document.getElementById('save').onclick = async () => {
   await report('newtab', {api_key: document.getElementById('key').value.trim()}); document.getElementById('done').textContent = 'Key saved'; };
+saved('newtab').then(s => { if (s.api_key) document.getElementById('done').textContent = 'Saved key: ' + s.api_key.slice(0, 3) + '...' + s.api_key.slice(-2); });
 </script>""")
         if path == "/developer":
             return page("Developer", f"<h2>Developer page</h2><p>Your API key is <code id=k>{self.api_key}</code></p>")
@@ -230,6 +232,7 @@ customElements.define('qty-picker', class extends HTMLElement {
     root.innerHTML = `<label>Quantity <input id=q type=number value=1 min=1 max=9></label> <button id=apply>Apply</button>`;
     root.getElementById('apply').onclick = async () => {
       await report('widget', {quantity: root.getElementById('q').value}); document.getElementById('done').textContent = 'Quantity applied'; };
+    saved('widget').then(s => { if (s.quantity) root.getElementById('q').value = s.quantity; });
   }
 });
 </script>""")

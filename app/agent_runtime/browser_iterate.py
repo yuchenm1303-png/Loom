@@ -242,8 +242,9 @@ def browser_look_tool(runtime):
                            "viewport": {k: page.get(k) for k in ("width", "height", "dpr")}}})
 
     return AgentTool("browser_look",
-        "Look at a page while you edit it: reload it - by default only when you changed source in this turn; "
-        "otherwise the page is kept as it is (reload=true forces it, reload=false keeps in-page state, e.g. with hot reload) - "
+        "Look at a page while you edit it: reload it when you changed source in this turn, since that is how an "
+        "edit reaches the page, and otherwise keep the page as it is (reload=false keeps in-page state after an "
+        "edit too, e.g. with hot reload) - "
         "wait until it has loaded, fonts are ready and two frames have painted, screenshot it, and attach the "
         "image. From the second look on, the same page (and selector) is compared with the previous look: the "
         "result says what share of pixels changed and where, attaches both side by side, and says so when "

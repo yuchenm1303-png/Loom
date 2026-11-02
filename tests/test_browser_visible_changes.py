@@ -25,8 +25,9 @@ def test_removed_text_and_overflow_are_summarized():
     assert '"Row 0"' in changes and "(+4 more)" in changes and '- ["Loading..."]' in changes
 
 
-def test_an_unchanged_page_says_so():
-    assert _visible_changes(state(BEFORE), state(BEFORE)) == "no visible text changed"
+def test_an_unchanged_page_says_nothing():
+    # The state covers the page in view; a change below the fold is not "no change".
+    assert _visible_changes(state(BEFORE), state(BEFORE)) == ""
 
 
 def test_the_change_line_rides_in_the_transient_observation():
@@ -40,7 +41,7 @@ def test_the_change_line_rides_in_the_transient_observation():
 def test_browser_use_prefixes_are_not_page_text():
     before = "|SHADOW(open)|[2]<input id=u />\nSign in\n"
     after = "|SHADOW(open)|[9]<input id=u />\n*[11]<div />\nSign in\n"
-    assert _visible_changes(state(before), state(after)) == "no visible text changed"
+    assert _visible_changes(state(before), state(after)) == ""
 
 
 def test_extension_positions_moving_on_scroll_are_not_changes():
