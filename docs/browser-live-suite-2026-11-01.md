@@ -140,3 +140,15 @@ Open:
   offset, and real payment frames are cross-origin.
 - CI is red from tests outside the browser, so the router does not release; these fixes reach the installed
   app with the next manually dispatched release.
+
+### After 0.1.163 (port fix installed)
+
+Nine tasks through the app went from 1194 s / 104 steps / 12 failed calls to **720 s / 61 / 2**, all passing.
+Local pages now open in Loom Browser, and the iframe task took 4 steps, down from 28. Two more fixes came
+out of this run (3869fa2c, 8940668d):
+- **The first Loom Browser command after a start hung for 45 s.** It waited on the HUD script in a new tab
+  that had no document yet. HUD scripts now give up after 1.5 s.
+- **Endless lists did not load on scroll.** A background tab renders no frames, so the page never saw
+  its scroll event. Read straight after the scroll, the state also still ended at the old last row. A scroll
+  now fronts the tab, as a click does, and a scroll that reaches the bottom waits up to 1.2 s for the page to
+  grow. In the user's Edge, five scrolls now load rows 21–101 at 0.9 s each; before, they stayed at row 20.
