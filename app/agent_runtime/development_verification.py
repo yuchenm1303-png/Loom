@@ -455,6 +455,11 @@ class DevelopmentVerification:
         if receipts != state.get("observations", []):
             self.runtime._emit_event(session, E.VERIFICATION_UPDATED, data={**state, "observations": receipts})
 
+    def has_subjects(self, session) -> bool:
+        """Whether this turn has development work (changed source) to verify."""
+
+        return bool((self.latest(session) or {}).get("subjects"))
+
     def visual_evidence(self, session, refs, *, delivered_ids=()):
         state = self.latest(session) or {}
         generation = self.generation(state)

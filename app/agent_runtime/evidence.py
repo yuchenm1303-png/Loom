@@ -102,7 +102,15 @@ def record_check_tool(store):
             current_session = service.runtime.store.load(context.session_id)
             service.observe(current_session, scan_git=True)
             acceptance_evidence = service.execution_evidence(current_session, refs)
-        if kind == "visual" and arguments["verdict"] == "passed":
+        # With no development work in the turn there is nothing a visual pass
+        # could accept, and receipts are only kept for turns that changed source;
+        # the gate below then refused every visual check of a plain desktop task,
+        # and a model retried it 23 times in one live suite (2026-11-01). Such a
+        # check is recorded as the assistant's assessment, without acceptance.
+        # A check that names source paths is about development work and keeps the gate.
+        no_subjects = (service is not None and not arguments.get("subject_paths")
+                       and not service.has_subjects(service.runtime.store.load(context.session_id)))
+        if kind == "visual" and arguments["verdict"] == "passed" and not no_subjects:
             if service is None or not service.visual_evidence(service.runtime.store.load(context.session_id), refs):
                 return ToolResult(False, "A visual pass requires a current-generation executed interaction and an image "
                                   "delivered to the model. Cite both call IDs after exercising and inspecting the UI. "

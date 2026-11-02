@@ -324,3 +324,24 @@ def test_cancel_during_verification_recovery_ends_without_more_model_calls(tmp_p
         assert len(platform.requests) == 2
     finally:
         runtime.close()
+
+
+def test_a_visual_check_of_a_plain_desktop_task_is_recorded_without_acceptance(tmp_path):
+    # Live suite (2026-11-01): with no development work in the turn there are no
+    # receipts, the gate refused every visual check, and a model retried 23 times.
+    runtime, session, workspace = make_runtime(tmp_path, object())
+    (workspace / "note.txt").write_text("submitted")
+    session.current_turn_id = "turn"
+    runtime.store.save(session)
+    runtime.development_verification.begin(session)
+    try:
+        context = ToolContext(session.session_id, session.current_turn_id, workspace,
+            services={"development_verification": runtime.development_verification},
+            emit_event=lambda kind, data: runtime._emit_event(session, kind, data=data))
+        result = runtime.tools.get("record_check").handler(context, {"case_id": "form-submitted", "check_kind": "visual",
+            "expectation": "The form shows Submitted", "observed": "It shows Submitted", "verdict": "passed",
+            "evidence_refs": [{"path": "note.txt"}]})
+        assert result.ok is True
+        assert result.data["acceptance_evidence"] is False
+    finally:
+        runtime.close()

@@ -144,8 +144,12 @@ class ComputerTransientInputPlatform:
             for key, item in value.items():
                 # A text that is already a handle is stashed too: that is how a
                 # copied handle is recognised and refused when consumed.
-                if key == "text" and isinstance(item, str):
-                    result[key] = self._stash(str(item or ""))
+                # Numbers too: models send "3" or 2026 as JSON numbers, and a PIN
+                # is as private as a password (live probe, 2026-11-01).
+                if key == "text" and isinstance(item, (str, int, float)) and not isinstance(item, bool):
+                    text = item if isinstance(item, str) else (
+                        str(int(item)) if isinstance(item, float) and item.is_integer() else str(item))
+                    result[key] = self._stash(text)
                     changed = True
                 else:
                     new = self._stash_typed_text(item)

@@ -806,3 +806,15 @@ def test_a_missing_frame_id_error_names_the_current_one(rig):
     frame_id = rig.runtime.computer_sessions.latest(rig.context.session_id).observation.frame.frame_id
     with pytest.raises(ValueError, match=frame_id):
         rig.run({"action": {"type": "click", "control_id": "3"}})
+
+
+def test_numbers_sent_as_text_are_stashed_and_typed_as_their_digits():
+    class Inner:
+        def execute_chat(self, profile_id, request):
+            return ModelResponse(tool_calls=(ToolCall("c1", "computer_action", {
+                "action": {"actions": [{"type": "type", "text": 4711}, {"type": "type", "text": 3.0}]}}),))
+
+    platform = ComputerTransientInputPlatform(Inner())
+    batch = platform.execute_chat("p", None).tool_calls[0].arguments["action"]["actions"]
+    assert "4711" not in str(batch)
+    assert [platform.consume(step["text"]) for step in batch] == ["4711", "3"]
