@@ -59,7 +59,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 3
         run: |
-          python win32-local/tests/native_conpty_smoke.py
+          python -u win32-local/tests/native_conpty_smoke.py
           if ($LASTEXITCODE -ne 0) { throw "Native Windows x86 ConPTY smoke failed" }
       - name: Install desktop JS dependencies
         working-directory: desktop-react
