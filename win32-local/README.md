@@ -45,3 +45,22 @@ CI in `.github/workflows/windows-x86-local.yml` builds and executes the
 actual x86 Python runtime and native Electron package on a Windows runner.
 It produces **Loom-Setup-x86-<version>.exe** only when its gates pass.
 The existing production x64 workflow is unchanged.
+
+## Independent publishing (after real Windows x86 QA)
+
+The existing **Windows Release** workflow and `vX.Y.Z` stable tags remain
+**64-bit only**, exactly as before. Do not upload an IA32 package into
+`latest.yml` or replace `Loom-Setup-x64.exe`.
+
+Once the native x86 PR has been merged to `main` and physical Windows 10
+32-bit smoke checks pass, use **Windows x86 Local Preview Release** with
+`workflow_dispatch`, on `main`, input `revision=1` (or the next positive
+integer). That workflow builds and checks x86 again, then publishes a separate
+**GitHub prerelease** with a tag such as `win32-v0.1.168-r1` and one asset
+named `Loom-Setup-x86.exe`. It never increments the x64 version or publishes
+x64 updater metadata.
+
+The homepage's extra Windows 32-bit entry is intentionally release-driven:
+only a verified `win32-vX.Y.Z-rN` prerelease with the named x86 asset is
+offered as a direct download. Before that, visitors see a link to the Win32
+release listing (not an expired CI artifact).
