@@ -266,21 +266,22 @@ class WindowsNativeConPtyProcessBackend:
             return self._exit
 
     def read_stdout(self) -> str:
+        # ReadFile is deliberately blocking, matching pywinpty.read(). The
+        # ProcessSession owns a dedicated reader thread. PeekNamedPipe is not
+        # reliable on ConPTY endpoints after the hosted console closes and
+        # could silently discard buffered output from fast-lived commands.
         if not self._output:
             return ""
-        available = wintypes.DWORD()
-        if not self._kernel.PeekNamedPipe(
-            self._output, None, 0, None, ctypes.byref(available), None
-        ):
-            return ""
-        if not available.value:
-            return ""
-        size = min(int(available.value), 4096)
-        buf = ctypes.create_string_buffer(size)
+        buf = ctypes.create_string_buffer(4096)
         read = wintypes.DWORD()
         if not self._kernel.ReadFile(
-            self._output, buf, size, ctypes.byref(read), None
+            self._output, buf, len(buf), ctypes.byref(read), None
         ):
+            error = ctypes.get_last_error()
+            if error in (109, 232):  # ERROR_BROKEN_PIPE / ERROR_NO_DATA
+                return ""
+            raise _last_error("ReadFile ConPTY output")
+        if not read.value:
             return ""
         return self._decoder.decode(buf.raw[:read.value])
 
