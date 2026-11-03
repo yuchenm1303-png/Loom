@@ -1,0 +1,20 @@
+# Experimental x86 compatibility profile for a LOCAL Loom Agent.
+# pywinpty has no working wheel for current i686 Windows; Windows PTY remains
+# unavailable in this build. Do not silently substitute an x64 DLL.
+# cryptography 48 is the last usable series for Windows ia32; the build must
+# be reviewed for security before any public, automatic release.
+cryptography==48.0.1
+openai>=1,<3
+httpx>=0.27,<1
+keyring>=25,<26
+PyYAML>=6,<7
+jsonschema>=4.23,<5
+pypdf>=5,<7
+mcp>=2.1,<3
+Pillow>=11,<13
+psutil>=5.9,<8
+pyautogui>=0.9.54,<0.10
+pywinauto>=0.6.9,<0.7
+pywin32>=306,<400
+browser-use>=0.13.10,<0.14
+playwright>=1.50,<2
