@@ -78,17 +78,31 @@ def _first_run_test() -> int:
     import tempfile
     import importlib
     from loom_cli import _build_runtime
-    for module in ("openai", "httpx", "jsonschema", "mcp.client.streamable_http",
-                   "keyring.backends.Windows", "winpty", "PIL", "psutil",
-                   "pyautogui", "pywinauto", "browser_use", "playwright"):
+    # The 32-bit build has no winpty wheel and no Chromium for win32: it falls
+    # back to a pipe terminal and drives the installed Edge/Chrome instead.
+    x86 = sys.maxsize <= 2**32
+    modules = ["openai", "httpx", "jsonschema", "mcp.client.streamable_http",
+               "keyring.backends.Windows", "PIL", "psutil",
+               "pyautogui", "pywinauto", "browser_use", "playwright"]
+    if not x86:
+        modules.append("winpty")
+    for module in modules:
         importlib.import_module(module)
     if getattr(sys, "frozen", False):
-        browser = Path(os.environ.get("LOOM_BUNDLED_BROWSER", ""))
-        if not browser.is_file():
-            raise RuntimeError("Release is missing its bundled Chromium browser")
+        launch: dict[str, object] = {"headless": True}
+        if x86:
+            from app.agent_runtime.windows_browser_compat import installed_browser_channel
+            launch["channel"] = installed_browser_channel()
+            if not launch["channel"]:
+                raise RuntimeError("32-bit release gate needs an installed Edge or Chrome")
+        else:
+            browser = Path(os.environ.get("LOOM_BUNDLED_BROWSER", ""))
+            if not browser.is_file():
+                raise RuntimeError("Release is missing its bundled Chromium browser")
+            launch["executable_path"] = str(browser)
         from playwright.sync_api import sync_playwright
         with sync_playwright() as playwright:
-            instance = playwright.chromium.launch(executable_path=str(browser), headless=True)
+            instance = playwright.chromium.launch(**launch)
             try:
                 page = instance.new_page()
                 page.set_content("<title>Loom first run</title><p>Browser ready</p>")
