@@ -4,6 +4,8 @@ import asyncio
 import importlib.util
 import json
 import os
+import platform
+import struct
 import threading
 import time
 import uuid
@@ -296,6 +298,23 @@ class BrowserUseBackend(BrowserBackend):
         attached = bool(str(self.cdp_url or "").strip())
         # An attached browser is already running, so its build is not ours to pick.
         channel = "" if attached else str(self.browser_channel or "").strip()
+        if (
+            not attached
+            and not channel
+            and not os.environ.get("LOOM_BUNDLED_BROWSER")
+            and platform.system() == "Windows"
+            and struct.calcsize("P") == 4
+        ):
+            # The x86 installer intentionally cannot include x64 Chromium.
+            # Do not let browser-use silently launch/download a wrong-arch
+            # browser, which reports an opaque WinError 193 on real x86 PCs.
+            # The embedded Electron browser and explicit CDP/extension
+            # connections remain available without this system browser.
+            raise BrowserUnavailableError(
+                "Loom Windows 32-bit Browser Use requires a compatible local "
+                "Microsoft Edge or Chrome installation. Install one and "
+                "choose it in Browser settings, or use Loom's embedded browser."
+            )
         try:
             downloads = str(self.downloads_dir) if self.downloads_dir else None
             profile = BrowserProfile(

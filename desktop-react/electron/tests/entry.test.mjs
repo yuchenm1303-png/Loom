@@ -29,7 +29,9 @@ test("shortcut starts installed application and ignores pending or active cached
     assert.equal(process.env.LOOM_HOST_DATA_DIR, home);
     assert.deepEqual(paths, [path.join(home, "desktop-ui")]);
     assert.equal(quits, 0);
-    assert.equal((await fs.readdir(home)).length, 2, "startup must not write component pointers");
+    assert.deepEqual((await fs.readdir(home)).sort(), ["application-updates", "desktop-ui", "ui-updates"],
+      "first launch creates only its userData folder, never component pointers");
+    assert.equal((await fs.stat(path.join(home, "desktop-ui"))).isDirectory(), true);
   } finally {
     if (previousRoot === undefined) delete process.env.LOOM_HOST_DATA_DIR;
     else process.env.LOOM_HOST_DATA_DIR = previousRoot;

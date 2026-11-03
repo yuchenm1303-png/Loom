@@ -24,6 +24,7 @@ from .browser_session import (
     ManagedBrowserSession,
 )
 from .browser_use_backend import browser_use_available
+from .windows_browser_compat import installed_browser_channel
 from .memory_store import redact_secrets
 from .contracts import AgentEvent, AgentEventKind
 from .storage import utc_now
@@ -39,7 +40,13 @@ _BROWSER_ENGINE_CHANNELS = {"edge": "msedge", "chrome": "chrome"}
 
 
 def _browser_channel_for_engine(engine: str) -> str:
-    return _BROWSER_ENGINE_CHANNELS.get(str(engine or "").strip().casefold(), "")
+    selected = _BROWSER_ENGINE_CHANNELS.get(str(engine or "").strip().casefold(), "")
+    if selected:
+        return selected
+    # x86 packages do not contain a Chromium binary; a normal "system"
+    # browser request should reuse this PC's installed Edge/Chrome instead
+    # of trying to execute the x64 browser from the x64 release.
+    return installed_browser_channel()
 
 
 # Chrome/Edge default to 9222, and the usual way to run more than one debuggable

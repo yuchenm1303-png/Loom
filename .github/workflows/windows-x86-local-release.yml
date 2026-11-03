@@ -1,0 +1,537 @@
+name: Windows x86 Local Preview Release
+
+# Separate, opt-in Windows 32-bit publication. Never edits package.json,
+# creates the x64 version tag, or publishes latest.yml used by x64 updaters.
+on:
+  # A committed, version-bound release request may publish one prerelease after
+  # its source is merged to main. Subsequent releases use workflow_dispatch.
+  push:
+    branches: [main]
+    paths: ["win32-local/release-request.json"]
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "Independent x86 preview revision for current Loom version (1, 2, 3, ...)"
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-x86-local-preview-release
+  cancel-in-progress: false
+
+jobs:
+  publish-windows-x86-local-preview:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      LOOM_RUNTIME_ARCH: "ia32"
+      GH_TOKEN: ${{ github.token }}
+      X86_RELEASE_REVISION: ${{ inputs.revision || '1' }}
+      LOOM_GITHUB_CLIENT_ID: ${{ vars.LOOM_GITHUB_CLIENT_ID }}
+      LOOM_GITHUB_CLIENT_SECRET: ${{ secrets.LOOM_GITHUB_CLIENT_SECRET }}
+      LOOM_GITHUB_OAUTH_SCOPES: ${{ vars.LOOM_GITHUB_OAUTH_SCOPES || 'repo read:org' }}
+      LOOM_GITHUB_CALLBACK_PATH: ${{ vars.LOOM_GITHUB_CALLBACK_PATH || '/oauth/github/callback' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check independent release identity and origin
+        id: release
+        shell: pwsh
+        run: |
+          $defaultBranch = "${{ github.event.repository.default_branch }}"
+          if ($env:GITHUB_REF_NAME -ne $defaultBranch) {
+            throw "For a public x86 preview release, select the default branch '$defaultBranch'."
+          }
+          if ("${{ github.event_name }}" -eq "push") {
+            $requestPath = "win32-local/release-request.json"
+            if (-not (Test-Path $requestPath)) { throw "No x86 release request found on main." }
+            $request = Get-Content $requestPath -Raw | ConvertFrom-Json
+            if ($request.channel -ne "win32-local-preview" -or
+                $request.accept_ci_only_qa -ne $true) {
+              throw "An explicit one-time Windows x86 preview release request is required."
+            }
+            $env:X86_RELEASE_REVISION = [string]$request.revision
+          }
+          if ($env:X86_RELEASE_REVISION -notmatch '^[1-9][0-9]*
+          foreach ($path in @(
+            "desktop-react/build/win32-local.config.cjs",
+            "desktop-react/scripts/build-windows-x86-local-runtime.mjs",
+            "win32-local/verify-local-host.ps1"
+          )) {
+            if (-not (Test-Path $path)) { throw "The validated x86 local Host sources are not on main: $path" }
+          }
+          $version = (Get-Content "desktop-react/package.json" -Raw | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+ "win32-v$version-r$env:X86_RELEASE_REVISION"
+          git fetch --tags origin
+          if ($LASTEXITCODE -ne 0) { throw "Could not fetch release tags." }
+          $existing = @(git ls-remote --tags origin "refs/tags/$tag")
+          if ($LASTEXITCODE -ne 0 -or $existing.Count -gt 0) {
+            throw "Release tag $tag already exists or cannot be checked; refusing to overwrite it."
+          }
+          gh release view $tag --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "x86 preview $tag is independent of x64 stable v$version."
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: "x86"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop-react/package-lock.json
+      - name: Verify trusted login configuration
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID) -or
+              [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)) {
+            throw "Trusted GitHub login configuration is missing; refusing to publish x86."
+          }
+      - name: Install original Loom renderer dependencies
+        working-directory: desktop-react
+        run: npm ci --no-audit --no-fund
+      - name: Build same Loom UI and 32-bit local Python Agent
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw "Loom renderer compilation failed" }
+          node scripts/build-windows-x86-local-runtime.mjs
+          if ($LASTEXITCODE -ne 0) { throw "IA32 local Python Agent build failed" }
+      - name: Package native x86 Loom Desktop
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npx electron-builder --win --ia32 --dir --config build/win32-local.config.cjs --publish never
+          if ($LASTEXITCODE -ne 0) { throw "IA32 Desktop build failed" }
+      - name: Gate actual local Host, App Server, native components, browser and terminal
+        shell: pwsh
+        run: |
+          $directory = "desktop-react/release-x86/win-ia32-unpacked"
+          if (-not (Test-Path $directory)) { throw "Missing unpacked x86 desktop" }
+          & win32-local/verify-local-host.ps1 -InstallDir (Resolve-Path $directory)
+          if ($LASTEXITCODE -ne 0) { throw "Local IA32 Host smoke failed" }
+      - name: Build installer only after runtime validation
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npx electron-builder --win nsis --ia32 --prepackaged release-x86/win-ia32-unpacked --config build/win32-local.config.cjs --publish never
+          if ($LASTEXITCODE -ne 0) { throw "IA32 installer build failed" }
+          $installer = @(Get-ChildItem release-x86 -Filter "Loom-Setup-x86-*.exe" -File)
+          if ($installer.Count -ne 1 -or $installer[0].Length -lt 1000000) { throw "Expected one complete x86 installer" }
+          New-Item -ItemType Directory -Path release-x86/publish -Force | Out-Null
+          Copy-Item $installer[0].FullName release-x86/publish/Loom-Setup-x86.exe
+          $digest = (Get-FileHash release-x86/publish/Loom-Setup-x86.exe -Algorithm SHA256).Hash.ToLower()
+          Write-Host "x86 standalone installer SHA256: $digest"
+      - name: Publish *prerelease only* in the independent Win32 channel
+        id: published
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          $installer = "desktop-react/release-x86/publish/Loom-Setup-x86.exe"
+          if (-not (Test-Path $installer)) { throw "Verified standalone x86 installer missing" }
+          $digest = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
+          $notes = @"
+          Windows **32-bit** LOCAL Loom Host preview ($env:RELEASE_VERSION).
+
+          - Independent x86 installer, Agent, UI and local Host.
+          - Tested on Windows CI with native ia32 executables; physical 32-bit Windows QA still required.
+          - Native MXC sandbox and true ConPTY are unavailable on this platform.
+          - x86 auto-updating is disabled. Install future x86 builds separately.
+          - This preview does not replace, publish, or update the Windows x64 stable release.
+          - Installer SHA256: $digest
+          "@
+          $notesPath = Join-Path $env:RUNNER_TEMP "win32-release-notes.md"
+          Set-Content -Path $notesPath -Value $notes -Encoding utf8
+          gh release create "$env:RELEASE_TAG" "$installer" --prerelease --target "$env:GITHUB_SHA" --title "Loom Windows 32-bit $env:RELEASE_TAG (Preview)" --notes-file "$notesPath"
+          if ($LASTEXITCODE -ne 0) { throw "Could not create the separate x86 prerelease" }
+          $details = gh release view "$env:RELEASE_TAG" --json isPrerelease,assets --jq '{prerelease:.isPrerelease, assets:[.assets[].name]}' | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $details.prerelease -or $details.assets -notcontains "Loom-Setup-x86.exe"
+              -or $details.assets -contains "latest.yml" -or $details.assets -contains "Loom-Setup-x64.exe") {
+            throw "Published assets are not isolated to the x86 prerelease channel"
+          }
+          "url=https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loom-Windows-x86-Preview-${{ steps.release.outputs.tag }}
+          path: desktop-react/release-x86/publish/Loom-Setup-x86.exe
+          if-no-files-found: error
+          retention-days: 30
+      - name: Release summary
+        shell: pwsh
+        env:
+          RELEASE_URL: ${{ steps.published.outputs.url }}
+        run: |
+          "Windows x86 LOCAL Preview published: $env:RELEASE_URL (x64 release and updater untouched)." |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+) {
+            throw "x86 release revision must be a positive integer."
+          }
+          foreach ($path in @(
+            "desktop-react/build/win32-local.config.cjs",
+            "desktop-react/scripts/build-windows-x86-local-runtime.mjs",
+            "win32-local/verify-local-host.ps1"
+          )) {
+            if (-not (Test-Path $path)) { throw "The validated x86 local Host sources are not on main: $path" }
+          }
+          $version = (Get-Content "desktop-react/package.json" -Raw | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid desktop package version." }
+          $tag = "win32-v$version-r$env:X86_RELEASE_REVISION"
+          git fetch --tags origin
+          if ($LASTEXITCODE -ne 0) { throw "Could not fetch release tags." }
+          $existing = @(git ls-remote --tags origin "refs/tags/$tag")
+          if ($LASTEXITCODE -ne 0 -or $existing.Count -gt 0) {
+            throw "Release tag $tag already exists or cannot be checked; refusing to overwrite it."
+          }
+          gh release view $tag --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "x86 preview $tag is independent of x64 stable v$version."
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: "x86"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop-react/package-lock.json
+      - name: Verify trusted login configuration
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID) -or
+              [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)) {
+            throw "Trusted GitHub login configuration is missing; refusing to publish x86."
+          }
+      - name: Install original Loom renderer dependencies
+        working-directory: desktop-react
+        run: npm ci --no-audit --no-fund
+      - name: Build same Loom UI and 32-bit local Python Agent
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw "Loom renderer compilation failed" }
+          node scripts/build-windows-x86-local-runtime.mjs
+          if ($LASTEXITCODE -ne 0) { throw "IA32 local Python Agent build failed" }
+      - name: Package native x86 Loom Desktop
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npx electron-builder --win --ia32 --dir --config build/win32-local.config.cjs --publish never
+          if ($LASTEXITCODE -ne 0) { throw "IA32 Desktop build failed" }
+      - name: Gate actual local Host, App Server, native components, browser and terminal
+        shell: pwsh
+        run: |
+          $directory = "desktop-react/release-x86/win-ia32-unpacked"
+          if (-not (Test-Path $directory)) { throw "Missing unpacked x86 desktop" }
+          & win32-local/verify-local-host.ps1 -InstallDir (Resolve-Path $directory)
+          if ($LASTEXITCODE -ne 0) { throw "Local IA32 Host smoke failed" }
+      - name: Build installer only after runtime validation
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npx electron-builder --win nsis --ia32 --prepackaged release-x86/win-ia32-unpacked --config build/win32-local.config.cjs --publish never
+          if ($LASTEXITCODE -ne 0) { throw "IA32 installer build failed" }
+          $installer = @(Get-ChildItem release-x86 -Filter "Loom-Setup-x86-*.exe" -File)
+          if ($installer.Count -ne 1 -or $installer[0].Length -lt 1000000) { throw "Expected one complete x86 installer" }
+          New-Item -ItemType Directory -Path release-x86/publish -Force | Out-Null
+          Copy-Item $installer[0].FullName release-x86/publish/Loom-Setup-x86.exe
+          $digest = (Get-FileHash release-x86/publish/Loom-Setup-x86.exe -Algorithm SHA256).Hash.ToLower()
+          Write-Host "x86 standalone installer SHA256: $digest"
+      - name: Publish *prerelease only* in the independent Win32 channel
+        id: published
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          $installer = "desktop-react/release-x86/publish/Loom-Setup-x86.exe"
+          if (-not (Test-Path $installer)) { throw "Verified standalone x86 installer missing" }
+          $digest = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
+          $notes = @"
+          Windows **32-bit** LOCAL Loom Host preview ($env:RELEASE_VERSION).
+
+          - Independent x86 installer, Agent, UI and local Host.
+          - Tested on Windows CI with native ia32 executables; physical 32-bit Windows QA still required.
+          - Native MXC sandbox and true ConPTY are unavailable on this platform.
+          - x86 auto-updating is disabled. Install future x86 builds separately.
+          - This preview does not replace, publish, or update the Windows x64 stable release.
+          - Installer SHA256: $digest
+          "@
+          $notesPath = Join-Path $env:RUNNER_TEMP "win32-release-notes.md"
+          Set-Content -Path $notesPath -Value $notes -Encoding utf8
+          gh release create "$env:RELEASE_TAG" "$installer" --prerelease --target "$env:GITHUB_SHA" --title "Loom Windows 32-bit $env:RELEASE_TAG (Preview)" --notes-file "$notesPath"
+          if ($LASTEXITCODE -ne 0) { throw "Could not create the separate x86 prerelease" }
+          $details = gh release view "$env:RELEASE_TAG" --json isPrerelease,assets --jq '{prerelease:.isPrerelease, assets:[.assets[].name]}' | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $details.prerelease -or $details.assets -notcontains "Loom-Setup-x86.exe"
+              -or $details.assets -contains "latest.yml" -or $details.assets -contains "Loom-Setup-x64.exe") {
+            throw "Published assets are not isolated to the x86 prerelease channel"
+          }
+          "url=https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loom-Windows-x86-Preview-${{ steps.release.outputs.tag }}
+          path: desktop-react/release-x86/publish/Loom-Setup-x86.exe
+          if-no-files-found: error
+          retention-days: 30
+      - name: Release summary
+        shell: pwsh
+        env:
+          RELEASE_URL: ${{ steps.published.outputs.url }}
+        run: |
+          "Windows x86 LOCAL Preview published: $env:RELEASE_URL (x64 release and updater untouched)." |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+) { throw "Invalid desktop package version." }
+          if ("${{ github.event_name }}" -eq "push" -and [string]$request.version -ne [string]$version) {
+            throw "Explicit x86 preview request version must match the current Loom package version."
+          }
+          $tag = "win32-v$version-r$env:X86_RELEASE_REVISION"
+          git fetch --tags origin
+          if ($LASTEXITCODE -ne 0) { throw "Could not fetch release tags." }
+          $existing = @(git ls-remote --tags origin "refs/tags/$tag")
+          if ($LASTEXITCODE -ne 0 -or $existing.Count -gt 0) {
+            throw "Release tag $tag already exists or cannot be checked; refusing to overwrite it."
+          }
+          gh release view $tag --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "x86 preview $tag is independent of x64 stable v$version."
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: "x86"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop-react/package-lock.json
+      - name: Verify trusted login configuration
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID) -or
+              [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)) {
+            throw "Trusted GitHub login configuration is missing; refusing to publish x86."
+          }
+      - name: Install original Loom renderer dependencies
+        working-directory: desktop-react
+        run: npm ci --no-audit --no-fund
+      - name: Build same Loom UI and 32-bit local Python Agent
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw "Loom renderer compilation failed" }
+          node scripts/build-windows-x86-local-runtime.mjs
+          if ($LASTEXITCODE -ne 0) { throw "IA32 local Python Agent build failed" }
+      - name: Package native x86 Loom Desktop
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npx electron-builder --win --ia32 --dir --config build/win32-local.config.cjs --publish never
+          if ($LASTEXITCODE -ne 0) { throw "IA32 Desktop build failed" }
+      - name: Gate actual local Host, App Server, native components, browser and terminal
+        shell: pwsh
+        run: |
+          $directory = "desktop-react/release-x86/win-ia32-unpacked"
+          if (-not (Test-Path $directory)) { throw "Missing unpacked x86 desktop" }
+          & win32-local/verify-local-host.ps1 -InstallDir (Resolve-Path $directory)
+          if ($LASTEXITCODE -ne 0) { throw "Local IA32 Host smoke failed" }
+      - name: Build installer only after runtime validation
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npx electron-builder --win nsis --ia32 --prepackaged release-x86/win-ia32-unpacked --config build/win32-local.config.cjs --publish never
+          if ($LASTEXITCODE -ne 0) { throw "IA32 installer build failed" }
+          $installer = @(Get-ChildItem release-x86 -Filter "Loom-Setup-x86-*.exe" -File)
+          if ($installer.Count -ne 1 -or $installer[0].Length -lt 1000000) { throw "Expected one complete x86 installer" }
+          New-Item -ItemType Directory -Path release-x86/publish -Force | Out-Null
+          Copy-Item $installer[0].FullName release-x86/publish/Loom-Setup-x86.exe
+          $digest = (Get-FileHash release-x86/publish/Loom-Setup-x86.exe -Algorithm SHA256).Hash.ToLower()
+          Write-Host "x86 standalone installer SHA256: $digest"
+      - name: Publish *prerelease only* in the independent Win32 channel
+        id: published
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          $installer = "desktop-react/release-x86/publish/Loom-Setup-x86.exe"
+          if (-not (Test-Path $installer)) { throw "Verified standalone x86 installer missing" }
+          $digest = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
+          $notes = @"
+          Windows **32-bit** LOCAL Loom Host preview ($env:RELEASE_VERSION).
+
+          - Independent x86 installer, Agent, UI and local Host.
+          - Tested on Windows CI with native ia32 executables; physical 32-bit Windows QA still required.
+          - Native MXC sandbox and true ConPTY are unavailable on this platform.
+          - x86 auto-updating is disabled. Install future x86 builds separately.
+          - This preview does not replace, publish, or update the Windows x64 stable release.
+          - Installer SHA256: $digest
+          "@
+          $notesPath = Join-Path $env:RUNNER_TEMP "win32-release-notes.md"
+          Set-Content -Path $notesPath -Value $notes -Encoding utf8
+          gh release create "$env:RELEASE_TAG" "$installer" --prerelease --target "$env:GITHUB_SHA" --title "Loom Windows 32-bit $env:RELEASE_TAG (Preview)" --notes-file "$notesPath"
+          if ($LASTEXITCODE -ne 0) { throw "Could not create the separate x86 prerelease" }
+          $details = gh release view "$env:RELEASE_TAG" --json isPrerelease,assets --jq '{prerelease:.isPrerelease, assets:[.assets[].name]}' | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $details.prerelease -or $details.assets -notcontains "Loom-Setup-x86.exe"
+              -or $details.assets -contains "latest.yml" -or $details.assets -contains "Loom-Setup-x64.exe") {
+            throw "Published assets are not isolated to the x86 prerelease channel"
+          }
+          "url=https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loom-Windows-x86-Preview-${{ steps.release.outputs.tag }}
+          path: desktop-react/release-x86/publish/Loom-Setup-x86.exe
+          if-no-files-found: error
+          retention-days: 30
+      - name: Release summary
+        shell: pwsh
+        env:
+          RELEASE_URL: ${{ steps.published.outputs.url }}
+        run: |
+          "Windows x86 LOCAL Preview published: $env:RELEASE_URL (x64 release and updater untouched)." |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+) {
+            throw "x86 release revision must be a positive integer."
+          }
+          foreach ($path in @(
+            "desktop-react/build/win32-local.config.cjs",
+            "desktop-react/scripts/build-windows-x86-local-runtime.mjs",
+            "win32-local/verify-local-host.ps1"
+          )) {
+            if (-not (Test-Path $path)) { throw "The validated x86 local Host sources are not on main: $path" }
+          }
+          $version = (Get-Content "desktop-react/package.json" -Raw | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid desktop package version." }
+          $tag = "win32-v$version-r$env:X86_RELEASE_REVISION"
+          git fetch --tags origin
+          if ($LASTEXITCODE -ne 0) { throw "Could not fetch release tags." }
+          $existing = @(git ls-remote --tags origin "refs/tags/$tag")
+          if ($LASTEXITCODE -ne 0 -or $existing.Count -gt 0) {
+            throw "Release tag $tag already exists or cannot be checked; refusing to overwrite it."
+          }
+          gh release view $tag --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "x86 preview $tag is independent of x64 stable v$version."
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: "x86"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop-react/package-lock.json
+      - name: Verify trusted login configuration
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID) -or
+              [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)) {
+            throw "Trusted GitHub login configuration is missing; refusing to publish x86."
+          }
+      - name: Install original Loom renderer dependencies
+        working-directory: desktop-react
+        run: npm ci --no-audit --no-fund
+      - name: Build same Loom UI and 32-bit local Python Agent
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw "Loom renderer compilation failed" }
+          node scripts/build-windows-x86-local-runtime.mjs
+          if ($LASTEXITCODE -ne 0) { throw "IA32 local Python Agent build failed" }
+      - name: Package native x86 Loom Desktop
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npx electron-builder --win --ia32 --dir --config build/win32-local.config.cjs --publish never
+          if ($LASTEXITCODE -ne 0) { throw "IA32 Desktop build failed" }
+      - name: Gate actual local Host, App Server, native components, browser and terminal
+        shell: pwsh
+        run: |
+          $directory = "desktop-react/release-x86/win-ia32-unpacked"
+          if (-not (Test-Path $directory)) { throw "Missing unpacked x86 desktop" }
+          & win32-local/verify-local-host.ps1 -InstallDir (Resolve-Path $directory)
+          if ($LASTEXITCODE -ne 0) { throw "Local IA32 Host smoke failed" }
+      - name: Build installer only after runtime validation
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          npx electron-builder --win nsis --ia32 --prepackaged release-x86/win-ia32-unpacked --config build/win32-local.config.cjs --publish never
+          if ($LASTEXITCODE -ne 0) { throw "IA32 installer build failed" }
+          $installer = @(Get-ChildItem release-x86 -Filter "Loom-Setup-x86-*.exe" -File)
+          if ($installer.Count -ne 1 -or $installer[0].Length -lt 1000000) { throw "Expected one complete x86 installer" }
+          New-Item -ItemType Directory -Path release-x86/publish -Force | Out-Null
+          Copy-Item $installer[0].FullName release-x86/publish/Loom-Setup-x86.exe
+          $digest = (Get-FileHash release-x86/publish/Loom-Setup-x86.exe -Algorithm SHA256).Hash.ToLower()
+          Write-Host "x86 standalone installer SHA256: $digest"
+      - name: Publish *prerelease only* in the independent Win32 channel
+        id: published
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          $installer = "desktop-react/release-x86/publish/Loom-Setup-x86.exe"
+          if (-not (Test-Path $installer)) { throw "Verified standalone x86 installer missing" }
+          $digest = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
+          $notes = @"
+          Windows **32-bit** LOCAL Loom Host preview ($env:RELEASE_VERSION).
+
+          - Independent x86 installer, Agent, UI and local Host.
+          - Tested on Windows CI with native ia32 executables; physical 32-bit Windows QA still required.
+          - Native MXC sandbox and true ConPTY are unavailable on this platform.
+          - x86 auto-updating is disabled. Install future x86 builds separately.
+          - This preview does not replace, publish, or update the Windows x64 stable release.
+          - Installer SHA256: $digest
+          "@
+          $notesPath = Join-Path $env:RUNNER_TEMP "win32-release-notes.md"
+          Set-Content -Path $notesPath -Value $notes -Encoding utf8
+          gh release create "$env:RELEASE_TAG" "$installer" --prerelease --target "$env:GITHUB_SHA" --title "Loom Windows 32-bit $env:RELEASE_TAG (Preview)" --notes-file "$notesPath"
+          if ($LASTEXITCODE -ne 0) { throw "Could not create the separate x86 prerelease" }
+          $details = gh release view "$env:RELEASE_TAG" --json isPrerelease,assets --jq '{prerelease:.isPrerelease, assets:[.assets[].name]}' | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $details.prerelease -or $details.assets -notcontains "Loom-Setup-x86.exe"
+              -or $details.assets -contains "latest.yml" -or $details.assets -contains "Loom-Setup-x64.exe") {
+            throw "Published assets are not isolated to the x86 prerelease channel"
+          }
+          "url=https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loom-Windows-x86-Preview-${{ steps.release.outputs.tag }}
+          path: desktop-react/release-x86/publish/Loom-Setup-x86.exe
+          if-no-files-found: error
+          retention-days: 30
+      - name: Release summary
+        shell: pwsh
+        env:
+          RELEASE_URL: ${{ steps.published.outputs.url }}
+        run: |
+          "Windows x86 LOCAL Preview published: $env:RELEASE_URL (x64 release and updater untouched)." |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

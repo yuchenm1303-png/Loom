@@ -3,7 +3,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
-import { existsSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { HostClient, HostServer, type HostHandler } from "./hostTransport.js";
 import { hostDataPath } from "./hostPaths.js";
@@ -27,8 +27,11 @@ if (isHostProcess && openDesktopAfterUpdate) {
 }
 if (restartingHost) { try { unlinkSync(restartMarker); } catch {} }
 app.setName("Loom");
-if (isHostProcess) app.setPath("userData", hostDataPath);
-if (!isHostProcess) app.setPath("userData", path.join(hostDataPath, "desktop-ui"));
+const electronProfile = isHostProcess ? hostDataPath : path.join(hostDataPath, "desktop-ui");
+// The entry and Host module must both handle a fresh userData directory; a
+// missing folder causes Electron 43 to throw and silently quit on first run.
+mkdirSync(electronProfile, { recursive: true });
+app.setPath("userData", electronProfile);
 const endpointId = crypto.createHash("sha256").update(hostDataPath).digest("hex").slice(0, 24);
 const endpoint = process.platform === "win32" ? `\\\\.\\pipe\\loom-host-${endpointId}` : path.join(hostDataPath, "host.sock");
 const credentialDirectory = path.join(hostDataPath, "host-ipc");
