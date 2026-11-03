@@ -35,6 +35,23 @@ Write-Host "Verified native x86 Playwright browser driver: $driver"
 if ($LASTEXITCODE -ne 0) { throw "Packaged Playwright x86 driver could not initialize" }
 & $runtime -c "from app.agent_runtime.computer_windows import windows_computer_available; assert windows_computer_available(); print('loom-packaged-x86-computer-import-ok')"
 if ($LASTEXITCODE -ne 0) { throw "Packaged Windows x86 Computer Use prerequisites unavailable" }
+# A PTY request must not fail to launch ordinary Windows shells merely
+# because winpty has no x86 native wheel. Validate actual process output.
+& $runtime -c "from app.agent_runtime.process_runtime import _spawn_backend; from pathlib import Path; import os; b=_spawn_backend(argv=('cmd.exe','/d','/c','echo loom-win32-terminal-ok'),cwd=Path.cwd(),env=os.environ,pty=True,rows=24,cols=80); text=b.read_stdout(); assert b.name == 'windows-x86-pipe-terminal' and 'loom-win32-terminal-ok' in text, (b.name,text); b.close(); print('loom-packaged-x86-terminal-ok')"
+if ($LASTEXITCODE -ne 0) { throw "Packaged Windows x86 interactive pipe terminal failed" }
+# If this runner has Microsoft Edge, verify a real browser session. Missing
+# Edge is a runtime prerequisite on user machines, not a reason to download
+# an x64 Chromium build into the 32-bit installation.
+$browserExe = @(
+  "${env:ProgramFiles(x86)}\\Microsoft\\Edge\\Application\\msedge.exe",
+  "$env:ProgramFiles\\Microsoft\\Edge\\Application\\msedge.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($browserExe) {
+  & $runtime -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); b=p.chromium.launch(channel='msedge', headless=True); page=b.new_page(); page.goto('data:text/html,<title>loom-win32</title>'); assert page.title() == 'loom-win32'; b.close(); p.stop(); print('loom-packaged-x86-browser-launch-ok')"
+  if ($LASTEXITCODE -ne 0) { throw "Packaged x86 browser driver could not launch installed Microsoft Edge" }
+} else {
+  Write-Host "Microsoft Edge not installed on runner; browser launch is a separate hardware acceptance item."
+}
 $manifest = Get-Content (Join-Path $InstallDir "resources\manifest.json") -Raw | ConvertFrom-Json
 if ($manifest.arch -ne "ia32" -or $manifest.platform -ne "win32") {
   throw "Wrong packaged Host architecture: $($manifest.arch)"
