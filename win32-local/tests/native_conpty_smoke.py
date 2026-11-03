@@ -75,10 +75,13 @@ def main() -> int:
         session.write(f"echo {marker}\r\n")
         print("ConPTY-smoke: command sent; waiting output", flush=True)
         if not found.wait(15):
-            raise AssertionError(
+            diagnostic = (
                 f"ConPTY did not produce interactive output (pid={session.pid}, "
-                f"poll={session.poll()}, output={''.join(output)[:500]!r})"
+                f"poll={session.poll()}, output={''.join(output)[:500]!r}, "
+                f"failures={failures!r})"
             )
+            print("ConPTY-smoke: " + diagnostic, flush=True)
+            raise AssertionError(diagnostic)
         if failures:
             raise AssertionError("ConPTY reader failed: " + "; ".join(failures))
         assert marker in "".join(output)
@@ -94,8 +97,20 @@ def main() -> int:
             except Exception:
                 pass
         print("ConPTY-smoke: closing", flush=True)
-        session.close()
-        print("ConPTY-smoke: cleanup complete", flush=True)
+        shutdown = threading.Event()
+        def close_console() -> None:
+            try:
+                session.close()
+            except Exception as exc:
+                print("ConPTY-smoke: cleanup exception:", repr(exc), flush=True)
+            finally:
+                shutdown.set()
+        closer = threading.Thread(target=close_console, daemon=True, name="loom-x86-close-conpty")
+        closer.start()
+        if not shutdown.wait(5):
+            print("ConPTY-smoke: ConPTY close blocked after 5 seconds", flush=True)
+        else:
+            print("ConPTY-smoke: cleanup complete", flush=True)
 
 
 if __name__ == "__main__":
