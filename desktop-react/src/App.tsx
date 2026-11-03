@@ -1741,7 +1741,9 @@ export default function App() {
                            } : undefined}
                            models={loom.models} onSwitchModel={loom.switchModelProfile} onReasoning={loom.setReasoning}
                            items={transcriptItems} chatting={running} onInterrupt={loom.interrupt} onApproval={handleApproval}
-                           onChat={(input) => loom.send(input, [], undefined, { weave: true })}
+                           onChat={(input, attachments) => loom.send(input, attachments, undefined, { weave: true })}
+                           imagesAllowed={attachmentsEnabled && loom.models?.current?.vision !== false}
+                           imageSupport={loom.models?.current?.vision ?? null}
                            history={buildThreads} onOpenThread={loom.openThread}
                            onNewThread={async () => {
                              // In the same project (or folder), straight into the hub.

@@ -347,6 +347,8 @@ export function raisedBudget(run: { tokenBudget: number; maxEpisodes: number }, 
 export interface FlowMessage {
   id: string; role: "user" | "assistant" | "work" | "notice"; text: string; turnId?: string | null; streaming?: boolean;
   items?: TranscriptItem[];
+  /** Files on a message still being sent, before the Host writes their manifest into `text`. */
+  attachments?: { path: string; name: string }[];
   /** A work stage of the turn that runs now. */
   live?: boolean;
   /** A work stage something came after (or whose turn is over): it reads as one line until opened. */
@@ -371,7 +373,9 @@ export function toConversation(items: TranscriptItem[], chatting: boolean, limit
       else messages.push({ id: `work:${item.id}`, role: "work", text: "", turnId: item.turnId, items: [item] });
     } else if (item.type === "approval" || item.type === "error") {
       messages.push({ id: item.id, role: "notice", text, turnId: item.turnId, items: [item] });
-    } else if (item.type === "user_message" && text) messages.push({ id: item.clientMessageId || item.id, role: "user", text });
+    } else if (item.type === "user_message" && (text || item.optimisticAttachments?.length)) {
+      messages.push({ id: item.clientMessageId || item.id, role: "user", text, attachments: item.optimisticAttachments });
+    }
     else if (item.type === "assistant_message" && text && !item.runtimeAuthored) {
       if (item.phase === "commentary") { if (chatting && item.turnId === lastTurn) activity = text; continue; }
       messages.push({ id: item.id, role: "assistant", text, turnId: item.turnId });

@@ -229,7 +229,7 @@ function Preview() {
       {mode === "project"
         ? <div className="project-mode-stage" style={{ gridRow: "2" }}>
             <ProjectFlow data={{ ...turnTalk(variant(play(count, workers)), scene), ...(draftProposal ? { proposal: draftProposal } : {}), models, references: REFERENCES, history: THREADS }}
-                         actions={{ onChat: () => {}, onInterrupt: () => {}, onApproval: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {}, onOpenThread: (id) => { (window as unknown as { opened: unknown }).opened = id; }, onNewThread: () => {},
+                         actions={{ onChat: (...args) => { (window as unknown as { sent: unknown }).sent = args; }, onInterrupt: () => {}, onApproval: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {}, onOpenThread: (id) => { (window as unknown as { opened: unknown }).opened = id; }, onNewThread: () => {},
                                     error: params.has("error") ? "Lost the Host; reconnecting…" : undefined,
                                     onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
           </div>

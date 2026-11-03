@@ -22,7 +22,7 @@ const START_EPISODES = 400;
  *  (the composer's morph lands on it) and the first read then refreshes it. */
 const lastOverview = new Map<string, ProjectOverview>();
 
-export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt, onApproval, onChangeWorkspace, projects = [], onSelectProject, history, onOpenThread, onNewThread }: {
+export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt, imagesAllowed, imageSupport, onApproval, onChangeWorkspace, projects = [], onSelectProject, history, onOpenThread, onNewThread }: {
   threadId: string; workspace?: string; model?: string;
   onChangeWorkspace?(path: string): Promise<unknown>;
   projects?: ProjectRecord[]; onSelectProject?(id: string): Promise<unknown>;
@@ -31,7 +31,9 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   /** The conversation's transcript and whether its agent is answering now. */
   items?: TranscriptItem[]; chatting?: boolean;
   /** A message to the conversation's agent, as a Weave turn; and stopping its answer. */
-  onChat?(input: string): Promise<unknown>; onInterrupt?(): Promise<unknown> | void;
+  onChat?(input: string, attachments: { path: string; name: string }[]): Promise<unknown>; onInterrupt?(): Promise<unknown> | void;
+  /** Whether the model takes images on a message (the chat composer's gate), and whether that is known. */
+  imagesAllowed?: boolean; imageSupport?: boolean | null;
   /** Answering a step the agent asks the person to allow (the chat's approval card). */
   onApproval?(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): unknown;
   /** The 建造 conversations for the history card; opening one, or beginning a new one. */
@@ -174,7 +176,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
         attachments, operationId: `weave:${proposal.id}`, threadId, proposalId: proposal.id, tokenBudget: tokens,
         maxEpisodes: START_EPISODES, maxWorkers: workers, maxMilestones: 20, permissionMode: fullAccess ? "full-access" : "workspace" })) : undefined,
       onDismiss: proposal ? () => act(() => window.loom.call("projectWeave/dismiss", { threadId, proposalId: proposal.id })) : undefined,
-      onChat: onChat ? (text) => { setError(""); void onChat(text).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
+      imagesAllowed, imageSupport,
+      onChat: onChat ? (text, attachments) => { setError(""); void onChat(text, attachments).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
       onInterrupt: onInterrupt ? () => { void onInterrupt(); } : undefined,
       onOpenThread: onOpenThread ? (id) => { void onOpenThread(id); } : undefined,
       onNewThread: onNewThread ? () => act(async () => { await onNewThread(); }) : undefined,

@@ -718,6 +718,14 @@ html[data-loom-theme="light"] .pf-stage {
 }
 
 .pf-send:hover:not(:disabled) { opacity: .88; }
+/* The paperclip stands with the send button at the right end of the footer. */
+.pf-attach { flex: none; margin-left: auto; }
+.pf-attach + .pf-send { margin-left: 0; }
+.pf-attach:hover { color: var(--pl-ink); }
+/* Files held over the hub: its edge lights in the accent, as the chat composer's does. */
+.pf-composer[data-dragging] { box-shadow: 0 0 0 1px var(--pl-accent), 0 22px 44px -26px rgba(0, 0, 0, .7); }
+.pf-input .composer-attachments { padding: 0 0 8px; }
+.pf-image-notice:not([data-blocked]) { color: var(--pl-muted); }
 /* Nothing to send: a quiet well, not a faded ink square that still reads as a button. */
 .pf-send:disabled { background: var(--pf-well); color: var(--pl-faint); cursor: default; }
 /* While the agent answers and nothing is typed, the button stops the answer. */

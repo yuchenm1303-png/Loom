@@ -31,9 +31,17 @@ import { ProviderMark } from "./ModelPanel";
 import type { FlowMessage, WeaveProposal } from "./projectOverview";
 import { useGlide, visibleBox } from "./projectArrange";
 import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
-import type { ApprovalDecision, ModelReasoningState, TranscriptItem } from "../types/loom";
+import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
+import {
+  MAX_COMPOSER_ATTACHMENTS, appendComposerAttachments, attachmentFromPath, releaseAttachmentPreview, resolveComposerFiles,
+} from "./composerAttachments";
+import { imageAttachmentState } from "./modelInput";
+import { UserMessageContent, optimisticUserMessageContent } from "./UserMessageContent";
+import type { ApprovalDecision, Attachment, ModelReasoningState, TranscriptItem } from "../types/loom";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
+import "./composer.css";
+import "./composer-attachment-polish.css";
 import "./project-flow.css";
 import "./project-folder.css";
 
@@ -105,8 +113,11 @@ export interface ModelOption { selection: string; name: string; group: string; g
 export interface FlowActions {
   workspaceControls?: ReactNode;
   onChooseWorkspace?(): void;
-  /** A message to the conversation's agent. */
-  onChat?(text: string): void;
+  /** A message to the conversation's agent, with the files pasted, dropped or picked into the field. */
+  onChat?(text: string, attachments: { path: string; name: string }[]): void;
+  /** Whether the model can take the images attached to a message, and whether that is known (the chat composer's gate). */
+  imagesAllowed?: boolean;
+  imageSupport?: boolean | null;
   /** Stop the agent's answer. */
   onInterrupt?(): void;
   /** Open another 建造 conversation from the history card, or begin a new one. */
@@ -160,6 +171,7 @@ const zhText = {
   now: "现在", files: "参考文件", filesEmpty: "需求文档、规格或样例数据，每一轮的 agent 都能读到", addFiles: "添加文件",
   remove: "移除", modelCard: "模型", modelSearch: "搜索模型", modelGroups: "模型来源", modelRecent: "最近", modelNone: "没有匹配的模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "建造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
   draftPlaceholder: "和它聊聊，或描述一个想持续完成的大目标", steerPlaceholder: "继续对话：问进度、补充要求或调整方向",
+  attach: "添加附件，也可以粘贴或拖入文件", attachLimit: `每条消息最多 ${MAX_COMPOSER_ATTACHMENTS} 个附件`,
   proposal: "建造提案", startProposal: "开始建造", dismissProposal: "不用了", replying: "正在思考…", stopReply: "停止回复", copy: "复制", copied: "已复制", latest: "最新",
   proposalHint: "从最后一次提交开始，在独立的检出里分阶段开发，每个任务独立复审后集成回当前分支",
   review: "沙箱 · 复审", reviewHint: "开发和复审 agent 只能改写自己的独立检出，读不到你的其他文件夹；每个任务合入前都由另一个 agent 独立复审",
@@ -186,6 +198,7 @@ const enText: typeof zhText = {
   modelHint: "Agents already started keep their model; new ones use the choice", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
   draftPlaceholder: "Talk it through, or describe a large objective to pursue",
   steerPlaceholder: "Keep talking: ask about progress, add requirements or change direction",
+  attach: "Attach files, or paste and drop them here", attachLimit: `At most ${MAX_COMPOSER_ATTACHMENTS} attachments per message`,
   proposal: "Proposed project", startProposal: "Start weaving", dismissProposal: "Not now", replying: "Thinking…", stopReply: "Stop the reply", copy: "Copy", copied: "Copied", latest: "Latest",
   proposalHint: "Builds from the last commit in its own checkout, milestone by milestone; every task is reviewed before it is merged into the current branch",
   review: "Sandbox · review", reviewHint: "Builders and reviewers can change only their own isolated checkout and cannot read your other folders; every task is reviewed by a separate agent before it is integrated",
@@ -398,6 +411,14 @@ function CopyReply({ value, label, done }: { value: string; label: string; done:
   );
 }
 
+/** What the person said. A message with files draws them as the chat's transcript does: chips while it is sent,
+ *  then the Host's manifest read back from the text. */
+function Said({ message, workspace }: { message: FlowMessage; workspace?: string }) {
+  const parsed = optimisticUserMessageContent(message.text, message.attachments);
+  if (!parsed.attachments.length) return <div className="pf-bubble pf-said"><span className="pf-said-text">{message.text}</span></div>;
+  return <div className="pf-bubble pf-said pf-said-files"><UserMessageContent parsed={parsed} workspace={workspace} /></div>;
+}
+
 function Pulse({ d, step, back = false }: { d: string; step: number; back?: boolean }) {
   const moment = useMoment(step);
   return moment ? <path key={moment} className="pf-pulse" data-back={back || undefined} d={d} pathLength={100} /> : null;
@@ -416,6 +437,13 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const cards = useRef(new Map<string, { side: Side; node: HTMLElement }>());
   const [hot, setHot] = useState("");
   const [draft, setDraft] = useState("");
+  // Files on the next message, as the chat composer holds them (composerAttachments.ts): pasted, dropped or picked.
+  const [attached, setAttached] = useState<Attachment[]>([]);
+  const [attachError, setAttachError] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const attachedNow = useRef(attached);
+  attachedNow.current = attached;
+  useEffect(() => () => attachedNow.current.forEach(releaseAttachmentPreview), []);
   const [objectiveOpen, setObjectiveOpen] = useState(false);
   const [dirtyOpen, setDirtyOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
@@ -603,21 +631,57 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const hover = (id: string) => ({ onPointerEnter: () => setHot(id), onPointerLeave: () => setHot("") });
   const shownWorkers = draftMode ? workers : data.workers;
   // What is typed is always a message to the conversation's agent; projects start from its proposals.
+  const attaching = Boolean(actions.onChat);
+  const imageNotice = imageAttachmentState(attached.some((item) => item.isImage), actions.imagesAllowed ?? true, actions.imageSupport, lang === "zh");
   const submit = () => {
     const value = draft.trim();
-    if (!value) return;
-    if (actions.onChat) actions.onChat(value); else if (!draftMode) actions.onSteer?.(value);
+    if (!value && !attached.length) return;
+    if (imageNotice.blocked) return;
+    if (actions.onChat) actions.onChat(value, attached.map((item) => ({ path: item.path, name: item.name })));
+    else if (!draftMode && value) actions.onSteer?.(value);
     // What the person just said is where they are reading.
     following.current = true;
     setBehind(false);
     setDraft("");
+    attached.forEach(releaseAttachmentPreview);
+    setAttached([]);
+    setAttachError("");
+  };
+  const attach = (incoming: Attachment[]) => setAttached((current) => {
+    const result = appendComposerAttachments(current, incoming);
+    if (result.overflowed) setAttachError(text.attachLimit);
+    return result.attachments;
+  });
+  const unattach = (id: string) => setAttached((current) => {
+    releaseAttachmentPreview(current.find((item) => item.id === id));
+    return current.filter((item) => item.id !== id);
+  });
+  const pickAttachments = async () => {
+    const paths = await actions.onPickFiles?.() || [];
+    setAttachError("");
+    attach(paths.map((path) => attachmentFromPath(path)));
+  };
+  const pasteFiles = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = [...event.clipboardData.files];
+    if (!attaching || !pasted.length) return;
+    // Taken here so an image does not also land in the field as rich content that is dropped on send.
+    event.preventDefault();
+    setAttachError("");
+    attach(await resolveComposerFiles(pasted, setAttachError));
+  };
+  const dropFiles = async (event: React.DragEvent) => {
+    setDragging(false);
+    if (!attaching || !event.dataTransfer.files.length) return;
+    event.preventDefault();
+    setAttachError("");
+    attach(await resolveComposerFiles([...event.dataTransfer.files], setAttachError));
   };
   const startProposal = () => {
     if (!proposal || actions.busy) return;
     actions.onStart?.(proposal.objective, workers, tokens, picked, fullAccess);
     setPicked([]);
   };
-  const stopping = Boolean(data.chatting && !draft.trim() && actions.onInterrupt);
+  const stopping = Boolean(data.chatting && !draft.trim() && !attached.length && actions.onInterrupt);
   const settingUp = draftMode;
   const addFiles = async () => {
     const paths = await actions.onPickFiles?.() || [];
@@ -721,7 +785,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         <div className="pf-thread" ref={thread} data-glide="thread">
           {/* The conversation: Weave is chat first, so what was said reads here like the chat's transcript. */}
           {conversation.map((message) => message.role === "user" ? (
-            <div key={message.id} className="pf-bubble pf-said"><span className="pf-said-text">{message.text}</span></div>
+            <Said key={message.id} message={message} workspace={data.repository.path} />
           ) : message.role === "work" ? (
             // The steps between two messages, drawn by the chat's own work log: live rows while they run, one line after.
             <div key={message.id} className="pf-work">
@@ -843,7 +907,15 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           ) : null}
         </div>
 
-        <section className="pf-composer" ref={hub} data-glide="hub" aria-label={text.hub} data-hot={hot.startsWith("agent:") || undefined}>
+        <section className="pf-composer" ref={hub} data-glide="hub" aria-label={text.hub} data-hot={hot.startsWith("agent:") || undefined}
+                 data-dragging={dragging || undefined}
+                 onDragOver={attaching ? (event) => {
+                   if (!event.dataTransfer.types.includes("Files")) return;
+                   event.preventDefault();
+                   setDragging(true);
+                 } : undefined}
+                 onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
+                 onDrop={(event) => void dropFiles(event)}>
           <header className="pf-composer-head">
             {/* The header switch already says 建造; the hub names the stage and its state (the words give way first when narrow). */}
             <span className="pf-mode" title={draftMode ? text.notStarted : `${text.stage(data.milestone)} · ${stateWord[lang][data.state]}`}>
@@ -872,12 +944,16 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             {data.controls.cancel ? <button type="button" className="pf-control" aria-label={text.stop} title={text.stop} disabled={actions.busy} onClick={actions.onCancel}><Square size={11} /></button> : null}
           </header>
           <div className="pf-well pf-input">
+            <ComposerAttachmentStrip attachments={attached} imagesAllowed={actions.imagesAllowed ?? true} onRemove={unattach} />
             <textarea ref={input} value={draft} rows={draftMode ? 3 : 2}
                       onChange={(event) => setDraft(event.target.value)}
+                      onPaste={(event) => void pasteFiles(event)}
                       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}
                       placeholder={draftMode ? text.draftPlaceholder : text.steerPlaceholder} aria-label={text.send} />
           </div>
           {actions.error ? <p className="pf-error" role="alert">{actions.error}</p> : null}
+          {attachError ? <p className="pf-error" role="alert">{attachError}</p> : null}
+          {imageNotice.message ? <p className="pf-error pf-image-notice" role="status" data-blocked={imageNotice.blocked || undefined}>{imageNotice.message}</p> : null}
           <footer className="pf-composer-foot">
             {/* Settings stay visible from the first draft; a live run shows its actual immutable settings. */}
             <span className="pf-settings" role="group" aria-label={text.settings}>
@@ -924,7 +1000,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               </button>
             ) : null}
             {/* While the agent answers, an empty field's button stops it; anything typed is sent (it steers the answer). */}
-            <button type="button" className="pf-send" data-stop={stopping || undefined} disabled={!stopping && !draft.trim()}
+            {attaching && actions.onPickFiles ? (
+              <button type="button" className="pf-tool pf-attach" aria-label={text.attach} title={text.attach}
+                      onClick={() => void pickAttachments()}><Paperclip size={14} /></button>
+            ) : null}
+            <button type="button" className="pf-send" data-stop={stopping || undefined}
+                    disabled={!stopping && ((!draft.trim() && !attached.length) || imageNotice.blocked)}
                     aria-label={stopping ? text.stopReply : text.send} title={stopping ? text.stopReply : undefined}
                     onClick={stopping ? actions.onInterrupt : submit}>{stopping ? <Square size={12} /> : <ArrowUp size={15} />}</button>
           </footer>

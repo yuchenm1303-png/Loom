@@ -287,3 +287,13 @@ test("the history card: newest first, the open one marked, time said briefly", (
   assert.equal(whenSaid(at(5), now, "en"), "5m");
   assert.equal(whenSaid("nope", now), "");
 });
+
+test("toConversation keeps the files on a message being sent, even one with no words", () => {
+  const files = [{ path: "C:/tmp/shot.png", name: "shot.png" }];
+  const { messages } = toConversation([
+    { id: "p1", clientMessageId: "p1", threadId: "t", type: "user_message", text: "", optimisticAttachments: files },
+    { id: "p2", threadId: "t", type: "user_message", text: "看看这个", optimisticAttachments: files },
+    { id: "p3", threadId: "t", type: "user_message", text: "" },
+  ], true);
+  assert.deepEqual(messages.map((message) => [message.id, message.text, message.attachments]), [["p1", "", files], ["p2", "看看这个", files]]);
+});
