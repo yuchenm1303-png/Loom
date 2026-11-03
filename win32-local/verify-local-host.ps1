@@ -52,10 +52,11 @@ Write-Host "Verified native x86 Playwright browser driver: $driver"
 if ($LASTEXITCODE -ne 0) { throw "Packaged Playwright x86 driver could not initialize" }
 & $runtime -c "from app.agent_runtime.computer_windows import windows_computer_available; assert windows_computer_available(); print('loom-packaged-x86-computer-import-ok')"
 if ($LASTEXITCODE -ne 0) { throw "Packaged Windows x86 Computer Use prerequisites unavailable" }
-# A PTY request must not fail to launch ordinary Windows shells merely
-# because winpty has no x86 native wheel. Validate actual process output.
-& $runtime -c "from app.agent_runtime.process_runtime import _spawn_backend; from pathlib import Path; import os; b=_spawn_backend(argv=('cmd.exe','/d','/c','echo loom-win32-terminal-ok'),cwd=Path.cwd(),env=os.environ,pty=True,rows=24,cols=80); text=b.read_stdout(); assert b.name == 'windows-x86-pipe-terminal' and 'loom-win32-terminal-ok' in text, (b.name,text); b.close(); print('loom-packaged-x86-terminal-ok')"
-if ($LASTEXITCODE -ne 0) { throw "Packaged Windows x86 interactive pipe terminal failed" }
+# The x86 Host should support the same real Windows ConPTY interface as x64:
+# interactive input/output, Ctrl controls and resize. This must execute inside
+# the frozen 32-bit Python process, not through a 64-bit test helper.
+& $runtime -c "from app.agent_runtime.process_runtime import _spawn_backend; from pathlib import Path; import os,time; b=_spawn_backend(argv=('cmd.exe','/d','/k','echo loom-win32-terminal-ok'),cwd=Path.cwd(),env=os.environ,pty=True,rows=24,cols=80); assert b.name=='windows-native-conpty' and b.pty, b.name; b.resize(30,100); b.write('exit\r\n'); chunks=[(time.sleep(0.1),b.read_stdout())[1] for _ in range(50)]; out=''.join(chunks); assert 'loom-win32-terminal-ok' in out,repr(out); b.close(); print('loom-packaged-x86-native-conpty-ok')"
+if ($LASTEXITCODE -ne 0) { throw "Packaged native Windows x86 ConPTY failed interactive input/output/resize verification" }
 # If this runner has Microsoft Edge, verify a real browser session. Missing
 # Edge is a runtime prerequisite on user machines, not a reason to download
 # an x64 Chromium build into the 32-bit installation.
