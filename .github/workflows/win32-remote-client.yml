@@ -24,7 +24,7 @@ jobs:
   build-win32-remote:
     runs-on: windows-latest
     permissions:
-      contents: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && github.ref_name == 'main' && 'write' || 'read' }}
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -95,16 +95,28 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Attach to explicitly selected existing release
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && github.ref_name == 'main' }}
-        shell: pwsh
+  attach-release:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && github.ref_name == 'main' }}
+    needs: build-win32-remote
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Loom-Windows-x86-Remote
+          path: artifacts/win32
+      - name: Attach x86 remote installer to existing release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           LOOM_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          $expectedTag = "v$((Get-Content 'desktop-react/package.json' -Raw | ConvertFrom-Json).version)"
-          if ($env:LOOM_RELEASE_TAG -ne $expectedTag) { throw "Release tag must match current desktop version: $expectedTag" }
-          gh release view $env:LOOM_RELEASE_TAG --repo ${{ github.repository }} --json assets | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "Target release does not exist." }
-          gh release upload $env:LOOM_RELEASE_TAG "artifacts/win32/Loom-Remote-Setup-x86.exe" --repo ${{ github.repository }}
-          if ($LASTEXITCODE -ne 0) { throw "Could not attach x86 remote installer." }
+          EXPECTED_TAG="v$(node -p "require('./desktop-react/package.json').version")"
+          if [ "$LOOM_RELEASE_TAG" != "$EXPECTED_TAG" ]; then
+            echo "Release tag must match current desktop version: $EXPECTED_TAG"
+            exit 1
+          fi
+          gh release view "$LOOM_RELEASE_TAG" --repo "${{ github.repository }}" --json assets > /dev/null
+          gh release upload "$LOOM_RELEASE_TAG" "artifacts/win32/Loom-Remote-Setup-x86.exe" --repo "${{ github.repository }}"
