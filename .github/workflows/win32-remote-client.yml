@@ -1,0 +1,110 @@
+name: Windows x86 Remote Companion
+
+on:
+  pull_request:
+    paths:
+      - "win32-client/**"
+      - ".github/workflows/win32-remote-client.yml"
+  push:
+    branches: [main]
+    paths:
+      - "win32-client/**"
+      - ".github/workflows/win32-remote-client.yml"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Optional existing Loom release tag to attach the verified x86 remote installer (main only)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-win32-remote:
+    runs-on: windows-latest
+    permissions:
+      contents: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && github.ref_name == 'main' && 'write' || 'read' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish self-contained x86 remote client
+        shell: pwsh
+        run: |
+          dotnet publish win32-client/LoomWin32Remote.csproj -c Release -r win-x86 --self-contained true -o win32-client/bin/publish
+          if ($LASTEXITCODE -ne 0) { throw "Win32 publish failed." }
+
+      - name: Verify x86 executable and WebView2 loader
+        shell: pwsh
+        run: |
+          function Get-PeMachine([string] $filePath) {
+            $stream = [System.IO.File]::OpenRead($filePath)
+            $reader = [System.IO.BinaryReader]::new($stream)
+            try {
+              $stream.Position = 0x3c
+              $peOffset = $reader.ReadInt32()
+              if ($peOffset -lt 0x40 -or $peOffset -gt $stream.Length - 6) { throw "Invalid PE offset: $filePath" }
+              $stream.Position = $peOffset
+              if ($reader.ReadUInt32() -ne 0x00004550) { throw "Missing PE signature: $filePath" }
+              return $reader.ReadUInt16()
+            } finally {
+              $reader.Dispose()
+              $stream.Dispose()
+            }
+          }
+          $publish = Join-Path $env:GITHUB_WORKSPACE "win32-client/bin/publish"
+          $exe = Join-Path $publish "LoomRemote.exe"
+          if (-not (Test-Path $exe)) { throw "Missing LoomRemote.exe" }
+          $loader = Get-ChildItem $publish -Filter WebView2Loader.dll -Recurse -File | Select-Object -First 1
+          if (-not $loader) { throw "Missing WebView2Loader.dll" }
+          foreach ($candidate in @($exe, $loader.FullName)) {
+            $machine = Get-PeMachine $candidate
+            if ($machine -ne 0x014c) { throw "Expected x86 PE (0x014c) but got 0x$($machine.ToString('x4')) in $candidate" }
+            Write-Host "Verified x86: $candidate"
+          }
+          $python = Get-ChildItem $publish -Filter python.exe -Recurse -File
+          if ($python) { throw "x86 remote-only client must not embed the unsupported local Python Host" }
+
+      - name: Build Win32 installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed." }
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw "Could not find Inno Setup compiler." }
+          $version = (Get-Content "desktop-react/package.json" -Raw | ConvertFrom-Json).version
+          & $iscc "/DAppVersion=$version" "win32-client/installer.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed." }
+          $installer = "artifacts/win32/Loom-Remote-Setup-x86.exe"
+          if (-not (Test-Path $installer)) { throw "Installer not produced: $installer" }
+          if ((Get-Item $installer).Length -lt 1000000) { throw "Installer unexpectedly small" }
+
+      - name: Upload verified x86 remote installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loom-Windows-x86-Remote
+          path: artifacts/win32/Loom-Remote-Setup-x86.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach to explicitly selected existing release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && github.ref_name == 'main' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOOM_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          $expectedTag = "v$((Get-Content 'desktop-react/package.json' -Raw | ConvertFrom-Json).version)"
+          if ($env:LOOM_RELEASE_TAG -ne $expectedTag) { throw "Release tag must match current desktop version: $expectedTag" }
+          gh release view $env:LOOM_RELEASE_TAG --repo ${{ github.repository }} --json assets | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Target release does not exist." }
+          gh release upload $env:LOOM_RELEASE_TAG "artifacts/win32/Loom-Remote-Setup-x86.exe" --repo ${{ github.repository }}
+          if ($LASTEXITCODE -ne 0) { throw "Could not attach x86 remote installer." }
