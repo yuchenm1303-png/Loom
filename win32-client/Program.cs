@@ -18,7 +18,10 @@ internal static class Program
 // It never claims to run the local Python Host, Browser Use or Computer Use.
 internal sealed class LoomRemoteWindow : Form
 {
-    private const string LoomUrl = "https://loom.smirel.com/";
+    // The query marks this as a remote-only shell. No script/native bridge is
+    // injected; Loom Web records the mode in sessionStorage across OAuth reloads.
+    private const string LoomUrl = "https://loom.smirel.com/?loom_client=win32-remote";
+    private const string LoomWebUrl = "https://loom.smirel.com/";
     private const string WebView2InstallUrl = "https://developer.microsoft.com/en-us/microsoft-edge/webview2/";
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
     private readonly Panel _errorPanel = new() { Dock = DockStyle.Fill, Visible = false };
@@ -43,7 +46,7 @@ internal sealed class LoomRemoteWindow : Form
         };
         toolbar.Items.Add(MakeButton("Loom", () => NavigateHome()));
         toolbar.Items.Add(MakeButton("刷新", () => _web.CoreWebView2?.Reload()));
-        toolbar.Items.Add(MakeButton("在浏览器中打开", () => OpenInBrowser(LoomUrl)));
+        toolbar.Items.Add(MakeButton("在浏览器中打开", () => OpenInBrowser(LoomWebUrl)));
         toolbar.Items.Add(new ToolStripLabel("  ·  32 位远程客户端（需连接在线 Loom Host）")
         {
             ForeColor = Color.Gainsboro,
