@@ -5,6 +5,7 @@ on:
     paths:
       - "win32-local/**"
       - "app/agent_runtime/process_runtime.py"
+      - "app/agent_runtime/native_windows_conpty.py"
       - "app/agent_runtime/browser_runtime.py"
       - "app/agent_runtime/windows_browser_compat.py"
       - "tests/test_windows_browser_compat.py"
