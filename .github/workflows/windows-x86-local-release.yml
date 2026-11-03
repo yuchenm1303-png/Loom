@@ -104,6 +104,9 @@ jobs:
       - name: Install original Loom renderer dependencies
         working-directory: desktop-react
         run: npm ci --no-audit --no-fund
+      - name: Check architecture feature parity
+        working-directory: desktop-react
+        run: node --test scripts/tests/windows-architecture-parity.test.mjs
       - name: Build same Loom UI and 32-bit local Python Agent
         working-directory: desktop-react
         shell: pwsh
