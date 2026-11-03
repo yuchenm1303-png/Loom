@@ -16,6 +16,7 @@ import { useAccount } from "../state/useAccount";
 import { HostSetupActions } from "./HostSetupActions";
 import { PortalLiquidCursor } from "./PortalLiquidCursor";
 import { FALLBACK_RELEASE, fetchPortalRelease, RELEASES_URL } from "../portalRelease";
+import { fetchPortalX86Release, X86_RELEASES_URL, type PortalX86Release } from "../portalX86Release";
 import { PORTAL_HOME_COPY } from "./portalHomeCopy";
 import { HomeWorkspaceDemo } from "./HomeWorkspaceDemo";
 import { HomeComputerDemo } from "./HomeComputerDemo";
@@ -133,6 +134,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   onRemote?: () => void;
 }) {
   const [release, setRelease] = useState(FALLBACK_RELEASE);
+  const [x86Release, setX86Release] = useState<PortalX86Release | null>(null);
   const [pageMode, setPageMode] = useState<"editorial" | "classic">(
     () => window.location.pathname.replace(/\/+$/, "") === "/classic" ? "classic" : "editorial"
   );
@@ -318,6 +320,16 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     const timeout = window.setTimeout(() => controller.abort(), 10000);
     fetchPortalRelease(controller.signal).then(setRelease).catch(() => {
       // The generic latest download remains available without stale metadata.
+    }).finally(() => window.clearTimeout(timeout));
+    return () => { controller.abort(); window.clearTimeout(timeout); };
+  }, []);
+  // Windows x86 previews use their own release channel. The stable x64
+  // metadata above remains completely independent and unchanged.
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 10000);
+    fetchPortalX86Release(controller.signal).then(setX86Release).catch(() => {
+      // No verified x86 release: offer its releases page, never a dead exe URL.
     }).finally(() => window.clearTimeout(timeout));
     return () => { controller.abort(); window.clearTimeout(timeout); };
   }, []);
@@ -716,6 +728,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   <div className="editorial-actions editorial-reveal" style={revealIndex(4)}>
                     <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{remoteMode && authenticated && hostState !== "online" ? (zh ? "选择远程电脑" : "Choose remote computer") : home.open}<ArrowRight size={16} aria-hidden="true" /></button>
                     {!remoteMode ? <a className="editorial-download" href={release.download}>{home.download}<span aria-hidden="true">↓</span></a> : null}
+                    {!remoteMode ? <a className="editorial-download-x86" href={x86Release?.download ?? X86_RELEASES_URL} target="_blank" rel="noopener noreferrer">{x86Release ? (zh ? "Windows 32 位 · 预览版 ↓" : "Windows 32-bit · Preview ↓") : (zh ? "Windows 32 位 · 查看发布状态" : "Windows 32-bit · Release status")}</a> : null}
                   </div>
                   <p className="editorial-release editorial-reveal" style={revealIndex(5)}>
                     {release.version ? <><span className="editorial-version">{release.version}</span><span aria-hidden="true"> · </span></> : null}
@@ -819,6 +832,17 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <div className="loom-download-product"><Laptop size={26} aria-hidden="true" /><div><h2 id="loom-download-title">Loom for Windows</h2><p>Windows 10 / 11 · x64{release.package ? ` · ${release.package}` : ""}</p><p>{zh ? "包含本机 Host · 桌面界面可选" : "Local Host included · Desktop optional"}</p></div></div>
             <div className="loom-download-version"><span>{(release.version || (zh ? "最新稳定版" : "Latest stable"))} · Stable</span><a href={release.notes} target="_blank" rel="noreferrer" data-liquid-snap="true" data-liquid-snap-min-width="150" data-liquid-snap-min-height="54" data-magnetic-bounce="true">{zh ? "更新日志" : "Release notes"}<span aria-hidden="true"> ↗</span></a></div>
             <a className="loom-secondary-action" href={release.download}><span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong></span><Download size={16} aria-hidden="true" /></a>
+          </div>
+          <div className="loom-download-module loom-download-module-x86" aria-labelledby="loom-download-x86-title">
+            <div className="loom-download-product"><Laptop size={26} aria-hidden="true" /><div>
+              <h2 id="loom-download-x86-title">Loom for Windows 32-bit</h2>
+              <p>Windows 10 · x86{x86Release?.package ? ` · ${x86Release.package}` : ""}</p>
+              <p>{zh ? "本地 Host · 独立预览版" : "Local Host · independent preview channel"}</p>
+            </div></div>
+            <div className="loom-download-version"><span>{x86Release ? `${x86Release.version} · Preview` : (zh ? "预览版 · 暂未发布" : "Preview · not yet released")}</span>
+              {x86Release ? <a href={x86Release.notes} target="_blank" rel="noopener noreferrer">{zh ? "更新日志" : "Release notes"}</a> : null}
+            </div>
+            <a className="loom-secondary-action" href={x86Release?.download ?? X86_RELEASES_URL} target="_blank" rel="noopener noreferrer"><span><strong>{x86Release ? (zh ? "下载 Windows 32 位预览版" : "Download Windows 32-bit preview") : (zh ? "查看 Windows 32 位发布" : "View Windows 32-bit releases")}</strong></span><Download size={16} aria-hidden="true" /></a>
           </div>
 
           </article>

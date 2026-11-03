@@ -1,0 +1,44 @@
+name: Portal Windows x64/x86 download channels
+
+on:
+  pull_request:
+    paths:
+      - "desktop-react/src/portalRelease.ts"
+      - "desktop-react/src/portalX86Release.ts"
+      - "desktop-react/src/components/WebPortal.tsx"
+      - "desktop-react/src/components/portal-editorial.css"
+      - "desktop-react/scripts/tests/portal-x86-release.test.mjs"
+      - ".github/workflows/portal-windows-downloads.yml"
+  push:
+    branches: [main]
+    paths:
+      - "desktop-react/src/portalRelease.ts"
+      - "desktop-react/src/portalX86Release.ts"
+      - "desktop-react/src/components/WebPortal.tsx"
+      - "desktop-react/src/components/portal-editorial.css"
+      - "desktop-react/scripts/tests/portal-x86-release.test.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-independent-downloads:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop-react/package-lock.json
+      - name: Install desktop dependencies
+        working-directory: desktop-react
+        run: npm ci --no-audit --no-fund
+      - name: Verify both release channels
+        working-directory: desktop-react
+        run: |
+          node --test scripts/tests/portal-x86-release.test.mjs
+          node --test --test-name-pattern="^(metadata and installer|rejects incomplete|request skips cache)" scripts/tests/portal-release.test.mjs
+      - name: Compile shared Web homepage
+        working-directory: desktop-react
+        run: npm run build:renderer
