@@ -22,6 +22,19 @@ foreach ($file in @($exe, $runtime)) {
   if ($machine -ne 0x014c) { throw "$file is not x86: PE machine 0x$($machine.ToString('x4'))" }
   Write-Host "Verified native x86 binary: $file"
 }
+# Playwright may install an x64 Node driver even into a Python x86 wheel.
+# Verify the exact executable bundled in the final installer; imports alone
+# do not prove the browser driver can start on a 32-bit Windows OS.
+$driver = Join-Path $InstallDir "resources\\_internal\\playwright\\driver\\node.exe"
+if (-not (Test-Path $driver)) { throw "Packaged x86 Playwright Node driver is missing" }
+if ((Get-PeMachine $driver) -ne 0x014c) { throw "Packaged Playwright Node driver is not x86" }
+& $driver --version
+if ($LASTEXITCODE -ne 0) { throw "Packaged x86 Playwright Node driver will not run" }
+Write-Host "Verified native x86 Playwright browser driver: $driver"
+& $runtime -c "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); assert p.chromium.name == 'chromium'; p.stop(); print('loom-packaged-x86-playwright-driver-ok')"
+if ($LASTEXITCODE -ne 0) { throw "Packaged Playwright x86 driver could not initialize" }
+& $runtime -c "from app.agent_runtime.computer_windows import windows_computer_available; assert windows_computer_available(); print('loom-packaged-x86-computer-import-ok')"
+if ($LASTEXITCODE -ne 0) { throw "Packaged Windows x86 Computer Use prerequisites unavailable" }
 $manifest = Get-Content (Join-Path $InstallDir "resources\manifest.json") -Raw | ConvertFrom-Json
 if ($manifest.arch -ne "ia32" -or $manifest.platform -ne "win32") {
   throw "Wrong packaged Host architecture: $($manifest.arch)"
