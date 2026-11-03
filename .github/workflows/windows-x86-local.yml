@@ -55,6 +55,12 @@ jobs:
         run: |
           python -c "import struct; assert struct.calcsize('P') == 4"
           if ($LASTEXITCODE -ne 0) { throw "Python must be x86" }
+      - name: Exercise kernel32 native x86 ConPTY before expensive Agent freezing
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          python win32-local/tests/native_conpty_smoke.py
+          if ($LASTEXITCODE -ne 0) { throw "Native Windows x86 ConPTY smoke failed" }
       - name: Install desktop JS dependencies
         working-directory: desktop-react
         run: npm ci --no-audit --no-fund
