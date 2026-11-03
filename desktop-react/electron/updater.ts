@@ -67,7 +67,9 @@ const autoUpdater = getAutoUpdater();
 const updateSource = configuredUpdateSource();
 let sourceFailed = false;
 const githubFeed = { provider: "github" as const, owner: "yuchenm1303-png", repo: "Loom" };
-const updateEnabled = isHostProcess && app.isPackaged && process.platform === "win32"
+// The x86 build has an independent packaging/runtime channel. Never feed
+// it the production x64 installer until a signed x86 updater is available.
+const updateEnabled = process.arch !== "ia32" && isHostProcess && app.isPackaged && process.platform === "win32"
   && process.env.LOOM_DISABLE_AUTO_UPDATES !== "1";
 let state: SoftwareUpdateState = {
   enabled: updateEnabled,
