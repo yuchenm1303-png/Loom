@@ -4,11 +4,19 @@ on:
   pull_request:
     paths:
       - "win32-client/**"
+      - "desktop-react/src/webBridge.ts"
+      - "desktop-react/src/components/WebAppGate.tsx"
+      - "desktop-react/src/components/WebPortal.tsx"
+      - "desktop-react/src/components/RemoteDevicesPanel.tsx"
       - ".github/workflows/win32-remote-client.yml"
   push:
     branches: [main]
     paths:
       - "win32-client/**"
+      - "desktop-react/src/webBridge.ts"
+      - "desktop-react/src/components/WebAppGate.tsx"
+      - "desktop-react/src/components/WebPortal.tsx"
+      - "desktop-react/src/components/RemoteDevicesPanel.tsx"
       - ".github/workflows/win32-remote-client.yml"
   workflow_dispatch:
     inputs:
@@ -21,6 +29,23 @@ permissions:
   contents: read
 
 jobs:
+  verify-remote-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop-react/package-lock.json
+      - name: Validate x86 remote-only onboarding contract
+        run: node --test win32-client/tests/*.test.mjs
+      - name: Build the shared Loom Web renderer
+        working-directory: desktop-react
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build:renderer
+
   build-win32-remote:
     runs-on: windows-latest
     permissions:
