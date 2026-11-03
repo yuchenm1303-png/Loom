@@ -26,7 +26,12 @@ run(python, ["-m", "pip", "install", "-r", path.join(repo, "win32-local", "requi
 // Do not install the full pyproject dependency set: pywinpty is not linkable
 // on x86 at present. The core package remains the same exact source tree.
 run(python, ["-m", "pip", "install", "--no-deps", "-e", "."]);
+// Replace the x64 Playwright driver executable even though the Python wheel
+// was installed into a 32-bit venv. Without this, browser-use crashes only on
+// real 32-bit Windows while core Agent and Host smoke tests appear green.
+run(process.execPath, [path.join(desktop, "scripts", "prepare-playwright-x86.mjs")]);
 run(python, ["-m", "pip", "install", "pyinstaller>=6.10,<7"]);
+run(python, ["-c", "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); print('loom-x86-browser-driver-ok', p.chromium.name); p.stop()"]);
 run(python, ["-c", "import struct, app, mcp, keyring, pyautogui, pywinauto, playwright, browser_use, cryptography; assert struct.calcsize('P') == 4; print('loom-x86-local-imports-ok')"]);
 
 fs.rmSync(dist, { recursive: true, force: true });
