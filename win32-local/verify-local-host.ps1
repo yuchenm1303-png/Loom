@@ -76,6 +76,33 @@ if ($manifest.arch -ne "ia32" -or $manifest.platform -ne "win32") {
 & $runtime self-test
 if ($LASTEXITCODE -ne 0) { throw "Frozen x86 runtime self test failed" }
 
+# x64 packages GitHub OAuth defaults into the frozen Agent. Prove that x86
+# does too, even if a real end-user launches Loom with no CI environment
+# variables at all. Never print the OAuth client secret or user tokens.
+$oauthVariables = @(
+  "LOOM_GITHUB_CLIENT_ID", "LOOM_GITHUB_CLIENT_SECRET",
+  "LOOM_GITHUB_OAUTH_SCOPES", "LOOM_GITHUB_CALLBACK_PATH"
+)
+$oauthOriginal = @{}
+$expectedGithubOauth = -not [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID) -and
+  -not [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)
+foreach ($variable in $oauthVariables) {
+  $oauthOriginal[$variable] = [Environment]::GetEnvironmentVariable($variable, "Process")
+}
+try {
+  foreach ($variable in $oauthVariables) {
+    [Environment]::SetEnvironmentVariable($variable, $null, "Process")
+  }
+  $env:LOOM_EXPECT_PACKAGED_GITHUB_OAUTH = $(if ($expectedGithubOauth) { "1" } else { "0" })
+  & $runtime -c "import os,tempfile; from pathlib import Path; from app.connector_web_oauth import WebOAuthConnectorManager; m=WebOAuthConnectorManager(Path(tempfile.mkdtemp())); s=m.github_status(); expected=os.environ['LOOM_EXPECT_PACKAGED_GITHUB_OAUTH']=='1'; assert s.get('id')=='github' and bool(s.get('webOAuthAvailable')) is expected, (s.get('id'),s.get('webOAuthAvailable'),expected); print('loom-win32-frozen-github-oauth-ok',expected)"
+  if ($LASTEXITCODE -ne 0) { throw "Windows x86 GitHub OAuth differs from the x64 release when CI credentials are removed" }
+} finally {
+  foreach ($variable in $oauthVariables) {
+    [Environment]::SetEnvironmentVariable($variable, $oauthOriginal[$variable], "Process")
+  }
+  Remove-Item Env:LOOM_EXPECT_PACKAGED_GITHUB_OAUTH -ErrorAction SilentlyContinue
+}
+
 # Verify the real Python App Server can initialize and list threads, using
 # Loom's existing packaged-runtime gate (from the source directory).
 node desktop-react/scripts/verify-packaged-runtime.mjs (Join-Path $InstallDir "resources")
