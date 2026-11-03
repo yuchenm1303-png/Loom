@@ -272,6 +272,25 @@ class PipeProcessBackend:
         self.close_stdin()
 
 
+class WindowsX86PipeTerminalBackend(PipeProcessBackend):
+    """Degraded interactive terminal for Windows x86 without native pywinpty.
+
+    This is an ordinary child process with stdin/stdout/stderr pipes, not an OS
+    pseudoterminal. The backend reports pty=False so clients cannot mistake it
+    for a ConPTY session. It keeps the same sandbox permission/approval path
+    as every other execution backend. Full-screen TUIs and terminal size
+    negotiation cannot work, but ordinary command execution and interactive
+    line-oriented shells remain usable on 32-bit Windows.
+    """
+
+    name = "windows-x86-pipe-terminal"
+
+    def resize(self, rows: int, cols: int) -> None:
+        # Pipe-backed processes have no terminal grid. Resizing the UI should
+        # not kill an otherwise healthy x86 command session.
+        return
+
+
 class UnixPtyProcessBackend:
     name = "unix-pty"
     pty = True
@@ -545,7 +564,16 @@ def _spawn_backend(
     if not pty:
         return PipeProcessBackend(argv=argv, cwd=cwd, env=env)
     if os.name == "nt":
-        return WindowsConPtyProcessBackend(argv=argv, cwd=cwd, env=env, rows=rows, cols=cols)
+        try:
+            return WindowsConPtyProcessBackend(argv=argv, cwd=cwd, env=env, rows=rows, cols=cols)
+        except RuntimeError as exc:
+            # Current pywinpty doesn't ship the native x86 wheel. Only this
+            # specific missing-dependency case on a 32-bit Python interpreter
+            # may fall back to pipes; never suppress other native PTY errors.
+            if (sys.maxsize <= 2**32 and
+                    "Windows PTY requires pywinpty" in str(exc)):
+                return WindowsX86PipeTerminalBackend(argv=argv, cwd=cwd, env=env)
+            raise
     return UnixPtyProcessBackend(argv=argv, cwd=cwd, env=env, rows=rows, cols=cols)
 
 
