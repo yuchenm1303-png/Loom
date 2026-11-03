@@ -72,6 +72,40 @@ try {
     }
     throw "IA32 Loom Host did not start its localhost discovery endpoint"
   }
+
+  # Host-only success is not enough for a desktop release: the original Loom
+  # UI process must launch and attach to its own local Host through IPC.
+  $desktopOut = Join-Path $probeHome "loom-desktop-stdout.log"
+  $desktopErr = Join-Path $probeHome "loom-desktop-stderr.log"
+  $desktop = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $desktopOut -RedirectStandardError $desktopErr
+  try {
+    $desktopAttached = $false
+    $pidFile = Join-Path $env:LOOM_HOST_DATA_DIR "host-ipc\desktop-pids.json"
+    for ($i = 0; $i -lt 40; $i++) {
+      Start-Sleep -Seconds 1
+      if ($desktop.HasExited) { break }
+      if (-not (Test-Path $pidFile)) { continue }
+      try {
+        $clientPids = @(Get-Content $pidFile -Raw | ConvertFrom-Json)
+        if ($clientPids.Count -gt 0) {
+          Start-Sleep -Seconds 2
+          if (-not $desktop.HasExited) {
+            $desktopAttached = $true
+            Write-Host "Real IA32 Loom Desktop launched and attached to its own local Host: $($clientPids -join ',')"
+            break
+          }
+        }
+      } catch { }
+    }
+    if (-not $desktopAttached) {
+      foreach ($log in @($desktopOut, $desktopErr)) {
+        if (Test-Path $log) { Write-Host "=== $log ==="; Get-Content $log -Tail 100 }
+      }
+      throw "IA32 Loom Desktop did not attach to its own local Host"
+    }
+  } finally {
+    if ($desktop -and -not $desktop.HasExited) { Stop-Process -Id $desktop.Id -Force -ErrorAction SilentlyContinue }
+  }
 } finally {
   Remove-Item Env:ELECTRON_ENABLE_LOGGING -ErrorAction SilentlyContinue
   if ($child -and -not $child.HasExited) { Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue }
