@@ -452,6 +452,19 @@
 .loom-editorial .editorial-primary:hover { background: color-mix(in srgb, var(--ed-ink) 84%, var(--ed-paper)); }
 .loom-editorial .editorial-primary svg { transition: transform var(--loom-dur-fast) var(--loom-ease-move); }
 .loom-editorial .editorial-primary:hover svg { transform: translateX(3px); }
+/* A second, quieter architecture release entry. Keep the stable x64 CTA intact. */
+.loom-editorial .editorial-download-x86 {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ed-ink-muted);
+  text-decoration-color: currentColor;
+  text-underline-offset: .28em;
+}
+.loom-editorial .editorial-download-x86:hover { color: var(--ed-ink); }
+.loom-editorial .editorial-download-x86:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
 /* The arrow is a sign, not a word: inline-block keeps the link's underline from running under it. */
 .loom-editorial .editorial-download span { display: inline-block; margin-left: .35em; }
 .loom-editorial .editorial-release {
