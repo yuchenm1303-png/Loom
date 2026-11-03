@@ -16,6 +16,7 @@ on:
       - "desktop-react/build/installer-x86.nsh"
       - "desktop-react/scripts/tests/windows-x86-installer-protocol.test.mjs"
       - "desktop-react/scripts/build-windows-x86-local-runtime.mjs"
+      - "desktop-react/scripts/tests/windows-architecture-parity.test.mjs"
       - "desktop-react/electron/hostRuntime.ts"
       - "desktop-react/electron/hostPaths.ts"
       - "desktop-react/electron/updater.ts"
@@ -61,6 +62,9 @@ jobs:
       - name: Verify Loom deep-link installer parity
         working-directory: desktop-react
         run: node --test scripts/tests/windows-x86-installer-protocol.test.mjs
+      - name: Check architecture feature parity
+        working-directory: desktop-react
+        run: node --test scripts/tests/windows-architecture-parity.test.mjs
       - name: Compile original Loom desktop and web renderer
         working-directory: desktop-react
         run: npm run build
