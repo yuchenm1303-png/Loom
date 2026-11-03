@@ -14,6 +14,7 @@ on:
       - "desktop-react/electron/hostProcess.ts"
       - "desktop-react/build/win32-local.config.cjs"
       - "desktop-react/scripts/build-windows-x86-local-runtime.mjs"
+      - "desktop-react/scripts/tests/windows-architecture-parity.test.mjs"
       - "desktop-react/electron/hostRuntime.ts"
       - "desktop-react/electron/hostPaths.ts"
       - "desktop-react/electron/updater.ts"
@@ -56,6 +57,9 @@ jobs:
       - name: Install desktop JS dependencies
         working-directory: desktop-react
         run: npm ci --no-audit --no-fund
+      - name: Check architecture feature parity
+        working-directory: desktop-react
+        run: node --test scripts/tests/windows-architecture-parity.test.mjs
       - name: Compile original Loom desktop and web renderer
         working-directory: desktop-react
         run: npm run build

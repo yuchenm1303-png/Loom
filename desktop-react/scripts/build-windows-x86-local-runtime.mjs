@@ -11,6 +11,43 @@ const python = path.join(venv, "Scripts", "python.exe");
 const dist = path.join(desktop, "runtime-dist-x86");
 const work = path.join(desktop, "runtime-build-x86");
 const interpreter = process.env.LOOM_BOOTSTRAP_PYTHON || process.env.PYTHON || "python";
+const generatedConnectorConfig = path.join(repo, "app", "connector_release_config_generated.py");
+
+// The full x64 release builds the trusted OAuth defaults into its frozen
+// Python runtime. x86 must do exactly the same; CI environment variables
+// are not available when an end user opens Loom on their own PC.
+function cleanupGeneratedConnectorConfig() {
+  try { fs.rmSync(generatedConnectorConfig, { force: true }); }
+  catch { /* best effort; the file is ignored by Git */ }
+}
+process.on("exit", cleanupGeneratedConnectorConfig);
+
+function pythonLiteral(value) {
+  return JSON.stringify(String(value ?? ""));
+}
+function prepareGeneratedConnectorConfig() {
+  cleanupGeneratedConnectorConfig();
+  const clientId = String(process.env.LOOM_GITHUB_CLIENT_ID || "").trim();
+  const clientSecret = String(process.env.LOOM_GITHUB_CLIENT_SECRET || "").trim();
+  if (!clientId && !clientSecret) {
+    console.log("[win32-local] GitHub web OAuth: no release defaults (development/test build).");
+    return;
+  }
+  if (!clientId || !clientSecret) {
+    throw new Error("Both GitHub OAuth client ID and secret are required for a trusted x86 release");
+  }
+  const scopes = String(process.env.LOOM_GITHUB_OAUTH_SCOPES || "repo read:org").trim();
+  const callback = String(process.env.LOOM_GITHUB_CALLBACK_PATH || "/oauth/github/callback").trim();
+  fs.writeFileSync(generatedConnectorConfig, [
+    "# Generated at packaging time; do not commit this file.",
+    `GITHUB_CLIENT_ID = ${pythonLiteral(clientId)}`,
+    `GITHUB_CLIENT_SECRET = ${pythonLiteral(clientSecret)}`,
+    `GITHUB_OAUTH_SCOPES = ${pythonLiteral(scopes)}`,
+    `GITHUB_OAUTH_CALLBACK_PATH = ${pythonLiteral(callback)}`,
+    "",
+  ].join("\n"), { encoding: "utf8", mode: 0o600 });
+  console.log("[win32-local] GitHub web OAuth: release defaults embedded in frozen runtime.");
+}
 
 function run(command, args, env = process.env) {
   console.log("[win32-local]", command, args.join(" "));
@@ -38,6 +75,7 @@ fs.rmSync(dist, { recursive: true, force: true });
 fs.rmSync(work, { recursive: true, force: true });
 fs.mkdirSync(dist, { recursive: true });
 fs.mkdirSync(work, { recursive: true });
+prepareGeneratedConnectorConfig();
 run(python, [
   "-m", "PyInstaller", "--noconfirm", "--clean", "--noupx",
   "--name", "python", "--distpath", dist, "--workpath", work,
