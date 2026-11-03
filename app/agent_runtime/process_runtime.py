@@ -565,6 +565,22 @@ def _spawn_backend(
     if not pty:
         return PipeProcessBackend(argv=argv, cwd=cwd, env=env)
     if os.name == "nt":
+        if sys.maxsize <= 2**32:
+            # Windows 10 ships native x86 ConPTY. Unlike pywinpty's bundled
+            # win64 binary, the OS API works in a true 32-bit Python process
+            # and restores interactive terminal/resizing functionality.
+            from .native_windows_conpty import (
+                ConPtyUnavailableError,
+                WindowsNativeConPtyProcessBackend,
+            )
+            try:
+                return WindowsNativeConPtyProcessBackend(
+                    argv=argv, cwd=cwd, env=env, rows=rows, cols=cols
+                )
+            except ConPtyUnavailableError:
+                # Only systems without the required OS API may fall back.
+                # Never hide a bad CreateProcess/permission failure as a PTY.
+                return WindowsX86PipeTerminalBackend(argv=argv, cwd=cwd, env=env)
         try:
             return WindowsConPtyProcessBackend(argv=argv, cwd=cwd, env=env, rows=rows, cols=cols)
         except RuntimeError as exc:
