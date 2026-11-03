@@ -14,6 +14,8 @@ on:
       - "desktop-react/electron/hostProcess.ts"
       - "desktop-react/build/win32-local.config.cjs"
       - "desktop-react/scripts/build-windows-x86-local-runtime.mjs"
+      - "desktop-react/scripts/tests/windows-architecture-parity.test.mjs"
+      - "app/connector_product_config.py"
       - "desktop-react/electron/hostRuntime.ts"
       - "desktop-react/electron/hostPaths.ts"
       - "desktop-react/electron/updater.ts"
@@ -53,9 +55,18 @@ jobs:
         run: |
           python -c "import struct; assert struct.calcsize('P') == 4"
           if ($LASTEXITCODE -ne 0) { throw "Python must be x86" }
+      - name: Exercise kernel32 native x86 ConPTY before expensive Agent freezing
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          python -u win32-local/tests/native_conpty_smoke.py
+          if ($LASTEXITCODE -ne 0) { throw "Native Windows x86 ConPTY smoke failed" }
       - name: Install desktop JS dependencies
         working-directory: desktop-react
         run: npm ci --no-audit --no-fund
+      - name: Check architecture feature parity
+        working-directory: desktop-react
+        run: node --test scripts/tests/windows-architecture-parity.test.mjs
       - name: Compile original Loom desktop and web renderer
         working-directory: desktop-react
         run: npm run build

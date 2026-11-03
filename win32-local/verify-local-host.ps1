@@ -52,10 +52,16 @@ Write-Host "Verified native x86 Playwright browser driver: $driver"
 if ($LASTEXITCODE -ne 0) { throw "Packaged Playwright x86 driver could not initialize" }
 & $runtime -c "from app.agent_runtime.computer_windows import windows_computer_available; assert windows_computer_available(); print('loom-packaged-x86-computer-import-ok')"
 if ($LASTEXITCODE -ne 0) { throw "Packaged Windows x86 Computer Use prerequisites unavailable" }
-# A PTY request must not fail to launch ordinary Windows shells merely
-# because winpty has no x86 native wheel. Validate actual process output.
-& $runtime -c "from app.agent_runtime.process_runtime import _spawn_backend; from pathlib import Path; import os; b=_spawn_backend(argv=('cmd.exe','/d','/c','echo loom-win32-terminal-ok'),cwd=Path.cwd(),env=os.environ,pty=True,rows=24,cols=80); text=b.read_stdout(); assert b.name == 'windows-x86-pipe-terminal' and 'loom-win32-terminal-ok' in text, (b.name,text); b.close(); print('loom-packaged-x86-terminal-ok')"
-if ($LASTEXITCODE -ne 0) { throw "Packaged Windows x86 interactive pipe terminal failed" }
+# The x86 Host should support the same real Windows ConPTY interface as x64:
+# interactive input/output, Ctrl controls and resize. This must execute inside
+# the frozen 32-bit Python process, not through a 64-bit test helper.
+$env:LOOM_VERIFY_PACKAGED_X86_CONPTY = "1"
+try {
+  & $runtime -c "import runpy; runpy.run_path('win32-local/tests/native_conpty_smoke.py', run_name='__main__')"
+  if ($LASTEXITCODE -ne 0) { throw "Packaged native Windows x86 ConPTY failed interactive input/output/resize verification" }
+} finally {
+  Remove-Item Env:LOOM_VERIFY_PACKAGED_X86_CONPTY -ErrorAction SilentlyContinue
+}
 # If this runner has Microsoft Edge, verify a real browser session. Missing
 # Edge is a runtime prerequisite on user machines, not a reason to download
 # an x64 Chromium build into the 32-bit installation.
@@ -75,6 +81,33 @@ if ($manifest.arch -ne "ia32" -or $manifest.platform -ne "win32") {
 }
 & $runtime self-test
 if ($LASTEXITCODE -ne 0) { throw "Frozen x86 runtime self test failed" }
+
+# x64 packages GitHub OAuth defaults into the frozen Agent. Prove that x86
+# does too, even if a real end-user launches Loom with no CI environment
+# variables at all. Never print the OAuth client secret or user tokens.
+$oauthVariables = @(
+  "LOOM_GITHUB_CLIENT_ID", "LOOM_GITHUB_CLIENT_SECRET",
+  "LOOM_GITHUB_OAUTH_SCOPES", "LOOM_GITHUB_CALLBACK_PATH"
+)
+$oauthOriginal = @{}
+$expectedGithubOauth = -not [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID) -and
+  -not [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)
+foreach ($variable in $oauthVariables) {
+  $oauthOriginal[$variable] = [Environment]::GetEnvironmentVariable($variable, "Process")
+}
+try {
+  foreach ($variable in $oauthVariables) {
+    [Environment]::SetEnvironmentVariable($variable, $null, "Process")
+  }
+  $env:LOOM_EXPECT_PACKAGED_GITHUB_OAUTH = $(if ($expectedGithubOauth) { "1" } else { "0" })
+  & $runtime -c "import os,tempfile; from pathlib import Path; from app.connector_web_oauth import WebOAuthConnectorManager; m=WebOAuthConnectorManager(Path(tempfile.mkdtemp())); s=m.github_status(); expected=os.environ['LOOM_EXPECT_PACKAGED_GITHUB_OAUTH']=='1'; assert s.get('id')=='github' and bool(s.get('webOAuthAvailable')) is expected, (s.get('id'),s.get('webOAuthAvailable'),expected); print('loom-win32-frozen-github-oauth-ok',expected)"
+  if ($LASTEXITCODE -ne 0) { throw "Windows x86 GitHub OAuth differs from the x64 release when CI credentials are removed" }
+} finally {
+  foreach ($variable in $oauthVariables) {
+    [Environment]::SetEnvironmentVariable($variable, $oauthOriginal[$variable], "Process")
+  }
+  Remove-Item Env:LOOM_EXPECT_PACKAGED_GITHUB_OAUTH -ErrorAction SilentlyContinue
+}
 
 # Verify the real Python App Server can initialize and list threads, using
 # Loom's existing packaged-runtime gate (from the source directory).
