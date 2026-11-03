@@ -9,17 +9,30 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DESKTOP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
-const VENV_ROOT = path.join(DESKTOP_ROOT, ".packaging-venv");
+// One recipe for both Windows architectures. --arch=ia32 builds the native
+// 32-bit Agent for the separate x86 installer from the same dependency list;
+// it differs only where an x64 payload has no x86 counterpart (pywinpty, the
+// bundled Chromium) and swaps Playwright's x64 Node driver for an x86 one.
+const ARCH = process.argv.includes("--arch=ia32") ? "ia32" : "x64";
+const IA32 = ARCH === "ia32";
+const SUFFIX = IA32 ? "-x86" : "";
+const VENV_ROOT = path.join(DESKTOP_ROOT, `.packaging-venv${SUFFIX}`);
 const VENV_PYTHON = path.join(VENV_ROOT, "Scripts", "python.exe");
-const DIST_ROOT = path.join(DESKTOP_ROOT, "runtime-dist");
+const DIST_ROOT = path.join(DESKTOP_ROOT, `runtime-dist${SUFFIX}`);
 const BROWSER_CACHE_ROOT = path.join(DESKTOP_ROOT, ".cache", "playwright");
-const WORK_ROOT = path.join(DESKTOP_ROOT, "runtime-build");
+const WORK_ROOT = path.join(DESKTOP_ROOT, `runtime-build${SUFFIX}`);
+// pywinpty publishes no win32 wheel; process_runtime falls back to a pipe
+// terminal on 32-bit Python and reports pty=false.
+const IA32_EXCLUDED = new Set(["pywinpty"]);
+// cryptography 48 is the last series with a Windows x86 wheel; a newer one
+// would attempt a source build and fail.
+const IA32_PINS = ["cryptography==48.0.1"];
 const ENTRYPOINT = path.join(REPO_ROOT, "loom_desktop_runtime.py");
 const GENERATED_CONNECTOR_CONFIG = path.join(REPO_ROOT, "app", "connector_release_config_generated.py");
 const BOOTSTRAP_PYTHON = process.env.LOOM_BOOTSTRAP_PYTHON || process.env.PYTHON || "python";
 // Capture identity before compilation; a concurrent commit must not label an
 // already compiled executable as containing that later source revision.
-const hostManifest = hostRuntimeIdentity(REPO_ROOT);
+const hostManifest = hostRuntimeIdentity(REPO_ROOT, { ...process.env, LOOM_RUNTIME_ARCH: ARCH });
 
 function run(command, args, options = {}) {
   console.log(`[build-runtime] ${command} ${args.join(" ")}`);
@@ -84,13 +97,28 @@ if (process.platform !== "win32") {
   process.exit(2);
 }
 
+run(BOOTSTRAP_PYTHON, ["-c", `import struct, sys; sys.exit(struct.calcsize("P") != ${IA32 ? 4 : 8})`]);
 if (!fs.existsSync(VENV_PYTHON)) {
   run(BOOTSTRAP_PYTHON, ["-m", "venv", VENV_ROOT]);
 }
 
 run(VENV_PYTHON, ["-m", "pip", "install", "--upgrade", "pip", "wheel"]);
-run(VENV_PYTHON, ["-m", "pip", "install", "--prefix", VENV_ROOT,
-  ".[desktop-agent]", "pyinstaller>=6.10,<7", "playwright>=1.50,<2"]);
+const tooling = ["pyinstaller>=6.10,<7", "playwright>=1.50,<2"];
+if (IA32) {
+  // The x64 requirement list, read from pyproject so the two cannot drift.
+  const listed = spawnSync(VENV_PYTHON, ["-c",
+    "import json, tomllib; p = tomllib.load(open('pyproject.toml', 'rb'))['project']; "
+    + "print(json.dumps(p['dependencies'] + p['optional-dependencies']['desktop-agent']))"],
+  { cwd: REPO_ROOT, encoding: "utf8" });
+  if (listed.status !== 0) throw new Error(`Cannot read pyproject dependencies: ${listed.stderr}`);
+  const requirements = JSON.parse(listed.stdout).filter((requirement) =>
+    !IA32_EXCLUDED.has(requirement.match(/^[A-Za-z0-9_.-]+/)[0].toLowerCase()));
+  run(VENV_PYTHON, ["-m", "pip", "install", "--prefix", VENV_ROOT, ...requirements, ...IA32_PINS, ...tooling]);
+  run(VENV_PYTHON, ["-m", "pip", "install", "--prefix", VENV_ROOT, "--no-deps", "."]);
+  run(process.execPath, [path.join(__dirname, "prepare-playwright-x86.mjs"), VENV_ROOT]);
+} else {
+  run(VENV_PYTHON, ["-m", "pip", "install", "--prefix", VENV_ROOT, ".[desktop-agent]", ...tooling]);
+}
 
 fs.rmSync(DIST_ROOT, { recursive: true, force: true });
 fs.rmSync(WORK_ROOT, { recursive: true, force: true });
@@ -103,7 +131,8 @@ prepareGeneratedConnectorConfig();
 const browserRoot = BROWSER_CACHE_ROOT;
 // All frozen browser launch paths pass the bundled full Chrome executable,
 // including headless mode. A second headless-shell payload is unused.
-run(VENV_PYTHON, ["-m", "playwright", "install", "chromium", "--no-shell"], {
+// Chromium has no win32 build: the x86 Agent drives the installed Edge/Chrome.
+if (!IA32) run(VENV_PYTHON,["-m", "playwright", "install", "chromium", "--no-shell"], {
   env: { ...process.env, PYTHONUTF8: "1", PLAYWRIGHT_BROWSERS_PATH: browserRoot },
 });
 
@@ -141,8 +170,7 @@ run(VENV_PYTHON, [
   "pyautogui",
   "--collect-all",
   "psutil",
-  "--collect-all",
-  "winpty",
+  ...(IA32 ? [] : ["--collect-all", "winpty"]),
   "--hidden-import",
   "keyring.backends.Windows",
   "--hidden-import",
@@ -155,11 +183,13 @@ if (!fs.existsSync(runtimeExe)) {
   console.error(`[build-runtime] Missing expected runtime executable: ${runtimeExe}`);
   process.exit(1);
 }
-fs.cpSync(browserRoot, path.join(DIST_ROOT, "python", "browsers"), { recursive: true });
-const browserExe = fs.readdirSync(browserRoot).filter((name) => name.startsWith("chromium-"))
-  .map((name) => path.join(browserRoot, name, "chrome-win64", "chrome.exe"))
-  .find((name) => fs.existsSync(name));
-if (!browserExe) throw new Error("Bundled Chromium executable is missing");
+if (!IA32) {
+  fs.cpSync(browserRoot, path.join(DIST_ROOT, "python", "browsers"), { recursive: true });
+  const browserExe = fs.readdirSync(browserRoot).filter((name) => name.startsWith("chromium-"))
+    .map((name) => path.join(browserRoot, name, "chrome-win64", "chrome.exe"))
+    .find((name) => fs.existsSync(name));
+  if (!browserExe) throw new Error("Bundled Chromium executable is missing");
+}
 run(runtimeExe, ["self-test"], { cwd: path.dirname(runtimeExe) });
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
   !/^(LOOM_|MINIMAX_|OPENAI_|DASHSCOPE_|AI_API_KEY|PYTHONPATH|PYTHONHOME)/i.test(name)));
@@ -174,5 +204,5 @@ run(runtimeExe, [
 
 verifyPackagedRuntime(path.dirname(runtimeExe));
 fs.writeFileSync(path.join(DIST_ROOT, "python", "manifest.json"), `${JSON.stringify(hostManifest, null, 2)}\n`, "utf8");
-console.log(`[build-runtime] Host manifest: ${hostManifest.version} protocol=${hostManifest.protocol}`);
+console.log(`[build-runtime] Host manifest: ${hostManifest.version} protocol=${hostManifest.protocol} arch=${hostManifest.arch}`);
 console.log(`[build-runtime] Ready: ${runtimeExe}`);

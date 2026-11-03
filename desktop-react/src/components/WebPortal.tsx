@@ -122,7 +122,7 @@ function PortalWallpaper() {
   );
 }
 
-export function WebPortal({ account, hostState, hostError, selectedDeviceName, onEnter, onOpenProfile, hostDetected = false, remoteMode = false, onRemote }: {
+export function WebPortal({ account, hostState, hostError, selectedDeviceName, onEnter, onOpenProfile, hostDetected = false }: {
   account: AccountController;
   hostState: PortalHostState;
   hostError: string;
@@ -290,11 +290,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
     catch { /* storage unavailable */ }
   }
   function openWorkspace() {
-    if (!authenticated) {
-      openEditorialModal();
-    } else if (remoteMode && hostState !== "online") {
-      onRemote?.();
-    } else if (hostState === "online") {
+    if (authenticated && hostState === "online") {
       onEnter();
     } else {
       openEditorialModal();
@@ -612,18 +608,10 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
       focusAccount();
       return;
     }
-    if (remoteMode && hostState !== "online") {
-      onRemote?.();
-      return;
-    }
     onEnter();
   }
 
-  const hostText = remoteMode
-    ? hostState === "online"
-      ? (zh ? "已连接到所选远程 Loom Host。所有工具都在远程电脑上运行。" : "Connected to the selected remote Loom Host. Tools run on that computer.")
-      : (zh ? "此 32 位客户端不运行本机 Agent。请选择一台已登录且在线的远程 Loom Host。" : "This 32-bit client does not run a local Agent. Choose a signed-in, online remote Loom Host.")
-    : hostState === "online"
+  const hostText = hostState === "online"
     ? (zh ? "你的本地工作区已就绪，继续上次的工作吧。" : "Your local workspace is ready. Continue where you left off.")
     : hostState === "account-mismatch"
       ? (zh ? "本机 Loom Host 与网页登录的账号不同。请切换网页账号，或在 Loom 桌面端登录当前网页账号，再重试连接。" : "This computer’s Loom Host is signed in to a different account. Switch the web account, or sign in to the current web account in Loom Desktop, then retry.")
@@ -635,9 +623,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           ? copy.localOffline
           : (zh ? "等待 Loom Host" : "Waiting for Loom Host");
 
-  const hostLabel = remoteMode && hostState !== "online"
-    ? (zh ? "选择远程电脑" : "Choose remote computer")
-    : hostState === "online"
+  const hostLabel = hostState === "online"
     ? (selectedDeviceName || (zh ? "已连接" : "Connected"))
     : hostState === "account-mismatch"
       ? (zh ? "账号不一致" : "Account mismatch")
@@ -649,9 +635,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           ? (zh ? "未检测到 Loom Host" : "Loom Host not detected")
           : (zh ? "等待连接" : "Waiting");
 
-  const primaryLabel = remoteMode && authenticated && hostState !== "online"
-    ? (zh ? "选择远程电脑" : "Choose remote computer")
-    : !authenticated
+  const primaryLabel = !authenticated
     ? (zh ? "登录并打开 Loom Web" : "Sign in to Loom Web")
     : hostState === "online"
       ? (zh ? "打开 Loom Web" : "Open Loom Web")
@@ -678,7 +662,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <nav className="editorial-nav" aria-label={home.nav.label}>
               <a href="#loom-computer-use" onClick={(event) => goToSection(event, "loom-computer-use")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.doing}</a>
               <a href="#loom-start" onClick={(event) => goToSection(event, "loom-start")} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.start}</a>
-              {!remoteMode ? <a href={release.download} onClick={() => setMenuOpen(false)} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a> : null}
+              <a href={release.download} onClick={() => setMenuOpen(false)} data-liquid-snap="true" data-magnetic-hover="true">{home.nav.download}</a>
             </nav>
             <nav className="editorial-meta" aria-label={zh ? "主页操作" : "Home actions"}>
               <button className="editorial-language" type="button" onClick={toggleLanguage} aria-label={zh ? "Switch to English" : "切换到中文"} title={zh ? "Switch to English" : "切换到中文"} data-liquid-snap="true" data-magnetic-hover="true">{zh ? "EN" : "中文"}</button>
@@ -726,9 +710,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                     </div>
                   </div>
                   <div className="editorial-actions editorial-reveal" style={revealIndex(4)}>
-                    <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{remoteMode && authenticated && hostState !== "online" ? (zh ? "选择远程电脑" : "Choose remote computer") : home.open}<ArrowRight size={16} aria-hidden="true" /></button>
-                    {!remoteMode ? <a className="editorial-download" href={release.download}>{home.download}<span aria-hidden="true">↓</span></a> : null}
-                    {!remoteMode ? <a className="editorial-download-x86" href={x86Release?.download ?? X86_RELEASES_URL} target="_blank" rel="noopener noreferrer">{x86Release ? (zh ? "Windows 32 位 · 预览版 ↓" : "Windows 32-bit · Preview ↓") : (zh ? "Windows 32 位 · 查看发布状态" : "Windows 32-bit · Release status")}</a> : null}
+                    <button type="button" className="editorial-primary" onClick={openWorkspace} data-liquid-snap="true" data-magnetic-hover="true">{home.open}<ArrowRight size={16} aria-hidden="true" /></button>
+                    <a className="editorial-download" href={release.download}>{home.download}<span aria-hidden="true">↓</span></a>
+                    <a className="editorial-download-x86" href={x86Release?.download ?? X86_RELEASES_URL} target="_blank" rel="noopener noreferrer">{x86Release ? (zh ? "Windows 32 位 ↓" : "Windows 32-bit ↓") : (zh ? "Windows 32 位 · 查看发布" : "Windows 32-bit · Releases")}</a>
                   </div>
                   <p className="editorial-release editorial-reveal" style={revealIndex(5)}>
                     {release.version ? <><span className="editorial-version">{release.version}</span><span aria-hidden="true"> · </span></> : null}
@@ -761,7 +745,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           <footer className="editorial-footer editorial-reveal" style={revealIndex(8)}>
             <p>{home.madeBy[0]}<a className="editorial-signature" href="https://smirel.com/" target="_blank" rel="noopener noreferrer" data-liquid-snap="false">Smirel</a>{home.madeBy[1]}</p>
             <nav aria-label={zh ? "资源" : "Resources"}>
-              {!remoteMode ? <a href={release.download} onClick={() => setMenuOpen(false)}>{home.links.download}</a> : null}
+              <a href={release.download} onClick={() => setMenuOpen(false)}>{home.links.download}</a>
               <a href={`${RELEASES_URL}#readme`} target="_blank" rel="noopener noreferrer">{home.links.documentation}</a>
               <a href={RELEASES_URL} target="_blank" rel="noopener noreferrer">{home.links.github}</a>
               <a href={release.notes} target="_blank" rel="noopener noreferrer">{home.updates}</a>
@@ -930,7 +914,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             </section> : <>
               <section className="loom-host-module loom-host-refined" data-host-state={hostState} aria-label={zh ? "Host 连接" : "Host connection"}>
                 <div className="loom-host-meta">
-                  <p className="kicker">{remoteMode ? "LOOM REMOTE" : "LOOM HOST"}</p>
+                  <p className="kicker">LOOM HOST</p>
                   <span className={`loom-connection-badge${hostState === "online" ? " is-online" : hostState === "checking" ? " is-working" : ""}`}>
                     <i aria-hidden="true" />{hostState === "account-mismatch" ? (zh ? "账号不一致" : "Account mismatch") : hostState === "online" ? (zh ? "在线" : "Online") : hostState === "checking" ? (zh ? "连接中" : "Connecting") : hostState === "idle" ? (zh ? "等待中" : "Waiting") : hostState === "unbound" ? (zh ? "未发现" : "Not found") : (zh ? "离线" : "Offline")}
                   </span>
@@ -939,11 +923,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   <span className="loom-host-emblem" aria-hidden="true"><Laptop size={27} strokeWidth={1.5} /><i /></span>
                   <div role="status" aria-live="polite" aria-atomic="true">
                     <h2>{hostLabel}</h2>
-                    <p className="loom-host-target">{remoteMode
-                      ? (selectedDeviceName || (zh ? "远程工作区" : "Remote workspace"))
-                      : hostState === "online"
-                        ? (zh ? "当前电脑" : "This computer")
-                        : selectedDeviceName || (zh ? "你的本地工作区" : "Your local workspace")}</p>
+                    <p className="loom-host-target">{hostState === "online" ? (zh ? "当前电脑" : "This computer") : selectedDeviceName || (zh ? "你的本地工作区" : "Your local workspace")}</p>
                   </div>
                 </div>
                 <p className="loom-control-copy" role="status">{hostState === "checking" && hostError ? hostError : hostText}</p>
@@ -951,8 +931,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                   <button className="loom-account-switch" type="button" disabled={account.busy} onClick={() => void signOutOfWeb(true)}>{zh ? "切换网页账号" : "Switch web account"}</button>
                   <button className="loom-account-switch" type="button" onClick={onEnter}>{zh ? "重试连接" : "Retry connection"}</button>
                 </div> : null}
-                {!remoteMode && (hostState === "unbound" || hostState === "offline") ? <HostSetupActions zh={zh} download={release.download} onRetry={onEnter} hostDetected={hostDetected} /> : null}
-                {remoteMode && hostState !== "online" && authenticated ? <button className="loom-form-submit loom-host-action" type="button" onClick={onRemote}><span>{zh ? "选择远程电脑" : "Choose remote computer"}</span><ArrowRight size={15} aria-hidden="true" /></button> : null}
+                {hostState === "unbound" || hostState === "offline" ? <HostSetupActions zh={zh} download={release.download} onRetry={onEnter} hostDetected={hostDetected} /> : null}
                 {hostError ? <details className="loom-host-error"><summary>{zh ? "连接详情" : "Connection details"}</summary><p>{hostError}</p></details> : null}
                 {hostState === "checking" || hostState === "online" ? <div className={`loom-connection-track${hostState === "checking" ? " is-working" : " is-online"}`} aria-hidden="true"><span /></div> : null}
                 {hostState === "online" ? <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><ArrowRight size={15} aria-hidden="true" /></button> : null}
@@ -967,9 +946,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                     {account.busy ? (zh ? "正在退出…" : "Signing out…") : (zh ? "退出登录" : "Sign out")}
                   </button>
                 </div>
-                <p className="loom-account-session-note">{remoteMode
-                  ? (zh ? "退出此客户端不会注销远程电脑上的 Loom Host。" : "Signing out here does not sign out your remote Loom Host.")
-                  : (zh ? "这里管理网页登录。本机 Host 的登录不会随之退出。" : "Web account session only. Signing out here does not sign out your local Host.")}</p>
+                <p className="loom-account-session-note">{zh ? "这里管理网页登录。本机 Host 的登录不会随之退出。" : "Web account session only. Signing out here does not sign out your local Host."}</p>
                 {(localError || account.error) ? <p className="loom-logout-error" role="alert">{account.error?.message || localError}</p> : null}
                 <dl className="loom-identity-list">
                   <div className="loom-identity-row">
@@ -978,8 +955,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                     {account.account.user?.email ? <dd className="loom-identity-secondary">{account.account.user.email}</dd> : null}
                   </div>
                   <div className="loom-identity-row">
-                    <dt><Laptop size={18} strokeWidth={1.5} aria-hidden="true" /><span>{remoteMode ? (zh ? "远程电脑" : "Remote computer") : (zh ? "当前电脑" : "This computer")}</span></dt>
-                    <dd><span>{selectedDeviceName || (remoteMode ? (zh ? "等待选择" : "Choose a computer") : (zh ? "等待发现" : "Waiting for discovery"))}</span></dd>
+                    <dt><Laptop size={18} strokeWidth={1.5} aria-hidden="true" /><span>{zh ? "当前电脑" : "This computer"}</span></dt>
+                    <dd><span>{selectedDeviceName || (zh ? "等待发现" : "Waiting for discovery")}</span></dd>
                     <dd className="loom-identity-secondary">{hostState === "online" ? (zh ? "已连接" : "Connected") : hostState === "checking" ? (zh ? "连接中" : "Connecting") : (zh ? "未连接" : "Disconnected")}</dd>
                   </div>
                 </dl>

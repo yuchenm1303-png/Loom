@@ -12,24 +12,6 @@ const MAX_STAGED_BYTES = 48 * 1024 * 1024;
 const LOCAL_DEVICE_QUERY = "local_device";
 const LOCAL_DEVICE_STORAGE_KEY = "loom.web.localDeviceId";
 const REMOTE_DEVICE_SESSION_KEY = "loom.web.remoteDeviceId";
-const REMOTE_ONLY_CLIENT_QUERY = "loom_client";
-const REMOTE_ONLY_CLIENT_VALUE = "win32-remote";
-const REMOTE_ONLY_CLIENT_SESSION_KEY = "loom.web.remoteOnlyClient";
-
-// The 32-bit shell is a WebView2-only companion: it cannot start a local
-// Loom Host. A session-scoped marker survives OAuth round-trips and reloads.
-// Ordinary browsers stay local-first and are unaffected.
-export function isRemoteOnlyWebClient(): boolean {
-  try {
-    if (new URL(window.location.href).searchParams.get(REMOTE_ONLY_CLIENT_QUERY) === REMOTE_ONLY_CLIENT_VALUE) {
-      window.sessionStorage.setItem(REMOTE_ONLY_CLIENT_SESSION_KEY, "1");
-      return true;
-    }
-    return window.sessionStorage.getItem(REMOTE_ONLY_CLIENT_SESSION_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
 
 type InvokeMessage = {
   type: "invoke";
@@ -110,7 +92,6 @@ function normalizeDeviceId(value: unknown): string {
 }
 
 function captureLocalDeviceBinding(): string {
-  if (isRemoteOnlyWebClient()) return "";
   let queryDeviceId = "";
   try {
     const url = new URL(window.location.href);
@@ -148,14 +129,12 @@ function remoteWebDeviceId(): string {
 }
 
 export function webExecutionMode(): "local" | "remote" {
-  if (isRemoteOnlyWebClient()) return "remote";
   const remote = remoteWebDeviceId();
   const local = captureLocalDeviceBinding();
   return remote && remote !== local ? "remote" : "local";
 }
 
 export function selectedWebDeviceId(): string {
-  if (isRemoteOnlyWebClient()) return remoteWebDeviceId();
   const remote = remoteWebDeviceId();
   return remote || captureLocalDeviceBinding();
 }
@@ -166,7 +145,6 @@ export function selectedWebDeviceId(): string {
  * immediately so the next connect/invoke is guaranteed to use this Host.
  */
 export function bindLocalWebDevice(deviceId: string): boolean {
-  if (isRemoteOnlyWebClient()) return false;
   const normalized = normalizeDeviceId(deviceId);
   if (!normalized) return false;
 
@@ -184,7 +162,7 @@ function webSocketUrl(selectedDeviceId = selectedWebDeviceId()): string {
   const configured = String(import.meta.env.VITE_LOOM_WEB_SOCKET_URL || "").trim();
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   const target = new URL(configured || `${scheme}//${window.location.host}${DEFAULT_WS_PATH}`, window.location.href);
-  const selected = normalizeDeviceId(selectedDeviceId);
+  const selected = selectedWebDeviceId();
   if (selected) target.searchParams.set("device", selected);
   else target.searchParams.delete("device");
   return target.toString();
@@ -523,7 +501,6 @@ export function activateWebRemoteDevice(deviceId: string): void {
 }
 
 export function activateLocalWebDevice(): void {
-  if (isRemoteOnlyWebClient()) return;
   try { window.sessionStorage.removeItem(REMOTE_DEVICE_SESSION_KEY); } catch {}
   closeSocket();
   window.location.reload();
@@ -551,9 +528,7 @@ export function installWebBridge(): void {
         const compatibility = await ensureWebHostCompatibility(deviceStatus);
         if (!compatibility.compatible) {
           if (!compatibility.online) {
-            const error = new Error(isRemoteOnlyWebClient()
-              ? "Remote Loom Host is offline. Select an online computer in Loom Remote."
-              : "Loom Host is offline. Start Loom on this computer and it will reconnect automatically.") as Error & { code?: string };
+            const error = new Error("Loom Host is offline. Start Loom on this computer and it will reconnect automatically.") as Error & { code?: string };
             error.code = "HOST_OFFLINE";
             throw error;
           }

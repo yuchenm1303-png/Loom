@@ -9,7 +9,8 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const driver = path.join(project, ".packaging-venv-x86", "Lib", "site-packages", "playwright", "driver", "node.exe");
+const venv = path.resolve(process.argv[2] || path.join(project, ".packaging-venv-x86"));
+const driver = path.join(venv, "Lib", "site-packages", "playwright", "driver", "node.exe");
 const nodeVersion = "22.23.4";
 const source = `https://nodejs.org/dist/v${nodeVersion}/`;
 const candidate = "win-x86/node.exe";

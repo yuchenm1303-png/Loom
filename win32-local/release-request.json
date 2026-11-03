@@ -1,8 +1,0 @@
-{
-  "channel": "win32-local-preview",
-  "version": "0.1.168",
-  "revision": 1,
-  "accept_ci_only_qa": true,
-  "notes": "Windows x86 installer already passed local Host, agent, browser and terminal gates; reissue independent prerelease after PowerShell release verification syntax repair.",
-  "release_iteration": "publish-asset-validation-fix-3"
-}

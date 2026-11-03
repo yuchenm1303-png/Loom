@@ -1,97 +1,98 @@
-name: Windows x86 Local Host (experimental)
+name: Windows x86 Local Host
 
+# Builds and gates the native 32-bit installer on every change that reaches
+# it, so main never silently stops building for x86. The release workflow
+# calls this same job; there is one x86 recipe.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "loom_*.py"
+      - "pyproject.toml"
+      - "desktop-react/**"
+      - "extensions/browser-current-tab/**"
+      - "win32-local/**"
+      - ".github/actions/windows-build-setup/**"
+      - ".github/workflows/windows-x86-local.yml"
   pull_request:
     paths:
+      - "app/**"
+      - "loom_*.py"
+      - "pyproject.toml"
+      - "desktop-react/**"
+      - "extensions/browser-current-tab/**"
       - "win32-local/**"
-      - "app/agent_runtime/process_runtime.py"
-      - "app/agent_runtime/browser_runtime.py"
-      - "app/agent_runtime/windows_browser_compat.py"
-      - "tests/test_windows_browser_compat.py"
-      - "desktop-react/scripts/prepare-playwright-x86.mjs"
-      - "desktop-react/electron/clipboardImage.ts"
-      - "desktop-react/electron/entry.ts"
-      - "desktop-react/electron/hostProcess.ts"
-      - "desktop-react/build/win32-local.config.cjs"
-      - "desktop-react/build/installer-x86.nsh"
-      - "desktop-react/scripts/tests/windows-x86-installer-protocol.test.mjs"
-      - "desktop-react/scripts/build-windows-x86-local-runtime.mjs"
-      - "desktop-react/electron/hostRuntime.ts"
-      - "desktop-react/electron/hostPaths.ts"
-      - "desktop-react/electron/updater.ts"
-      - "desktop-react/scripts/host-runtime-identity.mjs"
+      - ".github/actions/windows-build-setup/**"
       - ".github/workflows/windows-x86-local.yml"
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit or tag to build"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
-# Only the newest patch of the x86 compatibility branch should consume a
-# Windows runner: obsolete builds don't represent a releasable installer.
+# Only the newest commit needs a Windows runner; a release build (called with
+# an explicit ref) gets its own group so a push never cancels it.
 concurrency:
-  group: loom-x86-local-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: loom-x86-local-${{ inputs.ref || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ inputs.ref == '' }}
 
 jobs:
   package-windows-ia32-local:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      LOOM_RUNTIME_ARCH: "ia32"
+      LOOM_GITHUB_CLIENT_ID: ${{ vars.LOOM_GITHUB_CLIENT_ID }}
+      LOOM_GITHUB_CLIENT_SECRET: ${{ secrets.LOOM_GITHUB_CLIENT_SECRET }}
+      LOOM_GITHUB_OAUTH_SCOPES: ${{ vars.LOOM_GITHUB_OAUTH_SCOPES || 'repo read:org' }}
+      LOOM_GITHUB_CALLBACK_PATH: ${{ vars.LOOM_GITHUB_CALLBACK_PATH || '/oauth/github/callback' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-          architecture: "x86"
-      - uses: actions/setup-node@v4
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: ./.github/actions/windows-build-setup
         with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: "desktop-react/package-lock.json"
-      - name: Verify 32-bit Python bootstrap
-        shell: pwsh
-        run: |
-          python -c "import struct; assert struct.calcsize('P') == 4"
-          if ($LASTEXITCODE -ne 0) { throw "Python must be x86" }
+          python-architecture: x86
       - name: Install desktop JS dependencies
         working-directory: desktop-react
         run: npm ci --no-audit --no-fund
       - name: Verify Loom deep-link installer parity
         working-directory: desktop-react
         run: node --test scripts/tests/windows-x86-installer-protocol.test.mjs
-      - name: Compile original Loom desktop and web renderer
+      - name: Compile Loom desktop and renderer
         working-directory: desktop-react
         run: npm run build
-      - name: Freeze local IA32 Python Agent
+      - name: Freeze the 32-bit Python Agent
         working-directory: desktop-react
-        run: node scripts/build-windows-x86-local-runtime.mjs
-      - name: Build real local Loom desktop for IA32
+        run: npm run build:runtime:win:x86
+      - name: Package the IA32 desktop
         working-directory: desktop-react
         run: npx electron-builder --win --ia32 --dir --config build/win32-local.config.cjs --publish never
-      - name: Exercise frozen Python and local Host
+      - name: Exercise frozen Python, local Host and desktop attach
         shell: pwsh
         run: |
-          $dir = @("desktop-react/release-x86/win-ia32-unpacked", "desktop-react/release-x86/win-unpacked") |
-            Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $dir) { throw "IA32 Electron unpacked directory is missing" }
+          $dir = "desktop-react/release-x86/win-ia32-unpacked"
+          if (-not (Test-Path $dir)) { throw "IA32 Electron unpacked directory is missing" }
           & "win32-local/verify-local-host.ps1" -InstallDir (Resolve-Path $dir)
           if ($LASTEXITCODE -ne 0) { throw "IA32 Host verification failed" }
-      - name: Build isolated IA32 installer
+      - name: Build the IA32 installer
         working-directory: desktop-react
         shell: pwsh
         run: |
-          $dir = @("release-x86/win-ia32-unpacked", "release-x86/win-unpacked") |
-            Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $dir) { throw "IA32 prepackaged directory is missing" }
-          npx electron-builder --win nsis --ia32 --prepackaged $dir --config build/win32-local.config.cjs --publish never
+          npx electron-builder --win nsis --ia32 --prepackaged release-x86/win-ia32-unpacked --config build/win32-local.config.cjs --publish never
           if ($LASTEXITCODE -ne 0) { throw "IA32 installer failed" }
-          if (-not (Get-ChildItem release-x86 -Filter "Loom-Setup-x86-*.exe")) { throw "No IA32 installer was generated" }
-      - name: Upload working local IA32 preview for hardware test
-        uses: actions/upload-artifact@v4
+          $installer = @(Get-ChildItem release-x86 -Filter "Loom-Setup-x86-*.exe" -File)
+          if ($installer.Count -ne 1 -or $installer[0].Length -lt 1000000) { throw "Expected one complete x86 installer" }
+          Copy-Item $installer[0].FullName release-x86/Loom-Setup-x86.exe
+      - uses: actions/upload-artifact@v4
         with:
-          name: Loom-Windows-x86-Local-Preview
-          path: desktop-react/release-x86/Loom-Setup-x86-*.exe
+          name: Loom-Windows-x86
+          path: desktop-react/release-x86/Loom-Setup-x86.exe
           if-no-files-found: error
           retention-days: 14

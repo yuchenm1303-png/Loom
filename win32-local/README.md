@@ -1,66 +1,55 @@
-# Loom Windows 32-bit **local Host** preview
+# Loom for Windows 32-bit
 
-This is the requested native **local** Loom Desktop + Agent build; it is not
-the remote-only WebView2 companion under `win32-client/`.
+The 32-bit build is the same Loom desktop, Agent and local Host as x64, built
+for ia32. There is one build recipe for both architectures; the x86 path only
+differs where an x64 payload has no 32-bit counterpart.
 
-- Uses **the same main-process and renderer sources** as the full x64 Loom
-  desktop, but compiles them with Electron 43 Windows ia32.
-- Bundles **32-bit frozen Python Agent** (from the same Loom source) and
-  implements the original Desktop -> Host -> App Server IPC architecture.
-- Uses an independent x86 app identity, data path, installer and x86-only
-  release channel; prevents the x86 app from installing any x64 update.
-- Does **not** bundle x64 Microsoft MXC sandbox executables or x64
-  Chromium. It must never attempt to execute those files on a 32-bit OS.
-- The **Loom embedded browser** is part of the native x86 Electron renderer.
-  Separate Playwright/browser-use automation uses a checksum-verified upstream
-  **32-bit Node.js** driver. In "system browser" mode it prefers an installed
-  Microsoft Edge or Chrome on the **same PC**. No browser is secretly fetched
-  from a 64-bit release. Browser automation still needs physical-device QA.
-- Native Windows Computer Use imports are smoke-tested within the packaged
-  Python x86 process; image capture, pointer input and UIA actions need
-  end-to-end testing on a real interactive Windows 10 x86 desktop.
-- `pywinpty` currently has no compatible Python x86 wheel. In that specific
-  case `pty=true` degrades to a **pipe-backed** interactive process on 32-bit
-  Windows only. Commands, stdin, stdout and stderr are usable; terminal
-  resize / full-screen TUIs are not. The backend accurately reports
-  `pty=false` and `windows-x86-pipe-terminal`. x64 behavior is unchanged.
-- The Microsoft MXC **OS sandbox** is still unavailable on x86. Sandbox
-  `required` must fail closed. Do not claim sandbox parity or turn off
-  permission checks to conceal the missing backend; security-sensitive shell
-  execution needs explicit review before a wide release.
-- Intended for **Windows 10 x86**. Windows 11 has no 32-bit editions, and
-  Electron 43 does not support Windows 7/8.1.
-- This remains an **experimental preview** until account login, chat,
-  remote Web-to-local Host pairing, file tools, real browser tasks and native
-  Computer Use input/screenshot all pass on a physical Windows 10 x86 system.
-  The CI host is a **64-bit Windows runner executing x86 binaries**: this is
-  a meaningful runtime smoke but not physical x86-OS validation.
-- x86 auto-updating is intentionally **disabled**, rather than risking
-  installing an x64 update. Install future verified x86 packages manually
-  until a separately secured x86 release/update feed is ready.
-- Electron 43's upstream security maintenance ends in January 2027, so a
-  supported longer-term 32-bit shell plan is required before public release.
+## How it is built
 
-CI in `.github/workflows/windows-x86-local.yml` builds and executes the
-actual x86 Python runtime and native Electron package on a Windows runner.
-It produces **Loom-Setup-x86-<version>.exe** only when its gates pass.
-The existing production x64 workflow is unchanged.
+- `npm run build:runtime:win:x86` runs `scripts/build-windows-runtime.mjs
+  --arch=ia32` with a 32-bit Python. It installs the same requirements as x64,
+  read from `pyproject.toml`, except `pywinpty` (no win32 wheel), and pins
+  `cryptography==48.0.1` (last series with a win32 wheel). It writes the same
+  GitHub OAuth release config and runs the same self-test, first-run-test and
+  packaged App Server gate as x64.
+- `prepare-playwright-x86.mjs` swaps Playwright's x64 Node driver for the
+  checksum-verified official win-x86 `node.exe`.
+- `build/win32-local.config.cjs` packages with Electron 43 (the last line that
+  ships Windows ia32) under its own app id, data folder (`%APPDATA%\Loom-x86`)
+  and installer. `build/installer-x86.nsh` registers `loom://` without taking
+  it from an installed x64 Loom.
+- `verify-local-host.ps1` checks every bundled `.exe/.dll/.pyd/.node` is x86,
+  starts the Playwright driver and installed Edge, the pipe terminal, the
+  App Server, the background Host and a desktop window attaching to it.
 
-## Independent publishing (after real Windows x86 QA)
+## When it runs
 
-The existing **Windows Release** workflow and `vX.Y.Z` stable tags remain
-**64-bit only**, exactly as before. Do not upload an IA32 package into
-`latest.yml` or replace `Loom-Setup-x64.exe`.
+- **CI** (`windows-x86-local.yml`): every push to main and every PR that
+  touches the app, desktop or Python code. A change that breaks x86 shows up
+  on that commit.
+- **Release** (`windows-x86-local-release.yml`): after each successful x64
+  release, it builds that release's tag and publishes `win32-vX.Y.Z-r1` with
+  one asset, `Loom-Setup-x86.exe`, as a **prerelease**, so `/releases/latest`,
+  `latest.yml` and the x64 updater never see it. Running it by hand re-issues
+  the current main as the next revision (`-r2`, ...) for an x86-only fix.
+- The web home links the newest `win32-v*` prerelease.
 
-Once the native x86 PR has been merged to `main` and physical Windows 10
-32-bit smoke checks pass, use **Windows x86 Local Preview Release** with
-`workflow_dispatch`, on `main`, input `revision=1` (or the next positive
-integer). That workflow builds and checks x86 again, then publishes a separate
-**GitHub prerelease** with a tag such as `win32-v0.1.168-r1` and one asset
-named `Loom-Setup-x86.exe`. It never increments the x64 version or publishes
-x64 updater metadata.
+## What differs on 32-bit
 
-The homepage's extra Windows 32-bit entry is intentionally release-driven:
-only a verified `win32-vX.Y.Z-rN` prerelease with the named x86 asset is
-offered as a direct download. Before that, visitors see a link to the Win32
-release listing (not an expired CI artifact).
+- **No OS sandbox.** Microsoft MXC ships x64 only. Commands whose policy
+  requires the sandbox are refused; the rest go through the normal approvals.
+- **Pipe terminal instead of ConPTY.** Commands, stdin and output work;
+  full-screen TUIs and resize do not. The backend reports `pty=false`.
+- **No bundled Chromium.** Browser tasks drive the installed Edge or Chrome;
+  the embedded Loom browser works as on x64.
+- **No auto-update.** Users install the next 32-bit build from Releases.
+- Windows 10 32-bit only (Windows 11 has no 32-bit edition; Electron 43 does
+  not run on Windows 7/8.1).
+- CI runs the x86 binaries on 64-bit Windows; nothing has been run on a
+  physical 32-bit Windows install.
+
+## End of life
+
+Electron 43's security support ends in January 2027 and no later Electron
+ships ia32. From 2027-02-01 the release workflow stops publishing 32-bit
+builds; CI keeps building them so the decision can be revisited.

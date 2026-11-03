@@ -2,8 +2,12 @@ node_modules/
 dist/
 dist-electron/
 .packaging-venv/
+.packaging-venv-x86/
 runtime-build/
+runtime-build-x86/
 runtime-dist/
+runtime-dist-x86/
+release-x86/
 release/
 *.log
 .DS_Store

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "../state/useAccount";
 import { useI18n } from "../i18n";
-import { webExecutionMode, ensureWebHostCompatibility, isLoomWebRuntime, isRemoteOnlyWebClient, selectedWebDeviceId, currentWebDeviceStatus, webHostNeedsProtocolUpdate, type WebDeviceStatus } from "../webBridge";
+import { webExecutionMode, ensureWebHostCompatibility, isLoomWebRuntime, webHostNeedsProtocolUpdate, type WebDeviceStatus } from "../webBridge";
 import {
   discoverLocalLoomHost,
   ensureLocalLoomHostCompatibility,
@@ -13,7 +13,6 @@ import {
   type LocalLoomHost,
 } from "../localHostDiscovery";
 import { WebPortal, type PortalHostState } from "./WebPortal";
-import { RemoteControlSurface } from "./RemoteDevicesPanel";
 
 type HostState = "idle" | "discovering" | "pairing" | "connecting" | "updating" | "online" | "missing" | "offline" | "account-mismatch";
 type DeviceStatus = WebDeviceStatus;
@@ -48,8 +47,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const zh = language === "zh-CN";
   const web = isLoomWebRuntime();
   const remote = webExecutionMode() === "remote";
-  const remoteOnly = isRemoteOnlyWebClient();
-  const [remotePickerOpen, setRemotePickerOpen] = useState(false);
   const [hostState, setHostState] = useState<HostState>("idle");
   const accountMismatch = hostState === "account-mismatch";
   const [hostError, setHostError] = useState("");
@@ -102,13 +99,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
 
   const connectCurrentHost = useCallback(async (options?: { force?: boolean; background?: boolean }) => {
     if (!web || !account.ready || !account.account.authenticated) return;
-    // Without an explicit target, an x86 remote client should only show
-    // the device picker: never try discovering/launching a local Host.
-    if (remoteOnly && !selectedWebDeviceId()) {
-      setTrackedHostState("missing");
-      setHostError("");
-      return;
-    }
     const force = Boolean(options?.force);
     if (!force && hostStateRef.current === "online") return;
     if (connectPromiseRef.current) return connectPromiseRef.current;
@@ -144,7 +134,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     } finally {
       if (connectPromiseRef.current === attempt) connectPromiseRef.current = null;
     }
-  }, [account.account.authenticated, account.ready, activeAccountId, remoteOnly, setTrackedHostState, web]);
+  }, [account.account.authenticated, account.ready, activeAccountId, setTrackedHostState, web]);
 
   useEffect(() => {
     if (!web || !account.ready || !account.account.authenticated) return;
@@ -343,10 +333,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   }, [account.account.authenticated, account.ready, connectCurrentHost, hostState, setTrackedHostState, web]);
 
   const retry = useCallback(() => {
-    if (remoteOnly && !selectedWebDeviceId()) {
-      setRemotePickerOpen(true);
-      return;
-    }
     setPairAttempts(0);
     setPairingSucceeded(false);
     setPairing(false);
@@ -354,7 +340,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     if (hostStateRef.current !== "account-mismatch") setTrackedHostState("discovering");
     setDiscoveryNonce((value) => value + 1);
     void connectCurrentHost({ force: true });
-  }, [connectCurrentHost, remoteOnly, setTrackedHostState]);
+  }, [connectCurrentHost, setTrackedHostState]);
 
   useEffect(() => {
     if (!web || remote) return;
@@ -370,29 +356,21 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   }, [web, remote]);
 
   const enterOrRetry = useCallback(() => {
-    if (remoteOnly && hostStateRef.current !== "online") {
-      setRemotePickerOpen(true);
-      return;
-    }
     if (hostStateRef.current === "online") {
       setEntered(true);
       return;
     }
     retry();
-  }, [retry, remoteOnly]);
+  }, [retry]);
 
   const openProfile = useCallback(() => {
-    if (remoteOnly && hostStateRef.current !== "online") {
-      setRemotePickerOpen(true);
-      return;
-    }
     setProfileRequested(true);
     if (hostStateRef.current === "online") {
       setEntered(true);
       return;
     }
     retry();
-  }, [retry, remoteOnly]);
+  }, [retry]);
 
   useEffect(() => {
     if (profileRequested && hostState === "online" && !entered) setEntered(true);
@@ -422,22 +400,17 @@ export function WebAppGate({ children }: { children: ReactNode }) {
             : "idle";
 
   if (!account.ready || !account.account.authenticated || !account.account.user || !entered) {
-    return (<>
+    return (
       <WebPortal
         account={account}
         hostState={portalState}
         hostError={hostError}
-        selectedDeviceName={remoteOnly
-          ? String(currentWebDeviceStatus()?.device?.name || "")
-          : localHost?.deviceName || ""}
+        selectedDeviceName={localHost?.deviceName || ""}
         hostDetected={Boolean(localHost)}
         onEnter={enterOrRetry}
         onOpenProfile={openProfile}
-        remoteMode={remoteOnly}
-        onRemote={() => setRemotePickerOpen(true)}
       />
-      {remoteOnly ? <RemoteControlSurface open={remotePickerOpen} onClose={() => setRemotePickerOpen(false)} /> : null}
-    </>);
+    );
   }
 
   // Preserve the mounted workspace (including drafts and selected conversation)
@@ -445,7 +418,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   return <>
     {children}
     {hostState !== "online" && <div className="web-reconnect-notice" role="status">
-      <span>{hostState === "account-mismatch" ? (zh ? "Loom Host 与网页账号不同，请在远程电脑和网页使用同一账号。" : "The remote Host is signed in to another account.") : hostState === "updating" ? "Loom Host is updating…" : "Reconnecting to Loom Host…"}</span>
+      <span>{hostState === "account-mismatch" ? (zh ? "本机 Loom Host 与网页登录的账号不同。请在网页和 Loom 桌面端使用同一账号。" : "Loom Host is signed in to a different account. Use the same account on the website and in Loom Desktop.") : hostState === "updating" ? "Loom Host is updating…" : "Reconnecting to Loom Host…"}</span>
       {hostState === "account-mismatch" && <button type="button" disabled={account.busy} onClick={() => void account.logout()}>{zh ? "切换网页账号" : "Switch web account"}</button>}
       <button type="button" onClick={retry}>{zh ? "重试连接" : "Retry connection"}</button>
     </div>}

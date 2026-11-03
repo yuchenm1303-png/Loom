@@ -1,11 +1,17 @@
 name: Windows build dependencies
 description: Configure toolchains and cache downloaded dependencies, never packaged code or credentials.
+inputs:
+  python-architecture:
+    description: "x64 for the stable package, x86 for the native 32-bit Agent"
+    required: false
+    default: x64
 runs:
   using: composite
   steps:
     - uses: actions/setup-python@v5
       with:
         python-version: "3.12"
+        architecture: ${{ inputs.python-architecture }}
         cache: pip
         cache-dependency-path: |
           pyproject.toml
@@ -16,6 +22,7 @@ runs:
         cache: npm
         cache-dependency-path: desktop-react/package-lock.json
     - uses: actions/cache@v4
+      if: inputs.python-architecture == 'x64'
       with:
         path: desktop-react/.cache/playwright
         key: windows-playwright-v1-${{ hashFiles('pyproject.toml', 'desktop-react/scripts/build-windows-runtime.mjs') }}
