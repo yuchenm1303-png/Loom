@@ -20,7 +20,7 @@ function machine(file) {
     throw new Error("Not a valid Windows PE binary: " + file);
   }
   const pos = buffer.readUInt32LE(0x3c);
-  if (pos > buffer.length - 6 || buffer.toString("ascii", pos, pos + 4) !== "PE\\0\\0") {
+  if (pos > buffer.length - 6 || buffer.readUInt32LE(pos) !== 0x00004550) {
     throw new Error("Invalid Windows PE signature: " + file);
   }
   return buffer.readUInt16LE(pos + 4);
@@ -45,7 +45,7 @@ if (original !== 0x014c) {
   const bytes = Buffer.from(await binary.arrayBuffer());
   const actual = crypto.createHash("sha256").update(bytes).digest("hex");
   if (actual.toLowerCase() !== expected.toLowerCase()) throw new Error("Node.js x86 binary SHA256 mismatch");
-  const staged = driver + ".x86-staged";
+  const staged = path.join(path.dirname(driver), "node-x86-staged.exe");
   fs.writeFileSync(staged, bytes, { flag: "w" });
   try {
     if (machine(staged) !== 0x014c) throw new Error("Downloaded Node.js is not native x86");
