@@ -24,7 +24,7 @@ module.exports = {
   },
   nsis: {
     ...base.nsis,
-    include: undefined,
+    include: "build/installer-x86.nsh",
     oneClick: true,
     runAfterFinish: true,
   },
