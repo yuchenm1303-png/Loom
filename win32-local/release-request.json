@@ -1,0 +1,7 @@
+{
+  "channel": "win32-local-preview",
+  "version": "0.1.168",
+  "revision": 1,
+  "accept_ci_only_qa": true,
+  "notes": "Experimental Windows 10 x86 preview. Native x86 Electron, Agent and local Host smoke tested on 64-bit CI runner. Physical Windows 10 x86 QA is pending; Microsoft MXC sandbox and full ConPTY unsupported."
+}
