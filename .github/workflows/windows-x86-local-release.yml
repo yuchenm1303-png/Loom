@@ -138,7 +138,7 @@ jobs:
           - Native MXC sandbox and true ConPTY are unavailable on this platform.
           - x86 auto-updating is disabled. Install future x86 builds separately.
           - This preview does not replace, publish, or update the Windows x64 stable release.
-          - Installer SHA256: `$digest`
+          - Installer SHA256: $digest
           "@
           $notesPath = Join-Path $env:RUNNER_TEMP "win32-release-notes.md"
           Set-Content -Path $notesPath -Value $notes -Encoding utf8
