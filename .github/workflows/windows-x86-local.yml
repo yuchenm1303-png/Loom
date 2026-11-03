@@ -1,0 +1,78 @@
+name: Windows x86 Local Host (experimental)
+
+on:
+  pull_request:
+    paths:
+      - "win32-local/**"
+      - "desktop-react/build/win32-local.config.cjs"
+      - "desktop-react/scripts/build-windows-x86-local-runtime.mjs"
+      - "desktop-react/electron/hostRuntime.ts"
+      - "desktop-react/electron/hostPaths.ts"
+      - "desktop-react/electron/updater.ts"
+      - "desktop-react/scripts/host-runtime-identity.mjs"
+      - ".github/workflows/windows-x86-local.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-windows-ia32-local:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      LOOM_RUNTIME_ARCH: "ia32"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: "x86"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "desktop-react/package-lock.json"
+      - name: Verify 32-bit Python bootstrap
+        shell: pwsh
+        run: |
+          python -c "import struct; assert struct.calcsize('P') == 4"
+          if ($LASTEXITCODE -ne 0) { throw "Python must be x86" }
+      - name: Install desktop JS dependencies
+        working-directory: desktop-react
+        run: npm ci --no-audit --no-fund
+      - name: Compile original Loom desktop and web renderer
+        working-directory: desktop-react
+        run: npm run build
+      - name: Freeze local IA32 Python Agent
+        working-directory: desktop-react
+        run: node scripts/build-windows-x86-local-runtime.mjs
+      - name: Build real local Loom desktop for IA32
+        working-directory: desktop-react
+        run: npx electron-builder --win --ia32 --dir --config build/win32-local.config.cjs --publish never
+      - name: Exercise frozen Python and local Host
+        shell: pwsh
+        run: |
+          $dir = @("desktop-react/release-x86/win-ia32-unpacked", "desktop-react/release-x86/win-unpacked") |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $dir) { throw "IA32 Electron unpacked directory is missing" }
+          & "win32-local/verify-local-host.ps1" -InstallDir (Resolve-Path $dir)
+          if ($LASTEXITCODE -ne 0) { throw "IA32 Host verification failed" }
+      - name: Build isolated IA32 installer
+        working-directory: desktop-react
+        shell: pwsh
+        run: |
+          $dir = @("release-x86/win-ia32-unpacked", "release-x86/win-unpacked") |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $dir) { throw "IA32 prepackaged directory is missing" }
+          npx electron-builder --win nsis --ia32 --prepackaged $dir --config build/win32-local.config.cjs --publish never
+          if ($LASTEXITCODE -ne 0) { throw "IA32 installer failed" }
+          if (-not (Get-ChildItem release-x86 -Filter "Loom-Setup-x86-*.exe")) { throw "No IA32 installer was generated" }
+      - name: Upload working local IA32 preview for hardware test
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loom-Windows-x86-Local-Preview
+          path: desktop-react/release-x86/Loom-Setup-x86-*.exe
+          if-no-files-found: error
+          retention-days: 14
