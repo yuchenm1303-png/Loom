@@ -55,8 +55,13 @@ if ($LASTEXITCODE -ne 0) { throw "Packaged Windows x86 Computer Use prerequisite
 # The x86 Host should support the same real Windows ConPTY interface as x64:
 # interactive input/output, Ctrl controls and resize. This must execute inside
 # the frozen 32-bit Python process, not through a 64-bit test helper.
-& $runtime -c "from app.agent_runtime.process_runtime import _spawn_backend; from pathlib import Path; import os,time; b=_spawn_backend(argv=('cmd.exe','/d','/k','echo loom-win32-terminal-ok'),cwd=Path.cwd(),env=os.environ,pty=True,rows=24,cols=80); assert b.name=='windows-native-conpty' and b.pty, b.name; b.resize(30,100); b.write('exit\r\n'); chunks=[(time.sleep(0.1),b.read_stdout())[1] for _ in range(50)]; out=''.join(chunks); assert 'loom-win32-terminal-ok' in out,repr(out); b.close(); print('loom-packaged-x86-native-conpty-ok')"
-if ($LASTEXITCODE -ne 0) { throw "Packaged native Windows x86 ConPTY failed interactive input/output/resize verification" }
+$env:LOOM_VERIFY_PACKAGED_X86_CONPTY = "1"
+try {
+  & $runtime -c "import runpy; runpy.run_path('win32-local/tests/native_conpty_smoke.py', run_name='__main__')"
+  if ($LASTEXITCODE -ne 0) { throw "Packaged native Windows x86 ConPTY failed interactive input/output/resize verification" }
+} finally {
+  Remove-Item Env:LOOM_VERIFY_PACKAGED_X86_CONPTY -ErrorAction SilentlyContinue
+}
 # If this runner has Microsoft Edge, verify a real browser session. Missing
 # Edge is a runtime prerequisite on user machines, not a reason to download
 # an x64 Chromium build into the 32-bit installation.
