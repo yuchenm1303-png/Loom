@@ -36,6 +36,25 @@ run tools on the 32-bit computer itself.
 - The host selection / remote access authorization remains enforced by
   Loom Web. An offline Host remains unavailable; the app must never
   silently connect to another user's/local machine.
+- The native shell launches `https://loom.smirel.com/?loom_client=win32-remote`.
+  The live Web renderer recognizes this marker, suppresses local Host
+  discovery and shows a chooser before connecting. Browser-based Loom Web
+  without this marker retains its original local-first behavior.
+- The **production web renderer must be deployed with the corresponding
+  `webBridge.ts`, `WebAppGate.tsx`, `WebPortal.tsx` and
+  `RemoteDevicesPanel.tsx` changes**. A new x86 installer alone cannot
+  activate the remote-only mode against an older deployed webpage.
+
+## Expected first-run flow
+
+1. Launch Loom Remote (32-bit). Sign in on the normal Loom account page.
+2. Choose **Choose remote computer / 选择远程电脑** from the home screen.
+3. Pick an online Loom Host belonging to that account. Hosts from another
+   account are not accessible, and no local Host is started.
+4. Enter the workspace. Files and tools refer to the **selected remote PC**.
+5. Switching remote computers is always explicit. Restarting the shell
+   requires choosing the target again; it never automatically picks another
+   computer based on account history.
 
 ## Build
 
@@ -46,7 +65,8 @@ dotnet publish win32-client/LoomWin32Remote.csproj -c Release -r win-x86 --self-
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" win32-client/installer.iss
 ```
 
-The GitHub Actions `win32-remote-client.yml` workflow builds the
+The GitHub Actions `win32-remote-client.yml` workflow validates the
+shared Web frontend remote-only flow, builds the
 `Loom-Remote-Setup-x86.exe` installer and verifies PE architecture before
 uploading its artifact. Publication to an existing GitHub Release is an
 explicit manual workflow action only, not automatic.
