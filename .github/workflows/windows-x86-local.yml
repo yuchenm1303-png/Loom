@@ -13,6 +13,8 @@ on:
       - "desktop-react/electron/entry.ts"
       - "desktop-react/electron/hostProcess.ts"
       - "desktop-react/build/win32-local.config.cjs"
+      - "desktop-react/build/installer-x86.nsh"
+      - "desktop-react/scripts/tests/windows-x86-installer-protocol.test.mjs"
       - "desktop-react/scripts/build-windows-x86-local-runtime.mjs"
       - "desktop-react/electron/hostRuntime.ts"
       - "desktop-react/electron/hostPaths.ts"
@@ -56,6 +58,9 @@ jobs:
       - name: Install desktop JS dependencies
         working-directory: desktop-react
         run: npm ci --no-audit --no-fund
+      - name: Verify Loom deep-link installer parity
+        working-directory: desktop-react
+        run: node --test scripts/tests/windows-x86-installer-protocol.test.mjs
       - name: Compile original Loom desktop and web renderer
         working-directory: desktop-react
         run: npm run build
