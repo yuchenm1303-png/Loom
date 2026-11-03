@@ -49,13 +49,13 @@ export function readHostRuntimeManifest(root: string): HostRuntimeManifest | nul
   const parsed = safeJson<Partial<HostRuntimeManifest>>(path.join(root, "manifest.json"));
   if (!parsed || parsed.schema !== HOST_RUNTIME_SCHEMA) return null;
   if (!validVersion(parsed.version) || !validProtocol(parsed.protocol)) return null;
-  if (String(parsed.platform || "") !== "win32" || String(parsed.arch || "") !== "x64") return null;
+  if (String(parsed.platform || "") !== "win32" || String(parsed.arch || "") !== process.arch) return null;
   return {
     schema: HOST_RUNTIME_SCHEMA,
     version: parsed.version,
     protocol: parsed.protocol,
     platform: "win32",
-    arch: "x64",
+    arch: process.arch,
     minBootstrapVersion: String(parsed.minBootstrapVersion || "").trim() || undefined,
     sourceSha: String(parsed.sourceSha || "").trim() || undefined,
     publishedAt: String(parsed.publishedAt || "").trim() || undefined,
@@ -65,8 +65,12 @@ export function readHostRuntimeManifest(root: string): HostRuntimeManifest | nul
 function runtimeRootLooksUsable(root: string): boolean {
   if (!root || !fs.existsSync(root)) return false;
   if (process.platform !== "win32") return true;
+  // MXC only ships x64 executables. The 32-bit Host must not demand or
+  // silently launch an incompatible sandbox binary; safe functionality is
+  // capability-gated separately until a supported x86 sandbox exists.
+  const sandboxReady = process.arch === "ia32" || fs.existsSync(path.join(root, "wxc-exec.exe"));
   return fs.existsSync(path.join(root, "python.exe"))
-    && fs.existsSync(path.join(root, "wxc-exec.exe"))
+    && sandboxReady
     && fs.existsSync(path.join(root, "browser-current-tab", "manifest.json"));
 }
 
@@ -132,6 +136,7 @@ export function resolveHostBrowserExtensionRoot(repoRoot: string): string {
 }
 
 export function resolveHostSandboxExecutable(repoRoot: string): string | undefined {
+  if (process.arch === "ia32") return undefined;
   const executable = path.join(currentHostRuntime(repoRoot).root, "wxc-exec.exe");
   return fs.existsSync(executable) ? executable : undefined;
 }
