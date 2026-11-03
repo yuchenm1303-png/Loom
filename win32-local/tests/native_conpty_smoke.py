@@ -32,6 +32,7 @@ def main() -> int:
             **{k: v for k, v in kwargs.items() if k != "pty"}
         )
 
+    print("ConPTY-smoke: before spawn", flush=True)
     marker = "LOOM_NATIVE_X86_CONPTY_READY"
     session = spawn(
         argv=("cmd.exe", "/d", "/k"),
@@ -41,6 +42,7 @@ def main() -> int:
         rows=24,
         cols=80,
     )
+    print(f"ConPTY-smoke: spawned backend={session.name}, pid={session.pid}", flush=True)
     output: list[str] = []
     failures: list[str] = []
     found = threading.Event()
@@ -65,9 +67,13 @@ def main() -> int:
         assert session.pty and session.name == "windows-native-conpty", (
             session.name, session.pty
         )
+        print("ConPTY-smoke: before resize", flush=True)
         session.resize(30, 100)
+        print("ConPTY-smoke: after resize", flush=True)
         reader.start()
+        print("ConPTY-smoke: reader started, sending command", flush=True)
         session.write(f"echo {marker}\r\n")
+        print("ConPTY-smoke: command sent; waiting output", flush=True)
         if not found.wait(15):
             raise AssertionError(
                 f"ConPTY did not produce interactive output (pid={session.pid}, "
@@ -76,16 +82,20 @@ def main() -> int:
         if failures:
             raise AssertionError("ConPTY reader failed: " + "; ".join(failures))
         assert marker in "".join(output)
+        print("ConPTY-smoke: output verified; exiting", flush=True)
         session.write("exit\r\n")
         print("loom-native-x86-conpty-ok", session.name, "pid", session.pid)
         return 0
     finally:
+        print("ConPTY-smoke: cleanup start", flush=True)
         if session.poll() is None:
             try:
                 session.terminate_tree()
             except Exception:
                 pass
+        print("ConPTY-smoke: closing", flush=True)
         session.close()
+        print("ConPTY-smoke: cleanup complete", flush=True)
 
 
 if __name__ == "__main__":
