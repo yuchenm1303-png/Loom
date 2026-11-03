@@ -75,8 +75,12 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $existing.Count -gt 0) {
             throw "Release tag $tag already exists or cannot be checked; refusing to overwrite it."
           }
-          gh release view $tag --json tagName 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
+          # A missing release is expected before first publication. Avoid
+          # running a native 'gh release view' here: its 404 exit code stays
+          # in $LASTEXITCODE and makes the PowerShell Actions step fail even
+          # after later Out-File / Write-Host commands succeed.
+          # The remote tag collision check above is authoritative; the later
+          # 'gh release create' still refuses an existing release.
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "x86 preview $tag is independent of x64 stable v$version."
