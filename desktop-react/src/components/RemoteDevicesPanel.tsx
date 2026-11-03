@@ -7,6 +7,7 @@ import {
   activateWebRemoteDevice,
   currentWebDeviceStatus,
   getWebDeviceStatus,
+  isRemoteOnlyWebClient,
   localWebDeviceId,
   selectedWebDeviceId,
   webExecutionMode,
@@ -32,6 +33,8 @@ const COPY = {
     security: "Remote sessions stay scoped to this browser session. A new browser session starts Local again.",
     selectedOffline: "Selected remote computer",
     localSetup: "Open Loom on this computer and choose “Open Loom Web” from the tray once to link it.",
+    remoteOnlySubtitle: "Choose an online Loom Host on another computer. This 32-bit client does not run a local agent.",
+    remoteOnlySecurity: "Only the computer you choose will execute tools. This 32-bit client never accesses this PC's files or apps.",
   },
   zh: {
     title: "Loom Remote", subtitle: "只有你明确选择后，Loom 才会控制另一台电脑。",
@@ -46,6 +49,8 @@ const COPY = {
     security: "远程选择只在当前浏览器会话中生效。新开浏览器会话仍默认回到 Local。",
     selectedOffline: "已选择的远程电脑",
     localSetup: "在当前电脑打开 Loom，然后从托盘选择一次「Open Loom Web」即可完成本机绑定。",
+    remoteOnlySubtitle: "选择其他电脑上在线的 Loom Host。32 位客户端不会在当前电脑运行 Agent。",
+    remoteOnlySecurity: "仅你主动选择的远程电脑会执行操作。32 位客户端不会读取或控制当前电脑的文件和应用。",
   },
 } as const;
 
@@ -99,7 +104,8 @@ export function RemoteControlSurface({ open, onClose }: { open: boolean; onClose
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const mode = webExecutionMode();
-  const localId = localWebDeviceId();
+  const remoteOnly = isRemoteOnlyWebClient();
+  const localId = remoteOnly ? "" : localWebDeviceId();
   const selectedId = selectedWebDeviceId();
 
   const syncStatus = (next: WebDeviceStatus) => {
@@ -163,7 +169,7 @@ export function RemoteControlSurface({ open, onClose }: { open: boolean; onClose
         <header className="remote-devices-header">
           <div className="remote-devices-heading">
             <span className="remote-devices-heading-icon"><MonitorSmartphone size={20} strokeWidth={1.75} /></span>
-            <div><h2>{copy.title}</h2><p>{copy.subtitle}</p></div>
+            <div><h2>{copy.title}</h2><p>{remoteOnly ? copy.remoteOnlySubtitle : copy.subtitle}</p></div>
           </div>
           <div className="remote-devices-header-actions">
             <button type="button" onClick={() => void refresh()} title={copy.refresh} aria-label={copy.refresh} disabled={loading}><RotateCw size={15.5} spinning={loading} /></button>
@@ -172,7 +178,7 @@ export function RemoteControlSurface({ open, onClose }: { open: boolean; onClose
         </header>
 
         <div className="remote-devices-scroll">
-          <section className="remote-device-section">
+          {!remoteOnly ? <section className="remote-device-section">
             <div className="remote-device-section-label"><span>{copy.thisComputer}</span><small>{copy.thisComputerHint}</small></div>
             <article className={`remote-device-card local ${mode === "local" ? "is-selected" : ""}`}>
               <div className="remote-device-icon">{platformIcon(localDevice?.platform || "win32")}</div>
@@ -191,7 +197,7 @@ export function RemoteControlSurface({ open, onClose }: { open: boolean; onClose
                 {mode === "local" ? copy.usingThis : copy.useThis}
               </button>
             </article>
-          </section>
+          </section> : null}
 
           <section className="remote-device-section">
             <div className="remote-device-section-label"><span>{copy.otherComputers}</span><small>{copy.otherHint}</small></div>
@@ -219,19 +225,19 @@ export function RemoteControlSurface({ open, onClose }: { open: boolean; onClose
           </section>
           {error ? <div className="remote-devices-error">{error}</div> : null}
         </div>
-        <footer className="remote-devices-footer"><ShieldCheck size={15} strokeWidth={1.7} /><span>{copy.security}</span></footer>
+        <footer className="remote-devices-footer"><ShieldCheck size={15} strokeWidth={1.7} /><span>{remoteOnly ? copy.remoteOnlySecurity : copy.security}</span></footer>
       </section>
     </div>, document.body,
   ) : null;
 
   return <>
-    {mode === "remote" ? (
+    {mode === "remote" && selectedId ? (
       <div className={`remote-session-banner ${selectedOnline ? "online" : "offline"}`} role="status">
         <button type="button" className="remote-session-main" onClick={() => window.dispatchEvent(new CustomEvent("loom:web-open-remote"))}>
           <span className="remote-session-dot" aria-hidden="true" /><span className="remote-session-label">{copy.remote}</span><strong>{selectedDevice?.name || copy.selectedOffline}</strong>
         </button>
         <span className="remote-session-divider" />
-        <button type="button" className="remote-session-back" onClick={() => activateLocalWebDevice()}>{copy.backLocal}</button>
+        {!remoteOnly ? <button type="button" className="remote-session-back" onClick={() => activateLocalWebDevice()}>{copy.backLocal}</button> : null}
       </div>
     ) : null}
     {panel}
