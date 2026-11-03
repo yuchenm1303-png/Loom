@@ -4,5 +4,5 @@
   "revision": 1,
   "accept_ci_only_qa": true,
   "notes": "One-time experimental x86 local preview publish requested after protected workflow syntax repair. CI smoke verified; real Windows 10 x86 hardware QA remains pending.",
-  "release_iteration": "release-workflow-repair-1"
+  "release_iteration": "release-identity-check-fix-2"
 }
