@@ -208,11 +208,12 @@ class WindowsNativeConPtyProcessBackend:
             self._output = read_output
             write_input = wintypes.HANDLE()
             read_output = wintypes.HANDLE()
-            # The ConPTY object owns its side of both anonymous pipes now.
-            self._kernel.CloseHandle(read_input)
-            self._kernel.CloseHandle(write_output)
-            read_input = wintypes.HANDLE()
-            write_output = wintypes.HANDLE()
+            # Keep the ConPTY input-read and output-write handles alive
+            # until CreateProcessW has attached the client to the pseudoconsole.
+            # Microsoft explicitly requires releasing them AFTER CreateProcess:
+            # closing them here can strand conhost with a running child but
+            # no readable output on the host end. The finally block below
+            # closes these local copies on both success and error paths.
 
             needed = ctypes.c_size_t()
             self._kernel.InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(needed))
