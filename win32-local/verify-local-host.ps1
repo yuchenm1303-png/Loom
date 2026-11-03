@@ -43,12 +43,15 @@ New-Item -ItemType Directory -Force -Path $probeHome | Out-Null
 $env:LOOM_HOME = $probeHome
 $env:LOOM_HOST_DATA_DIR = (Join-Path $probeHome "host")
 $child = $null
+$stdoutPath = Join-Path $probeHome "loom-host-stdout.log"
+$stderrPath = Join-Path $probeHome "loom-host-stderr.log"
 try {
-  $child = Start-Process -FilePath $exe -ArgumentList @("--loom-background-host") -PassThru
+  $env:ELECTRON_ENABLE_LOGGING = "1"
+  $child = Start-Process -FilePath $exe -ArgumentList @("--loom-background-host", "--enable-logging") -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
   $verified = $false
   for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 1
-    if ($child.HasExited) { throw "IA32 Loom Host exited during startup ($($child.ExitCode))" }
+    if ($child.HasExited) { break }
     try {
       $status = Invoke-RestMethod -Uri "http://127.0.0.1:39223/loom/status" -TimeoutSec 2
       if ($status.ok -and $status.deviceId -and $status.hostProtocol -ge 1) {
@@ -58,8 +61,19 @@ try {
       }
     } catch { }
   }
-  if (-not $verified) { throw "IA32 Loom Host never exposed its localhost discovery endpoint" }
+  if (-not $verified) {
+    Write-Host "IA32 Host process exited: $($child.HasExited)"
+    if ($child.HasExited) { Write-Host "Exit code: $($child.ExitCode)" }
+    foreach ($diagnostic in @($stdoutPath, $stderrPath)) {
+      if (Test-Path $diagnostic) {
+        Write-Host "=== $diagnostic ==="
+        Get-Content $diagnostic -Tail 100
+      }
+    }
+    throw "IA32 Loom Host did not start its localhost discovery endpoint"
+  }
 } finally {
+  Remove-Item Env:ELECTRON_ENABLE_LOGGING -ErrorAction SilentlyContinue
   if ($child -and -not $child.HasExited) { Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue }
   if ($null -eq $originalHome) { Remove-Item Env:LOOM_HOME -ErrorAction SilentlyContinue }
   else { $env:LOOM_HOME = $originalHome }
