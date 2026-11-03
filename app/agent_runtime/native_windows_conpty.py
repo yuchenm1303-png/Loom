@@ -25,6 +25,14 @@ class ConPtyUnavailableError(RuntimeError):
     """The Windows OS does not expose the required native ConPTY APIs."""
 
 
+class _SecurityAttributes(ctypes.Structure):
+    _fields_ = [
+        ("nLength", wintypes.DWORD),
+        ("lpSecurityDescriptor", ctypes.c_void_p),
+        ("bInheritHandle", wintypes.BOOL),
+    ]
+
+
 class _Coord(ctypes.Structure):
     _fields_ = [("X", ctypes.c_short), ("Y", ctypes.c_short)]
 
@@ -170,13 +178,21 @@ class WindowsNativeConPtyProcessBackend:
         write_output = wintypes.HANDLE()
         attrs = None
         attrs_initialized = False
+        # ConPTY's documented pipe setup uses inheritable SECURITY_ATTRIBUTES;
+        # with anonymous non-inheritable handles, conhost can initialize but
+        # fail to pass subsequent input/output through the pseudoconsole.
+        pipe_security = _SecurityAttributes()
+        pipe_security.nLength = ctypes.sizeof(_SecurityAttributes)
+        pipe_security.bInheritHandle = True
         try:
             if not self._kernel.CreatePipe(
-                ctypes.byref(read_input), ctypes.byref(write_input), None, 0
+                ctypes.byref(read_input), ctypes.byref(write_input),
+                ctypes.byref(pipe_security), 0
             ):
                 raise _last_error("CreatePipe stdin")
             if not self._kernel.CreatePipe(
-                ctypes.byref(read_output), ctypes.byref(write_output), None, 0
+                ctypes.byref(read_output), ctypes.byref(write_output),
+                ctypes.byref(pipe_security), 0
             ):
                 raise _last_error("CreatePipe stdout")
 
