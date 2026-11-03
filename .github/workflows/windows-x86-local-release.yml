@@ -162,9 +162,19 @@ jobs:
           gh release create "$env:RELEASE_TAG" "$installer" --prerelease --target "$env:GITHUB_SHA" --title "Loom Windows 32-bit $env:RELEASE_TAG (Preview)" --notes-file "$notesPath"
           if ($LASTEXITCODE -ne 0) { throw "Could not create the separate x86 prerelease" }
           $details = gh release view "$env:RELEASE_TAG" --json isPrerelease,assets --jq '{prerelease:.isPrerelease, assets:[.assets[].name]}' | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or -not $details.prerelease -or $details.assets -notcontains "Loom-Setup-x86.exe"
-              -or $details.assets -contains "latest.yml" -or $details.assets -contains "Loom-Setup-x64.exe") {
-            throw "Published assets are not isolated to the x86 prerelease channel"
+          if ($LASTEXITCODE -ne 0) { throw "Cannot verify the published x86 Release" }
+          if ($null -eq $details -or $details.prerelease -ne $true) {
+            throw "Published Win32 Release must be marked prerelease"
+          }
+          $assetNames = @($details.assets)
+          if ($assetNames -notcontains "Loom-Setup-x86.exe") {
+            throw "Published Win32 Release is missing the x86 installer"
+          }
+          if ($assetNames -contains "latest.yml") {
+            throw "Win32 prerelease must not replace the x64 updater metadata"
+          }
+          if ($assetNames -contains "Loom-Setup-x64.exe") {
+            throw "Win32 prerelease must not contain an x64 installer"
           }
           "url=https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG" |
             Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
