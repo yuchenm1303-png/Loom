@@ -24,7 +24,7 @@ export function parsePortalX86Release(payload: unknown): PortalX86Release | null
     if (!item || typeof item !== "object") continue;
     const release = item as Record<string, unknown>;
     if (release.draft || release.prerelease !== true || typeof release.tag_name !== "string"
-        || !/^win32-v\d+\.\d+\.\d+$/.test(release.tag_name) || !Array.isArray(release.assets)) continue;
+        || !/^win32-v\d+\.\d+\.\d+(?:-r[1-9]\d*)?$/.test(release.tag_name) || !Array.isArray(release.assets)) continue;
     const asset = release.assets.find((entry) => entry && typeof entry === "object"
       && (entry as Record<string, unknown>).name === "Loom-Setup-x86.exe") as Record<string, unknown> | undefined;
     const expected = `${RELEASES_URL}/download/${release.tag_name}/Loom-Setup-x86.exe`;
