@@ -4,6 +4,14 @@ on:
   pull_request:
     paths:
       - "win32-local/**"
+      - "app/agent_runtime/process_runtime.py"
+      - "app/agent_runtime/browser_runtime.py"
+      - "app/agent_runtime/windows_browser_compat.py"
+      - "tests/test_windows_browser_compat.py"
+      - "desktop-react/scripts/prepare-playwright-x86.mjs"
+      - "desktop-react/electron/clipboardImage.ts"
+      - "desktop-react/electron/entry.ts"
+      - "desktop-react/electron/hostProcess.ts"
       - "desktop-react/build/win32-local.config.cjs"
       - "desktop-react/scripts/build-windows-x86-local-runtime.mjs"
       - "desktop-react/electron/hostRuntime.ts"
@@ -15,6 +23,12 @@ on:
 
 permissions:
   contents: read
+
+# Only the newest patch of the x86 compatibility branch should consume a
+# Windows runner: obsolete builds don't represent a releasable installer.
+concurrency:
+  group: loom-x86-local-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   package-windows-ia32-local:
