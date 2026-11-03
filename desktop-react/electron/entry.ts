@@ -1,6 +1,6 @@
 import { app, protocol } from "electron";
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { hostDataPath } from "./hostPaths.js";
 
@@ -17,7 +17,12 @@ process.env.LOOM_HOST_DATA_DIR = hostRoot;
 const isHost = process.argv.includes("--loom-host") || process.argv.includes("--loom-background-host")
   || process.argv.some(arg => /^loom:\/\//i.test(arg)) || existsSync(path.join(hostRoot, "loom-headless-update-restart"));
 app.setName("Loom");
-app.setPath("userData", isHost ? hostRoot : path.join(hostRoot, "desktop-ui"));
+// Electron app.setPath requires the target folder to exist. On a fresh x86
+// install its independent Loom-x86 data directory is not created yet, so the
+// first Host launch would otherwise quit before publishing localhost status.
+const profile = isHost ? hostRoot : path.join(hostRoot, "desktop-ui");
+mkdirSync(profile, { recursive: true });
+app.setPath("userData", profile);
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
