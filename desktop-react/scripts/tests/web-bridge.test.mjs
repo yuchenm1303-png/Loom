@@ -8,9 +8,11 @@ const source = readFileSync(new URL("../../src/webBridge.ts", import.meta.url), 
   .replaceAll("import.meta.env.VITE_LOOM_WEB_SOCKET_URL", '""');
 let generation = 0;
 
-async function setup({ deferAccount = false, deviceStatus = {}, logoutSucceeds = true } = {}) {
+async function setup({ deferAccount = false, deviceStatus = {}, logoutSucceeds = true, remoteOnly = false, remoteOnlySession = false } = {}) {
   const storage = new Map([["loom.web.localDeviceId", "host-a"]]);
   const localStorage = { getItem: (key) => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) };
+  const session = new Map(remoteOnlySession ? [["loom.web.remoteOnlyClient", "1"]] : []);
+  const sessionStorage = { getItem: (key) => session.get(key) || null, setItem: (key, value) => session.set(key, value), removeItem: (key) => session.delete(key) };
   const target = new EventTarget();
   const intervals = new Set();
   const sockets = [];
@@ -18,9 +20,9 @@ async function setup({ deferAccount = false, deviceStatus = {}, logoutSucceeds =
   let accountCalls = 0;
   const accountGate = deferAccount ? new Promise((resolve) => { releaseAccount = resolve; }) : Promise.resolve();
   globalThis.window = Object.assign(target, {
-    location: { href: "https://loom.test/", host: "loom.test", protocol: "https:", reload() {} },
+    location: { href: remoteOnly ? "https://loom.test/?loom_client=win32-remote" : "https://loom.test/", host: "loom.test", protocol: "https:", reload() {} },
     history: { replaceState() {} }, localStorage,
-    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    sessionStorage,
     setTimeout, clearTimeout,
     setInterval(fn, ms) { const id = setInterval(fn, ms); intervals.add(id); return id; },
     clearInterval(id) { intervals.delete(id); clearInterval(id); },
@@ -62,7 +64,7 @@ async function setup({ deferAccount = false, deviceStatus = {}, logoutSucceeds =
   }).outputFiles[0].text;
   const bridge = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
   bridge.installWebBridge();
-  return { bridge, sockets, storage, intervals, releaseAccount,
+  return { bridge, sockets, storage, session, intervals, releaseAccount,
     get accountCalls() { return accountCalls; },
     async close() { await window.loom.disconnect(); } };
 }
@@ -182,4 +184,41 @@ test("failed web sign-out keeps current Host socket and does not announce sign-o
     window.removeEventListener("loom:web-auth-changed", onChanged);
     await env.close();
   }
+});
+
+test("Win32 remote companion has no local Host binding and must select a device explicitly", async () => {
+  const env = await setup({ remoteOnly: true, deviceStatus: {
+    online: false, devices: [{ id: "host-a", name: "My remote PC" }],
+  } });
+  try {
+    assert.equal(env.bridge.isRemoteOnlyWebClient(), true);
+    assert.equal(env.bridge.webExecutionMode(), "remote");
+    // The test intentionally contains an old local device id in localStorage;
+    // a Win32 companion must not inherit that local execution target.
+    assert.equal(env.bridge.localWebDeviceId(), "");
+    assert.equal(env.bridge.selectedWebDeviceId(), "");
+    assert.equal(env.bridge.bindLocalWebDevice("host-a"), false);
+    env.bridge.activateLocalWebDevice();
+    assert.equal(env.bridge.selectedWebDeviceId(), "");
+
+    const available = await env.bridge.getWebDeviceStatus();
+    assert.equal(available.online, false);
+    assert.equal(available.devices[0].id, "host-a");
+    assert.equal(new URL(env.sockets[0].url).searchParams.has("device"), false);
+
+    env.bridge.activateWebRemoteDevice("host-a");
+    assert.equal(env.session.get("loom.web.remoteDeviceId"), "host-a");
+    assert.equal(env.bridge.selectedWebDeviceId(), "host-a");
+    assert.equal(await window.loom.call("call", {}), "ok");
+    assert.equal(new URL(env.sockets.at(-1).url).searchParams.get("device"), "host-a");
+  } finally { await env.close(); }
+});
+
+test("Win32 remote-only marker survives OAuth round-trip in the current browser session", async () => {
+  const env = await setup({ remoteOnlySession: true });
+  try {
+    assert.equal(env.bridge.isRemoteOnlyWebClient(), true);
+    assert.equal(env.bridge.webExecutionMode(), "remote");
+    assert.equal(env.bridge.selectedWebDeviceId(), "");
+  } finally { await env.close(); }
 });

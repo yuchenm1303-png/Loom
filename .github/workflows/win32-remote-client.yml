@@ -45,6 +45,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build:renderer
+          node --test scripts/tests/web-bridge.test.mjs
 
   build-win32-remote:
     runs-on: windows-latest
