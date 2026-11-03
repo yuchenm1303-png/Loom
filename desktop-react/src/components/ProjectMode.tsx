@@ -37,12 +37,42 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   /** Answering a step the agent asks the person to allow (the chat's approval card). */
   onApproval?(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): unknown;
   /** The 建造 conversations for the history card; opening one, or beginning a new one. */
-  history?: { id: string; title: string; updatedAt: string; live?: boolean }[];
+  history?: { id: string; title: string; updatedAt: string; live?: boolean; projectId?: string; workspace?: string }[];
   onOpenThread?(id: string): Promise<unknown> | void; onNewThread?(): Promise<unknown> | void;
 }) {
   const { language } = useI18n();
   const lang = language === "zh-CN" ? "zh" : "en";
   const [overview, setOverview] = useState<ProjectOverview | null>(() => lastOverview.get(threadId) ?? null);
+  const [historyRows, setHistoryRows] = useState<Parameters<typeof toHistory>[0] | null>(null);
+  const [historyError, setHistoryError] = useState("");
+  const historyIds = history?.map(entry => entry.id).sort().join(",");
+  useEffect(() => {
+    if (historyIds === undefined) return;
+    let cancelled = false;
+    let pending = false;
+    const refresh = async () => {
+      if (pending || document.hidden) return;
+      pending = true;
+      let timer = 0;
+      try {
+        const result = await Promise.race([
+          window.loom.call<{ conversations: Parameters<typeof toHistory>[0] }>("projectWeave/history", {
+            threadIds: Array.from(new Set([threadId, ...historyIds.split(",").filter(Boolean)])).slice(0, 200),
+          }),
+          new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error("timeout")), READ_TIMEOUT_MS); }),
+        ]);
+        if (!result?.conversations) throw new Error("history unavailable");
+        if (!cancelled) { setHistoryRows(result.conversations); setHistoryError(""); }
+      } catch {
+        if (!cancelled) setHistoryError(lang === "zh" ? "记录刷新失败，稍后自动重试" : "History could not refresh; retrying shortly");
+      } finally { window.clearTimeout(timer); pending = false; }
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), REST_POLL_MS);
+    const focus = () => void refresh();
+    window.addEventListener("focus", focus);
+    return () => { cancelled = true; window.clearInterval(interval); window.removeEventListener("focus", focus); };
+  }, [threadId, historyIds, lang]);
   const [now, setNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -143,7 +173,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   const workspaceName = (workspace || "").split(/[\\/]/).filter(Boolean).pop() || "";
   const data = { ...toFlowData(overview, now, lang, model || "", workspaceName), models: toModelChoice(models),
                  conversation: conversation.messages, activity: conversation.activity, chatting,
-                 history: history ? toHistory(history, threadId, now, lang) : undefined };
+                 history: history ? toHistory(historyRows || history.filter(entry => entry.id === threadId).map(entry => ({ ...entry, workspace: entry.workspace || (entry.id === threadId ? workspace : undefined) })), threadId, now, lang) : undefined,
+                 historyError };
   const proposal = data.phase === "draft" ? overview.proposal : null;
   data.repository.path = run?.repository || workspace;
   if (!run) data.repository.branch = overview.workspace?.branch || "—";
@@ -179,7 +210,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       imagesAllowed, imageSupport,
       onChat: onChat ? (text, attachments) => { setError(""); void onChat(text, attachments).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
       onInterrupt: onInterrupt ? () => { void onInterrupt(); } : undefined,
-      onOpenThread: onOpenThread ? (id) => { void onOpenThread(id); } : undefined,
+      onOpenThread: onOpenThread ? (id) => onOpenThread(id) : undefined,
       onNewThread: onNewThread ? () => act(async () => { await onNewThread(); }) : undefined,
       onApproval: onApproval ? (item, decision, feedback) => { void onApproval(item, decision, feedback); } : undefined,
       onPause: () => run && control("pause"),

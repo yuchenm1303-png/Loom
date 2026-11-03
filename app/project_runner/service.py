@@ -878,6 +878,9 @@ class ProjectControllerMixin:
         if method == "projectProgram/create":
             with self.service.project_runner.guard:
                 return {"program": program.create(self.service, params)}
+        if method == "projectWeave/history":
+            from .history import read
+            return read(self.service, params)
         if method == "projectWeave/start":
             with self.service.project_runner.guard:
                 return {"program": weave.start(self.service, params)}

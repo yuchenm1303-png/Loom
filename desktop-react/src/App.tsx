@@ -653,7 +653,7 @@ export default function App() {
   // The hub's history card: the 建造 conversations, the way the sidebar holds them all.
   const buildThreads = useMemo(() => loom.threads
     .filter((entry) => !entry.archived && !entry.parentThreadId && isBuild(entry))
-    .map((entry) => ({ id: entry.id, title: entry.title, updatedAt: entry.updatedAt, live: Boolean(entry.active) })),
+    .map((entry) => ({ id: entry.id, title: entry.title, updatedAt: entry.updatedAt, projectId: entry.projectId, workspace: entry.workspace, live: Boolean(entry.active) })),
   [loom.threads, isBuild]);
   // The header's switch carries the composer into the hub and back (modeMorph.ts); both views stay mounted for it.
   const { morph: modeMorph, change: changeMode } = useModeMorph(thread?.id, setProjectMode);
@@ -1744,7 +1744,7 @@ export default function App() {
                            onChat={(input, attachments) => loom.send(input, attachments, undefined, { weave: true })}
                            imagesAllowed={attachmentsEnabled && loom.models?.current?.vision !== false}
                            imageSupport={loom.models?.current?.vision ?? null}
-                           history={buildThreads} onOpenThread={loom.openThread}
+                           history={buildThreads} onOpenThread={async id => { rememberMode(id, "project"); await loom.openThread(id); }}
                            onNewThread={async () => {
                              // In the same project (or folder), straight into the hub.
                              await loom.newThread(thread.projectId ? undefined : thread.workspace, thread.projectId || undefined);

@@ -22,6 +22,7 @@ import {
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldAlert, ShieldCheck,
   History, Search, Sparkles, Square, X,
 } from "lucide-react";
+import { BuildHistory, type BuildHistoryEntry } from "./BuildHistory";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ApprovalCard, ErrorRow } from "./Transcript";
 import { ThinkingGlyph } from "./ThinkingGlyph";
@@ -105,7 +106,8 @@ export interface FlowData {
   /** A project the agent proposed, waiting for the person to start it. */
   proposal?: WeaveProposal;
   /** The 建造 conversations, newest first; `when` is said already, `live` while one answers or runs. */
-  history?: { id: string; title: string; when: string; current: boolean; live: boolean }[];
+  history?: BuildHistoryEntry[];
+  historyError?: string;
 }
 
 export interface ModelOption { selection: string; name: string; group: string; groupId: string }
@@ -121,7 +123,7 @@ export interface FlowActions {
   /** Stop the agent's answer. */
   onInterrupt?(): void;
   /** Open another 建造 conversation from the history card, or begin a new one. */
-  onOpenThread?(id: string): void;
+  onOpenThread?(id: string): Promise<unknown> | void;
   onNewThread?(): void;
   /** Answer a step the agent asks the person to allow, as the chat's approval card does. */
   onApproval?(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void;
@@ -1064,20 +1066,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           // The other 建造 conversations: one click opens it here, in the hub.
           <div className="pf-slot" data-glide="history" data-fit="" {...hover("history")} {...slot("history")}>
             <Card id="history" side="right" className="pf-listed pf-history" icon={<History size={12} />} label={text.history}
-                  count={history.length || undefined} register={register}>
-              <div className="pf-list">
-                {history.map((entry) => (
-                  <button key={entry.id} type="button" className="pf-well pf-row pf-history-row" aria-current={entry.current || undefined}
-                          disabled={entry.current || !actions.onOpenThread} title={entry.title} onClick={() => actions.onOpenThread?.(entry.id)}>
-                    <span className="pf-history-title">{entry.title}</span>
-                    {entry.live ? <span className="pf-agent-live" /> : <em className="pf-history-when">{entry.when}</em>}
-                  </button>
-                ))}
-                {!history.length ? <p className="pf-empty">{text.historyEmpty}</p> : null}
-              </div>
-              {actions.onNewThread ? (
-                <button type="button" className="pf-add" disabled={actions.busy} onClick={actions.onNewThread}><Plus size={12} />{text.newThread}</button>
-              ) : null}
+                  register={register}>
+              <BuildHistory entries={history} workspace={data.repository.path} lang={lang} error={data.historyError} busy={actions.busy}
+                onOpen={actions.onOpenThread} onNew={actions.onNewThread} />
             </Card>
           </div>
         ) : null}

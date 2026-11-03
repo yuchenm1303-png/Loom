@@ -1,6 +1,7 @@
 /* What persistent-project mode shows, derived from the Host's projectRun/overview.
  * Pure functions, so the mapping is tested without a Host (scripts/tests/project-overview.test.mjs). */
 import type { FlowAgent, FlowData, FlowTaskState } from "./ProjectFlow";
+import type { BuildHistoryEntry } from "./BuildHistory";
 import type { ProjectRun } from "./projectRuns";
 import type { WorkspaceState } from "./ProjectWorkspacePicker";
 import type { ModelProfile, ModelSnapshot, TranscriptItem } from "../types/loom";
@@ -394,10 +395,10 @@ export function toConversation(items: TranscriptItem[], chatting: boolean, limit
 }
 
 /** The history card's rows: every 建造 conversation, newest first, the one open here marked. */
-export function toHistory(threads: { id: string; title: string; updatedAt: string; live?: boolean }[], currentId: string,
-                          now: number, lang: Lang = "zh", limit = 30): NonNullable<FlowData["history"]> {
-  return [...threads].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)).slice(0, limit)
-    .map((thread) => ({ id: thread.id, title: thread.title || (lang === "zh" ? "新对话" : "New conversation"),
+export function toHistory(threads: (Omit<BuildHistoryEntry, "when" | "current" | "live"> & { updatedAt: string; live?: boolean })[], currentId: string,
+                          now: number, lang: Lang = "zh", limit = Infinity): NonNullable<FlowData["history"]> {
+  return [...threads].sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0)).slice(0, limit)
+    .map((thread) => ({ ...thread, id: thread.id, title: thread.title || (lang === "zh" ? "新对话" : "New conversation"),
                         when: whenSaid(thread.updatedAt, now, lang), current: thread.id === currentId, live: Boolean(thread.live) }));
 }
 

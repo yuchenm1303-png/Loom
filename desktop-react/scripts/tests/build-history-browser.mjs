@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import { chromium } from "playwright-core";
+const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
+const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
+try {
+  for (const theme of ["dark", "light"]) {
+    const page = await browser.newPage({ viewport: { width: 1100, height: 850 } });
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.goto(`${origin}/scripts/fixtures/build-history.html?theme=${theme}`);
+    const root = page.locator(".bh-root");
+    await root.locator(".bh-row").first().waitFor();
+    assert.equal(await root.locator(":scope > .bh-list .bh-row").count(), 5);
+    assert.match(await root.locator('[aria-current="page"]').textContent(), /Build task 70/);
+    assert.equal(await root.locator(":scope > .bh-list").getByText("Other app", { exact: true }).count(), 0);
+    if (process.env.LOOM_HISTORY_SCREENSHOT && theme === "dark") await page.screenshot({ path: process.env.LOOM_HISTORY_SCREENSHOT });
+    await root.getByRole("searchbox").fill("Unique oldest");
+    assert.match(await root.locator(":scope > .bh-list").textContent(), /Build task 84/);
+    await root.getByRole("searchbox").fill("Other app");
+    assert.match(await root.locator(":scope > .bh-list").textContent(), /No matching/);
+    await root.getByRole("button", { name: "All projects", exact: true }).click();
+    assert.equal(await root.locator(":scope > .bh-list .bh-row").count(), 5);
+    await root.getByRole("searchbox").fill("");
+    await root.getByRole("button", { name: /View all/ }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.waitFor();
+    assert.equal(await dialog.locator(".bh-row").count(), 85);
+    await dialog.getByRole("searchbox").fill("Unique oldest");
+    assert.equal(await dialog.locator(".bh-row").count(), 1);
+    await page.evaluate(() => { window.failOpen = true; });
+    await dialog.locator(".bh-row").click();
+    await dialog.getByRole("status").waitFor();
+    assert.match(await dialog.getByRole("status").textContent(), /Could not open/);
+    await page.evaluate(() => { window.failOpen = false; });
+    await dialog.locator(".bh-row").click();
+    await dialog.waitFor({ state: "detached" });
+    assert.equal(await page.evaluate(() => window.opened), "t84");
+    await root.getByRole("button", { name: /View all/ }).click();
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "detached" });
+    await root.getByRole("button", { name: "New conversation in this project", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.created), true);
+    await page.setViewportSize({ width: 390, height: 600 });
+    await root.getByRole("button", { name: /View all/ }).click();
+    const box = await dialog.boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= 390 && box.y >= 0 && box.y + box.height <= 600);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+  console.log("Build history: project scope, all-project search beyond 30, pinned current, task states, open failure/retry, new, Escape and narrow dialog passed in both themes");
+} finally { await browser.close(); }
