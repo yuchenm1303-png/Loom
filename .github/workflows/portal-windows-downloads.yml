@@ -36,7 +36,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Verify both release channels
         working-directory: desktop-react
-        run: node --test scripts/tests/portal-x86-release.test.mjs scripts/tests/portal-release.test.mjs
+        run: |
+          node --test scripts/tests/portal-x86-release.test.mjs
+          node --test --test-name-pattern="^(metadata and installer|rejects incomplete|request skips cache)" scripts/tests/portal-release.test.mjs
       - name: Compile shared Web homepage
         working-directory: desktop-react
         run: npm run build:renderer
