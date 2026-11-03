@@ -22,6 +22,23 @@ foreach ($file in @($exe, $runtime)) {
   if ($machine -ne 0x014c) { throw "$file is not x86: PE machine 0x$($machine.ToString('x4'))" }
   Write-Host "Verified native x86 binary: $file"
 }
+# An ia32 launcher is not sufficient if an x64 .pyd/.dll/.node is bundled:
+# the first import of that module would fail only on the user's actual x86 PC.
+# Audit *all* executable Windows payloads before publishing an installer.
+$nativeFiles = @(Get-ChildItem -Path (Join-Path $InstallDir "resources") -File -Recurse |
+  Where-Object { $_.Extension.ToLowerInvariant() -in @(".exe", ".dll", ".pyd", ".node") })
+if ($nativeFiles.Count -lt 2) { throw "No native Python library files found in the x86 package" }
+$wrongArch = @()
+foreach ($candidate in $nativeFiles) {
+  $machine = Get-PeMachine $candidate.FullName
+  if ($machine -ne 0x014c) {
+    $wrongArch += "$($candidate.FullName): 0x$($machine.ToString('x4'))"
+  }
+}
+if ($wrongArch.Count -gt 0) {
+  throw "Incompatible native executables in IA32 package:`n$($wrongArch -join "`n")"
+}
+Write-Host "Verified $($nativeFiles.Count) native resources are all Windows x86."
 # Playwright may install an x64 Node driver even into a Python x86 wheel.
 # Verify the exact executable bundled in the final installer; imports alone
 # do not prove the browser driver can start on a 32-bit Windows OS.
