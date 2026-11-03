@@ -6,7 +6,8 @@ module.exports = {
   appId: "com.loom.agent.ia32",
   productName: "Loom x86",
   executableName: "Loom",
-  // Electron 44+ do not publish Windows ia32. Pin the x86 path to the\n  // latest security-maintained Electron 43 patch without changing x64.
+  // Electron 44+ do not publish Windows ia32. Pin the x86 path to the
+  // latest security-maintained Electron 43 patch without changing x64.
   // This must not affect the regular x64 release's Electron version.
   electronVersion: "43.8.6",
   artifactName: "Loom-Setup-x86-${version}.${ext}",
