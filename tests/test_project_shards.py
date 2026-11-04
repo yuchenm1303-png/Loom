@@ -20,7 +20,7 @@ PLAN = {"tasks": [
     {"instructions": "Write beta.txt containing B", "acceptance": ["beta contains B"], "dependsOn": [],
      "fileScopes": ["beta.txt"], "sharedResources": []},
 ]}
-FILES = {"task-1": ("alpha.txt", "A"), "task-2": ("beta.txt", "B")}
+FILES = {"task-1": ("alpha.txt", "A"), "task-2": ("beta.txt", "B"), "task-3": ("gamma.txt", "C")}
 
 
 @pytest.fixture
@@ -30,12 +30,20 @@ def small_shards(monkeypatch):
     monkeypatch.setattr(shards, "CRITERIA_PER_SHARD", 1)
 
 
-def setup(tmp_path, *, workers=2, plan=PLAN, reject=None, automatic=False, budget=40, rendezvous=True):
+def setup(tmp_path, *, workers=2, plan=PLAN, reject=None, automatic=False, budget=40, rendezvous=True, writers=0):
     """``reject``: task ID whose shard asks for changes in the first review round."""
     lock = threading.Lock()
     meeting = threading.Barrier(2) if rendezvous else None
-    stats = {"reviewers": 0, "peak": 0, "aggregates": 0, "rejected": 0, "writes": []}
+    stats = {"reviewers": 0, "peak": 0, "aggregates": 0, "rejected": 0, "writes": [], "writing": 0, "writePeak": 0}
+    writing = threading.Barrier(writers) if writers else None
     def write(context, args):
+        with lock:
+            stats["writing"] += 1
+            stats["writePeak"] = max(stats["writePeak"], stats["writing"])
+        if writing:
+            writing.wait(12)  # every worker of the team is implementing at the same time
+        with lock:
+            stats["writing"] -= 1
         context.resolve_workspace_path(args["path"]).write_text(args["value"])
         with lock:
             stats["writes"].append(args["path"])
@@ -219,5 +227,51 @@ def test_a_shard_at_the_budget_holds_the_project_and_resuming_with_more_continue
                                  "expectedRevision": service.project_store.get(run_id)["revision"], "maxEpisodes": 40}, "resume")
         final = until(service, run_id, lambda r: r["state"] == "ready_for_review")
         assert final["episodesUsed"] == 8 and stats["aggregates"] == 1 and final["shardHolds"] == []
+    finally:
+        runtime.close()
+
+
+def test_three_independent_tasks_get_three_workers(tmp_path):
+    plan = {"tasks": [*deepcopy(PLAN["tasks"]), {"instructions": "Write gamma.txt containing C", "acceptance": ["gamma contains C"],
+                                                "dependsOn": [], "fileScopes": ["gamma.txt"], "sharedResources": []}]}
+    service, runtime, _, root, run_id, stats = setup(tmp_path, workers=3, plan=plan, rendezvous=False, writers=3)
+    try:
+        final = until(service, run_id, lambda r: r["state"] == "ready_for_review")
+        assert stats["writePeak"] == 3 and len(final["teamChildren"]) == 3
+        assert final["maxWorkers"] == 3
+    finally:
+        runtime.close()
+
+
+def test_worker_bound_is_eight_everywhere(tmp_path):
+    from app.project_runner import parallel, weave
+    service, runtime, _, _, source = build(tmp_path, [])
+    try:
+        from test_project_runner import Controller
+        capability = Controller(service)._initialize({"protocolVersion": 1})["capabilities"]["projectRunner"]
+        assert capability["maxWorkers"] == parallel.MAX_WORKERS == 8 and capability["reviewShards"] == 4
+        assert create(service, source, maxWorkers=8, reviewPolicy="independent")["maxWorkers"] == 8
+        with pytest.raises(ValueError, match="1..8"):
+            create(service, source, maxWorkers=9, reviewPolicy="independent")
+        with pytest.raises(ValueError):
+            create(service, source, maxWorkers=4, reviewPolicy="manual")
+        schema = next(tool for tool in weave.tools(service) if tool.name == "weave_propose").input_schema
+        assert schema["properties"]["max_workers"]["maximum"] == 8
+    finally:
+        runtime.close()
+
+
+def test_a_serial_plan_that_declares_no_shared_resources_is_reviewed_in_shards(tmp_path, small_shards):
+    from app.project_runner.runner import validate_plan
+    declared = {"tasks": [{"instructions": t["instructions"], "acceptance": t["acceptance"], "sharedResources": []}
+                          for t in PLAN["tasks"]]}
+    plan = validate_plan({"tasks": [*declared["tasks"], {"instructions": "x", "acceptance": ["y"], "sharedResources": [" Browser "]},
+                                    {"instructions": "z", "acceptance": ["w"], "sharedResources": "nonsense"}]})
+    assert [task.get("sharedResources") for task in plan] == [[], [], ["browser"], None]
+    service, runtime, _, _, run_id, stats = setup(tmp_path, workers=1, plan=declared)
+    try:
+        final = until(service, run_id, lambda r: r["state"] == "ready_for_review")
+        assert stats["peak"] == 2 and stats["aggregates"] == 1
+        assert final["reviewShards"]["status"] == "aggregating"
     finally:
         runtime.close()

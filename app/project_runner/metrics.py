@@ -8,8 +8,9 @@ would help depends on numbers the runner did not keep, so it keeps them now:
 - waits: wall time a run had work it could start and the scheduler held it back, by why.
     workerCap   a team task was ready, but every worker slot was taken
     fileScope   ready team tasks all conflicted with running ones (files or shared resources)
-    admission   the run could dispatch, but another project's episodes held the scheduler
+    admission   the run could dispatch, but other projects' episodes held every Host slot
     reviewerCap a review shard was ready, but every reviewer slot was taken
+    disk        a ready team task needed a new checkout the drive could not hold (admission.py)
   One open wait per (run, channel); switching or closing it adds the elapsed time. Nothing
   is written while a wait continues, so a tick costs a dictionary lookup.
 - summarize: episode seconds and tokens by phase, and how many episodes were out at once,

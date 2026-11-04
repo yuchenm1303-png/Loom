@@ -14,7 +14,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash, review_progress
-from . import delivery, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards
+from . import delivery, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
 from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
@@ -428,8 +428,8 @@ class ProjectServiceMixin(WorkspaceMixin):
         policy, cycles = params.get("reviewPolicy", "independent"), params.get("maxReviewCycles", 3)
         completion = params.get("completionPolicy", "manual")
         workers = params.get("maxWorkers", 1)
-        if type(workers) is not int or not 1 <= workers <= 2 or (workers > 1 and policy != "independent"):
-            raise ValueError("maxWorkers must be 1..2 and parallel work requires independent review")
+        if type(workers) is not int or not 1 <= workers <= parallel.MAX_WORKERS or (workers > 1 and policy != "independent"):
+            raise ValueError(f"maxWorkers must be 1..{parallel.MAX_WORKERS} and parallel work requires independent review")
         if completion not in ("manual", "local_integrate") or (completion == "local_integrate" and policy != "independent"):
             raise ValueError("completionPolicy must be manual or local_integrate with independent review")
         if not isinstance(policy, str) or policy not in {"manual", "independent"} or type(cycles) is not int or not 1 <= cycles <= 10:
@@ -883,7 +883,8 @@ class ProjectControllerMixin:
     def _initialize(self, params):
         result = super()._initialize(params)
         result.setdefault("capabilities", {})["projectRunner"] = {
-            "version": 7, "maxWorkers": 2, "delivery": "local_verified_branch", "tokenLimit": "request_boundary",
+            "version": 8, "maxWorkers": parallel.MAX_WORKERS, "maxEpisodesAtOnce": admission.configured_slots(),
+            "reviewShards": shards.MAX_SHARDS, "delivery": "local_verified_branch", "tokenLimit": "request_boundary",
             "independentReview": True, "automaticRework": True, "reviewedIntegration": True, "automaticLocalCompletion": True}
         return result
 

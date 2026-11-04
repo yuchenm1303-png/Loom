@@ -42,7 +42,7 @@ def main(argv=None):
     parser.add_argument("--scenario", choices=("tally", "ledger"), default="ledger")
     parser.add_argument("--token-budget", type=int, default=8_000_000)
     parser.add_argument("--max-episodes", type=int, default=80)
-    parser.add_argument("--max-workers", type=int, choices=(1, 2), default=2)
+    parser.add_argument("--max-workers", type=int, choices=range(1, 9), default=2)
     parser.add_argument("--kills", type=int, default=6, help="Host kills before the run may finish undisturbed")
     parser.add_argument("--min-seconds", type=float, default=60, help="Shortest Host lifetime before a kill")
     parser.add_argument("--max-seconds", type=float, default=420, help="Longest Host lifetime before a kill")

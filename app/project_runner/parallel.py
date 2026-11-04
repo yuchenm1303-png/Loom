@@ -1,4 +1,8 @@
 """Bounded task DAGs with isolated runs, pooled usage and serial aggregation."""
+# A team's own bound on concurrent workers. How many actually run is also bounded by the
+# tasks the plan makes ready together (most real plans are narrow) and the Host's slots
+# (admission.py); 2 until the 2026-11-04 parallelism study.
+MAX_WORKERS = 8
 import copy
 from pathlib import PurePosixPath, Path
 import time
@@ -7,7 +11,7 @@ import uuid
 from .review import candidate, git, snapshot
 from .store import encoded
 from .errors import ReplyFormatError
-from . import metrics
+from . import admission, metrics
 
 
 def configure(plan, raw):
@@ -91,18 +95,27 @@ def cancelled(store, run):
     return run["state"] == "cancelled" or bool(parent and parent["state"] == "cancelled")
 
 
-def eligible(store, run, active):
+def family_active(family_id, active):
+    """The episodes out for one project family: the run itself and its team tasks or review shards."""
+    return [item for item in active if item["id"] == family_id or item.get("teamOwnerId") == family_id]
+
+
+def eligible(store, run, active, slots=1):
+    """Whether ``run`` may start an episode: the Host has a slot (admission.py) and its family has room."""
     from . import shards
+    if len(active) >= slots:
+        return False
     parent = owner(store, run)
     if parent is None:
-        return not active and not shards.waiting(run)
+        return not family_active(run["id"], active) and not shards.waiting(run)
+    mine = family_active(parent["id"], active)
     if run.get("reviewShard"):
-        return shards.eligible(store, parent, run, active)
+        return shards.eligible(store, parent, run, mine)
     if parent["state"] != "running" or parent["control"] != "active" or parent["phase"] != "parallel":
         return False
     if run["id"] not in {item["runId"] for item in parent.get("teamChildren", []) if item["state"] == "running"}:
         return False
-    return len(active) < parent["maxWorkers"] and all(item.get("teamOwnerId") == parent["id"] for item in active)
+    return len(mine) < parent["maxWorkers"]
 
 
 def spawn(service, root, task, source):
@@ -247,6 +260,9 @@ def advance(service, root):
             if any(overlap(task["fileScopes"], child["plan"][0]["fileScopes"]) or
                    set(task["sharedResources"]) & set(child["plan"][0]["sharedResources"]) for child in occupied):
                 continue
+            if not admission.checkouts_that_fit(store.home, source, 1):
+                metrics.note_wait(store, root["id"], "team", "disk")
+                return False
             metrics.note_wait(store, root["id"], "team", None)
             spawn(service, root, task, source)
             return True

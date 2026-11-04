@@ -37,11 +37,13 @@ export interface ProjectOverview {
   /** Where the milestone's time went (app/project_runner/metrics.py): seconds and tokens by phase, episodes out at once, scheduler waits. */
   metrics?: OverviewMetrics;
 }
+/** A project's own bound on agents implementing tasks at once (app/project_runner/parallel.py MAX_WORKERS). */
+export const MAX_WORKERS = 8;
 export interface OverviewMetrics {
   span: number; peak: number;
   phases: Record<string, { seconds: number; tokens: number; episodes: number }>;
   concurrency: Record<string, number>;
-  waits: Partial<Record<"workerCap" | "fileScope" | "admission" | "reviewerCap", number>>;
+  waits: Partial<Record<"workerCap" | "fileScope" | "admission" | "reviewerCap" | "disk", number>>;
 }
 export interface WeaveProposal { id: string; objective: string; title?: string; tokenBudget: number; maxWorkers: number; createdAt?: number }
 export interface OverviewSpan {
@@ -178,7 +180,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
                     branch: overview.workspace?.branch || "main" }, scope: [],
       workspace: overview.workspace?.git ? { changeCount: overview.workspace.changeCount, changes: overview.workspace.changes,
                                              head: overview.workspace.head || "", branch: overview.workspace.branch || "" } : undefined,
-      knowledge: { checks: 0, notes: 0, latest: "" }, tasks: [], budget: { tokens: 0, tokenLimit: 1 }, workers: 2, maxWorkers: 2,
+      knowledge: { checks: 0, notes: 0, latest: "" }, tasks: [], budget: { tokens: 0, tokenLimit: 1 }, workers: 2, maxWorkers: MAX_WORKERS,
       controls: { pause: false, resume: false, cancel: false }, agents: [],
     };
   }
@@ -249,7 +251,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     budget: { tokens, tokenLimit: program?.tokenBudget || run.tokenBudget },
     workers: program?.maxWorkers || run.maxWorkers || 1,
     fullAccess: (program?.permissionMode || run.permissionMode) === "full-access",
-    maxWorkers: 2,
+    maxWorkers: MAX_WORKERS,
     controls: { pause: state === "running", resume: state === "paused" && !stopped && !finished, cancel: !finished && !stopped },
     agents: overview.agents.map((agent, index) => {
       const startedAt = agent.startedAt ? Date.parse(agent.startedAt) : now;

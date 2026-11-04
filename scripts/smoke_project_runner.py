@@ -299,7 +299,7 @@ def main(argv=None):
     parser.add_argument("--token-budget", type=int, default=80000)
     parser.add_argument("--max-episodes", type=int, default=12)
     parser.add_argument("--seconds", type=int, default=480)
-    parser.add_argument("--max-workers", type=int, choices=(1, 2), default=1)
+    parser.add_argument("--max-workers", type=int, choices=range(1, 9), default=1)
     parser.add_argument("--scenario", choices=tuple(SCENARIOS), default="tally",
                         help="tally: one small CLI; ledger: a multi-task package with a larger external oracle")
     parser.add_argument("--resume", action="store_true",

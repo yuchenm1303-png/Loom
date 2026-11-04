@@ -23,6 +23,7 @@ from app.agent_runtime.tools import AgentTool, ToolResult
 from app.ai import AIMessage, MessageRole
 
 from . import program
+from .parallel import MAX_WORKERS
 
 PROPOSALS_FILE = "weave-proposals.json"
 # The budgets the hub's chip offers; a proposal's budget is one of them.
@@ -217,7 +218,8 @@ def tools(service):
         workers = arguments.get("max_workers", 1)
         proposal = {"id": str(uuid.uuid4()), "objective": objective, "title": str(arguments.get("title") or "").strip()[:120],
                     "tokenBudget": snap_budget(arguments.get("token_budget")),
-                    "maxWorkers": workers if workers in (1, 2) else 1, "createdAt": time.time()}
+                    "maxWorkers": workers if type(workers) is int and 1 <= workers <= MAX_WORKERS else 1,
+                    "createdAt": time.time()}
         service.weave_proposals.put(context.session_id, proposal)
         return ToolResult(ok=True, content="Proposal shown in the hub; the person starts it there. Nothing runs until then.",
                           data={"proposal": proposal})
@@ -263,7 +265,10 @@ def tools(service):
                 "title": {"type": "string", "description": "A few words naming the project."},
                 "token_budget": {"type": "integer", "description": "Suggested total token budget, one of "
                                  + ", ".join(f"{budget:,}" for budget in BUDGETS) + "; the person can change it."},
-                "max_workers": {"type": "integer", "enum": [1, 2], "description": "Agents working in parallel."},
+                "max_workers": {"type": "integer", "minimum": 1, "maximum": MAX_WORKERS,
+                                "description": "Upper bound on agents implementing tasks at once. How many really run "
+                                "is what the plan makes independent (disjoint files, no shared resources); 1 for a "
+                                "small or tightly sequential objective."},
             }, "required": ["objective"], "additionalProperties": False},
             handler=propose, effect=ToolEffect.READ_ONLY),
         AgentTool(

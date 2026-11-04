@@ -233,7 +233,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", type=Path, required=True, help="New directory")
     parser.add_argument("--tasks", type=int, default=16)
-    parser.add_argument("--workers", type=int, choices=(1, 2), default=2)
+    parser.add_argument("--workers", type=int, choices=range(1, 9), default=2)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--outage", type=float, default=0.1, help="Share of model requests that fail at the provider")
     parser.add_argument("--malformed", type=float, default=0.1, help="Share of final replies that are not JSON")

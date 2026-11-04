@@ -27,7 +27,7 @@ import copy
 import time
 import uuid
 
-from . import checks, metrics
+from . import admission, checks, metrics
 from .store import encoded
 
 MIN_CRITERIA = 8          # below this, one reviewer is quicker than starting several
@@ -42,8 +42,9 @@ def exclusive(task):
     return resources is None or bool(resources)
 
 
-def plan(run):
-    """Groups of task IDs, one per shard reviewer; [] when one reviewer should do it all."""
+def plan(run, limit=None):
+    """Groups of task IDs, one per shard reviewer (at most ``limit``); [] when one reviewer should do it all."""
+    limit = MAX_SHARDS if limit is None else min(limit, MAX_SHARDS)
     tasks = run.get("plan") or []
     if run.get("teamOwnerId") or run.get("reviewPolicy") != "independent" or len(tasks) < 2:
         return []
@@ -52,7 +53,7 @@ def plan(run):
     order = {task["id"]: index for index, task in enumerate(tasks)}
     shared = [task for task in tasks if exclusive(task)]
     free = [task for task in tasks if not exclusive(task)]
-    room = MAX_SHARDS - (1 if shared else 0)
+    room = limit - (1 if shared else 0)
     count = min(room, max(1, -(-sum(len(task["acceptance"]) for task in free) // CRITERIA_PER_SHARD))) if free else 0
     groups, loads = [[] for _ in range(count)], [0] * count
     for task in sorted(free, key=lambda item: (-len(item["acceptance"]), order[item["id"]])):
@@ -90,15 +91,15 @@ def aggregating(run):
     return bool(state and state.get("status") == "aggregating")
 
 
-def eligible(store, parent, run, active):
+def eligible(store, parent, run, mine):
+    """``mine``: the episodes out for the owner's family (Host slots are checked by the caller)."""
     state = _current(parent) or {}
     if (parent["state"] != "running" or parent["control"] != "active" or state.get("status") != "running"
             or state.get("candidateId") != run["reviewShard"]["candidateId"]
             or run["id"] not in {item["runId"] for item in state.get("children", []) if item["state"] == "running"}):
         return False
-    family = all(item.get("teamOwnerId") == parent["id"] for item in active)
-    allowed = len(active) < MAX_REVIEWERS and family
-    metrics.note_wait(store, parent["id"], "review", "reviewerCap" if family and not allowed else None)
+    allowed = len(mine) < MAX_REVIEWERS
+    metrics.note_wait(store, parent["id"], "review", None if allowed else "reviewerCap")
     return allowed
 
 
@@ -120,7 +121,9 @@ def advance(service, run):
     if not _applies(run):
         return False
     if state is None:
-        groups = plan(run)
+        # Each shard is a full checkout: plan only as many as the drive holds (admission.py).
+        fit = admission.checkouts_that_fit(store.home, store.home / "workspaces" / run["id"], MAX_SHARDS)
+        groups = plan(run, fit)
         if not groups:
             return False
         _start(store, run, groups)

@@ -15,6 +15,7 @@ from .budget import ProjectBudget
 from .errors import ReplyFormatError
 from . import checks
 from . import metrics
+from . import admission
 from .janitor import Janitor
 
 # How an episode ended decides what the runner does next, from the fields the
@@ -164,8 +165,14 @@ def validate_plan(value):
             raise ReplyFormatError("each task needs concrete acceptance criteria")
         if len(task["instructions"]) > 12000:
             raise ReplyFormatError("task instructions too long")
-        plan.append({"id": f"task-{index+1}", "instructions": task["instructions"], "acceptance": acceptance,
-                     "state": "pending"})
+        entry = {"id": f"task-{index+1}", "instructions": task["instructions"], "acceptance": acceptance, "state": "pending"}
+        resources = task.get("sharedResources")
+        if isinstance(resources, list) and len(resources) <= 16 and all(
+                isinstance(item, str) and item.strip() and len(item) <= 100 for item in resources):
+            # Declared: lets whole-project review split across parallel reviewers (shards.py).
+            # Undeclared stays absent, which shards treat as exclusive (one reviewer, as before).
+            entry["sharedResources"] = sorted({item.strip().casefold() for item in resources})
+        plan.append(entry)
     return plan
 
 
@@ -270,12 +277,18 @@ class ProjectRunner:
                 return ('Plan this project as ordered task IDs task-1, task-2, etc. Return only JSON {"tasks":[{"instructions":"scoped implementation",'
                     '"acceptance":["observable behavior"],"dependsOn":[],"fileScopes":["relative/file.py"],"sharedResources":[]}]}. '
                     "Use 1..16 tasks. Dependencies may reference only earlier task IDs. Only explicitly independent tasks with disjoint file scopes and no shared resources run together. "
+                    f"Up to {run['maxWorkers']} tasks can be implemented at once, each by its own agent: where the objective really has "
+                    "independent parts, make them separate tasks with their own files instead of a chain; never split one change "
+                    "across tasks just to fill agents. "
                     "A fileScope may name a directory (tests) when a task needs supporting files such as tests/__init__.py. "
                     "List common ports, databases, GUI/browser or environment resources in sharedResources. Omitted declarations serialize safely. "
                     + sizing + run["objective"])
             return ("Plan this long-running project. Do not edit files or execute commands. Return only JSON: "
-                    '{"tasks":[{"instructions":"scoped implementation", "acceptance":["observable behavior"]}]}. '
-                    "Tasks run in order; cover the entire objective with at most 16 tasks. " + sizing + run["objective"])
+                    '{"tasks":[{"instructions":"scoped implementation", "acceptance":["observable behavior"],"sharedResources":[]}]}. '
+                    "Tasks run in order; cover the entire objective with at most 16 tasks. "
+                    "sharedResources names what checking a task needs exclusively (a GUI/browser, a server port, a database, "
+                    "an external environment); [] when its checks are plain commands and files. Reviewers of tasks with [] "
+                    "may verify them at the same time. " + sizing + run["objective"])
         if run["phase"] == "verifying" and shards.aggregating(run):
             return self._aggregate_prompt(run)
         if run["phase"] == "verifying":
@@ -383,15 +396,17 @@ class ProjectRunner:
             def counted():
                 return [r for r in self.store.running() if r["activeEpisode"]["state"] != "outcome_unknown"]
             active = counted()  # read again only after this tick starts an episode
-            for run in self.store.live():
+            live = self.store.live()
+            slots = admission.slots(live)
+            for run in live:
                 advance_parallel = getattr(self.executor, "advance_parallel", None)
                 if advance_parallel and advance_parallel(run):
                     return
                 if run["activeEpisode"]:
                     continue
-                if not parallel.eligible(self.store, run, active):
+                if not parallel.eligible(self.store, run, active, slots):
                     metrics.note_wait(self.store, run["id"], "admission",
-                                      "admission" if self._held_by_others(run, active) else None)
+                                      "admission" if self._held_by_others(run, active, slots) else None)
                     continue
                 metrics.note_wait(self.store, run["id"], "admission", None)
                 advance = getattr(self.executor, "advance_workflow", None)
@@ -404,17 +419,16 @@ class ProjectRunner:
                                 or owner.get("integrationRunId") != run["id"]):
                             continue
                     self._dispatch(run)
-                    if not run.get("teamOwnerId"):
-                        return
+                    # Every project with a slot starts in this tick (admission.py), not one per tick.
                     active = counted()
 
     @staticmethod
-    def _held_by_others(run, active):
-        """The run could start an episode now, and only other projects' episodes stop it."""
-        return bool(active and run["state"] == "running" and run["control"] == "active"
+    def _held_by_others(run, active, slots=1):
+        """The run could start an episode now, and only the Host's slots, taken by other projects, stop it."""
+        return bool(len(active) >= slots and run["state"] == "running" and run["control"] == "active"
                     and run["phase"] != "parallel" and not run.get("teamOwnerId")
                     and run.get("retryAfter", 0) <= time.time()
-                    and all(item["id"] != run["id"] and item.get("teamOwnerId") != run["id"] for item in active))
+                    and not parallel.family_active(run["id"], active))
 
     def _dispatch(self, run):
         if run.get("retryAfter", 0) > time.time():
