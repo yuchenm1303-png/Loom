@@ -183,3 +183,27 @@ P0 → P1 →（重测 weave-live2）→ P2 → P3 → P4 → P5。
   
   反向检查：限制为 1 个审查员、去掉按分片过滤，测试都会变红。另有一个界面测试（`project-overview.test.mjs`）。
 - 尚未做真实模型验证：需要用 weave-live2 级别的场景（15 任务、45 条 criteria）重测墙钟时间和 token。
+
+### P2 按名额调度（已实现）
+- `app/project_runner/admission.py`：去掉「整个 Host 一次只跑一个项目」的锁。一个 episode 要同时满足以下几条才能开始：
+  - **Host 名额**：`LOOM_PROJECT_MAX_EPISODES`，默认 4，范围 1–16。只要有项目在等模型服务恢复（`retryAfter` 未到，且 `transientFailureStreak > 0`），名额就减半。
+  - **家族上限**：团队用 `maxWorkers`，分片用 `MAX_REVIEWERS`，没有子 run 的 run 同时只能有 1 个 episode（`parallel.eligible(store, run, active, slots)`、`parallel.family_active`）。
+  - **磁盘**：新开团队 checkout 或分片 checkout 后，盘上至少还要剩 2 GiB（`checkouts_that_fit`，按候选的文件大小 × 1.25 估算）。空间不够时，团队记 `disk` 等待；分片只开装得下的数量。
+- 调度节拍：以前每个 tick 只给一个非团队 run 派发 episode，现在每个有名额的项目在同一个 tick 内都能开始。
+- 桌面操作本来就不在这个调度器里（普通对话一直和项目同时用桌面）。它的运行时会串行化输入，别的会话观察过桌面后你的观察就失效，所以并发项目不会盲目操作桌面。
+- 测试：`tests/test_project_admission.py`，覆盖：
+  - 两个对话的项目同时干活（barrier 验证；改动前第二个会一直排队）
+  - 名额为 1 时恢复排队，并记录 `admission` 等待
+  - 名额的配置、边界和减半
+  - 家族上限
+  - 磁盘余量计算
+  - 盘满时团队等待，有空间后继续
+
+### P3 写代码的 worker 上限 1..8（已实现）
+- `parallel.MAX_WORKERS = 8`，同步到以下几处：Host 校验、能力声明（v8，另附 `maxEpisodesAtOnce`、`reviewShards`）、`weave_propose` 的 schema（1..8，说明「真正同时跑几个取决于计划里独立的部分」）、设置面板（1/2/4/8）、前端 `MAX_WORKERS`、三个脚本。
+- 并行 planner 会被告知最多几个 agent 能同时实现任务，并提醒它不要为了填满 agent 而硬拆。
+- 串行 planner 现在也可以声明 `sharedResources`。声明为 `[]` 的单 worker 项目也能分片审查；不声明则保持单个审查员（`validate_plan`）。
+- 测试：3 个独立任务配 3 个 worker 时真正同时开工（barrier）；上限 8 在各处一致；串行计划声明资源后会分片。
+
+### P5 多方案择优：不做
+历史上的 111 次审查结论里只有 5 次 `needs_changes`（另有 9 次 `continue`），返工很少见，多方案择优省不了多少时间，却会让 token 成倍增加。真正的浪费在 weave-live2 的整体审查：16 个 episode 里有 13 个撞到单个 episode 的步数或工具调用上限（`limit_reached` 的 `model_steps` 和 `tool_calls`），原因是一个审查员要扛 45 条 criteria。这正是 P1 分片要解决的（每片约 6 条）。

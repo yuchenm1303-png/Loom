@@ -279,14 +279,21 @@ export function toTimeline(overview: ProjectOverview, now: number, lang: Lang = 
   const run = overview.run;
   if (!run || !spans.length) return undefined;
   const ids = run.plan.map((task) => task.id);
+  // A parallel reviewer's share of the whole-project review gets its own lane (shards overlap in time).
+  const shardOf = (runId: string) => overview.children.find((child) => child.id === runId)?.reviewShard;
   const laneOf = (span: OverviewSpan) => span.phase === "planning" ? "plan"
-    : span.taskId ? `task:${span.taskId}` : span.runId === run.id ? "project" : "integrate";
+    : span.taskId ? `task:${span.taskId}` : span.runId === run.id ? "project"
+    : shardOf(span.runId) ? `shard:${shardOf(span.runId)!.index}` : "integrate";
   const used = new Set(spans.map(laneOf));
-  const order = ["plan", ...ids.map((id) => `task:${id}`), "project", "integrate"].filter((key) => used.has(key));
-  const words = lang === "en" ? { plan: "Plan", project: "Project review", integrate: "Integrate", task: (n: number) => `Task ${n}` }
-    : { plan: "规划", project: "整体复审", integrate: "集成", task: (n: number) => `任务 ${n}` };
+  const shardLanes = [...used].filter((key) => key.startsWith("shard:")).sort((a, b) => Number(a.slice(6)) - Number(b.slice(6)));
+  const order = ["plan", ...ids.map((id) => `task:${id}`), ...shardLanes, "project", "integrate"].filter((key) => used.has(key));
+  const shardCount = Math.max(0, ...overview.children.map((child) => child.reviewShard?.of || 0));
+  const words = lang === "en" ? { plan: "Plan", project: "Project review", integrate: "Integrate", task: (n: number) => `Task ${n}`,
+                                  shard: (n: number) => `Review ${n}/${shardCount}` }
+    : { plan: "规划", project: "整体复审", integrate: "集成", task: (n: number) => `任务 ${n}`, shard: (n: number) => `复审 ${n}/${shardCount}` };
   const lanes = order.map((key) => key.startsWith("task:")
     ? { key, label: words.task(ids.indexOf(key.slice(5)) + 1), taskId: key.slice(5) }
+    : key.startsWith("shard:") ? { key, label: words.shard(Number(key.slice(6))) }
     : { key, label: words[key as "plan" | "project" | "integrate"] });
   const nowSeconds = now / 1000;
   const live = spans.some((span) => span.end == null);

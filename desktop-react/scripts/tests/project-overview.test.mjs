@@ -314,3 +314,17 @@ test("parallel whole-project reviewers name their share and put each of its task
   assert.deepEqual(plain.agents.map((agent) => agent.activity), ["Whole-project review", "Whole-project review"]);
   assert.ok(plain.tasks.every((task) => task.state !== "review"));
 });
+
+test("each parallel reviewer of the whole project has its own timeline lane, before the project review", () => {
+  const shard = (id, index) => ({ ...run(), id, teamOwnerId: "root", teamChildren: undefined,
+    reviewShard: { sourceRunId: "root", candidateId: "c", taskIds: [`task-${index}`], exclusive: false, index, of: 2 } });
+  const at = now / 1000 - 600;
+  const value = { ...overview(), children: [shard("s1", 1), shard("s2", 2)], timeline: [
+    { id: "e1", runId: "s2", phase: "verifying", taskId: null, start: at, end: at + 100, tokens: 5, outcome: "episode_settled" },
+    { id: "e2", runId: "s1", phase: "verifying", taskId: null, start: at, end: at + 120, tokens: 5, outcome: "episode_settled" },
+    { id: "e3", runId: "root", phase: "verifying", taskId: null, start: at + 130, end: null, tokens: 0, outcome: "" },
+  ] };
+  const timeline = toTimeline(value, now, "zh");
+  assert.deepEqual(timeline.lanes.map((lane) => lane.label), ["复审 1/2", "复审 2/2", "整体复审"]);
+  assert.deepEqual(timeline.spans.map((span) => span.lane), ["shard:2", "shard:1", "project"]);
+});
