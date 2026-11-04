@@ -307,9 +307,10 @@ class ProjectRunner:
                     + "Ignore generated outputs only via the repository's existing ignore rules. "
                     + (f"You are reviewer {shard['index']} of {shard['of']} checking this candidate at the same time: criteria is "
                        "only your share (tasks " + ", ".join(shard["taskIds"]) + "). The other shares are checked in parallel, "
-                       "and another reviewer judges whole-objective coverage after all of you pass. Verify your share "
-                       "thoroughly, including behavior its tasks should have but no test names; report needs_changes for "
-                       "any task in which you find a problem. "
+                       "and another reviewer judges whole-objective coverage after all of you pass, so do not probe beyond "
+                       "your share's criteria: verify each of them with an executed check (re-run acceptedChecks where they "
+                       "exist), report needs_changes for a problem you find in any task, and report as soon as your criteria "
+                       "are settled. "
                        if shard else "Check the entire objective for missing behavior, not just the declared test names. ")
                     + "Return only JSON: {\"verdict\":\"passed|needs_changes|blocked|continue\",\"summary\":\"observed facts\","
                     "\"notes\":[\"optional: environment facts or pitfalls later sessions should know\"],"

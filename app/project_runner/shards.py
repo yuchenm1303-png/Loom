@@ -30,8 +30,13 @@ import uuid
 from . import admission, checks, metrics
 from .store import encoded
 
-MIN_CRITERIA = 8          # below this, one reviewer is quicker than starting several
-CRITERIA_PER_SHARD = 6
+# Each reviewer first has to read the project; that is the price of a shard. A real
+# 21-criterion review (shards1, 2026-11-04) split four ways took 15.6 min and 1.86M tokens
+# where one reviewer of the same scenario had taken 6.3 min and 0.63M (ledger12). One
+# reviewer of 45 criteria took 23M tokens over 16 episodes (weave-live2): that is the case
+# shards are for. Below MIN_CRITERIA one reviewer does it all; shards are kept large.
+MIN_CRITERIA = 30
+CRITERIA_PER_SHARD = 12
 MAX_SHARDS = 4
 MAX_REVIEWERS = 4         # shard reviewers out at once
 

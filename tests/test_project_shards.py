@@ -117,7 +117,7 @@ def until(service, run_id, predicate, limit=80):
 
 def test_plan_splits_free_tasks_and_keeps_exclusive_ones_together():
     tasks = [{"id": f"task-{n}", "acceptance": ["x"] * size, "sharedResources": resources}
-             for n, (size, resources) in enumerate([(4, []), (3, []), (3, []), (2, ["browser"]), (2, None), (5, [])], 1)]
+             for n, (size, resources) in enumerate([(8, []), (6, []), (6, []), (4, ["browser"]), (4, None), (10, [])], 1)]
     run = {"plan": tasks, "reviewPolicy": "independent"}
     groups = shards.plan(run)
     assert groups[-1] == {"taskIds": ["task-4", "task-5"], "exclusive": True}
