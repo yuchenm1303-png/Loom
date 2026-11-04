@@ -316,7 +316,9 @@ export function toTimeline(overview: ProjectOverview, now: number, lang: Lang = 
       minutes: Math.max(0, Math.round(((span.end ?? nowSeconds) - span.start) / 60)),
     })),
     stats: { episodes: spans.length, trouble: spans.filter((span) => TROUBLE.has(span.outcome)).length,
-             perHour: Math.round(tokens / hours) },
+             perHour: Math.round(tokens / hours),
+             ...(overview.metrics ? { peak: overview.metrics.peak, waitMinutes: Math.round(
+               Object.values(overview.metrics.waits || {}).reduce((sum, seconds) => sum + (seconds || 0), 0) / 60) } : {}) },
   };
 }
 

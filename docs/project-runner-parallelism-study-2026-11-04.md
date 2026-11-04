@@ -207,3 +207,9 @@ P0 → P1 →（重测 weave-live2）→ P2 → P3 → P4 → P5。
 
 ### P5 多方案择优：不做
 历史上的 111 次审查结论里只有 5 次 `needs_changes`（另有 9 次 `continue`），返工很少见，多方案择优省不了多少时间，却会让 token 成倍增加。真正的浪费在 weave-live2 的整体审查：16 个 episode 里有 13 个撞到单个 episode 的步数或工具调用上限（`limit_reached` 的 `model_steps` 和 `tool_calls`），原因是一个审查员要扛 45 条 criteria。这正是 P1 分片要解决的（每片约 6 条）。
+
+### P4 只读探索代理：暂不做
+实测里规划阶段（planner 读代码、拆任务）只占 0.0–3.2% 的 token、不到 3% 的 episode 时间（第 2 节）。worker 自己读代码的部分无法从现有记录里单独拆出来。在拿到证据之前，为探索开子代理只会增加预算记账的复杂度（子会话的 token 要计入项目账本，现在 `delegation.py` 一律禁止）。等 P0 指标积累了真实项目的数据再决定。
+
+### 补充：生产环境的单 episode 上限
+`AgentLimits` 默认 `max_model_steps = max_tool_calls = 0`（不限），只有资格测试脚本设了 40/80。所以 weave-live2 里「13/16 次整体审查撞上限」是测试环境的现象。在生产环境，分片的收益体现在墙钟时间（并行）和每个审查员的上下文更小，而不是避免撞上限。

@@ -327,4 +327,8 @@ test("each parallel reviewer of the whole project has its own timeline lane, bef
   const timeline = toTimeline(value, now, "zh");
   assert.deepEqual(timeline.lanes.map((lane) => lane.label), ["复审 1/2", "复审 2/2", "整体复审"]);
   assert.deepEqual(timeline.spans.map((span) => span.lane), ["shard:2", "shard:1", "project"]);
+  const measured = toTimeline({ ...value, metrics: { span: 900, peak: 3, phases: {}, concurrency: {},
+                                                     waits: { workerCap: 150, admission: 90 } } }, now, "zh");
+  assert.equal(measured.stats.peak, 3);
+  assert.equal(measured.stats.waitMinutes, 4);
 });

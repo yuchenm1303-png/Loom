@@ -89,7 +89,8 @@ export interface FlowData {
              trouble: boolean; tokens: number; minutes: number }[];
     ticks: { at: number; label: string }[];
     live: boolean;
-    stats: { episodes: number; trouble: number; perHour: number };
+    /** peak: most episodes out at once; waitMinutes: time the scheduler held ready work back (projectRun/overview metrics). */
+    stats: { episodes: number; trouble: number; perHour: number; peak?: number; waitMinutes?: number };
   };
   budget: { tokens: number; tokenLimit: number };
   workers: number;
@@ -166,7 +167,8 @@ const zhText = {
   repository: "仓库", scope: "工作范围", knowledge: "项目知识", checks: "条检查", notes: "条笔记", plan: (n: number) => `阶段 ${n} 计划`,
   planEmpty: "规划完成后在这里显示任务", outcome: "已完成", outcomeCount: (n: number) => `${n} 个阶段`, episodes: (n: number) => `${n} 轮`,
   donePlaceholder: "目标已完成", loom: "建造时间线", phases: { plan: "规划", work: "开发", review: "复审" },
-  loomStats: (s: { episodes: number; trouble: number; perHour: number }) => `${s.episodes} 轮 · 重试 ${s.trouble} · ${compact(s.perHour)}/时`,
+  loomStats: (s: { episodes: number; trouble: number; perHour: number; peak?: number; waitMinutes?: number }) =>
+    `${s.episodes} 轮 · 重试 ${s.trouble} · ${compact(s.perHour)}/时${(s.peak || 0) > 1 ? ` · 最多同时 ${s.peak}` : ""}${s.waitMinutes ? ` · 排队 ${s.waitMinutes} 分` : ""}`,
   spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
     `${phase} · ${minutes} 分 · ${compact(tokens)} token${trouble ? " · 未正常结束，已重试" : ""}`,
   dirty: (n: number) => `仓库里有 ${n} 个未提交的改动`,
@@ -191,7 +193,8 @@ const enText: typeof zhText = {
   planEmpty: "Tasks appear here once the plan is made", outcome: "Complete", outcomeCount: (n: number) => `${n} milestones`,
   episodes: (n: number) => `${n} episodes`, donePlaceholder: "The objective is complete",
   loom: "Timeline", phases: { plan: "Plan", work: "Build", review: "Review" },
-  loomStats: (s: { episodes: number; trouble: number; perHour: number }) => `${s.episodes} episodes · ${s.trouble} retried · ${compact(s.perHour)}/h`,
+  loomStats: (s: { episodes: number; trouble: number; perHour: number; peak?: number; waitMinutes?: number }) =>
+    `${s.episodes} episodes · ${s.trouble} retried · ${compact(s.perHour)}/h${(s.peak || 0) > 1 ? ` · up to ${s.peak} at once` : ""}${s.waitMinutes ? ` · ${s.waitMinutes} min queued` : ""}`,
   spanTitle: (phase: string, minutes: number, tokens: number, trouble: boolean) =>
     `${phase} · ${minutes} min · ${compact(tokens)} tokens${trouble ? " · did not settle; retried" : ""}`,
   dirty: (n: number) => `The repository has ${n} uncommitted change${n === 1 ? "" : "s"}`,
