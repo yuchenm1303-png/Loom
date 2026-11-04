@@ -47,7 +47,9 @@ model work outside episode admission/accounting. Ordinary user conversations
 retain their normal idle behavior; in-turn compaction remains available.
 
 Only one project team runs concurrently in the project scheduler, with at most
-two active episodes including review and approval waits. Other normal Host
+two active episodes including review and approval waits. (Superseded 2026-11-04:
+projects share Host slots, teams take up to eight workers and whole-project review
+splits across parallel reviewers; see project-runner-parallelism-study-2026-11-04.md.) Other normal Host
 conversations are outside this scheduler's concurrency limit. Parent control
 gates every task dispatch, including after SQLite reopen. Cancellation is saved
 first, propagated to known children, checked again before model activation, and

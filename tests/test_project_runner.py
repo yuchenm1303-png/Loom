@@ -263,7 +263,10 @@ def test_create_retry_keeps_original_snapshot_after_repository_changes(tmp_path)
         runtime.close()
 
 
-def test_cancel_during_preparation_prevents_first_model_call(tmp_path):
+def test_cancel_during_preparation_prevents_first_model_call(tmp_path, monkeypatch):
+    # One Host slot: a cancelled episode still preparing keeps its slot until it settles
+    # (admission.py), so the queued project below must wait for it.
+    monkeypatch.setenv("LOOM_PROJECT_MAX_EPISODES", "1")
     service, runtime, platform, _, source = build(tmp_path, [])
     entered, release = threading.Event(), threading.Event()
     def prepare(session):
