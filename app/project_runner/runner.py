@@ -227,7 +227,9 @@ class ProjectRunner:
 
     def prompt(self, run, kept=(), references=(), progress=None):
         note = run.get("replyNote")
-        text = self._prompt(run, list(kept), progress)
+        text = ("This is a scheduler-owned project episode. Do not call spawn_agent or wake generic sub-agents. "
+                "The project scheduler owns task assignment, isolated workspaces, concurrency and the shared budget.\n"
+                + self._prompt(run, list(kept), progress))
         if references:
             # Files the person attached to the program (a spec, sample data): copies in this session's scratch.
             text = ("The person attached reference files for this project. Read them where they bear on your work; "

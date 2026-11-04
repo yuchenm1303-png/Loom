@@ -109,9 +109,10 @@ def _assume_unknown(db, where, params, *, input_only=False):
 
 
 class ProjectBudget:
-    def __init__(self, store, project_sessions):
+    def __init__(self, store, project_sessions, session_owner=None):
         # ``store`` may be a callable: the Host can reopen its ProjectStore.
         self._store, self.project_sessions = store, project_sessions
+        self.session_owner = session_owner or (lambda session_id: None)
 
     @property
     def store(self):
@@ -126,6 +127,8 @@ class ProjectBudget:
     def admit(self, request):
         session_id = getattr(request, "session_id", "") or ""
         if session_id not in self.project_sessions:
+            if self.session_owner(session_id):
+                raise ModelAdmissionRefused("Unscheduled project sub-agent: only project episodes may request a model")
             return None
         try:
             estimate = int(estimate_tokens(request.messages, request.tools) + (request.max_output_tokens or 0))
@@ -173,13 +176,20 @@ class ProjectBudget:
     def observe(self, event):
         """Runtime listener: record usage as it is reported, not when the episode ends."""
         tokens = event_tokens(event)
-        if tokens is None or event.session_id not in self.project_sessions:
+        if tokens is None:
+            return
+        owner = event.session_id if event.session_id in self.project_sessions else self.session_owner(event.session_id)
+        if not owner:
             return
         with self.store.transaction() as db:
-            self._record(db, event.event_id, event.turn_id, tokens, rejected=event.kind is E.MODEL_RESPONSE_REJECTED)
+            self._record(db, event.event_id, event.turn_id, tokens, rejected=event.kind is E.MODEL_RESPONSE_REJECTED,
+                         ancestor=owner if owner != event.session_id else None)
 
-    def _record(self, db, event_id, turn_id, tokens, *, rejected=False):
+    def _record(self, db, event_id, turn_id, tokens, *, rejected=False, ancestor=None):
         episode = db.execute("SELECT id,run_id FROM project_episodes WHERE turn_id=?", (turn_id,)).fetchone()
+        if episode is None and ancestor:
+            episode = db.execute("SELECT id,run_id FROM project_episodes WHERE session_id=? ORDER BY rowid DESC LIMIT 1",
+                                 (ancestor,)).fetchone()
         if episode is None:
             return 0
         run = _read(db, episode[1])

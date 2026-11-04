@@ -14,7 +14,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash, review_progress
-from . import delivery, integration, workflow, parallel, checks, program, weave
+from . import delivery, integration, workflow, parallel, checks, program, weave, delegation
 from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
@@ -367,11 +367,13 @@ class ProjectServiceMixin(WorkspaceMixin):
             def project_schedule(session, observed):
                 # Background speculation would bypass project admission and usage.
                 # In-turn compaction remains charged to its prepared episode.
-                if session.session_id not in self._project_session_ids:
+                if not delegation.owner(self, session.session_id):
                     original_schedule(session, observed)
             idle.schedule = project_schedule
         executor = ProjectExecutor(self, home)
-        self.project_budget = ProjectBudget(lambda: self.project_store, self._project_session_ids)
+        delegation.install(self)
+        self.project_budget = ProjectBudget(lambda: self.project_store, self._project_session_ids,
+                                            lambda session_id: delegation.owner(self, session_id))
         self.project_runner = ProjectRunner(self.project_store, executor, self.project_budget)
         # After the scheduler lease: only its owner may decide that an open
         # request of a previous process has unknown usage.
@@ -391,12 +393,14 @@ class ProjectServiceMixin(WorkspaceMixin):
         on_activated = self.runtime._on_turn_activated
         def project_activated(session_id, token):
             on_activated(session_id, token)
-            if session_id not in self._project_session_ids:
+            project_owner = delegation.owner(self, session_id)
+            if not project_owner:
                 return
-            run = self.project_store.session_run(session_id)
-            if run and (parallel.cancelled(self.project_store, run) or self.project_runner.stop.is_set()):
+            run = self.project_store.session_run(project_owner)
+            if project_owner != session_id or (run and (parallel.cancelled(self.project_store, run) or self.project_runner.stop.is_set())):
                 token.cancel()  # closes the cancellation race before the first model sample
         self.runtime._on_turn_activated = project_activated
+        delegation.reconcile(self)
         # Weave mode: the conversation's own agent proposes, reads and steers its project.
         self.weave_proposals = weave.Proposals(home)
         for tool in weave.tools(self):
@@ -501,6 +505,13 @@ class ProjectServiceMixin(WorkspaceMixin):
     def _project_team_cancel(self, run, action):
         if action != "cancel":
             return
+        family = [run["id"], *(item["runId"] for item in run.get("teamChildren", []))]
+        if run.get("integrationRunId"):
+            family.append(run["integrationRunId"])
+        with self.project_store.lock:
+            marks = ",".join("?" for _ in family)
+            sessions = [row[0] for row in self.project_store.db.execute(
+                f"SELECT DISTINCT session_id FROM project_episodes WHERE run_id IN ({marks})", family)]
         for item in run.get("teamChildren", []):
             if item["state"] == "merged":
                 continue
@@ -510,6 +521,7 @@ class ProjectServiceMixin(WorkspaceMixin):
                 self.project_store.save(db, child, "team_cancelled")
             if child["activeEpisode"]:
                 self.project_runner.executor.cancel(child["activeEpisode"])
+        delegation.stop_descendants(self, sessions)
 
     def project_budget_position(self, run):
         return {**run, "budgetPosition": self.project_budget.report(run)}

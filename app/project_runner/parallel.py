@@ -103,6 +103,9 @@ def eligible(store, run, active):
 
 def spawn(service, root, task, source):
     store = service.project_store
+    if root.get("parallelSpawn"):
+        child = root["parallelSpawn"]
+        return _finish_spawn(store, root, child)
     child = {key: copy.deepcopy(root[key]) for key in ("sourceThreadId", "repository", "gitCommonDir", "budgetEnforcement",
         "tokenBudget", "maxEpisodes", "maxReviewCycles", "permissionMode") if key in root}
     child.update(id=str(uuid.uuid4()), revision=0, state="running", control="active", phase="working",
@@ -111,18 +114,40 @@ def spawn(service, root, task, source):
         taskIndex=0, sessions={}, activeEpisode=None, episodesUsed=0, tokensUsed=0, reason="", createdAt=time.time(),
         reviewPolicy="independent", reviewScope="task", reviewFailures={}, feedback=[], reviewCandidate=None,
         completionPolicy="manual", delivery="isolated_candidate_only")
+    # The filesystem cannot participate in SQLite's transaction. Persist its owner
+    # first, so a crash at any later instruction resumes this exact child/path.
+    with store.transaction() as db:
+        current = store._read(db, root["id"])
+        if current["revision"] != root["revision"] or current.get("parallelSpawn"):
+            raise ValueError("Parallel plan revision changed")
+        current["parallelSpawn"] = child
+        store.save(db, current, "parallel_spawn_prepared")
+    return _finish_spawn(store, current, child)
+
+
+def _finish_spawn(store, root, child):
     workspace = store.home / "workspaces" / child["id"]
-    git(root["repository"], "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(workspace), child["baseCommit"])
+    if not workspace.exists():
+        git(root["repository"], "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(workspace), child["baseCommit"])
+    if (Path(git(workspace, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve() != Path(root["gitCommonDir"]).resolve()
+            or git(workspace, "rev-parse", "HEAD") != child["baseCommit"]
+            or git(workspace, "status", "--porcelain", "--untracked-files=all", "--ignored")):
+        raise ValueError("Prepared task checkout changed; inspect it before resuming")
     baseline = candidate(child, workspace)
     with store.transaction() as db:
         current = store._read(db, root["id"])
-        if current["revision"] != root["revision"]:
-            raise ValueError("Parallel plan revision changed")
+        if (current.get("parallelSpawn") or {}).get("id") != child["id"]:
+            raise ValueError("Prepared task ownership changed")
+        if current["state"] != "running" or current["control"] != "active" or current["phase"] != "parallel":
+            raise ValueError("Parallel plan stopped during task preparation")
+        for key in ("tokenBudget", "maxEpisodes"):
+            child[key] = current[key]
         db.execute("INSERT INTO project_runs VALUES(?,0,?)", (child["id"], encoded(child)))
         store.put_candidate(db, child, baseline)
         child.update(teamBaseCandidateId=baseline["id"], reviewCandidate=None)
         store.save(db, child, "parallel_task_started")
-        current.setdefault("teamChildren", []).append({"runId": child["id"], "taskId": task["id"], "state": "running"})
+        current.setdefault("teamChildren", []).append({"runId": child["id"], "taskId": child["plan"][0]["id"], "state": "running"})
+        current["parallelSpawn"] = None
         store.save(db, current, "parallel_task_adopted")
 
 
@@ -180,6 +205,9 @@ def advance(service, root):
         source = store.home / "workspaces" / root["id"]
         if Path(git(source, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve() != Path(root["gitCommonDir"]).resolve():
             raise ValueError("Aggregate repository identity changed")
+        if root.get("parallelSpawn"):
+            spawn(service, root, None, source)
+            return True
         children = [(item, store.get(item["runId"])) for item in root.get("teamChildren", [])]
         pending_id = (root.get("parallelMerge") or root.get("parallelDelivery") or {}).get("runId")
         children.sort(key=lambda pair: pair[0]["runId"] != pending_id)

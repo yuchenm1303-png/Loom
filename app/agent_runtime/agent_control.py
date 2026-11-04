@@ -136,6 +136,9 @@ class AgentControl:
         if len(body) > 200_000:
             raise ValueError("sub-agent task exceeds 200,000 characters")
         parent = self._active_parent(parent_session_id)
+        guard = getattr(self.runtime, "agent_delegation_guard", None)
+        if guard:
+            guard(parent_session_id)
         if self.graph.depth(parent.session_id) >= self.max_depth:
             raise RuntimeError(f"agent tree depth limit reached ({self.max_depth})")
         if self.graph.active_count(parent.session_id) >= self.max_agents_per_tree:
@@ -188,6 +191,9 @@ class AgentControl:
         wake: bool = True,
     ) -> AgentExecutionSnapshot:
         self._assert_open()
+        guard = getattr(self.runtime, "agent_delegation_guard", None)
+        if guard:
+            guard(caller_session_id, target_session_id)
         node = self.graph.assert_same_tree(caller_session_id, target_session_id)
         if node.relation_status is AgentRelationStatus.CLOSED:
             raise RuntimeError("target sub-agent is closed")

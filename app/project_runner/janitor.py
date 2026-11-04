@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import time
+import uuid
 
 from .review import git
 
@@ -33,6 +34,22 @@ class Janitor:
         runs = {run["id"]: run for run in store.list()}
         merged = {item["runId"] for run in runs.values() for item in run.get("teamChildren", []) if item["state"] == "merged"}
         removed = 0
+        # A cancelled preparation never dispatched an agent. Only remove its
+        # original, pristine checkout; retain anything somebody changed.
+        for run in runs.values():
+            intent = run.get("parallelSpawn")
+            if run["state"] != "cancelled" or not intent:
+                continue
+            folder = store.home / "workspaces" / intent["id"]
+            existed = folder.exists()
+            cleaned = not existed or _remove_pristine(store, run, folder, {intent["baseCommit"]})
+            if cleaned:
+                removed += int(existed)
+                with store.transaction() as db:
+                    current = store._read(db, run["id"])
+                    if current["state"] == "cancelled" and (current.get("parallelSpawn") or {}).get("id") == intent["id"]:
+                        current["parallelSpawn"] = None
+                        store.save(db, current, "parallel_preparation_cleaned")
         for run in runs.values():
             if run["activeEpisode"]:
                 continue
@@ -47,6 +64,24 @@ class Janitor:
                 for folder in _children(store.home / "delivery-checks" / run["id"]):
                     removed += _remove(run, folder)
                 removed += _remove(run, store.home / "workspaces" / run["id"])
+        # Upgrade cleanup for pre-intent Hosts. Never sweep arbitrary directories,
+        # modified/ignored files, changed commits or another repository's checkout.
+        if not any(run["activeEpisode"] for run in runs.values()):
+            known = set(runs) | {(run.get("parallelSpawn") or {}).get("id") for run in runs.values()}
+            repositories = {}
+            for run in runs.values():
+                if not run.get("gitCommonDir") or not run.get("baseCommit"):
+                    continue
+                representative, commits = repositories.setdefault(run.get("gitCommonDir"), (run, set()))
+                commits.add(run["baseCommit"])
+                commits.update(item["commit"] for item in run.get("teamChildren", []) if item.get("commit"))
+            for folder in _children(store.home / "workspaces"):
+                if folder.name in known or not _run_id(folder.name):
+                    continue
+                for run, commits in repositories.values():
+                    if _remove_pristine(store, run, folder, commits):
+                        removed += 1
+                        break
         if removed:
             for repository in {run["repository"] for run in runs.values() if run.get("repository")}:
                 try:
@@ -54,6 +89,29 @@ class Janitor:
                 except ValueError:
                     pass
         return removed
+
+
+def _run_id(name):
+    try:
+        return str(uuid.UUID(name)) == name
+    except ValueError:
+        return False
+
+
+def _remove_pristine(store, run, folder, commits):
+    if (folder.is_symlink() or getattr(folder, "is_junction", lambda: False)()
+            or folder.resolve().parent != (store.home / "workspaces").resolve()):
+        return False
+    try:
+        common = Path(git(folder, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve()
+        if common != Path(run["gitCommonDir"]).resolve() or git(folder, "rev-parse", "HEAD") not in commits:
+            return False
+        if git(folder, "status", "--porcelain", "--untracked-files=all", "--ignored"):
+            return False
+        git(run["repository"], "worktree", "remove", str(folder))  # deliberately no --force
+        return not folder.exists()
+    except (ValueError, OSError):
+        return False
 
 
 # Git for Windows refuses a worktree whose path is much over 200 characters ("'$GIT_DIR' too
