@@ -30,7 +30,7 @@ import { WeaveStage } from "./WeaveFlow";
 import { isExecutingActivityStatus, itemStatus } from "./activityModel";
 import { ProviderMark } from "./ModelPanel";
 import type { FlowMessage, WeaveProposal } from "./projectOverview";
-import { useGlide, visibleBox } from "./projectArrange";
+import { HUB_CLOCK, HUB_EASE, useGlide, visibleBox } from "./projectArrange";
 import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
 import {
@@ -286,39 +286,73 @@ function useDeparting<T extends { id: string }>(items: T[]): (T & { leaving?: bo
   return out;
 }
 
-/** Cables from every registered card to the hub. Cards register by id; `layout` re-measures. */
+/** Cables from every registered card to the hub. Cards register by id.
+ *
+ *  A cable is drawn where the cards are on this very frame: while the hub moves, every frame writes the
+ *  paths straight into the SVG (no React render per frame, which drew them a frame or more behind the
+ *  cards and re-rendered the whole hub sixty times a second). React holds the list of cables and is told
+ *  their final shape once the hub is still.
+ *
+ *  Two parts of a cable are not tied to a moving card and used to jump: where it plugs into the hub (the
+ *  plugs of a side are re-spaced when a card comes or goes) and the lane its turn stands in (lanes are
+ *  re-dealt when cables change order). When the layout changes, each plug starts from where it was seen
+ *  and eases to its new place on the hub's clock, with the cards; a lane change springs across. */
 function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.RefObject<HTMLElement | null>,
                    cards: React.RefObject<Map<string, { side: Side; node: HTMLElement }>>, layout: string) {
   const [cables, setCables] = useState<Cable[]>([]);
-  const measure = useCallback(() => {
+  const svg = useRef<SVGSVGElement>(null);
+  // What each cable showed on the last frame drawn: its plug, its turn and the turn's speed.
+  const shown = useRef(new Map<string, { y2: number; turn: number; speed: number }>());
+  // Plugs easing from where they were seen to where the new layout puts them.
+  const rebase = useRef<{ offsets: Map<string, number>; clock: Animation } | null>(null);
+  const drawn = useRef<Cable[]>([]);
+  const listed = useRef("");
+  const frame = useRef(0);
+  const before = useRef(0);
+
+  const geometry = useCallback(() => {
     const root = stage.current, center = hub.current;
-    if (!root || !center) return;
+    if (!root || !center) return null;
     const base = root.getBoundingClientRect();
     const box = (r: DOMRect) => ({ left: r.left - base.left, right: r.right - base.left, top: r.top - base.top,
                                    bottom: r.bottom - base.top, height: r.height });
     const m = box(center.getBoundingClientRect());
+    // Where the layout puts the hub (offsets ignore the glide's transforms): the plugs are dealt on it,
+    // then carried along with the hub as it is drawn now.
+    const hubTop = layoutTop(center, root), hubShift = m.top - hubTop;
     const entries = [...cards.current.entries()];
-    const next: Cable[] = [];
+    const out: Geometry[] = [];
     for (const side of ["left", "right"] as const) {
       const toward = side === "left" ? 1 : -1;  // the direction from the cards to the hub
-      const list = entries.filter(([, item]) => item.side === side)
+      // A cable's card end is where the card is drawn now (gliding, unrolling); its hub end is dealt from
+      // where the cards are going. A plug then stays put while its card moves, the cable bending between
+      // them, instead of sliding along the hub with every card that glides or unrolls.
+      let list = entries.filter(([, item]) => item.side === side)
         .map(([id, item]) => {
           const b = box(visibleBox(item.node));
-          return { id, x1: side === "left" ? b.right : b.left, y1: Math.min(b.top + 34, b.top + b.height / 2), y2: 0, lane: 0 };
+          const head = layoutTop(item.node, root) + Math.min(34, item.node.offsetHeight / 2);
+          return { id, x1: side === "left" ? b.right : b.left, y1: Math.min(b.top + 34, b.top + b.height / 2), head, y2: 0, lane: 0,
+                   held: Boolean(item.node.closest("[data-leaving]")) };
         })
-        .sort((a, b) => a.y1 - b.y1);
+        .sort((a, b) => a.head - b.head);
+      // A card that leaves keeps its plug while its cable retracts; the others are dealt as if it had gone
+      // already, so they move once, now, not again when it is taken out of the page.
+      const all = list;
+      list = list.filter((item) => !item.held);
+      for (const item of all) if (item.held) out.push({ id: item.id, side, toward, x1: item.x1, y1: item.y1, x2: side === "left" ? m.left : m.right,
+                                                       y2: item.head + hubShift, turn: (side === "left" ? m.left : m.right) - toward * (CABLE_R + 2), held: true });
       if (!list.length) continue;
       const x2 = side === "left" ? m.left : m.right;
       // Plugs: level with their card where the hub's side allows (a straight cable), kept in card
       // order and a plug apart, inside the side's ends.
-      const top = m.top + 24, bottom = m.bottom - 24, apart = Math.min(PLUG_APART, (bottom - top) / Math.max(1, list.length - 1));
-      list.forEach((item, index) => { item.y2 = Math.max(top + index * apart, Math.min(item.y1, bottom - (list.length - 1 - index) * apart)); });
+      const top = hubTop + 24, bottom = hubTop + center.offsetHeight - 24, apart = Math.min(PLUG_APART, (bottom - top) / Math.max(1, list.length - 1));
+      list.forEach((item, index) => { item.y2 = Math.max(top + index * apart, Math.min(item.head, bottom - (list.length - 1 - index) * apart)); });
       for (let index = 1; index < list.length; index += 1) list[index].y2 = Math.max(list[index].y2, list[index - 1].y2 + apart);
       // Lanes: the turns stand in the gap, nearest the hub first. A cable running down takes a nearer
       // lane than every card below it, a cable running up a nearer lane than every card above it:
-      // then no cable crosses another (the two groups never share a height).
-      const down = list.filter((item) => item.y2 - item.y1 > 1);
-      const up = list.filter((item) => item.y1 - item.y2 > 1).reverse();
+      // then no cable crosses another (the two groups never share a height). Dealt on the layout too.
+      const down = list.filter((item) => item.y2 - item.head > 1);
+      const up = list.filter((item) => item.head - item.y2 > 1).reverse();
       down.forEach((item, index) => { item.lane = index; });
       up.forEach((item, index) => { item.lane = index; });
       const lanes = Math.max(down.length, up.length);
@@ -328,33 +362,139 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
       const edge = side === "left" ? Math.max(...list.map((item) => item.x1)) : Math.min(...list.map((item) => item.x1));
       const room = Math.abs(near - (edge + toward * (CABLE_R + 4)));
       const step = lanes > 1 ? Math.max(4, Math.min(LANE_STEP, room / (lanes - 1))) : 0;
-      for (const { id, x1, y1, y2, lane } of list) {
-        const turn = near - toward * lane * step;
-        const dir = y2 >= y1 ? 1 : -1;
-        const r = Math.max(0, Math.min(CABLE_R, Math.abs(y2 - y1) / 2, (turn - x1) * toward - 2, (x2 - turn) * toward));
-        const d = Math.abs(y2 - y1) <= 1 ? `M${x1},${y2} L${x2},${y2}`
-          : `M${x1},${y1} L${turn - toward * r},${y1} Q${turn},${y1} ${turn},${y1 + dir * r} L${turn},${y2 - dir * r} `
-            + `Q${turn},${y2} ${turn + toward * r},${y2} L${x2},${y2}`;
-        next.push({ id, side, d, socket: { x: x2, y: y2 } });
-      }
+      for (const { id, x1, y1, y2, lane } of list) out.push({ id, side, toward, x1, y1, x2, y2: y2 + hubShift, turn: near - toward * lane * step });
     }
     for (const [id, item] of entries.filter(([, item]) => item.side === "below")) {
       const b = box(visibleBox(item.node));
       const x = Math.max(b.left + 72, m.left + 72);
-      next.push({ id, side: "below", d: `M${x},${b.top} L${x},${m.bottom}`, socket: { x, y: m.bottom } });
+      out.push({ id, side: "below", toward: 0, x1: x, y1: b.top, x2: x, y2: m.bottom, turn: x });
     }
-    setCables(next);
+    return out;
   }, [stage, hub, cards]);
+
+  /** Draws one frame; says whether anything is still on its way. */
+  const draw = useCallback((fresh: boolean) => {
+    const list = geometry();
+    if (!list) return false;
+    const now = performance.now();
+    const dt = Math.min(0.032, Math.max(0, (now - before.current) / 1000));
+    before.current = now;
+    const still = prefersReducedMotionNow();
+    if (fresh && !still) {
+      const offsets = new Map<string, number>();
+      for (const item of list) {
+        const seen = shown.current.get(item.id);
+        if (seen && Math.abs(seen.y2 - item.y2) > 0.5) offsets.set(item.id, seen.y2 - item.y2);
+      }
+      rebase.current?.clock.cancel();
+      rebase.current = null;
+      if (offsets.size) {
+        const clock = new Animation(new KeyframeEffect(null, [], { duration: HUB_CLOCK, easing: HUB_EASE, fill: "forwards" }));
+        clock.play();
+        rebase.current = { offsets, clock };
+      }
+    }
+    const progress = rebase.current ? Number(rebase.current.clock.effect?.getComputedTiming().progress ?? 1) : 1;
+    let moving = progress < 1;
+    const next = new Map<string, { y2: number; turn: number; speed: number }>();
+    const out: Cable[] = [];
+    for (const item of list) {
+      const seen = shown.current.get(item.id);
+      if (item.held && seen) {
+        // Leaving: plugged where it was seen, its cable retracting into that plug.
+        next.set(item.id, { ...seen, speed: 0 });
+        out.push(cablePath(item, seen.y2, seen.turn));
+        continue;
+      }
+      const y2 = item.y2 + (still ? 0 : (rebase.current?.offsets.get(item.id) ?? 0) * (1 - progress));
+      // The turn springs to its lane (critically damped, settling with the hub's clock).
+      let turn = item.turn, speed = 0;
+      if (seen && !still && item.side !== "below" && (Math.abs(seen.turn - item.turn) > 0.2 || Math.abs(seen.speed) > 1)) {
+        speed = seen.speed + (TURN_SPRING ** 2 * (item.turn - seen.turn) - 2 * TURN_SPRING * seen.speed) * dt;
+        turn = seen.turn + speed * dt;
+        moving = true;
+      }
+      next.set(item.id, { y2, turn, speed });
+      out.push(cablePath(item, y2, turn));
+    }
+    shown.current = next;
+    if (progress >= 1) rebase.current = null;
+    drawn.current = out;
+    // Written here, on the frame the cards moved; React's copy follows when the hub is still.
+    const root = svg.current;
+    if (root) {
+      for (const cable of out) {
+        for (const node of root.querySelectorAll<SVGElement>(`[data-of="${CSS.escape(cable.id)}"]`)) {
+          if (node instanceof SVGPathElement) node.setAttribute("d", cable.d);
+          else if (node instanceof SVGRectElement) {
+            const below = cable.side === "below";
+            node.setAttribute("x", String(cable.socket.x - (below ? 10 : 5)));
+            node.setAttribute("y", String(cable.socket.y - (below ? 5 : 10)));
+          }
+        }
+      }
+    }
+    const key = out.map((cable) => `${cable.id}:${cable.side}`).join("|");
+    if (key !== listed.current) { listed.current = key; setCables(out); }
+    return moving;
+  }, [geometry]);
+
+  const settle = useCallback(() => {
+    // React's copy, so a later render writes what is drawn.
+    setCables((current) => current.length === drawn.current.length
+      && current.every((cable, index) => cable.d === drawn.current[index].d && cable.id === drawn.current[index].id) ? current : drawn.current);
+  }, []);
+  const measure = useCallback((fresh = false) => {
+    const moving = draw(fresh);
+    if (frame.current) return;
+    if (!moving) { settle(); return; }
+    const step = () => {
+      if (draw(false)) frame.current = requestAnimationFrame(step);
+      else { frame.current = 0; settle(); }
+    };
+    frame.current = requestAnimationFrame(step);
+  }, [draw, settle]);
+  useLayoutEffect(() => () => { cancelAnimationFrame(frame.current); rebase.current?.clock.cancel(); }, []);
   useLayoutEffect(() => {
-    measure();
     // The stage has a fixed size, so watching it alone missed every reflow inside it (a card growing,
     // the thread pushing the hub down) and left the cables where the cards had been. Watch what moves.
-    const observer = new ResizeObserver(measure);
+    // A layout change itself is drawn by the glide (useGlide calls measure(true) on its first frame).
+    const observer = new ResizeObserver(() => measure());
     const root = stage.current;
     if (root) for (const node of [root, ...root.querySelectorAll<HTMLElement>(".pf-col, .pf-composer, .pf-card")]) observer.observe(node);
     return () => observer.disconnect();
   }, [measure, layout]);
-  return { cables, measure };
+  return { cables, measure, svg };
+}
+
+/** How far down the stage the layout puts a node: offsets leave out transforms (a glide) and clips (an unroll). */
+function layoutTop(node: HTMLElement, root: HTMLElement) {
+  let top = 0;
+  let item: HTMLElement | null = node;
+  while (item && item !== root) {
+    top += item.offsetTop;
+    const parent = item.offsetParent as HTMLElement | null;
+    if (parent && parent !== root && !root.contains(parent)) break;
+    if (parent && parent !== root) top += parent.clientTop - parent.scrollTop;
+    item = parent;
+  }
+  return top;
+}
+
+/** The spring of a cable's turn when its lane changes, rad/s: critically damped, still within the hub's clock. */
+const TURN_SPRING = 18;
+interface Geometry { id: string; side: Side; toward: number; x1: number; y1: number; x2: number; y2: number; turn: number; held?: boolean }
+
+/** One path shape for every cable, straight or bent: a bend of zero radius is a straight line, so a cable
+ *  that straightens or starts to bend changes smoothly instead of switching drawings. */
+function cablePath({ id, side, toward, x1, y1, x2 }: Geometry, y2: number, turn: number): Cable {
+  if (side === "below") return { id, side, d: `M${x1},${y1} L${x2},${y2}`, socket: { x: x2, y: y2 } };
+  const dir = y2 >= y1 ? 1 : -1;
+  const r = Math.max(0, Math.min(CABLE_R, Math.abs(y2 - y1) / 2, (turn - x1) * toward - 2, (x2 - turn) * toward));
+  const f = (value: number) => Math.round(value * 10) / 10;
+  const d = `M${f(x1)},${f(y1)} L${f(turn - toward * r)},${f(y1)} Q${f(turn)},${f(y1)} ${f(turn)},${f(y1 + dir * r)} `
+    + `L${f(turn)},${f(y2 - dir * r)} Q${f(turn)},${f(y2)} ${f(turn + toward * r)},${f(y2)} L${f(x2)},${f(y2)}`;
+  return { id, side, d, socket: { x: x2, y: y2 } };
 }
 
 function Card({ id, side, icon, label, count, under, register, className = "", children }: {
@@ -421,9 +561,9 @@ function Said({ message, workspace }: { message: FlowMessage; workspace?: string
   return <div className="pf-bubble pf-said pf-said-files"><UserMessageContent parsed={parsed} workspace={workspace} /></div>;
 }
 
-function Pulse({ d, step, back = false }: { d: string; step: number; back?: boolean }) {
+function Pulse({ of, d, step, back = false }: { of: string; d: string; step: number; back?: boolean }) {
   const moment = useMoment(step);
-  return moment ? <path key={moment} className="pf-pulse" data-back={back || undefined} d={d} pathLength={100} /> : null;
+  return moment ? <path key={moment} className="pf-pulse" data-of={of} data-back={back || undefined} d={d} pathLength={100} /> : null;
 }
 
 /** One soft wash across a well when its value changes (not when it first appears). */
@@ -532,12 +672,20 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const [historyOpen, setHistoryOpen] = useState(readHistoryOpen);
   const history = data.history;
   const open = (id: string) => id === "history" ? historyOpen : !folded.includes(id);
+  const showHistory = (value: boolean) => {
+    try { localStorage.setItem(HISTORY_KEY, value ? "1" : "0"); } catch { /* kept for this session only */ }
+    setHistoryOpen(value);
+  };
+  // The history and the model are the right column's two pickers, and the column has room for one beside
+  // the agents: opening one folds the other away, on the same clock (its card leaves as the other arrives).
   const toggle = (id: string) => {
     if (id !== "history") { fold(id); return; }
-    setHistoryOpen((value) => {
-      try { localStorage.setItem(HISTORY_KEY, value ? "0" : "1"); } catch { /* kept for this session only */ }
-      return !value;
-    });
+    if (!historyOpen) setModelOpen(false);
+    showHistory(!historyOpen);
+  };
+  const toggleModel = () => {
+    if (!modelOpen && historyOpen) showHistory(false);
+    setModelOpen(!modelOpen);
   };
   const agents = useDeparting(open("agents") ? data.agents : []);
   const branches = useDeparting([...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : [])]);
@@ -567,7 +715,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                   data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase,
                   dirtyOpen, objectiveOpen, draft, data.narration.summary, data.narration.text,
                   data.conversation?.length ?? 0, proposal?.id ?? "", data.chatting ? 1 : 0].join("|");
-  const { cables, measure } = useCables(stage, hub, cards, layout);
+  const { cables, measure, svg } = useCables(stage, hub, cards, layout);
   // A low stage squeezes the thread above the hub: it shows the newest line, and scrolls up to the objective.
   // It follows what arrives (an answer being written, a step) while the reader is at the bottom; scrolled up, it
   // stays where they read and offers the way back down.
@@ -702,22 +850,22 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
 
   return (
     <div className="pf-stage" ref={stage} data-state={data.state} data-phase={data.phase}>
-      <svg className="pf-cables" aria-hidden="true">
+      <svg className="pf-cables" aria-hidden="true" ref={svg}>
         {cables.map((cable) => (
-          <g key={cable.id} className="pf-cable" data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || undefined}
+          <g key={cable.id} className="pf-cable" data-cable={cable.id} data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || undefined}
              data-leaving={leaving.has(cable.id) || undefined}>
-            <path className="pf-cable-body" d={cable.d} pathLength={100} />
-            <rect className="pf-socket" rx={4}
+            <path className="pf-cable-body" data-of={cable.id} d={cable.d} pathLength={100} />
+            <rect className="pf-socket" data-of={cable.id} rx={4}
                   x={cable.socket.x - (cable.side === "below" ? 10 : 5)} y={cable.socket.y - (cable.side === "below" ? 5 : 10)}
                   width={cable.side === "below" ? 20 : 10} height={cable.side === "below" ? 10 : 20} />
           </g>
         ))}
         {cables.filter((cable) => cable.id.startsWith("agent:")).map((cable) => {
           const agent = data.agents.find((item) => `agent:${item.id}` === cable.id);
-          return agent && !agent.done ? <Pulse key={cable.id} d={cable.d} step={agent.step} /> : null;
+          return agent && !agent.done ? <Pulse key={cable.id} of={cable.id} d={cable.d} step={agent.step} /> : null;
         })}
         {/* A task lands: its work runs back out of the hub into the repository. */}
-        {cables.filter((cable) => cable.id === "repo").map((cable) => <Pulse key="merge" d={cable.d} step={done} back />)}
+        {cables.filter((cable) => cable.id === "repo").map((cable) => <Pulse key="merge" of={cable.id} d={cable.d} step={done} back />)}
       </svg>
 
       <div className="pf-col pf-left">
@@ -1024,7 +1172,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               // The model the agents think with. The chip grows its card out of the hub on a cable, and takes it back.
               <button type="button" className="pf-model pf-model-chip" data-open={modelOpen || undefined}
                       aria-expanded={modelOpen} aria-controls="pf-model-card" title={data.models.current.name}
-                      onClick={() => setModelOpen((value) => !value)} onKeyDown={(event) => { if (event.key === "Escape") setModelOpen(false); }}
+                      onClick={toggleModel} onKeyDown={(event) => { if (event.key === "Escape") setModelOpen(false); }}
                       {...hover("model")}>
                 <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="small" />
                 <span key={data.models.current.selection}>{data.models.current.name}</span>

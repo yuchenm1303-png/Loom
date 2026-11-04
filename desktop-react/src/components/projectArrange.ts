@@ -43,6 +43,9 @@ interface Reveal {
   round: number;
   /** What moves with the top of the cut: the card's surface, or the parts of a card that is its own slot. */
   hung: HTMLElement[];
+  /** An arriving card next to one that leaves takes over its room: it unrolls against the leaving card's
+   *  shown edge (the column's gap apart) as that card rolls up, so the two never share a pixel. */
+  gap: number;
 }
 
 // What each card shows now, in client px; the cables plug into this, not into the clipped-away part.
@@ -92,7 +95,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 /** Cards glide from where they were seen to where the layout put them whenever `key` changes.
  *  The old places are read while rendering the change (the DOM is still the old one then), so a
  *  card caught mid-glide starts again from where it is, not from where it was headed. */
-export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string, onFrame: () => void) {
+export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string, onFrame: (fresh?: boolean) => void) {
   const seen = useRef(key);
   const before = useRef(new Map<string, Place>());
   if (key !== seen.current && stage.current) before.current = places(stage.current);
@@ -204,19 +207,39 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     const staying = (node: HTMLElement) => !node.hasAttribute("data-leaving");
     const columnOf = (node: HTMLElement) => node.parentElement;
     const startOf = (node: HTMLElement): Place | undefined => before.current.get(node.dataset.glide!);
+    // A card called back while it was folding away unrolls again from what it still showed.
+    const kindOf = new Map<HTMLElement, Kind>();
     for (const node of nodes) {
       const from = startOf(node), to = final.get(node)!;
-      // A card called back while it was folding away unrolls again from what it still showed.
       const kind: Kind | null = node.hasAttribute("data-leaving") ? (held.current.has(node) ? "leave" : null)
         : !from || previous.has(node) ? "arrive" : to.height > from.height + 0.5 ? "grow" : null;
+      if (kind) kindOf.set(node, kind);
+    }
+    for (const node of nodes) {
+      const from = startOf(node), to = final.get(node)!;
+      const kind = kindOf.get(node);
       if (!kind) continue;
       let prev: HTMLElement | undefined, after: HTMLElement | undefined;
+      // A leaving card handed over to the card arriving next to it folds toward that card's side's far end:
+      // "up" when the newcomer is below it (it rolls up into its head), "down" when the newcomer is above.
+      let handover: "up" | "down" | null = null;
+      let gap = 0;
       if (columnOf(node)?.classList.contains("pf-col")) {
-        const siblings = [...columnOf(node)!.children].filter((item): item is HTMLElement =>
-          item instanceof HTMLElement && item.hasAttribute("data-glide") && (item === node || staying(item)));
+        const column = columnOf(node)!;
+        gap = parseFloat(getComputedStyle(column).rowGap) || 0;
+        const all = [...column.children].filter((item): item is HTMLElement => item instanceof HTMLElement && item.hasAttribute("data-glide"));
+        // An arriving card's neighbours may be leaving (it unrolls against them); a leaving or growing card's
+        // neighbours are the cards that stay put in the layout, never a newcomer (which has no room of its own yet).
+        const siblings = all.filter((item) => item === node
+          || (kind === "arrive" ? staying(item) || kindOf.get(item) === "leave" : staying(item) && kindOf.get(item) !== "arrive"));
         const index = siblings.indexOf(node);
         prev = siblings[index - 1];
         after = siblings[index + 1];
+        if (kind === "leave") {
+          const at = all.indexOf(node);
+          if (kindOf.get(all[at + 1]) === "arrive") { handover = "up"; after = undefined; }
+          else if (kindOf.get(all[at - 1]) === "arrive") { handover = "down"; prev = undefined; }
+        }
       } else {
         // The timeline spans the stage under the columns: the lowest card above it is its neighbour.
         const above = nodes.filter((item) => item !== node && staying(item) && item.closest(".pf-col"));
@@ -237,7 +260,8 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
       const seam = (start: boolean) => prev ? (start ? prevStart! : prevEnd!).y + (start ? prevStart! : prevEnd!).height + gapPrev
         : after ? (start ? nextStart! : nextEnd!).y - gapNext : middle;
       const fromEdges: Edges = kind === "arrive" ? { top: seam(true), bottom: seam(true) } : { top: own.y, bottom: own.y + own.height };
-      const toEdges: Edges = kind === "leave" ? { top: seam(false), bottom: seam(false) } : { top: to.y, bottom: to.y + to.height };
+      const fold = handover === "up" ? own.y : handover === "down" ? own.y + own.height : seam(false);
+      const toEdges: Edges = kind === "leave" ? { top: fold, bottom: fold } : { top: to.y, bottom: to.y + to.height };
       // A card caught mid-reveal goes on from what it showed.
       if (previous.has(node)) {
         const shown = previous.get(node);
@@ -254,30 +278,48 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
         });
       }
       const hung = surface === node ? [...node.children].filter((part): part is HTMLElement => part instanceof HTMLElement) : [surface];
-      next.push({ node, kind, prev, next: after, gapPrev, gapNext, from: fromEdges, to: toEdges, round, hung });
+      const leavingPrev = prev && kindOf.get(prev) === "leave", leavingNext = after && kindOf.get(after) === "leave";
+      next.push({ node, kind, prev, next: after, gapPrev: leavingPrev ? gap : gapPrev, gapNext: leavingNext ? gap : gapNext,
+                  from: fromEdges, to: toEdges, round, hung, gap });
     }
     reveals.current = next;
-    if (!moved && !next.length && !held.current.size) { onFrame(); return; }
+    // `fresh`: the first frame of a new layout, from which the cables ease their plugs to it.
+    if (!moved && !next.length && !held.current.size) { onFrame(true); return; }
 
     clock.current?.cancel();
     clock.current = new Animation(new KeyframeEffect(null, [], { duration: HUB_CLOCK, easing: HUB_EASE, fill: "forwards" }));
     // The cuts follow live neighbours, so the frames go on until the last card of a ripple has landed.
     const until = performance.now() + HUB_CLOCK + lastDelay;
     clock.current.play();
+    let first = true;
     const tick = () => {
       const timing = clock.current?.effect?.getComputedTiming();
       const t = Number(timing?.progress ?? 1);
       const now = root.getBoundingClientRect();
       for (const [node, from] of held.current) if (node.isConnected) pin(node, from, root);
-      // Reads first, then writes: a frame lays the hub out once.
-      const cuts = reveals.current.map((reveal) => {
+      // Reads first, then writes: a frame lays the hub out once. The cards that leave are cut first: a newcomer
+      // next to one unrolls against what it still shows this frame (its box stays whole while it is held).
+      const shown = new Map<HTMLElement, Edges>();
+      const edge = (item: HTMLElement, side: "top" | "bottom") => shown.get(item)?.[side] ?? item.getBoundingClientRect()[side];
+      // Against a card that leaves, the gap closes with its last pixels, so the newcomer ends exactly in its place.
+      const apart = (item: HTMLElement, gap: number) => {
+        const cut = shown.get(item);
+        return cut && item.hasAttribute("data-leaving") ? Math.min(gap, cut.bottom - cut.top) : gap;
+      };
+      // A leaving neighbour that has been taken out of the page leaves its side to the clock.
+      const live = (item?: HTMLElement) => item && item.isConnected ? item : undefined;
+      const order = [...reveals.current].sort((a, b) => Number(a.kind === "arrive") - Number(b.kind === "arrive"));
+      const cuts = order.map((reveal) => {
         const box = reveal.node.getBoundingClientRect();
-        const top = reveal.prev
-          ? reveal.prev.getBoundingClientRect().bottom + reveal.gapPrev
+        const prev = live(reveal.prev), after = live(reveal.next);
+        const top = prev
+          ? edge(prev, "bottom") + apart(prev, reveal.gapPrev)
           : reveal.kind === "grow" ? box.top : now.top + lerp(reveal.from.top, reveal.to.top, t);
-        const bottom = reveal.next
-          ? reveal.next.getBoundingClientRect().top - reveal.gapNext
+        const bottom = after
+          ? edge(after, "top") - apart(after, reveal.gapNext)
           : reveal.kind === "grow" ? box.bottom : now.top + lerp(reveal.from.bottom, reveal.to.bottom, t);
+        const cut = { top: Math.max(box.top, top), bottom: Math.max(Math.max(box.top, top), Math.min(box.bottom, bottom)) };
+        shown.set(reveal.node, cut);
         return { reveal, box, top, bottom };
       });
       for (const { reveal, box, top, bottom } of cuts) {
@@ -289,7 +331,8 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
         reveal.node.style.clipPath = `inset(${above.toFixed(1)}px 0 ${below.toFixed(1)}px 0 round ${reveal.round}px)`;
         shownEdges.set(reveal.node, { top, bottom });
       }
-      onFrame();
+      onFrame(first);
+      first = false;
       if (t < 1 || performance.now() < until) frame.current = requestAnimationFrame(tick);
       else clear();
     };

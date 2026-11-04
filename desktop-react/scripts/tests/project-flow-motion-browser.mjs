@@ -173,6 +173,57 @@ try {
     assert.equal(await page.locator('[data-glide^="agent:"]').count(), 3);
     assert.equal(await page.locator('[data-pinned]').count(), 0);
 
+    // The right column's two pickers take turns: the model card unrolls under the history card as it rolls up,
+    // never painted over it, and the history button lets go.
+    await toggle(page, "history").click();
+    await settle(page);
+    const swap = await watch(page, "document.querySelector('.pf-model-chip').click()");
+    assert.ok(swap.overlap <= 1, `picker hand-over paints no card over another: ${JSON.stringify(swap)}`);
+    await settle(page);
+    assert.equal(await toggle(page, "history").getAttribute("aria-pressed"), "false");
+    const back = await watch(page, `document.querySelector('[data-branch="history"]').click()`);
+    assert.ok(back.overlap <= 1, `and back: ${JSON.stringify(back)}`);
+    await settle(page);
+    assert.equal(await page.locator('.pf-model-chip').getAttribute("aria-expanded"), "false");
+
+    // Cables are drawn on the frame the cards move: each leaves its card's shown head, and a plug eases to
+    // its new place on the hub instead of jumping there.
+    const cables = await page.evaluate(async () => {
+      const ends = () => Object.fromEntries([...document.querySelectorAll(".pf-cable[data-side='left'], .pf-cable[data-side='right']")]
+        .filter((g) => !g.hasAttribute("data-leaving")).map((g) => {
+          const path = g.querySelector(".pf-cable-body");
+          const a = path.getPointAtLength(0), b = path.getPointAtLength(path.getTotalLength());
+          return [g.dataset.cable, { a: a.y, b: b.y }];
+        }));
+      const head = (id) => {
+        const slot = document.querySelector(`[data-glide="${CSS.escape(id)}"]`);
+        if (!slot) return null;
+        const card = slot.querySelector(".pf-card") || slot, r = card.getBoundingClientRect(), s = slot.getBoundingClientRect();
+        const cut = /inset\(([\d.]+)px \S+ ([\d.]+)px/.exec(slot.style.clipPath || "");
+        const top = Math.max(r.top, cut ? s.top + Number(cut[1]) : -Infinity), bottom = Math.min(r.bottom, cut ? s.bottom - Number(cut[2]) : Infinity);
+        return Math.min(top + 34, top + Math.max(0, bottom - top) / 2) - document.querySelector(".pf-stage").getBoundingClientRect().top;
+      };
+      let lag = 0, last = ends();
+      const step = {}, path = {};
+      document.querySelector('[data-branch="repo"]').click();
+      for (const end = performance.now() + 500; performance.now() < end;) {
+        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+        const now = ends();
+        for (const [id, { a, b }] of Object.entries(now)) {
+          const want = head(id);
+          if (want != null) lag = Math.max(lag, Math.abs(want - a));
+          if (last[id]) { const move = Math.abs(b - last[id].b); step[id] = Math.max(step[id] ?? 0, move); path[id] = (path[id] ?? 0) + move; }
+        }
+        last = now;
+      }
+      // A snap moves a plug its whole way in one frame; an eased one a part of it (the spring peaks near a ninth).
+      const jump = Math.max(0, ...Object.entries(step).map(([id, most]) => most / (path[id] + 4)));
+      return { lag, jump };
+    });
+    assert.ok(cables.lag < 1.5 && cables.jump < 0.35, `cables follow their cards and plugs ease: ${JSON.stringify(cables)}`);
+    await toggle(page, "repo").click();
+    await settle(page);
+
     // A short window still contains every card; lists take the overflow.
     await page.setViewportSize({ width: 1200, height: 700 });
     await page.locator('.pf-model-chip').click();
