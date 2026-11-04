@@ -22,10 +22,11 @@ const START_EPISODES = 400;
  *  (the composer's morph lands on it) and the first read then refreshes it. */
 const lastOverview = new Map<string, ProjectOverview>();
 
-export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, items = [], chatting = false, onChat, onInterrupt, imagesAllowed, imageSupport, onApproval, onChangeWorkspace, projects = [], onSelectProject, history, onOpenThread, onNewThread }: {
+export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, permissionMode, onPermissionModeChange, items = [], chatting = false, onChat, onInterrupt, imagesAllowed, imageSupport, onApproval, onChangeWorkspace, projects = [], onSelectProject, history, onOpenThread, onNewThread }: {
   threadId: string; workspace?: string; model?: string;
   onChangeWorkspace?(path: string): Promise<unknown>;
   projects?: ProjectRecord[]; onSelectProject?(id: string): Promise<unknown>;
+  permissionMode?: string; onPermissionModeChange?(mode: string): Promise<unknown>;
   /** The app's model snapshot and switch: a project's agents take the conversation's model. */
   models?: ModelSnapshot | null; onSwitchModel?(selection: string): Promise<unknown>; onReasoning?(kind: string, value: string): Promise<unknown>;
   /** The conversation's transcript and whether its agent is answering now. */
@@ -172,7 +173,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     window.loom.call(`projectRun/${action}`, { operationId: crypto.randomUUID(), runId: run!.id, expectedRevision: run!.revision, ...extra }));
   const workspaceName = (workspace || "").split(/[\\/]/).filter(Boolean).pop() || "";
   const data = { ...toFlowData(overview, now, lang, model || "", workspaceName), models: toModelChoice(models),
-                 conversation: conversation.messages, activity: conversation.activity, chatting,
+                 conversation: conversation.messages, activity: conversation.activity, chatting, conversationPermissionMode: permissionMode,
                  history: history ? toHistory(historyRows || history.filter(entry => entry.id === threadId).map(entry => ({ ...entry, workspace: entry.workspace || (entry.id === threadId ? workspace : undefined) })), threadId, now, lang) : undefined,
                  historyError };
   const proposal = data.phase === "draft" ? overview.proposal : null;
@@ -210,6 +211,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       imagesAllowed, imageSupport,
       onChat: onChat ? (text, attachments) => { setError(""); void onChat(text, attachments).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
       onInterrupt: onInterrupt ? () => { void onInterrupt(); } : undefined,
+      onPermissionModeChange,
       onOpenThread: onOpenThread ? (id) => onOpenThread(id) : undefined,
       onNewThread: onNewThread ? () => act(async () => { await onNewThread(); }) : undefined,
       onApproval: onApproval ? (item, decision, feedback) => { void onApproval(item, decision, feedback); } : undefined,

@@ -95,6 +95,8 @@ export interface FlowData {
   workers: number;
   /** Builders and reviewers run unsandboxed (chosen when the project started). */
   fullAccess?: boolean;
+  /** Persisted permission of the conversation, separate from an already-started run. */
+  conversationPermissionMode?: string;
   maxWorkers: number;
   controls: { pause: boolean; resume: boolean; cancel: boolean };
   agents: FlowAgent[];
@@ -122,6 +124,7 @@ export interface FlowActions {
   imageSupport?: boolean | null;
   /** Stop the agent's answer. */
   onInterrupt?(): void;
+  onPermissionModeChange?(mode: string): Promise<unknown>;
   /** Open another 建造 conversation from the history card, or begin a new one. */
   onOpenThread?(id: string): Promise<unknown> | void;
   onNewThread?(): void;
@@ -641,6 +644,24 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const [workers, setWorkers] = useState(data.workers);
   const [tokens, setTokens] = useState(START_BUDGETS[2]);
   const [fullAccess, setFullAccess] = useState(false);
+  const [accessChanging, setAccessChanging] = useState(false);
+  const accessPending = useRef(false);
+  const [accessError, setAccessError] = useState("");
+  const controlledAccess = data.conversationPermissionMode !== undefined;
+  const accessMode = data.conversationPermissionMode || (fullAccess ? "full-access" : "workspace");
+  const accessIsFull = accessMode === "full-access";
+  const accessLabel = accessMode === "approval" ? (lang === "zh" ? "逐次批准" : "Approval")
+    : accessMode === "read-only" ? (lang === "zh" ? "只读" : "Read only") : accessIsFull ? text.fullAccess : text.review;
+  const accessLockedHint = lang === "zh" ? "请先停止当前回复，再切换对话权限" : "Stop the current turn before changing conversation access";
+  const changeAccess = async () => {
+    if (accessPending.current || actions.busy || (controlledAccess && data.chatting)) return;
+    if (!controlledAccess) { setFullAccess(value => !value); return; }
+    if (!actions.onPermissionModeChange) return;
+    accessPending.current = true; setAccessChanging(true); setAccessError("");
+    try { await actions.onPermissionModeChange(accessIsFull ? "workspace" : "full-access"); }
+    catch { setAccessError(lang === "zh" ? "权限切换失败，当前权限未改变；请停止当前回复后重试" : "Access could not change; the current setting is unchanged. Stop the turn and retry."); }
+    finally { accessPending.current = false; setAccessChanging(false); }
+  };
   const settingsTouched = useRef({ workers: false, tokens: false });
   const stepBudget = (by: number, wrap: boolean) => {
     settingsTouched.current.tokens = true;
@@ -792,6 +813,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const attaching = Boolean(actions.onChat);
   const imageNotice = imageAttachmentState(attached.some((item) => item.isImage), actions.imagesAllowed ?? true, actions.imageSupport, lang === "zh");
   const submit = () => {
+    if (accessPending.current) return;
     const value = draft.trim();
     if (!value && !attached.length) return;
     if (imageNotice.blocked) return;
@@ -835,8 +857,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     attach(await resolveComposerFiles([...event.dataTransfer.files], setAttachError));
   };
   const startProposal = () => {
-    if (!proposal || actions.busy) return;
-    actions.onStart?.(proposal.objective, workers, tokens, picked, fullAccess);
+    if (!proposal || actions.busy || accessPending.current) return;
+    actions.onStart?.(proposal.objective, workers, tokens, picked, accessIsFull);
     setPicked([]);
   };
   const stopping = Boolean(data.chatting && !draft.trim() && !attached.length && actions.onInterrupt);
@@ -993,7 +1015,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 {actions.onDismiss ? (
                   <button type="button" className="pf-attention-quiet" disabled={actions.busy} onClick={actions.onDismiss}>{text.dismissProposal}</button>
                 ) : null}
-                <button type="button" className="pf-proposal-start" disabled={actions.busy || !actions.onStart} onClick={startProposal}>
+                <button type="button" className="pf-proposal-start" disabled={actions.busy || accessChanging || !actions.onStart} onClick={startProposal}>
                   <Play size={12} />{text.startProposal}
                 </button>
               </div>
@@ -1121,17 +1143,22 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             ) : null}
           </div>
           {actions.error ? <p className="pf-error" role="alert">{actions.error}</p> : null}
+          {accessError ? <p className="pf-error" role="alert">{accessError}</p> : null}
           {attachError ? <p className="pf-error" role="alert">{attachError}</p> : null}
           {imageNotice.message ? <p className="pf-error pf-image-notice" role="status" data-blocked={imageNotice.blocked || undefined}>{imageNotice.message}</p> : null}
           <footer className="pf-composer-foot">
             {/* Settings stay visible from the first draft; a live run shows its actual immutable settings. */}
             <span className="pf-settings" role="group" aria-label={text.settings}>
-              {settingUp ? (
-                <button type="button" className="pf-chip pf-chip-button" data-full={fullAccess || undefined} aria-pressed={fullAccess}
-                        title={`${fullAccess ? text.fullAccessHint : text.reviewHint}\n${text.accessToggle}`}
-                        onClick={() => setFullAccess((value) => !value)}>
-                  <span className="pf-chip-mark" key={String(fullAccess)}>{fullAccess ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />}</span>
-                  <span className="pf-chip-label" key={`l${fullAccess}`}>{fullAccess ? text.fullAccess : text.review}</span>
+              {settingUp || controlledAccess ? (
+                <button type="button" className="pf-chip pf-chip-button pf-access-control" data-full={accessIsFull || undefined} aria-pressed={accessIsFull}
+                        aria-busy={accessChanging || undefined} data-permission={accessMode}
+                        disabled={actions.busy || accessChanging || (controlledAccess && (data.chatting || !actions.onPermissionModeChange))}
+                        title={controlledAccess && data.chatting ? accessLockedHint : controlledAccess
+                          ? (lang === "zh" ? "切换当前对话的真实权限；新建造任务沿用完全访问 / 沙箱选择，已启动任务保留原权限" : "Change this conversation's actual access. New builds use this full access / sandbox choice; started tasks keep their original access.")
+                          : `${accessIsFull ? text.fullAccessHint : text.reviewHint}\n${text.accessToggle}`}
+                        onClick={() => void changeAccess()}>
+                  <span className="pf-chip-mark" key={String(accessIsFull)}>{accessIsFull ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />}</span>
+                  <span className="pf-chip-label" key={accessMode}>{controlledAccess && !settingUp ? (lang === "zh" ? "对话：" : "Chat: ") : ""}{accessLabel}</span>
                 </button>
               ) : (
                 <span className="pf-chip" data-full={data.fullAccess || undefined} title={data.fullAccess ? text.fullAccessHint : text.reviewHint}>
@@ -1139,6 +1166,10 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                   <span className="pf-chip-label">{data.fullAccess ? text.fullAccess : text.review}</span>
                 </span>
               )}
+              {controlledAccess && !settingUp && Boolean(data.fullAccess) !== accessIsFull ? <span className="pf-chip pf-task-access" data-full={data.fullAccess || undefined}
+                title={data.fullAccess ? text.fullAccessHint : text.reviewHint}>
+                <span className="pf-chip-label">{lang === "zh" ? "任务：" : "Tasks: "}{data.fullAccess ? text.fullAccess : text.review}</span>
+              </span> : null}
               {settingUp ? (
                 // The budget is a level, not a number to type: four steps, lit up to the chosen one.
                 // A click climbs (and wraps), the wheel and the arrow keys go either way.
@@ -1180,7 +1211,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             ) : null}
             {/* While the agent answers, an empty field's button stops it; anything typed is sent (it steers the answer). */}
             <button type="button" className="pf-send" data-stop={stopping || undefined}
-                    disabled={!stopping && ((!draft.trim() && !attached.length) || imageNotice.blocked)}
+                    disabled={!stopping && (accessChanging || (!draft.trim() && !attached.length) || imageNotice.blocked)}
                     aria-label={stopping ? text.stopReply : text.send} title={stopping ? text.stopReply : undefined}
                     onClick={stopping ? actions.onInterrupt : submit}>{stopping ? <Square size={12} /> : <ArrowUp size={15} />}</button>
           </footer>

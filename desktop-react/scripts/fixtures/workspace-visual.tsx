@@ -19,7 +19,7 @@ const projects = [
 const titles = ["配置第三方登录与邮件验证", "修复模型面板卡片错位", "优化图片附件发送", "检查项目面板浅色主题", "优化审查面板", "确认 Computer Use 能力", "测试代理协作", "浏览器交互验证", "排查浏览器控制", "整理对话主题", "中转站快捷登录"];
 const threads = titles.map((title, index) => ({
   id: `visual-${index}`, projectId: index < 6 ? "loom" : index < 8 ? "agent" : "relay",
-  title, customTitle: true, workspace, permissionMode: "full-access", status: "idle",
+  title, customTitle: true, workspace, permissionMode: params.get("access") || "full-access", status: "idle",
   createdAt: at, updatedAt: at,
 }));
 const decision = {
@@ -98,7 +98,17 @@ function threadSnapshot(id: string) {
 }
 const modeFixture = { starts: [] as Record<string, unknown>[], turns: 0, fail: false };
 Object.assign(window, { modeFixture });
+const accessFixture = { fail: false, hold: false, release: () => {}, changes: [] as string[], sends: [] as string[] };
+Object.assign(window, { accessFixture });
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
+  "thread/set_permission_mode": async args => {
+    accessFixture.changes.push(String(args.permissionMode));
+    if (accessFixture.hold) await new Promise<void>(resolve => { accessFixture.release = resolve; });
+    if (accessFixture.fail) throw new Error("Could not change permission");
+    const thread = threads.find(thread => thread.id === args.threadId)!;
+    Object.assign(thread, { permissionMode: args.permissionMode });
+    return { thread: { ...thread } };
+  },
   "thread/start": async args => {
     modeFixture.starts.push(args);
     await new Promise(resolve => setTimeout(resolve, 250));
@@ -138,6 +148,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
       toolOutputsReduced: 0, toolOutputsCollapsed: 0, userMessagesTruncated: 0, toolsOmitted: [] },
   } : null }),
   "turn/start": args => {
+    accessFixture.sends.push(threads.find(thread => thread.id === args.threadId)?.permissionMode || "unknown");
     document.body.dataset.submitted = String(args.input || args.text || JSON.stringify(args));
     return { turn: { id: "turn-2", threadId: "visual-0", status: "running", items: [] } };
   },

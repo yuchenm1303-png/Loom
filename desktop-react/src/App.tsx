@@ -1740,6 +1740,7 @@ export default function App() {
                              await handleMoveProject(thread.id, project.id);
                            } : undefined}
                            models={loom.models} onSwitchModel={loom.switchModelProfile} onReasoning={loom.setReasoning}
+                           permissionMode={permissionMode} onPermissionModeChange={thread.archived ? undefined : loom.setPermissionMode}
                            items={transcriptItems} chatting={running} onInterrupt={loom.interrupt} onApproval={handleApproval}
                            onChat={(input, attachments) => loom.send(input, attachments, undefined, { weave: true })}
                            imagesAllowed={attachmentsEnabled && loom.models?.current?.vision !== false}

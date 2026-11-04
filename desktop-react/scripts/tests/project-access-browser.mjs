@@ -1,0 +1,58 @@
+import assert from "node:assert/strict";
+import { chromium } from "playwright-core";
+const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
+const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
+try {
+  for (const theme of ["dark", "light"]) {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.goto(`${origin}/scripts/fixtures/workspace-visual.html?theme=${theme}&access=approval`);
+    await page.locator(".thread-header-actions .pf-toggle button").last().click();
+    const access = page.locator(".pf-access-control");
+    await access.waitFor();
+    assert.equal(await access.getAttribute("data-permission"), "approval");
+    assert.match(await access.textContent(), /Approval|逐次批准/);
+    await page.evaluate(() => { window.accessFixture.hold = true; });
+    await page.locator(".pf-input textarea").fill("Permission-sensitive task");
+    await access.click();
+    await page.waitForFunction(() => window.accessFixture.changes.length === 1);
+    assert.equal(await access.getAttribute("data-permission"), "approval", "no optimistic Full access label");
+    assert.equal(await access.isDisabled(), true);
+    assert.equal(await page.locator(".pf-send").isDisabled(), true);
+    await page.locator(".pf-input textarea").press("Enter");
+    assert.equal(await page.evaluate(() => window.accessFixture.sends.length), 0, "Enter cannot race the permission RPC");
+    await page.evaluate(() => { window.accessFixture.hold = false; window.accessFixture.release(); });
+    await page.waitForFunction(() => document.querySelector(".pf-access-control")?.getAttribute("data-permission") === "full-access");
+    await page.locator(".pf-send").click();
+    await page.waitForFunction(() => window.accessFixture.sends.length === 1);
+    assert.equal(await page.evaluate(() => window.accessFixture.sends[0]), "full-access");
+    await page.evaluate(() => { window.performanceFixture.setThreadStatus("visual-0", "idle"); window.accessFixture.fail = true; });
+    await access.click();
+    await page.locator(".pf-error[role=alert]").waitFor();
+    assert.equal(await access.getAttribute("data-permission"), "full-access", "failed RPC keeps actual permission");
+    await page.evaluate(() => { window.accessFixture.fail = false; });
+    await access.click();
+    await page.waitForFunction(() => document.querySelector(".pf-access-control")?.getAttribute("data-permission") === "workspace");
+    await page.evaluate(() => window.performanceFixture.setThreadStatus("visual-0", "waiting_approval"));
+    await page.waitForFunction(() => document.querySelector(".pf-access-control")?.disabled === true);
+    assert.match(await access.getAttribute("title"), /Stop|停止/);
+    await page.evaluate(() => window.performanceFixture.setThreadStatus("visual-0", "idle"));
+    await page.locator(".thread-header-actions .pf-toggle button").first().click();
+    await page.locator(".composer").waitFor();
+    assert.match(await page.locator(".composer").textContent(), /Workspace|工作区|Sandbox|沙箱/);
+    await page.goto(`${origin}/scripts/fixtures/project-flow.html?at=0&access=full-access&theme=${theme}`);
+    await page.locator(".pf-task-access").waitFor();
+    assert.match(await access.textContent(), /Chat: Full access|对话：完全访问/);
+    assert.match(await page.locator(".pf-task-access").textContent(), /Tasks: (Sandbox|Reviewed)|任务：沙箱/);
+    if (process.env.LOOM_ACCESS_SCREENSHOT && theme === "dark") await page.screenshot({ path: process.env.LOOM_ACCESS_SCREENSHOT });
+    await page.goto(`${origin}/scripts/fixtures/project-flow.html?at=0&draft=1&access=full-access&theme=${theme}`);
+    await page.waitForFunction(() => Boolean(window.projectControlsFixture));
+    await page.evaluate(() => window.projectControlsFixture.propose());
+    await page.locator(".pf-proposal-start").click();
+    assert.equal(await page.evaluate(() => window.started[4]), true, "new build uses confirmed conversation access");
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+  console.log("Actual conversation access persists through the Host, blocks send races, handles failures, locks active turns, separates running-task access and reaches new builds in both themes");
+} finally { await browser.close(); }
