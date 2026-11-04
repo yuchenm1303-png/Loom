@@ -143,3 +143,43 @@
 ## 6. 建议顺序
 P0 → P1 →（重测 weave-live2）→ P2 → P3 → P4 → P5。
 每一步都用 P0 的指标和真实模型资格测试判断要不要继续。
+
+## 7. 实现记录
+
+### P0 测量（已实现）
+- `app/project_runner/metrics.py`：
+  - `note_wait(store, run_id, channel, reason)` 记录调度器造成的等待。每个（run, 通道）同时只有一个打开的等待，切换或关闭时才写库，持续等待不写，tick 的开销只是一次字典查找。重启后打开的等待继续计时（存在 `project_wait_open` 表里）。
+  - 等待原因：
+    - `workerCap`：有就绪任务，但 worker 已满。由 `parallel.advance` 记录。
+    - `fileScope`：就绪任务都和在跑的任务有文件或资源冲突。由 `parallel.advance` 记录。
+    - `admission`：别的项目占着调度器。由 `runner.tick` 加 `_held_by_others` 记录。
+    - `reviewerCap`：分片审查员已满。由 `shards.eligible` 记录。
+  - `summarize(spans, kinds)`：从 overview 已有的时间线算出各阶段的 episode 秒数、token、次数，以及同时在跑的 episode 数分布和峰值。阶段分为 planning、working、taskReview、projectReview、shardReview。
+- `projectRun/overview` 新增 `metrics` 字段（`{span, peak, phases, concurrency, waits}`）。前端类型是 `OverviewMetrics`，界面暂未展示。
+- 测试：`tests/test_project_metrics.py`。反向检查：去掉 `fileScope` 记录后，集成测试变红。
+
+### P1 整体审查分片（已实现）
+- `app/project_runner/shards.py`：
+  - 触发条件：run 进入 `verifying` + `reviewScope=project` 且是独立审查，并且 `plan()` 能切出至少 2 片（默认至少 8 条 criteria，每片约 6 条，最多 4 片）。
+  - 每片是一个子 run：`teamOwnerId` 指向 owner，预算、取消、接受检查登记都归项目；`reviewShard` 记录 `taskIds`、`exclusive` 和 `candidateId`。子 run 审查 owner 的同一个冻结候选（`store.candidate` 和 `service.session` 按 `sourceRunId` 取），用自己的审查 checkout 和会话，证据门槛和单个审查员完全相同（`review.criteria` 只是按分片过滤）。
+  - 资源独占：`sharedResources` 非空或未声明的任务归入同一个独占分片，只有这一片可以用浏览器。串行计划不声明资源，所以不会分片，行为和以前一致。
+  - 汇总：
+    - 全部 `passed` 后，owner 自己的审查员只判断整体目标是否达成、任务之间能否配合（`runner._aggregate_prompt`）。它的 pass 携带各分片的证据（`shards.aggregate_evidence` 要求恰好覆盖每条 criteria）。交付时 `delivery.validate` 看到的仍是一份 project 范围、针对该候选的 assessment。
+    - 任一分片 `needs_changes`：所有分片的问题合并后一次性返工，算一个 project 审查轮次。
+    - 任一分片 `stale`：按 stale 返工。
+    - 分片停下来（`needs_review`）：owner 进入 `needs_review`；恢复后作废这些分片、重新开始。
+  - 预算或凭证：分片被挡住时 owner 也停下（`shardHolds`），原因写明是哪个并行审查员。恢复 owner 时，所有被挡住的分片一起继续。
+  - 候选变了（返工、新候选），旧分片作废，还在跑的会被取消（`_discard`）。
+  - janitor 会清理已出结论或已作废分片的审查 checkout。`store._LIVE` 排除 `reviewed` 状态，调度器不再扫描它们。
+- 界面：分片审查员显示「复审 task-1, task-3」，它负责的任务在卡片上显示为审查中（`projectOverview.ts` 的 `shardTasks`）。
+- 测试：`tests/test_project_shards.py`，共 7 个，覆盖：
+  - 切分规则
+  - 真实会话里两个分片同时审查（barrier 验证），汇总后自动集成
+  - 一片要求返工，只重做该任务
+  - 取消
+  - 串行计划保持单个审查员
+  - 汇总证据必须完整
+  - 预算挡住后恢复
+  
+  反向检查：限制为 1 个审查员、去掉按分片过滤，测试都会变红。另有一个界面测试（`project-overview.test.mjs`）。
+- 尚未做真实模型验证：需要用 weave-live2 级别的场景（15 任务、45 条 criteria）重测墙钟时间和 token。

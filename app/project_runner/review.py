@@ -51,6 +51,9 @@ def _plain(text):
 
 def criteria(run):
     tasks = run["plan"] if run.get("reviewScope") == "project" else [run["plan"][run["taskIndex"]]]
+    shard = run.get("reviewShard")
+    if shard:  # one parallel reviewer's share of a whole-project review (shards.py)
+        tasks = [task for task in tasks if task["id"] in shard["taskIds"]]
     return [{"id": f"{task['id']}:{index+1}", "taskId": task["id"], "expectation": text}
             for task in tasks for index, text in enumerate(task["acceptance"])]
 
@@ -166,8 +169,14 @@ def assess(run, episode, reply, expected, source, workspace, events):
         result["issues"] = [{"taskId": item["taskId"], "description": item["description"]} for item in issues]
     if verdict != "passed":
         return result
-    references = reply.get("checks")
     required = {item["id"]: item for item in criteria(run)}
+    if (run.get("reviewShards") or {}).get("status") == "aggregating" and not run.get("reviewShard"):
+        # Whole-objective judgment after parallel reviewers: their executed evidence of this
+        # candidate is the criteria evidence; this reviewer adds the coverage verdict.
+        from .shards import aggregate_evidence
+        result["checks"] = aggregate_evidence(run, expected, required)
+        return result
+    references = reply.get("checks")
     result["checks"] = accepted_evidence(episode, expected, workspace, events, references, required)
     return result
 

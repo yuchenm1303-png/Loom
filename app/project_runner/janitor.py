@@ -53,7 +53,10 @@ class Janitor:
         for run in runs.values():
             if run["activeEpisode"]:
                 continue
-            finished = run["state"] == "integrated" or run["id"] in merged
+            # A review shard (shards.py) owns only its review checkout; once it reported or was
+            # discarded nothing reads it again. Its "workspace" is its owner's and is never touched here.
+            shard = bool(run.get("reviewShard"))
+            finished = run["state"] == "integrated" or run["id"] in merged or (shard and run["state"] in {"reviewed", "cancelled"})
             current = (run.get("reviewCandidate") or {}).get("id")
             for folder, candidate in _reviews(store.home / "reviews", run["id"]):
                 if finished or not current or not current.startswith(candidate):

@@ -32,7 +32,8 @@ MAX_SCRIPT_BYTES, MAX_FIXTURE_BYTES = 256_000, 2_000_000
 
 def registry_root(run):
     """Checks belong to the project, shared by its team tasks and its integration run."""
-    return run.get("teamOwnerId") or (run.get("integrationTarget") or {}).get("parentRunId") or run["id"]
+    return ((run.get("reviewShard") or {}).get("registryRoot") or run.get("teamOwnerId")
+            or (run.get("integrationTarget") or {}).get("parentRunId") or run["id"])
 
 
 def _folder(store, root_id):

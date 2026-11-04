@@ -13,6 +13,7 @@ import uuid
 from .budget import SCHEMA as budget_schema
 from .checks import SCHEMA as checks_schema
 from .program import SCHEMA as program_schema
+from .metrics import SCHEMA as metrics_schema
 
 
 def encoded(value):
@@ -44,7 +45,7 @@ class ProjectStore:
             CREATE TABLE IF NOT EXISTS project_assessments(id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES project_runs(id),
                 candidate_id TEXT NOT NULL REFERENCES project_candidates(id), episode_id TEXT NOT NULL UNIQUE REFERENCES project_episodes(id), data TEXT NOT NULL);
             INSERT OR IGNORE INTO project_runner_schema_versions VALUES(2);
-        """ + budget_schema + checks_schema + program_schema)
+        """ + budget_schema + checks_schema + program_schema + metrics_schema)
 
     @contextmanager
     def transaction(self):
@@ -89,9 +90,11 @@ class ProjectStore:
         run["reviewCandidate"] = {key: value for key, value in snapshot.items() if key != "files"}
 
     def candidate(self, run, candidate_id=None):
+        # A review shard verifies its owner's frozen candidate (shards.py); it has none of its own.
+        owner = (run.get("reviewShard") or {}).get("sourceRunId") or run["id"]
         with self.lock:
             row = self.db.execute("SELECT data FROM project_candidates WHERE id=? AND run_id=?",
-                                  (candidate_id or run["reviewCandidate"]["id"], run["id"])).fetchone()
+                                  (candidate_id or run["reviewCandidate"]["id"], owner)).fetchone()
             if row is None:
                 raise ValueError("Missing project candidate snapshot")
             return json.loads(row[0])
@@ -114,7 +117,7 @@ class ProjectStore:
 
     # A finished run (integrated or cancelled, nothing in flight) has nothing left to schedule. A
     # program of many milestones keeps every finished run; the scheduler reads only the rest.
-    _LIVE = ("json_extract(data,'$.state') NOT IN ('integrated','cancelled') "
+    _LIVE = ("json_extract(data,'$.state') NOT IN ('integrated','cancelled','reviewed') "
              "OR json_extract(data,'$.activeEpisode') IS NOT NULL")
 
     def live(self):

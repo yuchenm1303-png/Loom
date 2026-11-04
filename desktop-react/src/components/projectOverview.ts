@@ -34,6 +34,14 @@ export interface ProjectOverview {
   timeline?: OverviewSpan[];
   /** A project the conversation's agent proposed (weave_propose); the person starts or dismisses it. */
   proposal?: WeaveProposal | null;
+  /** Where the milestone's time went (app/project_runner/metrics.py): seconds and tokens by phase, episodes out at once, scheduler waits. */
+  metrics?: OverviewMetrics;
+}
+export interface OverviewMetrics {
+  span: number; peak: number;
+  phases: Record<string, { seconds: number; tokens: number; episodes: number }>;
+  concurrency: Record<string, number>;
+  waits: Partial<Record<"workerCap" | "fileScope" | "admission" | "reviewerCap", number>>;
 }
 export interface WeaveProposal { id: string; objective: string; title?: string; tokenBudget: number; maxWorkers: number; createdAt?: number }
 export interface OverviewSpan {
@@ -127,6 +135,11 @@ export function humanReason(reason: string, lang: Lang = "zh"): string {
   return (lang === "en" ? "A task's review was rejected: " : "有任务的复审未通过：") + text;
 }
 
+/** The tasks a parallel whole-project reviewer checks, when the agent's run is a review shard. */
+function shardTasks(overview: ProjectOverview, runId: string): string[] | undefined {
+  return overview.children.find((child) => child.id === runId)?.reviewShard?.taskIds;
+}
+
 function branchName(ref?: string | null) {
   return ref ? ref.replace(/^refs\/heads\//, "") : "main";
 }
@@ -136,7 +149,9 @@ function taskStates(run: ProjectRun, overview: ProjectOverview): Record<string, 
   // A team task's agents run on its child run; the child maps back to its task.
   const taskOf = (agent: OverviewAgent) => agent.taskId || (run.teamChildren || []).find((item) => item.runId === agent.runId)?.taskId;
   const working = new Set(overview.agents.filter((agent) => agent.role === "worker").map(taskOf));
-  const reviewing = new Set(overview.agents.filter((agent) => agent.role === "reviewer").map(taskOf));
+  // A parallel reviewer of the whole project checks a share of its tasks: each of them is under review.
+  const reviewing = new Set(overview.agents.filter((agent) => agent.role === "reviewer")
+    .flatMap((agent) => shardTasks(overview, agent.runId) || [taskOf(agent)]));
   for (const task of run.plan) {
     const child = (run.teamChildren || []).find((item) => item.taskId === task.id);
     const merged = ["merged", "integrated"].includes(child?.state || "") || ["verified", "integrated"].includes(task.state);
@@ -240,7 +255,8 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
       const startedAt = agent.startedAt ? Date.parse(agent.startedAt) : now;
       const title = agent.role === "planner" ? t.planning
         // A team task's review runs at project scope on its own one-task run: name the task.
-        : agent.role === "reviewer" ? (agent.runId !== run.id && childTask(agent.runId) ? t.reviewing(childTask(agent.runId) || "")
+        : agent.role === "reviewer" ? (shardTasks(overview, agent.runId) ? t.reviewing(shardTasks(overview, agent.runId)!.join(", "))
+                                       : agent.runId !== run.id && childTask(agent.runId) ? t.reviewing(childTask(agent.runId) || "")
                                        : agent.scope === "project" ? t.reviewingProject : t.reviewing(agent.taskId || ""))
         : titleOf(agent.taskId).split(/[.。\n]/)[0];
       return { id: agent.id, role: agent.role, name: t.agent(index + 1), step: agent.step, waiting: !!agent.approval,

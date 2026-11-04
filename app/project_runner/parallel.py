@@ -7,6 +7,7 @@ import uuid
 from .review import candidate, git, snapshot
 from .store import encoded
 from .errors import ReplyFormatError
+from . import metrics
 
 
 def configure(plan, raw):
@@ -91,9 +92,12 @@ def cancelled(store, run):
 
 
 def eligible(store, run, active):
+    from . import shards
     parent = owner(store, run)
     if parent is None:
-        return not active
+        return not active and not shards.waiting(run)
+    if run.get("reviewShard"):
+        return shards.eligible(store, parent, run, active)
     if parent["state"] != "running" or parent["control"] != "active" or parent["phase"] != "parallel":
         return False
     if run["id"] not in {item["runId"] for item in parent.get("teamChildren", []) if item["state"] == "running"}:
@@ -198,9 +202,10 @@ def aggregate(service, root, child, source):
 
 
 def advance(service, root):
-    if root.get("maxWorkers", 1) <= 1 or root["phase"] != "parallel" or root["state"] != "running" or root["control"] != "active":
-        return False
     store = service.project_store
+    if root.get("maxWorkers", 1) <= 1 or root["phase"] != "parallel" or root["state"] != "running" or root["control"] != "active":
+        metrics.note_wait(store, root["id"], "team", None)  # a dictionary lookup unless a wait is open
+        return False
     try:
         source = store.home / "workspaces" / root["id"]
         if Path(git(source, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve() != Path(root["gitCommonDir"]).resolve():
@@ -230,17 +235,22 @@ def advance(service, root):
                 store.save(db, current, "parallel_aggregate_review")
             return True
         occupied = [child for item, child in children if item["state"] != "merged"]
-        if len(occupied) >= root["maxWorkers"]:
-            return False
         assigned = {item["taskId"] for item, _ in children}
-        for task in root["plan"]:
-            if task["id"] in assigned or not set(task["dependsOn"]) <= merged:
-                continue
+        ready = [task for task in root["plan"] if task["id"] not in assigned and set(task["dependsOn"]) <= merged]
+        if not ready:
+            metrics.note_wait(store, root["id"], "team", None)
+            return False
+        if len(occupied) >= root["maxWorkers"]:
+            metrics.note_wait(store, root["id"], "team", "workerCap")
+            return False
+        for task in ready:
             if any(overlap(task["fileScopes"], child["plan"][0]["fileScopes"]) or
                    set(task["sharedResources"]) & set(child["plan"][0]["sharedResources"]) for child in occupied):
                 continue
+            metrics.note_wait(store, root["id"], "team", None)
             spawn(service, root, task, source)
             return True
+        metrics.note_wait(store, root["id"], "team", "fileScope")
     except Exception as exc:
         with store.transaction() as db:
             current = store._read(db, root["id"])

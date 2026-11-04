@@ -12,6 +12,10 @@ export interface ProjectRun {
   verificationStatus?: string; verificationFreshness?: string;
   maxWorkers?: number; permissionMode?: string; teamOwnerId?: string; parallelStatus?: string; baseCommit?: string;
   teamChildren?: { runId: string; taskId: string; state: string }[];
+  /** One parallel reviewer's share of a whole-project review (app/project_runner/shards.py). */
+  reviewShard?: { sourceRunId: string; candidateId: string; taskIds: string[]; exclusive: boolean; index: number; of: number };
+  reviewShards?: { candidateId: string; status: "running" | "aggregating" | "blocked";
+                   children: { runId: string; taskIds: string[]; exclusive: boolean; state: string }[] } | null;
   deliveryReceipt?: { commit: string; ref: string; integration?: string; publication?: string; status: string };
 }
 export interface ProjectAssessment { id: string; verdict: string; summary: string; scope: string;

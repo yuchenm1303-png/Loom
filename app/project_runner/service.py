@@ -14,7 +14,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash, review_progress
-from . import delivery, integration, workflow, parallel, checks, program, weave, delegation
+from . import delivery, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards
 from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
@@ -50,7 +50,7 @@ class ProjectExecutor:
         return workflow.advance(self.service, run)
 
     def advance_parallel(self, run):
-        return parallel.advance(self.service, run)
+        return parallel.advance(self.service, run) or shards.advance(self.service, run)
 
     def advance_programs(self):
         return program.advance(self.service)
@@ -63,8 +63,10 @@ class ProjectExecutor:
 
     def session(self, run):
         key = self.session_key(run)
-        workspace = self.home / "workspaces" / run["id"]
+        workspace = self.home / "workspaces" / shards.source_id(run)
         if not workspace.exists():
+            if run.get("reviewShard"):
+                raise ValueError("The checkout this review shard verifies is missing")
             workspace.parent.mkdir(parents=True, exist_ok=True)
             git(run["repository"], "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(workspace), run["baseCommit"])
         # Never assume a preexisting directory is the expected checkout.
@@ -191,7 +193,7 @@ class ProjectExecutor:
             pass  # an uncompacted session costs more, but is not wrong
 
     def result_facts(self, run, episode, reply):
-        source = self.home / "workspaces" / run["id"]
+        source = self.home / "workspaces" / shards.source_id(run)
         if run.get("reviewPolicy") != "independent":
             return {}
         if (episode["phase"] == "planning" and (run.get("milestone") or {}).get("index", 1) > 1
@@ -505,7 +507,7 @@ class ProjectServiceMixin(WorkspaceMixin):
     def _project_team_cancel(self, run, action):
         if action != "cancel":
             return
-        family = [run["id"], *(item["runId"] for item in run.get("teamChildren", []))]
+        family = [run["id"], *(item["runId"] for item in run.get("teamChildren", [])), *shards.children(run)]
         if run.get("integrationRunId"):
             family.append(run["integrationRunId"])
         with self.project_store.lock:
@@ -521,6 +523,14 @@ class ProjectServiceMixin(WorkspaceMixin):
                 self.project_store.save(db, child, "team_cancelled")
             if child["activeEpisode"]:
                 self.project_runner.executor.cancel(child["activeEpisode"])
+        for child_id in shards.children(run):
+            with self.project_store.transaction() as db:
+                child = self.project_store._read(db, child_id)
+                if child["state"] in {"running", "needs_review"}:
+                    child.update(state="cancelled", control="paused")
+                    self.project_store.save(db, child, "team_cancelled")
+            if child["activeEpisode"]:
+                self.project_runner.executor.cancel(child["activeEpisode"])
         delegation.stop_descendants(self, sessions)
 
     def project_budget_position(self, run):
@@ -530,7 +540,7 @@ class ProjectServiceMixin(WorkspaceMixin):
         """What a long run has learned and recovered from, for the person watching it."""
         from .runner import RECOVERY
         store = self.project_store
-        ids = [run["id"], *(item["runId"] for item in run.get("teamChildren", []))]
+        ids = [run["id"], *(item["runId"] for item in run.get("teamChildren", [])), *shards.children(run)]
         if run.get("integrationRunId"):
             ids.append(run["integrationRunId"])
         events = {event for _, _, event in RECOVERY.values()}
@@ -587,8 +597,12 @@ class ProjectServiceMixin(WorkspaceMixin):
                 "ledgerPosition": self.project_budget.report(ledger), "ledgerTokens": ledger["tokensUsed"],
                 "ledgerEpisodes": ledger["episodesUsed"], "guidance": list(root.get("guidance") or [])}
         proposal = self.weave_proposals.get(thread_id)
+        spans = self._project_timeline(root, family)
+        kinds = {run["id"]: "shard" if run.get("reviewShard") else "team" if run.get("teamOwnerId")
+                 else "integration" if run.get("integrationTarget") else "root" for run in family}
+        measured = {**metrics.summarize(spans, kinds), "waits": metrics.waits(store, ids)}
         return {"run": view, "program": current, "children": children, "integration": integration,
-                "agents": agents, "events": events, "timeline": self._project_timeline(root, family),
+                "agents": agents, "events": events, "timeline": spans[-120:], "metrics": measured,
                 "proposal": proposal, "workspace": self._project_workspace_state(thread_id) if proposal else None}
 
     def _project_workspace_state(self, thread_id):
@@ -650,7 +664,7 @@ class ProjectServiceMixin(WorkspaceMixin):
                 open_[run_id] = (active, at)
         for run_id in list(open_):
             close(run_id, None, "")  # still running
-        return spans[-120:]
+        return spans
 
     def _agent_view(self, run, episode):
         """An active episode as a person reads it: who, on what, how far, doing what."""
@@ -709,7 +723,8 @@ class ProjectServiceMixin(WorkspaceMixin):
         if decision not in {"accept", "decline"}:
             raise ValueError("decision must be accept or decline")
         root = self.project_store.get(run_id)
-        family = [root, *(self.project_store.get(item["runId"]) for item in root.get("teamChildren", []))]
+        family = [root, *(self.project_store.get(item["runId"]) for item in root.get("teamChildren", [])),
+                  *(self.project_store.get(child_id) for child_id in shards.children(root))]
         if root.get("integrationRunId"):
             family.append(self.project_store.get(root["integrationRunId"]))
         episode = next((run["activeEpisode"] for run in family

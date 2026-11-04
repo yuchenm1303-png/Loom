@@ -10,9 +10,11 @@ import uuid
 from .store import encoded
 from .review import criteria, StaleCandidate
 from . import parallel
+from . import shards
 from .budget import ProjectBudget
 from .errors import ReplyFormatError
 from . import checks
+from . import metrics
 from .janitor import Janitor
 
 # How an episode ended decides what the runner does next, from the fields the
@@ -274,7 +276,10 @@ class ProjectRunner:
             return ("Plan this long-running project. Do not edit files or execute commands. Return only JSON: "
                     '{"tasks":[{"instructions":"scoped implementation", "acceptance":["observable behavior"]}]}. '
                     "Tasks run in order; cover the entire objective with at most 16 tasks. " + sizing + run["objective"])
+        if run["phase"] == "verifying" and shards.aggregating(run):
+            return self._aggregate_prompt(run)
         if run["phase"] == "verifying":
+            shard = run.get("reviewShard")
             return ("Independently verify this frozen project candidate in your separate checkout. "
                     "Do not implement fixes, change source/tests/acceptance, commit, merge, or publish. "
                     "Inspect the actual code and exercise behavior; worker summaries are claims, not proof. "
@@ -284,10 +289,16 @@ class ProjectRunner:
                     "Use exec with wait=true, pty=false and verification.case_id equal to each criterion ID, "
                     "verification.expectation exactly equal to its expectation, and subject_paths covering actual candidate source. "
                     + ("For parallel task review, do not use browser/desktop, bind server ports or mutate shared environments; report blocked if these are necessary. "
-                       if run.get("teamOwnerId") else "Browser interactions may use browser_run_check with the same IDs. ")
+                       if run.get("teamOwnerId") and not (shard or {}).get("exclusive")
+                       else "Browser interactions may use browser_run_check with the same IDs. ")
                     + "Ignore generated outputs only via the repository's existing ignore rules. "
-                    "Check the entire objective for missing behavior, not just the declared test names. "
-                    "Return only JSON: {\"verdict\":\"passed|needs_changes|blocked|continue\",\"summary\":\"observed facts\","
+                    + (f"You are reviewer {shard['index']} of {shard['of']} checking this candidate at the same time: criteria is "
+                       "only your share (tasks " + ", ".join(shard["taskIds"]) + "). The other shares are checked in parallel, "
+                       "and another reviewer judges whole-objective coverage after all of you pass. Verify your share "
+                       "thoroughly, including behavior its tasks should have but no test names; report needs_changes for "
+                       "any task in which you find a problem. "
+                       if shard else "Check the entire objective for missing behavior, not just the declared test names. ")
+                    + "Return only JSON: {\"verdict\":\"passed|needs_changes|blocked|continue\",\"summary\":\"observed facts\","
                     "\"notes\":[\"optional: environment facts or pitfalls later sessions should know\"],"
                     "\"checks\":[{\"criterionId\":\"task-1:1\",\"eventId\":\"real CHECK_RECORDED event id\"}],"
                     "\"issues\":[{\"taskId\":\"task-1\",\"description\":\"reproducible problem and expected behavior\"}]}. "
@@ -325,6 +336,25 @@ class ProjectRunner:
                            "reviewFeedback": run.get("feedback", []), "regressionChecks": self._scoped(kept, run, review=False),
                            "projectNotes": checks.notes_for(self.store, run)}))
 
+    def _aggregate_prompt(self, run):
+        state = run["reviewShards"]
+        return ("Independently judge this frozen project candidate in your separate checkout. "
+                "Parallel reviewers have already verified every acceptance criterion of it with executed, passing checks "
+                "(shardReviews summarizes what each found); do not re-run those checks. Your job is what none of them "
+                "judged: does the candidate achieve the entire objective, and do its tasks work together? Inspect the "
+                "code and exercise end-to-end behavior that crosses tasks; probe for missing behavior the criteria do "
+                "not name. Do not implement fixes, change source/tests/acceptance, commit, merge, or publish. "
+                "Browser interactions may use browser_run_check. "
+                "Return only JSON: {\"verdict\":\"passed|needs_changes|blocked|continue\",\"summary\":\"observed facts\","
+                "\"notes\":[\"optional: environment facts or pitfalls later sessions should know\"],"
+                "\"issues\":[{\"taskId\":\"task-1\",\"description\":\"reproducible problem and expected behavior\"}]}. "
+                "needs_changes requires concrete scoped issues; use blocked if the environment cannot exercise the "
+                "candidate; continue if more checking needs another episode.\n"
+                + (f"The runner rejected your previous verdict: {run['reviewNote']} " if run.get("reviewNote") else "")
+                + encoded({"objective": run["objective"], "plan": run["plan"], "candidate": run["reviewCandidate"],
+                           "shardReviews": state.get("summaries", []),
+                           "projectNotes": checks.notes_for(self.store, run)}))
+
     @staticmethod
     def _scoped(kept, run, *, review):
         """A review gets the kept checks of the criteria it judges; a worker those of other tasks."""
@@ -357,8 +387,13 @@ class ProjectRunner:
                 advance_parallel = getattr(self.executor, "advance_parallel", None)
                 if advance_parallel and advance_parallel(run):
                     return
-                if run["activeEpisode"] or not parallel.eligible(self.store, run, active):
+                if run["activeEpisode"]:
                     continue
+                if not parallel.eligible(self.store, run, active):
+                    metrics.note_wait(self.store, run["id"], "admission",
+                                      "admission" if self._held_by_others(run, active) else None)
+                    continue
+                metrics.note_wait(self.store, run["id"], "admission", None)
                 advance = getattr(self.executor, "advance_workflow", None)
                 if advance and advance(run):
                     return
@@ -372,6 +407,14 @@ class ProjectRunner:
                     if not run.get("teamOwnerId"):
                         return
                     active = counted()
+
+    @staticmethod
+    def _held_by_others(run, active):
+        """The run could start an episode now, and only other projects' episodes stop it."""
+        return bool(active and run["state"] == "running" and run["control"] == "active"
+                    and run["phase"] != "parallel" and not run.get("teamOwnerId")
+                    and run.get("retryAfter", 0) <= time.time()
+                    and all(item["id"] != run["id"] and item.get("teamOwnerId") != run["id"] for item in active))
 
     def _dispatch(self, run):
         if run.get("retryAfter", 0) > time.time():
@@ -390,7 +433,11 @@ class ProjectRunner:
         except StaleCandidate as exc:
             with self.store.transaction() as db:
                 current = self.store._read(db, run["id"])
-                if current["revision"] == run["revision"]:
+                if current["revision"] == run["revision"] and current.get("reviewShard"):
+                    # A shard reports; its owner decides (shards._collect sends the run back to work).
+                    current.update(state="reviewed", control="paused", shardVerdict="stale", reason=str(exc)[:2000])
+                    self.store.save(db, current, "review_invalidated")
+                elif current["revision"] == run["revision"]:
                     self._rework(current, {"scope": current.get("reviewScope", "task"), "verdict": "stale",
                                           "summary": str(exc), "issues": []})
                     self.store.save(db, current, "review_invalidated")
@@ -463,6 +510,13 @@ class ProjectRunner:
         assessment = facts["assessment"]
         self.store.put_assessment(db, run, episode, assessment)
         verdict = assessment["verdict"]
+        if run.get("reviewShard"):
+            # One parallel reviewer's share: it reports, its owner collects every share (shards.py).
+            if verdict != "continue":
+                run.update(state="reviewed", control="paused", shardVerdict=verdict,
+                           verificationStatus="passed" if verdict == "passed" else "failed",
+                           reason=assessment["summary"][:2000])
+            return
         if verdict in {"needs_changes", "stale"}:
             self._rework(run, assessment)
         elif verdict == "blocked":

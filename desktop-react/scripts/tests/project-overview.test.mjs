@@ -297,3 +297,20 @@ test("toConversation keeps the files on a message being sent, even one with no w
   ], true);
   assert.deepEqual(messages.map((message) => [message.id, message.text, message.attachments]), [["p1", "", files], ["p2", "看看这个", files]]);
 });
+
+test("parallel whole-project reviewers name their share and put each of its tasks under review", () => {
+  const shard = (id, taskIds, index) => ({ ...run(), id, teamOwnerId: "root", teamChildren: undefined, phase: "verifying",
+    reviewShard: { sourceRunId: "root", candidateId: "c", taskIds, exclusive: false, index, of: 2 } });
+  const plan = run().plan.map((task) => ({ ...task, state: "pending" }));
+  const value = { ...overview({ phase: "verifying", teamChildren: [], plan }, [
+    { id: "a1", runId: "s1", role: "reviewer", taskId: null, scope: "project", step: 1, activity: "", startedAt: null },
+    { id: "a2", runId: "s2", role: "reviewer", taskId: null, scope: "project", step: 1, activity: "", startedAt: null },
+  ]), children: [shard("s1", ["task-1", "task-3"], 1), shard("s2", ["task-2"], 2)] };
+  const data = toFlowData(value, now, "en");
+  assert.deepEqual(data.agents.map((agent) => agent.activity), ["Reviewing task-1, task-3", "Reviewing task-2"]);
+  assert.deepEqual(data.tasks.map((task) => task.state), ["review", "review", "review"]);
+  // Without the shards, the same agents would name no task (whole-project review).
+  const plain = toFlowData({ ...value, children: [] }, now, "en");
+  assert.deepEqual(plain.agents.map((agent) => agent.activity), ["Whole-project review", "Whole-project review"]);
+  assert.ok(plain.tasks.every((task) => task.state !== "review"));
+});
