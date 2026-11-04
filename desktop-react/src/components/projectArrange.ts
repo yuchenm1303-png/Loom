@@ -24,6 +24,43 @@ const RIPPLE_MS = STAGGER_MS / 2;
 /** The rows of an arriving card, which come in one after another as it unrolls. */
 const ROWS = ".pf-well, .pf-task, .pf-loom-lane, .pf-model-option, .pf-empty";
 const MAX_ROWS = 8;
+/** An arriving card comes in three beats. Its cable grows out of the hub first (project-flow.css); when the cable
+ *  is most of the way there, the card's bare surface opens out of its tip; then what it holds fades in, the rows
+ *  one after another, and the small marks (counts, clocks) last. */
+const SHELL_LEAD = DUR.fast;
+/** The contents wait until the surface is nearly full size: text fades in, it is never seen stretching. */
+const CONTENT_LAG = STAGGER_MS * 3;
+const MARKS = ".pf-count, .pf-agent-time, .pf-agent-check, .pf-add";
+/** Several cards arriving in one column together come out a little apart and spring into line. */
+const BATCH_OFFSET = 12, BATCH_STEP = 5;
+const ENTRANCE_IDS = new Set(["pf-glide", "pf-row", "pf-shell", "pf-settle", "pf-part", "pf-mark"]);
+
+/** The three beats of an arriving card (its surface, then its parts, then its marks). Returns how long they run. */
+function enter(surface: HTMLElement, lead: number, batch: { index: number; side: number } | null) {
+  surface.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR.base, delay: lead, easing: EASE.out, fill: "backwards" }).id = "pf-shell";
+  // Out of the tip: wider first (it is still bare), then to full height as its rows unroll.
+  surface.animate([{ scale: "0.7 0.94" }, { scale: "1" }], { duration: DUR.base, delay: lead, easing: HUB_EASE, fill: "backwards" }).id = "pf-shell";
+  const content = lead + CONTENT_LAG;
+  for (const part of surface.children) {
+    if (part instanceof HTMLElement) part.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR.base, delay: content, easing: EASE.out, fill: "backwards" }).id = "pf-part";
+  }
+  const rows = [...surface.querySelectorAll<HTMLElement>(ROWS)].slice(0, MAX_ROWS);
+  rows.forEach((row, index) => {
+    row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR.base, delay: content + (index + 1) * STAGGER_MS, easing: EASE.out, fill: "backwards" }).id = "pf-row";
+  });
+  const marks = content + (rows.length + 1) * STAGGER_MS;
+  for (const mark of surface.querySelectorAll<HTMLElement>(MARKS)) {
+    mark.animate([{ opacity: 0, scale: "0.6" }, { opacity: 1, scale: "1" }], { duration: DUR.fast, delay: marks, easing: EASE.out, fill: "backwards" }).id = "pf-mark";
+  }
+  let end = Math.max(lead + DUR.base, marks + DUR.fast);
+  if (batch && batch.side) {
+    // Out from the hub by a little more for each card down the column, then in on a spring that overshoots once.
+    const dx = batch.side * (BATCH_OFFSET + batch.index * BATCH_STEP);
+    surface.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration: DUR.slow, delay: lead, easing: SPRING.lively, fill: "backwards" }).id = "pf-settle";
+    end = Math.max(end, lead + DUR.slow);
+  }
+  return end;
+}
 
 type Place = { x: number; y: number; width: number; height: number };
 type Edges = { top: number; bottom: number };
@@ -118,7 +155,7 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     if (!prefersReducedMotionNow()) return;
     cancelAnimationFrame(frame.current);
     for (const animation of stage.current?.getAnimations({ subtree: true }) ?? []) {
-      if (animation.id === "pf-glide" || animation.id === "pf-row") animation.cancel();
+      if (ENTRANCE_IDS.has(animation.id)) animation.cancel();
     }
     clear();
     onFrame();
@@ -271,18 +308,35 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
       }
       const surface = node.querySelector<HTMLElement>(":scope > .pf-card") ?? node;
       const round = parseFloat(getComputedStyle(surface).borderTopLeftRadius) || 0;
-      if (kind === "arrive" && !previous.has(node)) {
-        const rows = [...surface.querySelectorAll<HTMLElement>(ROWS)].slice(0, MAX_ROWS);
-        rows.forEach((row, index) => {
-          row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR.base, delay: (index + 1) * STAGGER_MS, easing: EASE.out, fill: "backwards" }).id = "pf-row";
-        });
-      }
       const hung = surface === node ? [...node.children].filter((part): part is HTMLElement => part instanceof HTMLElement) : [surface];
       const leavingPrev = prev && kindOf.get(prev) === "leave", leavingNext = after && kindOf.get(after) === "leave";
       next.push({ node, kind, prev, next: after, gapPrev: leavingPrev ? gap : gapPrev, gapNext: leavingNext ? gap : gapNext,
                   from: fromEdges, to: toEdges, round, hung, gap });
     }
     reveals.current = next;
+    // The entrances: a card that has a cable waits for it; cards arriving together in one column follow each other
+    // down it. A card with no surface of its own (the timeline) and one called back mid-exit only fade their rows.
+    const arrivals = new Map<Element | null, Reveal[]>();
+    for (const reveal of next) {
+      if (reveal.kind !== "arrive" || previous.has(reveal.node)) continue;
+      arrivals.set(columnOf(reveal.node), [...(arrivals.get(columnOf(reveal.node)) ?? []), reveal]);
+    }
+    for (const group of arrivals.values()) {
+      group.sort((a, b) => final.get(a.node)!.y - final.get(b.node)!.y);
+      group.forEach(({ node }, index) => {
+        const surface = node.querySelector<HTMLElement>(":scope > .pf-card");
+        if (!surface) {
+          [...node.querySelectorAll<HTMLElement>(ROWS)].slice(0, MAX_ROWS).forEach((row, at) => {
+            row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR.base, delay: (at + 1) * STAGGER_MS, easing: EASE.out, fill: "backwards" }).id = "pf-row";
+          });
+          return;
+        }
+        const side = surface.dataset.side === "right" ? 1 : surface.dataset.side === "left" ? -1 : 0;
+        const together = group.length > 1;
+        const end = enter(surface, SHELL_LEAD + (together ? index * STAGGER_MS : 0), together ? { index, side } : null);
+        lastDelay = Math.max(lastDelay, end - HUB_CLOCK);
+      });
+    }
     // `fresh`: the first frame of a new layout, from which the cables ease their plugs to it.
     if (!moved && !next.length && !held.current.size) { onFrame(true); return; }
 

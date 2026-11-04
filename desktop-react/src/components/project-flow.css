@@ -4,7 +4,8 @@
    stretched into a band), and the wells inside them. No borders: layers are told apart
    by tone. Time and curves only from motion-tokens.css. Rules:
    - Motion means an event. One-shots are bound to an element's birth (React keys) with
-     fill `backwards`; the only loop is the dot of an agent at work (breathe period).
+     fill `backwards`; the only loops are the dot of an agent at work (breathe period)
+     and the beads running along its cable (spin period).
    - Text only fades. Cables, pulses, marks and the toggle's thumb move.
    - No :has(), no nesting. */
 
@@ -86,6 +87,22 @@ html[data-loom-theme="light"] .pf-stage {
   stroke-dashoffset: -100;
   animation: pf-pulse var(--loom-dur-slow) var(--loom-ease-glide);
 }
+/* An agent at work: beads stream out of the hub along its cable to it, a few px apart in pairs, so the cable
+   reads as carrying something. The hub's second loop after the live dot, on the spin period; gone under
+   reduced motion. Paths run card -> hub, so a growing offset carries the
+   beads toward the card. */
+.pf-flow {
+  fill: none;
+  stroke: var(--pf-live);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 0 7 0 17;
+  opacity: .7;
+  /* Stepped: 16 moves of 1.5px a period (~18 a second). Smooth at 165 Hz it cost ~150 ms of main thread a second
+     (style + paint every frame); stepped it measures the same as no beads. */
+  animation: pf-flow var(--loom-period-spin) steps(16) infinite, pf-fade var(--loom-dur-base) var(--loom-ease-out) var(--loom-dur-panel) backwards;
+}
+@keyframes pf-flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 24; } }
 /* A merge runs the other way, out of the hub into the repository, in the colour of landed work. */
 .pf-pulse[data-back] { stroke: var(--pf-ok); stroke-dasharray: 14 100; animation-name: pf-pulse-back; }
 .pf-repo { position: relative; overflow: hidden; }
@@ -147,26 +164,48 @@ html[data-loom-theme="light"] .pf-stage {
   overscroll-behavior: contain;
 }
 
-/* Leaving: the card is folded into its neighbours' closing gap and fades, and its cable unplugs from the hub, on the shorter exit step. */
+/* A card opens out of its cable's tip and closes back into it: it scales about the point its cable plugs into
+   (projectArrange.ts plugs a side cable 34px down, or halfway down a shorter card). */
+.pf-card[data-side="right"] { transform-origin: left min(34px, 50%); }
+.pf-card[data-side="left"] { transform-origin: right min(34px, 50%); }
+.pf-card[data-side="below"] { transform-origin: 50% 0; }
+
+/* Leaving is the entrance played backwards, on the exit steps (useDeparting keeps it for RETAIN.panel):
+   what the card holds fades first; then the bare surface closes into the cable's tip while its neighbours fold
+   the gap; then the cable retracts into the hub and its socket goes. */
 .pf-loom[data-leaving] {
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit);
 }
 .pf-slot[data-leaving] { pointer-events: none; }
+.pf-slot[data-leaving] > .pf-card > * {
+  opacity: 0;
+  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
+}
 .pf-slot[data-leaving] > .pf-card {
   opacity: 0;
-  transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit);
+  /* Narrowing toward the plug while the neighbours fold it flat: it ends as a point at the cable's tip. */
+  /* It starts narrowing with the contents' fade, so it is already drawing in when the fold flattens it. */
+  scale: .45 .9;
+  transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit) var(--pf-shell-out-delay),
+              scale var(--loom-dur-flow-out) var(--loom-ease-inout);
 }
 
+/* The surface starts closing as the contents are mostly gone; the cable lets go once the surface is mostly closed.
+   Content 0-120 ms, surface 90-290, cable 150-410: inside RETAIN.panel (420). */
+.pf-stage {
+  --pf-shell-out-delay: var(--loom-dur-press);
+  --pf-cable-out-delay: var(--loom-dur-fast);
+}
 .pf-cable[data-leaving] .pf-cable-body {
   stroke-dashoffset: -100;
-  transition: stroke-dashoffset var(--loom-dur-base-out) var(--loom-ease-exit);
+  transition: stroke-dashoffset var(--loom-dur-flow-out) var(--loom-ease-exit) var(--pf-cable-out-delay);
 }
 
 .pf-cable[data-leaving] .pf-socket {
   opacity: 0;
-  transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit);
+  transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit) var(--pf-cable-out-delay);
 }
 /* The stagger, as a share of the column: it narrows with the column and never pushes a card past it. */
 .pf-offset-2 { margin-left: 16%; }
@@ -1415,7 +1454,8 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards;
 }
 
-/* Progress dashes; a glint runs across them once per finished step. */
+/* Progress dashes: a quiet track, lit a dash at a time as steps are taken (whole dashes only: the lit part is
+   rounded down to the 14px pitch), all of it once the agent is done. A glint runs across once per finished step. */
 .pf-dashes {
   position: relative;
   grid-column: 1 / -1;
@@ -1423,10 +1463,16 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   margin-top: 6px;
   overflow: hidden;
   border-radius: 2px;
-  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--pf-live) 55%, transparent) 0 9px, transparent 9px 14px);
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--pl-muted) 26%, transparent) 0 9px, transparent 9px 14px);
 }
-
-.pf-agent-well[data-done] .pf-dashes { background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--pl-muted) 40%, transparent) 0 9px, transparent 9px 14px); }
+.pf-dashes-lit {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: round(down, calc(var(--pf-fill, 0) * 100%), 14px);
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--pf-live) 70%, transparent) 0 9px, transparent 9px 14px);
+  transition: width var(--loom-dur-slow) var(--loom-spring-settle);
+}
+.pf-agent-well[data-done] .pf-dashes-lit { width: 100%; }
 
 .pf-dashes-glint {
   position: absolute;
@@ -1505,14 +1551,14 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
    landed: the hub's contents fade in, the cables grow out of it, the cards follow a press later.
    unplug / sink: the cards and the hub's contents fade, the cables retract into the hub, then
    the hub hands its box to the shell. */
-.project-mode-stage:is([data-morph="lift"], [data-morph="rise"]) :is(.pf-composer, .pf-slot, .pf-thread, .pf-cables, .pf-cable-body, .pf-loom) {
+.project-mode-stage:is([data-morph="lift"], [data-morph="rise"]) :is(.pf-composer, .pf-slot, .pf-thread, .pf-cables, .pf-cable-body, .pf-flow, .pf-loom) {
   visibility: hidden;
   animation: none;
 }
 .project-mode-stage[data-morph="landed"] :is(.pf-composer > *, .pf-thread) { animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 .project-mode-stage[data-morph="landed"] .pf-slot { transition-delay: var(--loom-dur-press); }
 .project-mode-stage[data-morph="landed"] .pf-loom { animation-delay: var(--loom-dur-press); }
-.project-mode-stage:is([data-morph="unplug"], [data-morph="sink"], [data-morph="arrive"]) :is(.pf-slot, .pf-thread, .pf-loom, .pf-socket, .pf-composer > *) {
+.project-mode-stage:is([data-morph="unplug"], [data-morph="sink"], [data-morph="arrive"]) :is(.pf-slot, .pf-thread, .pf-loom, .pf-socket, .pf-flow, .pf-composer > *) {
   opacity: 0;
   transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
 }
@@ -1545,6 +1591,7 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   .pf-latest button,
   .pf-pulse,
   .pf-dashes-glint { animation: none; }
+  .pf-flow { display: none; }
 }
 
 /* Too narrow for three columns (the columns' least widths and gaps): one column, the hub first,

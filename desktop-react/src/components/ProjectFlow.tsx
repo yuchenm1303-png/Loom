@@ -277,9 +277,10 @@ function useDeparting<T extends { id: string }>(items: T[]): (T & { leaving?: bo
   useLayoutEffect(() => { latest.current = items; });
   useEffect(() => {
     if (!gone.length) return;
-    // Keep the in-place exit until base-out plus its margin has finished.
+    // Keep the in-place exit until it has finished.
     const ids = gone.map(({ item }) => item.id);
-    const timer = window.setTimeout(() => setGone((list) => list.filter(({ item }) => !ids.includes(item.id))), reduce ? 0 : RETAIN.base);
+    // The hub's exit runs in three beats (contents, surface, cable: project-flow.css) on the hub's clock.
+    const timer = window.setTimeout(() => setGone((list) => list.filter(({ item }) => !ids.includes(item.id))), reduce ? 0 : RETAIN.panel);
     return () => window.clearTimeout(timer);
   }, [gone, reduce]);
   const out: (T & { leaving?: boolean })[] = [...items];
@@ -882,6 +883,13 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                   width={cable.side === "below" ? 20 : 10} height={cable.side === "below" ? 10 : 20} />
           </g>
         ))}
+        {cables.filter((cable) => cable.id.startsWith("agent:") && !leaving.has(cable.id)).map((cable) => {
+          // While an agent works, the work runs out along its cable to it as a stream of beads; it stops when the
+          // agent is done or waits for the person.
+          const agent = data.agents.find((item) => `agent:${item.id}` === cable.id);
+          return agent && !agent.done && !agent.waiting && data.state === "running"
+            ? <path key={`flow:${cable.id}`} className="pf-flow" data-of={cable.id} d={cable.d} /> : null;
+        })}
         {cables.filter((cable) => cable.id.startsWith("agent:")).map((cable) => {
           const agent = data.agents.find((item) => `agent:${item.id}` === cable.id);
           return agent && !agent.done ? <Pulse key={cable.id} of={cable.id} d={cable.d} step={agent.step} /> : null;
@@ -1357,7 +1365,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                     </div>
                     <span className="pf-agent-activity" key={`${agent.step}:${agent.activity}`} title={agent.activity}>{agent.activity}</span>
                   </div>
-                  <div className="pf-dashes" aria-hidden="true"><span className="pf-dashes-glint" key={agent.step} /></div>
+                  {/* A dash lights per step taken: the steps ahead are unknown, so the lit part closes in on the end
+                      and reaches it when the agent is done. */}
+                  <div className="pf-dashes" aria-hidden="true" style={{ "--pf-fill": agent.done ? 1 : 1 - 0.82 ** Math.max(0, agent.step) } as React.CSSProperties}>
+                    <span className="pf-dashes-lit" />
+                    <span className="pf-dashes-glint" key={agent.step} />
+                  </div>
                 </div>
               </Card>
             </div>
