@@ -18,7 +18,7 @@
  * The data comes from projectOverview.ts (projectRun/overview); this file only draws it. */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowDown, ArrowUp, Bot, BookMarked, ChartGantt, Check, ChevronDown, Circle, CircleDot, Compass, Copy, File, FileCode, FileImage,
+  ArrowDown, ArrowUp, Bot, BookMarked, ChartGantt, Check, Circle, CircleDot, Compass, Copy, File, FileCode, FileImage,
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldAlert, ShieldCheck,
   History, Search, Sparkles, Square, X,
 } from "lucide-react";
@@ -176,10 +176,10 @@ const zhText = {
   attach: "添加附件，也可以粘贴或拖入文件", attachLimit: `每条消息最多 ${MAX_COMPOSER_ATTACHMENTS} 个附件`,
   proposal: "建造提案", startProposal: "开始建造", dismissProposal: "不用了", replying: "正在思考…", stopReply: "停止回复", copy: "复制", copied: "已复制", latest: "最新",
   proposalHint: "从最后一次提交开始，在独立的检出里分阶段开发，每个任务独立复审后集成回当前分支",
-  review: "沙箱 · 复审", reviewHint: "开发和复审 agent 只能改写自己的独立检出，读不到你的其他文件夹；每个任务合入前都由另一个 agent 独立复审",
-  fullAccess: "完全访问 · 复审", fullAccessHint: "开发和复审 agent 不受沙箱限制，可以联网、安装依赖、读写你电脑上的任何文件；每个任务合入前仍由另一个 agent 独立复审", accessToggle: "点击切换沙箱 / 完全访问", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
+  review: "沙箱", reviewHint: "开发和复审 agent 只能改写自己的独立检出，读不到你的其他文件夹；每个任务合入前都由另一个 agent 独立复审",
+  fullAccess: "完全访问", fullAccessHint: "开发和复审 agent 不受沙箱限制，可以联网、安装依赖、读写你电脑上的任何文件；每个任务合入前仍由另一个 agent 独立复审", accessToggle: "点击切换沙箱 / 完全访问", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "建造",
-  attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算，点击切换", expand: "展开", collapse: "收起",
+  attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算：点击或滚轮切换，↑↓ 也可以", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
 };
@@ -203,10 +203,10 @@ const enText: typeof zhText = {
   attach: "Attach files, or paste and drop them here", attachLimit: `At most ${MAX_COMPOSER_ATTACHMENTS} attachments per message`,
   proposal: "Proposed project", startProposal: "Start weaving", dismissProposal: "Not now", replying: "Thinking…", stopReply: "Stop the reply", copy: "Copy", copied: "Copied", latest: "Latest",
   proposalHint: "Builds from the last commit in its own checkout, milestone by milestone; every task is reviewed before it is merged into the current branch",
-  review: "Sandbox · review", reviewHint: "Builders and reviewers can change only their own isolated checkout and cannot read your other folders; every task is reviewed by a separate agent before it is integrated",
-  fullAccess: "Full access · review", fullAccessHint: "Builders and reviewers run outside the sandbox: they can use the network, install dependencies and read or change any file on this computer; every task is still reviewed by a separate agent before it is integrated", accessToggle: "Click to switch between sandbox and full access", settings: "Run settings", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
+  review: "Sandbox", reviewHint: "Builders and reviewers can change only their own isolated checkout and cannot read your other folders; every task is reviewed by a separate agent before it is integrated",
+  fullAccess: "Full access", fullAccessHint: "Builders and reviewers run outside the sandbox: they can use the network, install dependencies and read or change any file on this computer; every task is still reviewed by a separate agent before it is integrated", accessToggle: "Click to switch between sandbox and full access", settings: "Run settings", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
-  attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget; click to change", expand: "More", collapse: "Less",
+  attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget: click or scroll to change, or use ↑↓", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
 };
@@ -502,6 +502,14 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const [tokens, setTokens] = useState(START_BUDGETS[2]);
   const [fullAccess, setFullAccess] = useState(false);
   const settingsTouched = useRef({ workers: false, tokens: false });
+  const stepBudget = (by: number, wrap: boolean) => {
+    settingsTouched.current.tokens = true;
+    setTokens((value) => {
+      const next = START_BUDGETS.indexOf(value) + by;
+      if (wrap) return START_BUDGETS[(next + START_BUDGETS.length) % START_BUDGETS.length];
+      return START_BUDGETS[Math.max(0, Math.min(START_BUDGETS.length - 1, next))];
+    });
+  };
   // Suggestions fill untouched controls; a proposal must not overwrite the person's draft choices.
   const proposal = data.proposal;
   useEffect(() => {
@@ -910,7 +918,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         </div>
 
         <section className="pf-composer" ref={hub} data-glide="hub" aria-label={text.hub} data-hot={hot.startsWith("agent:") || undefined}
-                 data-dragging={dragging || undefined}
+                 data-dragging={dragging || undefined} data-typed={Boolean(draft.trim()) || undefined}
                  onDragOver={attaching ? (event) => {
                    if (!event.dataTransfer.types.includes("Files")) return;
                    event.preventDefault();
@@ -921,7 +929,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           <header className="pf-composer-head">
             {/* The header switch already says 建造; the hub names the stage and its state (the words give way first when narrow). */}
             <span className="pf-mode" title={draftMode ? text.notStarted : `${text.stage(data.milestone)} · ${stateWord[lang][data.state]}`}>
-              <span className="pf-mode-dot" data-state={data.state} />
+              <span className="pf-mode-dot" data-state={draftMode ? "draft" : data.state} />
               <span className="pf-mode-text">{draftMode ? text.notStarted : `${text.stage(data.milestone)} · ${stateWord[lang][data.state]}`}</span>
             </span>
             {/* One button per branch, lit in its card's colour while the card is plugged in. */}
@@ -935,6 +943,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               ))}
             </span>
             {!data.models && data.model ? <span className="pf-model">{data.model}</span> : null}
+            {/* While the person writes a draft, the head says what the keys do; it fades, it never takes room from the state. */}
+            {draftMode ? (
+              <span className="pf-keyhint" aria-hidden="true">
+                <kbd>↵</kbd>{text.keyHint[0]}<i /><kbd>⇧↵</kbd>{text.keyHint[1]}
+              </span>
+            ) : null}
             {!draftMode ? (
               <span className="pf-budget" title={`${data.budget.tokens.toLocaleString()} / ${data.budget.tokenLimit.toLocaleString()} token`}>
                 <span>{compact(data.budget.tokens)} / {compact(data.budget.tokenLimit)}</span>
@@ -952,6 +966,11 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                       onPaste={(event) => void pasteFiles(event)}
                       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}
                       placeholder={draftMode ? text.draftPlaceholder : text.steerPlaceholder} aria-label={text.send} />
+            {/* Files for this message attach from the field's own corner, apart from the head's reference-files card. */}
+            {attaching && actions.onPickFiles ? (
+              <button type="button" className="pf-tool pf-attach" aria-label={text.attach} title={text.attach}
+                      onClick={() => void pickAttachments()}><Paperclip size={14} /></button>
+            ) : null}
           </div>
           {actions.error ? <p className="pf-error" role="alert">{actions.error}</p> : null}
           {attachError ? <p className="pf-error" role="alert">{attachError}</p> : null}
@@ -963,19 +982,30 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 <button type="button" className="pf-chip pf-chip-button" data-full={fullAccess || undefined} aria-pressed={fullAccess}
                         title={`${fullAccess ? text.fullAccessHint : text.reviewHint}\n${text.accessToggle}`}
                         onClick={() => setFullAccess((value) => !value)}>
-                  {fullAccess ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />}
-                  <span className="pf-chip-label" key={String(fullAccess)}>{fullAccess ? text.fullAccess : text.review}</span>
+                  <span className="pf-chip-mark" key={String(fullAccess)}>{fullAccess ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />}</span>
+                  <span className="pf-chip-label" key={`l${fullAccess}`}>{fullAccess ? text.fullAccess : text.review}</span>
                 </button>
               ) : (
                 <span className="pf-chip" data-full={data.fullAccess || undefined} title={data.fullAccess ? text.fullAccessHint : text.reviewHint}>
-                  {data.fullAccess ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />}
+                  <span className="pf-chip-mark">{data.fullAccess ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />}</span>
                   <span className="pf-chip-label">{data.fullAccess ? text.fullAccess : text.review}</span>
                 </span>
               )}
               {settingUp ? (
-                <button type="button" className="pf-chip pf-chip-button" title={text.budgetHint}
-                        onClick={() => { settingsTouched.current.tokens = true; setTokens((value) => START_BUDGETS[(START_BUDGETS.indexOf(value) + 1) % START_BUDGETS.length]); }}>
-                  <span className="pf-chip-value" key={tokens}>{compact(tokens)}</span><span className="pf-chip-unit">token</span>
+                // The budget is a level, not a number to type: four steps, lit up to the chosen one.
+                // A click climbs (and wraps), the wheel and the arrow keys go either way.
+                <button type="button" className="pf-chip pf-chip-button pf-budget-chip" title={text.budgetHint}
+                        aria-label={`${compact(tokens)} token`} data-level={START_BUDGETS.indexOf(tokens)}
+                        onClick={() => stepBudget(1, true)}
+                        onWheel={(event) => { if (event.deltaY) stepBudget(event.deltaY < 0 ? 1 : -1, false); }}
+                        onKeyDown={(event) => {
+                          const by = event.key === "ArrowUp" || event.key === "ArrowRight" ? 1 : event.key === "ArrowDown" || event.key === "ArrowLeft" ? -1 : 0;
+                          if (by) { event.preventDefault(); stepBudget(by, false); }
+                        }}>
+                  <span className="pf-chip-value" key={tokens}>{compact(tokens)}</span>
+                  <span className="pf-level" aria-hidden="true">
+                    {START_BUDGETS.map((step, index) => <i key={step} data-on={index <= START_BUDGETS.indexOf(tokens) || undefined} />)}
+                  </span>
                 </button>
               ) : null}
               <span className="pf-stepper" role="group" aria-label={text.agents} title={text.agents} data-editable={settingUp || undefined}>
@@ -998,14 +1028,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                       {...hover("model")}>
                 <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="small" />
                 <span key={data.models.current.selection}>{data.models.current.name}</span>
-                <ChevronDown size={11} />
               </button>
             ) : null}
             {/* While the agent answers, an empty field's button stops it; anything typed is sent (it steers the answer). */}
-            {attaching && actions.onPickFiles ? (
-              <button type="button" className="pf-tool pf-attach" aria-label={text.attach} title={text.attach}
-                      onClick={() => void pickAttachments()}><Paperclip size={14} /></button>
-            ) : null}
             <button type="button" className="pf-send" data-stop={stopping || undefined}
                     disabled={!stopping && ((!draft.trim() && !attached.length) || imageNotice.blocked)}
                     aria-label={stopping ? text.stopReply : text.send} title={stopping ? text.stopReply : undefined}

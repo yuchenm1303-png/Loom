@@ -506,7 +506,17 @@ html[data-loom-theme="light"] .pf-stage {
   padding: 7px;
   border-radius: 16px;
   background: var(--pf-card);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, .14), 0 22px 44px -26px rgba(0, 0, 0, .7);
+  /* A hairline of light along the top edge and a soft contact shadow: the hub is the one raised
+     thing on the stage. Writing in it deepens the shadow a step; nothing else moves. */
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--loom-workspace-ink) 6%, transparent),
+              0 0 0 1px color-mix(in srgb, var(--loom-workspace-ink) 4%, transparent),
+              0 1px 1px rgba(0, 0, 0, .14), 0 22px 44px -26px rgba(0, 0, 0, .7);
+  transition: box-shadow var(--loom-dur-base) var(--loom-ease-out);
+}
+.pf-composer:focus-within {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--loom-workspace-ink) 8%, transparent),
+              0 0 0 1px color-mix(in srgb, var(--loom-workspace-ink) 7%, transparent),
+              0 1px 1px rgba(0, 0, 0, .16), 0 28px 56px -28px rgba(0, 0, 0, .78);
 }
 
 .pf-composer-head { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 6px 0 8px; white-space: nowrap; }
@@ -540,9 +550,17 @@ html[data-loom-theme="light"] .pf-stage {
   transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
 }
 .pf-branch-toggle:hover { background: var(--pf-raise); color: var(--pl-secondary); }
-.pf-branch-toggle[aria-pressed="true"] { color: var(--pf-hue, var(--pl-secondary)); }
+/* Plugged in: the mark takes its card's colour and sits on a faint wash of it, so the row of
+   marks reads as which cards are out at a glance. */
+.pf-branch-toggle[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--pf-hue, var(--pl-secondary)) 12%, transparent);
+  color: var(--pf-hue, var(--pl-secondary));
+}
+.pf-branch-toggle[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--pf-hue, var(--pl-secondary)) 20%, transparent); }
+.pf-branch-toggle svg { transition: translate var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-fast) var(--loom-ease-out); }
 /* Folded: the mark dims and a short rule under it says the card is put away. */
 .pf-branch-toggle[aria-pressed="false"] svg { opacity: .6; }
+.pf-branch-toggle[aria-pressed="false"]:hover svg { opacity: 1; }
 .pf-branch-toggle::after {
   content: "";
   position: absolute;
@@ -559,9 +577,53 @@ html[data-loom-theme="light"] .pf-stage {
 }
 .pf-branch-toggle[aria-pressed="true"]::after { opacity: .7; transform: none; }
 .pf-branch-toggle[aria-pressed="true"] svg { translate: 0 -1px; }
-.pf-mode-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pl-faint); }
+/* The state's dot: hollow before the run starts, filled once it runs; a running run sends a slow
+   ring out of it (the one ambient loop in the head), a run that needs you breathes in caution. */
+.pf-mode-dot { position: relative; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--pl-faint); }
+.pf-mode-dot[data-state="draft"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--pl-faint); }
 .pf-mode-dot[data-state="running"] { background: var(--pf-ok); }
-.pf-mode-dot[data-state="needs_you"] { background: var(--pf-warn); }
+.pf-mode-dot[data-state="running"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--pf-ok);
+  animation: pf-halo var(--loom-period-shimmer) var(--loom-ease-out) infinite;
+}
+.pf-mode-dot[data-state="needs_you"] { background: var(--pf-warn); animation: pf-breathe var(--loom-period-breathe) var(--loom-ease-inout) infinite; }
+
+/* What the keys do, while a draft is written: faint, in the head's free room, and only once
+   something is typed in a focused field. It fades; it takes no room from anything. */
+.pf-keyhint {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--pl-faint);
+  font-size: 11.5px;
+  opacity: 0;
+  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
+  pointer-events: none;
+}
+.pf-composer[data-typed]:focus-within .pf-keyhint { opacity: 1; transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
+.pf-keyhint kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--pf-well);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--loom-workspace-ink) 8%, transparent);
+  color: var(--pl-muted);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1;
+}
+.pf-keyhint i { width: 1px; height: 10px; margin: 0 4px; background: var(--loom-workspace-hover); }
 /* The model gives way first when the header is narrow; the state and budget stay whole. */
 .pf-model { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--pl-muted); font-size: 12px; text-overflow: ellipsis; }
 .pf-mode, .pf-budget, .pf-control { flex: none; }
@@ -588,7 +650,15 @@ html[data-loom-theme="light"] .pf-stage {
 
 .pf-budget-track[data-high] span { background: repeating-linear-gradient(90deg, var(--pf-warn) 0 2px, transparent 2px 4px); }
 
-.pf-input { padding: 10px 12px; }
+/* The field: a well that lifts a step and takes a hairline of the accent while it is written in. */
+.pf-input {
+  padding: 10px 12px;
+  transition: background-color var(--loom-dur-base) var(--loom-ease-out), box-shadow var(--loom-dur-base) var(--loom-ease-out);
+}
+.pf-input:focus-within {
+  background: color-mix(in srgb, var(--loom-workspace-ink) 6%, var(--loom-workspace-panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pl-accent) 28%, transparent);
+}
 
 .pf-input textarea {
   display: block;
@@ -606,7 +676,9 @@ html[data-loom-theme="light"] .pf-stage {
 
 .pf-input textarea::placeholder { color: var(--pl-faint); }
 
-.pf-composer-foot { display: flex; align-items: center; gap: 8px; padding: 1px 1px 0; }
+/* Settings on the left, then the model, the paperclip and send together on the right: the model
+   is what the person reads most, so the settings give way first (labels, then words) when narrow. */
+.pf-composer-foot { display: flex; align-items: center; gap: 6px; padding: 1px 1px 0; }
 
 .pf-tool {
   display: inline-flex;
@@ -669,8 +741,30 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-chip-button:hover { background: var(--pf-raise); }
 .pf-chip-value { color: var(--pl-ink); font-variant-numeric: tabular-nums; animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards; }
 .pf-chip-unit { color: var(--pl-muted); }
+.pf-chip-label { overflow: hidden; text-overflow: ellipsis; }
+.pf-chip-mark { display: grid; flex: none; place-items: center; }
+.pf-chip-button .pf-chip-mark { animation: pf-mark-in var(--loom-dur-base) var(--loom-spring-pop) backwards; }
+
+/* The budget's level: four rising bars, lit up to the chosen step. A step lights or dims its bar;
+   the bars are marks, so they may grow. */
+.pf-budget-chip { gap: 7px; }
+.pf-level { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; }
+.pf-level i {
+  width: 3px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--loom-workspace-ink) 14%, transparent);
+  transform-origin: bottom;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), transform var(--loom-dur-base) var(--loom-spring-pop);
+}
+.pf-level i:nth-child(1) { height: 5px; }
+.pf-level i:nth-child(2) { height: 7px; }
+.pf-level i:nth-child(3) { height: 9px; }
+.pf-level i:nth-child(4) { height: 11px; }
+.pf-level i[data-on] { background: var(--pl-accent); }
+.pf-budget-chip:hover .pf-level i:not([data-on]) { transform: scaleY(1.15); background: color-mix(in srgb, var(--loom-workspace-ink) 22%, transparent); }
 /* Full access is the one setting that widens what agents can reach: it reads as a caution, not an alarm. */
-.pf-chip[data-full] { color: var(--pf-warn); }
+.pf-chip[data-full] { background: color-mix(in srgb, var(--pf-warn) 12%, transparent); color: var(--pf-warn); transition: background-color var(--loom-dur-fast) var(--loom-ease-out); }
+.pf-chip-button[data-full]:hover { background: color-mix(in srgb, var(--pf-warn) 18%, transparent); }
 .pf-chip[data-full] svg { color: var(--pf-warn); }
 .pf-chip-button .pf-chip-label { animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards; }
 
@@ -718,14 +812,32 @@ html[data-loom-theme="light"] .pf-stage {
 }
 
 .pf-send:hover:not(:disabled) { opacity: .88; }
-/* The paperclip stands with the send button at the right end of the footer. */
-.pf-attach { flex: none; margin-left: auto; }
-.pf-attach + .pf-send { margin-left: 0; }
-.pf-attach:hover { color: var(--pl-ink); }
+/* Ready: the arrow lands as the button fills (the animation starts when the button turns enabled),
+   and leans up under the pointer. */
+.pf-send:enabled:not([data-stop]) > svg { animation: pf-mark-in var(--loom-dur-base) var(--loom-spring-pop) backwards; transition: translate var(--loom-dur-fast) var(--loom-ease-out); }
+.pf-send:enabled:not([data-stop]):hover > svg { translate: 0 -1.5px; }
+.pf-send[data-stop] > svg { animation: pf-mark-in var(--loom-dur-base) var(--loom-spring-pop) backwards; }
+/* The paperclip sits in the field's lower right corner; the text keeps clear of it. */
+.pf-input { position: relative; }
+.pf-input:has(> .pf-attach) textarea { padding-right: 30px; }
+.pf-attach {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  color: var(--pl-muted);
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-attach:hover { background: var(--pf-raise); color: var(--pl-ink); }
+.pf-attach:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 2px; }
 /* Files held over the hub: its edge lights in the accent, as the chat composer's does. */
 .pf-composer[data-dragging] { box-shadow: 0 0 0 1px var(--pl-accent), 0 22px 44px -26px rgba(0, 0, 0, .7); }
 .pf-input .composer-attachments { padding: 0 0 8px; }
 .pf-image-notice:not([data-blocked]) { color: var(--pl-muted); }
+/* With a model chip, the chip takes the free room and send stands right after it. */
+.pf-model-chip ~ .pf-send { margin-left: 0; }
 /* Nothing to send: a quiet well, not a faded ink square that still reads as a button. */
 .pf-send:disabled { background: var(--pf-well); color: var(--pl-faint); cursor: default; }
 /* While the agent answers and nothing is typed, the button stops the answer. */
@@ -757,6 +869,9 @@ html[data-loom-theme="light"] .pf-stage {
    (whole in the title) before anything leaves the head. */
 .pf-composer { container: pf-hub / inline-size; }
 @container pf-hub (max-width: 452px) { .pf-budget-track { display: none; } }
+/* Narrower still: the access chip keeps its shield (its word in the title), then the hint goes. */
+@container pf-hub (max-width: 420px) { .pf-settings .pf-chip-label { display: none; } .pf-settings .pf-chip:first-child { padding: 0 7px; } }
+@container pf-hub (max-width: 380px) { .pf-keyhint { display: none; } }
 .pf-composer-head > .pf-mode { flex: 0 1 auto; }
 
 .pf-error { margin: 0; padding: 0 8px; color: var(--semantic-danger-text); font-size: 12px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
@@ -893,7 +1008,7 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-model-chip {
   display: inline-flex;
   flex: 0 1 auto;
-  margin-right: auto;
+  margin-left: auto;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -910,10 +1025,25 @@ html[data-loom-theme="light"] .pf-stage {
   transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
 }
 .pf-model-chip > span:not(.cp-mark) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
-.pf-model-chip > svg { flex: none; color: var(--pl-faint); transition: rotate var(--loom-dur-fast) var(--loom-ease-out); }
+/* Open: a short rule of the accent under the chip says its card is out, as the head's marks do. */
+.pf-model-chip { position: relative; }
+.pf-model-chip::after {
+  content: "";
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 14px;
+  height: 1.5px;
+  margin-left: -7px;
+  border-radius: 1px;
+  background: var(--pl-accent);
+  opacity: 0;
+  transform: scaleX(.3);
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out), transform var(--loom-dur-base) var(--loom-ease-out);
+}
+.pf-model-chip[data-open]::after { opacity: .8; transform: none; }
 .pf-model-chip:hover,
 .pf-model-chip[data-open] { background: var(--pf-raise); color: var(--pl-ink); }
-.pf-model-chip[data-open] > svg { rotate: 180deg; }
 /* As wide as its column, never wider; a column of flex so that, when the stage is low, only the
    list of models gives height. */
 .pf-model-card {
@@ -1366,6 +1496,7 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 /* Both ends are insets: from an inset to `none` a clip does not interpolate, it jumps. */
 @keyframes pf-wash { from { transform: translateX(-100%); } }
 @keyframes pf-spin { to { rotate: 360deg; } }
+@keyframes pf-halo { from { opacity: .55; scale: 1; } 70%, to { opacity: 0; scale: 3.2; } }
 @keyframes pf-breathe { 0%, 100% { opacity: .45; scale: .8; } 50% { opacity: 1; scale: 1; } }
 
 /* The 对话 / 建造 switch (modeMorph.ts) carries the chat composer into the hub and back.
@@ -1403,6 +1534,10 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   .pf-loom,
   .pf-loom-span,
   .pf-attention-dot,
+  .pf-mode-dot,
+  .pf-mode-dot::after,
+  .pf-chip-mark,
+  .pf-send > svg,
   .pf-busy,
   .pf-reply-tools svg,
   .pf-work,
