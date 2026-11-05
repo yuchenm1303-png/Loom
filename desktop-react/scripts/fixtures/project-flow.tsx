@@ -168,10 +168,39 @@ function useScene(): number {
   }, [scene, hold]);
   return scene;
 }
+// &stopped=1: two turns the person stopped mid-work, as a real 建造 conversation had them: the agent narrated every step,
+// its steps failed (a sandbox that never started a process), and neither turn reached an answer.
+function stoppedTurns(): TranscriptItem[] {
+  const items: TranscriptItem[] = [];
+  const add = (turn: string, id: string, extra: Partial<TranscriptItem>, s = 0) =>
+    items.push({ id, threadId: T, turnId: turn, createdAt: at(20 + s), updatedAt: at(22 + s), ...extra } as TranscriptItem);
+  const timedOut = (turn: string, id: string, argv: string[], s: number) =>
+    add(turn, id, { type: "process", status: "failed", argv, stdout: "", stderr: "process timed out", exitCode: 1 }, s);
+  add("s1", "s1-u", { type: "user_message", text: "你可以帮我清理c盘吗" });
+  add("s1", "s1-c1", { type: "assistant_message", phase: "commentary", text: "我先只读地查看一下 C 盘空间和常见可清理目录的大小，再给你清理方案（删东西前会先跟你确认）。" });
+  add("s1", "s1-f", { type: "file_edit", status: "completed", path: "scan.ps1", diff: "+Get-PSDrive C" }, 1);
+  timedOut("s1", "s1-p", ["powershell.exe", "-NoProfile", "-File", "scan.ps1"], 2);
+  add("s1", "s1-e", { type: "error", text: "turn_cancelled", error: "turn_cancelled" }, 30);
+  add("s2", "s2-u", { type: "user_message", text: "请继续吧" }, 31);
+  add("s2", "s2-c1", { type: "assistant_message", phase: "commentary", text: "上次的全盘递归统计太慢被中断了，我改用轻量方式：先看磁盘剩余空间，再单独统计几个常见缓存目录。" }, 31);
+  timedOut("s2", "s2-p1", ["powershell.exe", "-NoProfile", "-Command", "Get-PSDrive C"], 32);
+  add("s2", "s2-c2", { type: "assistant_message", phase: "commentary", text: "PowerShell 在沙箱里启动就超时了，我换成 cmd 自带命令试试。" }, 40);
+  timedOut("s2", "s2-p2", ["cmd", "/c", "fsutil volume diskfree C:"], 41);
+  add("s2", "s2-c3", { type: "assistant_message", phase: "commentary", text: "连 `cmd /c echo ok` 都在 20 秒内无输出，确认是 exec 通道在这个沙箱下无法启动进程，和命令本身无关。我试一下 PTY 通道，同时看看桌面操作工具是否可用。" }, 50);
+  timedOut("s2", "s2-p3", ["cmd", "/c", "echo ok"], 51);
+  timedOut("s2", "s2-p4", ["cmd.exe"], 60);
+  add("s2", "s2-k1", { type: "tool_call", toolName: "computer_status", status: "completed", arguments: {} }, 70);
+  add("s2", "s2-k2", { type: "tool_call", toolName: "computer_screenshot", status: "completed", arguments: {} }, 71);
+  add("s2", "s2-c4", { type: "assistant_message", phase: "commentary", text: "确认了：沙箱里的进程创建被完全卡住（连 `echo` 都不返回），所以我没法用命令行读磁盘数据或清理。剩下的路只有桌面操作。我先试着切到「此电脑」窗口（只读操作），看桌面通道是否可用。" }, 80);
+  add("s2", "s2-k3", { type: "tool_call", toolName: "computer_action", status: "failed", arguments: { action: "key", text: "win+e" } }, 81);
+  add("s2", "s2-e", { type: "error", text: "turn_cancelled", error: "turn_cancelled" }, 90);
+  return items;
+}
 function turnTalk(data: FlowData, scene: number): FlowData {
   if (!params.has("turn")) return data;
   const live = params.has("live") || params.has("hold") ? liveTurn(scene) : { items: [], chatting: false };
-  const { messages, activity } = toConversation([...HISTORY, ...live.items], live.chatting);
+  const history = params.has("stopped") ? [HISTORY[0], HISTORY[1], ...stoppedTurns()] : HISTORY;
+  const { messages, activity } = toConversation([...history, ...live.items], live.chatting);
   return { ...data, conversation: messages, chatting: live.chatting, activity };
 }
 

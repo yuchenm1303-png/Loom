@@ -89,6 +89,9 @@ html[data-loom-theme="light"] {
 .wv-sub-inner,
 .wv-detail-inner {
   min-height: 0;
+  /* A grid item's least width is its content's: a summary line would widen its fold past a narrow column (the build
+     hub) instead of ending its text in an ellipsis. */
+  min-width: 0;
   overflow: clip;
 }
 

@@ -235,7 +235,7 @@ test("a proposal after the last project ended turns the hub to that new start", 
   assert.equal(toFlowData({ ...overview(), proposal }, now, "zh").phase, "live");
 });
 
-test("the conversation reads what was said and answered; commentary is the live activity line", () => {
+test("the conversation reads what was said and answered; commentary is read in the stage", () => {
   const items = [
     { id: "u1", threadId: "t", turnId: "a", type: "user_message", text: "你好" },
     { id: "a1", threadId: "t", turnId: "a", type: "assistant_message", text: "你好！想做什么？", phase: "final_answer" },
@@ -245,11 +245,32 @@ test("the conversation reads what was said and answered; commentary is the live 
   ];
   const live = toConversation(items, true);
   assert.deepEqual(live.messages.map((m) => [m.role, m.text, Boolean(m.streaming)]),
-    [["user", "你好", false], ["assistant", "你好！想做什么？", false], ["user", "做个 CLI", false]]);
-  assert.equal(live.activity, "先看看仓库");
+    [["user", "你好", false], ["assistant", "你好！想做什么？", false], ["user", "做个 CLI", false], ["work", "", false]]);
+  assert.deepEqual(live.messages[3].items.map((item) => item.id), ["c2"]);
+  assert.equal(live.activity, "");
   const answered = toConversation([...items, { id: "a2", threadId: "t", turnId: "b", type: "assistant_message", text: "提案已放在上面" }], true);
   assert.equal(answered.messages.at(-1).streaming, true);
-  assert.equal(toConversation(items, false).activity, "");
+  // Answered and over: a stage with nothing but the agent's words has nothing to fold.
+  assert.deepEqual(toConversation([...items, { id: "a2", threadId: "t", turnId: "b", type: "assistant_message", text: "提案已放在上面" }], false)
+    .messages.map((m) => m.role), ["user", "assistant", "user", "assistant"]);
+});
+
+test("a turn that ended without an answer keeps the agent's last words in sight under its folded stage", () => {
+  const items = [
+    { id: "u1", threadId: "t", turnId: "a", type: "user_message", text: "清理 C 盘" },
+    { id: "c1", threadId: "t", turnId: "a", type: "assistant_message", phase: "commentary", text: "先看看空间" },
+    { id: "p1", threadId: "t", turnId: "a", type: "process", status: "failed", argv: ["cmd"] },
+    { id: "c2", threadId: "t", turnId: "a", type: "assistant_message", phase: "commentary", text: "进程起不来，换桌面操作" },
+    { id: "k1", threadId: "t", turnId: "a", type: "tool_call", toolName: "computer_action", status: "failed" },
+    { id: "e1", threadId: "t", turnId: "a", type: "error", text: "turn_cancelled" },
+  ];
+  const { messages } = toConversation(items, false);
+  assert.deepEqual(messages.map((m) => [m.role, m.items?.map((item) => item.id) ?? m.text, Boolean(m.aside), Boolean(m.superseded)]),
+    [["user", "清理 C 盘", false, false], ["work", ["c1", "p1", "k1"], false, true], ["assistant", "进程起不来，换桌面操作", true, false], ["notice", ["e1"], false, false]]);
+  // While it runs, every word stays in the open stage, in order.
+  const live = toConversation(items.slice(0, 5), true);
+  assert.deepEqual(live.messages[1].items.map((item) => item.id), ["c1", "p1", "c2", "k1"]);
+  assert.equal(live.messages.some((m) => m.aside), false);
 });
 
 test("the conversation keeps the work between messages: one stage per run of steps, folded once anything follows", () => {
@@ -261,7 +282,7 @@ test("the conversation keeps the work between messages: one stage per run of ste
   ];
   const live = toConversation(items, true);
   assert.deepEqual(live.messages.map((m) => [m.role, m.items?.map((item) => item.id) ?? null]),
-    [["user", null], ["work", ["s1", "p1"]]]);
+    [["user", null], ["work", ["s1", "c1", "p1"]]]);
   assert.equal(live.messages[1].live, true);
   assert.equal(live.messages[1].superseded, false);
   const asked = toConversation([...items, { id: "ap", threadId: "t", turnId: "a", type: "approval", status: "pending" }], true);

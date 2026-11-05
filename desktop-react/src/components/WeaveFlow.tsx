@@ -528,6 +528,8 @@ export interface WeaveStageProps {
   live?: boolean;
   workspace?: string;
   handoff?: ProcessHandoff;
+  /** A stage that is over folds even with one step when it also holds what the model said (the build hub). */
+  foldNotes?: boolean;
   /** What the model said between tool steps, when the reader asked for it. */
   renderNote(item: TranscriptItem, latest: boolean): ReactNode;
 }
@@ -548,6 +550,7 @@ function sameStageProps(previous: WeaveStageProps, next: WeaveStageProps): boole
     && previous.workspace === next.workspace
     && previous.handoff === next.handoff
     && previous.renderNote === next.renderNote
+    && previous.foldNotes === next.foldNotes
     && sameItemReferences(previous.items, next.items);
 }
 
@@ -558,6 +561,7 @@ export const WeaveStage = memo(function WeaveStage({
   live = false,
   workspace,
   handoff,
+  foldNotes = false,
   renderNote,
 }: WeaveStageProps) {
   const copy = useRuntimeCopy();
@@ -587,7 +591,7 @@ export const WeaveStage = memo(function WeaveStage({
 
   // A stage that is over (a later one exists in the live layout) is one line, and so is a stage the reader has
   // closed. The latest stage and any still running stay open, and a click overrides until it runs again.
-  const collapsible = superseded && toolRows.length >= 2;
+  const collapsible = superseded && (toolRows.length >= 2 || (foldNotes && toolRows.length >= 1 && shownRows.length > toolRows.length));
   const [chosen, setChosen] = useState<boolean | null>(null);
   const open = collapsible ? (chosen ?? keepOpen) : true;
   const wasKeepingOpen = useRef(false);

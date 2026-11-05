@@ -27,6 +27,7 @@ import { MarkdownMessage } from "./MarkdownMessage";
 import { ApprovalCard, ErrorRow } from "./Transcript";
 import { ThinkingGlyph } from "./ThinkingGlyph";
 import { WeaveStage } from "./WeaveFlow";
+import { ProcessNotesContext } from "./transcriptContexts";
 import { isExecutingActivityStatus, itemStatus } from "./activityModel";
 import { ProviderMark } from "./ModelPanel";
 import type { FlowMessage, WeaveProposal } from "./projectOverview";
@@ -540,8 +541,13 @@ function Inline({ text }: { text: string }) {
   return <>{parts.map((part, index) => index % 2 ? <code key={index} className="pf-code">{part}</code> : part)}</>;
 }
 
-// The work log's narration stays out of the thread: the thinking row reads the latest line of it.
-const noNote = () => null;
+// The hub has no reply column beside its work log: what the agent says between steps is read inside the stage, always.
+const SHOW_NOTES = { show: true };
+
+/** What the agent said between two steps, as a line of the stage (weave.css .wv-note). */
+function StageNote({ item, workspace }: { item: TranscriptItem; workspace?: string }) {
+  return <MarkdownMessage content={String(item.text || "").trim()} compact glow={false} messageKey={item.id} workspace={workspace} />;
+}
 
 /** An answer's copy button: it shows on hover (or focus) under the answer, and says so once it has copied. */
 function CopyReply({ value, label, done }: { value: string; label: string; done: string }) {
@@ -796,6 +802,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     box?.scrollTo({ top: box.scrollHeight, behavior: prefersReducedMotionNow() ? "auto" : "smooth" });
   };
   const conversation = data.conversation || [];
+  const notesWorkspace = data.repository.path;
+  const renderNote = useCallback((item: TranscriptItem) => <StageNote item={item} workspace={notesWorkspace} />, [notesWorkspace]);
   const tail = conversation[conversation.length - 1];
   // The quiet moments of a turn (before its first word, between steps) are said by the thinking row; a step that
   // runs, an answer being written or a question for the person says so already.
@@ -987,14 +995,21 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           ) : message.role === "work" ? (
             // The steps between two messages, drawn by the chat's own work log: live rows while they run, one line after.
             <div key={message.id} className="pf-work">
-              <WeaveStage items={message.items!} keepOpen={Boolean(message.live && !message.superseded)} superseded={message.superseded}
-                          live={message.live} workspace={data.repository.path} renderNote={noNote} />
+              <ProcessNotesContext.Provider value={SHOW_NOTES}>
+                <WeaveStage items={message.items!} keepOpen={Boolean(message.live && !message.superseded)} superseded={message.superseded}
+                            live={message.live} workspace={data.repository.path} foldNotes renderNote={renderNote} />
+              </ProcessNotesContext.Provider>
             </div>
           ) : message.role === "notice" ? (
             <div key={message.id} className="pf-notice" data-leaving={message.items![0].leaving || undefined} inert={Boolean(message.items![0].leaving)}>
               {message.items![0].type === "approval"
                 ? (actions.onApproval ? <ApprovalCard item={message.items![0]} onApproval={actions.onApproval} /> : null)
                 : <ErrorRow item={message.items![0]} />}
+            </div>
+          ) : message.aside ? (
+            // A turn that ended without an answer: the agent's last words, quieter than an answer, under the steps they led.
+            <div key={message.id} className="pf-reply pf-aside">
+              <MarkdownMessage content={message.text} compact glow={false} messageKey={message.id} workspace={data.repository.path} />
             </div>
           ) : (
             <div key={message.id} className="pf-reply" data-streaming={message.streaming || undefined}>
@@ -1004,7 +1019,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             </div>
           ))}
           {thinking ? (
-            // The chat's thinking row: the bead and a lit label, which reads the agent's latest commentary when it has one.
+            // The chat's thinking row: the bead and a lit label (the agent's commentary is read in the stage above it).
             <div className="inline-thinking pf-thinking" role="status" aria-live="polite">
               <ThinkingGlyph />
               <span className="thinking-shimmer" key={data.activity || ""} title={data.activity || undefined}>{data.activity || text.replying}</span>
