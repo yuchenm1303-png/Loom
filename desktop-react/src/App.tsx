@@ -1750,7 +1750,10 @@ export default function App() {
                              // In the same project (or folder), straight into the hub.
                              await loom.newThread(thread.projectId ? undefined : thread.workspace, thread.projectId || undefined);
                              rememberMode((await loom.createEmptyThread()).id, "project");
-                           }} />
+                           }}
+                           onRenameThread={loom.renameThread}
+                           onArchiveThread={id => loom.archiveThread(id, true)}
+                           onDeleteThread={loom.deleteThread} />
             </Suspense>
           </div>
         ) : null}

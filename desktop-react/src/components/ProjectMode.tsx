@@ -22,7 +22,7 @@ const START_EPISODES = 400;
  *  (the composer's morph lands on it) and the first read then refreshes it. */
 const lastOverview = new Map<string, ProjectOverview>();
 
-export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, permissionMode, onPermissionModeChange, items = [], chatting = false, onChat, onInterrupt, imagesAllowed, imageSupport, onApproval, onChangeWorkspace, projects = [], onSelectProject, history, onOpenThread, onNewThread }: {
+export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, permissionMode, onPermissionModeChange, items = [], chatting = false, onChat, onInterrupt, imagesAllowed, imageSupport, onApproval, onChangeWorkspace, projects = [], onSelectProject, history, onOpenThread, onNewThread, onRenameThread, onArchiveThread, onDeleteThread }: {
   threadId: string; workspace?: string; model?: string;
   onChangeWorkspace?(path: string): Promise<unknown>;
   projects?: ProjectRecord[]; onSelectProject?(id: string): Promise<unknown>;
@@ -40,6 +40,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   /** The 建造 conversations for the history card; opening one, or beginning a new one. */
   history?: { id: string; title: string; updatedAt: string; live?: boolean; projectId?: string; workspace?: string }[];
   onOpenThread?(id: string): Promise<unknown> | void; onNewThread?(): Promise<unknown> | void;
+  onRenameThread?(id: string, title: string): Promise<unknown>; onArchiveThread?(id: string): Promise<unknown>; onDeleteThread?(id: string): Promise<unknown>;
 }) {
   const { language } = useI18n();
   const lang = language === "zh-CN" ? "zh" : "en";
@@ -216,6 +217,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       onPermissionModeChange,
       onOpenThread: onOpenThread ? (id) => onOpenThread(id) : undefined,
       onNewThread: onNewThread ? () => act(async () => { await onNewThread(); }) : undefined,
+      // The card shows these failures on its own rows; the hub's busy state stays the run's.
+      onRenameThread, onArchiveThread, onDeleteThread,
       onApproval: onApproval ? (item, decision, feedback) => { void onApproval(item, decision, feedback); } : undefined,
       onPause: () => run && control("pause"),
       onResume: () => run && control("resume"),

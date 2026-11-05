@@ -1,36 +1,122 @@
-.bh-root { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-.bh-controls { display: grid; gap: 8px; flex: none; }
-.bh-scopes { display: flex; align-items: center; gap: 4px; }
-.bh-scopes button, .bh-more, .bh-dialog header button { border: 0; background: transparent; color: var(--pl-secondary); font: inherit; cursor: pointer; border-radius: 8px; padding: 5px 7px; }
-.bh-scopes button { font-size: 12px; }
-.bh-scopes button[aria-pressed=true] { background: var(--pf-raise); color: var(--pl-ink); }
-.bh-scopes > span { margin-left: auto; color: var(--pl-faint); font-size: 11px; }
-.bh-search { display: flex; align-items: center; gap: 6px; color: var(--pl-faint); border: 1px solid var(--pl-line); border-radius: 9px; padding: 7px 8px; }
-.bh-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--pl-ink); font: inherit; font-size: 12px; }
-.bh-search:focus-within { outline: 2px solid var(--pl-focus); }
-.bh-list { display: grid; gap: 6px; overflow: auto; min-height: 0; overscroll-behavior: contain; }
+/* The 建造 conversations card (BuildHistory.tsx): scope, search, rows that open on click and carry
+   rename / archive / delete on hover, a quiet foot with the quill and "view all". */
+.bh-root { --bh-hue: var(--pf-hue, var(--pl-accent)); display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.bh-controls { display: grid; gap: 6px; flex: none; }
+
+/* Scope: one segmented well, each half with its own count. */
+.bh-scopes { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; border-radius: 9px; background: var(--pf-well, var(--pl-well)); }
+.bh-scopes button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 26px; padding: 0 8px;
+  border: 0; border-radius: 7px; background: transparent; color: var(--pl-muted); font: inherit; font-size: 12px; cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.bh-scopes button:hover { color: var(--pl-secondary); }
+.bh-scopes button[aria-pressed=true] { background: var(--pf-raise, var(--pl-hover)); color: var(--pl-ink); }
+.bh-count { font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--pl-faint); }
+.bh-scopes button[aria-pressed=true] .bh-count { color: var(--bh-hue); }
+
+.bh-search {
+  display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 9px; box-sizing: border-box;
+  color: var(--pl-faint); border: 1px solid var(--pl-line); border-radius: 9px;
+  transition: border-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.bh-search:hover { border-color: color-mix(in srgb, var(--pl-ink) 16%, transparent); }
+.bh-search:focus-within { border-color: color-mix(in srgb, var(--bh-hue) 55%, transparent); }
+.bh-search input { flex: 1; width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--pl-ink); font: inherit; font-size: 12px; }
+.bh-search input::-webkit-search-cancel-button { display: none; }
+.bh-search input::placeholder { color: var(--pl-faint); }
+.bh-hits { flex: none; font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--pl-faint); }
+.bh-clear {
+  display: grid; place-items: center; flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: var(--pl-faint); cursor: pointer;
+}
+.bh-clear:hover { background: var(--pf-raise, var(--pl-hover)); color: var(--pl-ink); }
+
+/* Rows. A long title must not widen the card: the list's single column may shrink to nothing. */
+.bh-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; overflow: auto; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin; }
 .bh-root > .bh-list { max-height: 310px; }
-.bh-row { display: grid; gap: 4px; min-width: 0; width: 100%; border: 0; text-align: left; font: inherit; color: var(--pl-secondary); cursor: pointer; padding: 10px; }
-.bh-row:hover:not(:disabled) { background: var(--pf-raise); color: var(--pl-ink); }
-.bh-row[aria-current] { box-shadow: inset 2px 0 0 var(--pf-hue); color: var(--pl-ink); }
-.bh-row:disabled { cursor: default; }
+.bh-list > .bh-row { position: relative; display: block; min-width: 0; border-radius: 10px; transition: background-color var(--loom-dur-fast) var(--loom-ease-out); }
+.bh-list > .bh-row:hover, .bh-list > .bh-row:focus-within { background: var(--pf-raise, var(--pl-hover)); }
+.bh-row[data-current] { box-shadow: inset 2px 0 0 var(--bh-hue); }
+.bh-row[aria-busy] { opacity: .6; }
+.bh-open {
+  display: grid; gap: 5px; width: 100%; min-width: 0; padding: 9px 10px; border: 0; border-radius: inherit;
+  background: transparent; text-align: left; font: inherit; color: var(--pl-secondary); cursor: pointer;
+}
+.bh-open:disabled { cursor: default; }
+.bh-row:hover .bh-open, .bh-row[data-current] .bh-open { color: var(--pl-ink); }
 .bh-top, .bh-bottom { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.bh-top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; flex: 1; min-width: 0; }
-.bh-top time, .bh-current { flex: none; font-size: 10px; color: var(--pl-faint); }
-.bh-current { color: var(--pf-hue); }
-.bh-project { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pl-faint); font-size: 11px; }
-.bh-bottom { flex-wrap: wrap; color: var(--pl-faint); font-size: 10px; }
-.bh-bottom [data-state=running], .bh-chatting { color: var(--pf-hue); }
-.bh-bottom [data-state=needs_you] { color: var(--pl-ink); font-weight: 600; }
-.bh-more { font-size: 12px; align-self: center; }
-.bh-error { margin: 0; font-size: 12px; color: var(--pl-ink); }
-.bh-root > .pf-add { width: 100%; }
+.bh-top strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; }
+.bh-top time, .bh-current { flex: none; font-size: 11.5px; color: var(--pl-faint); font-variant-numeric: tabular-nums; transition: opacity var(--loom-dur-fast) var(--loom-ease-out); }
+.bh-current { color: var(--bh-hue); }
+.bh-bottom { color: var(--pl-faint); font-size: 11.5px; }
+.bh-bottom > span { flex: none; white-space: nowrap; }
+.bh-bottom > .bh-project { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bh-bottom > span + span::before { content: "·"; margin-right: 8px; color: var(--pl-faint); opacity: .7; }
+/* The state, with a small dot in its tone. */
+.bh-state { display: inline-flex; align-items: center; gap: 6px; }
+.bh-state::after { order: -1; content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--pl-faint); }
+.bh-state[data-state=draft]::after { background: transparent; box-shadow: inset 0 0 0 1.2px var(--pl-faint); }
+.bh-state[data-state=running], .bh-state[data-state=live] { color: var(--bh-hue); }
+.bh-state[data-state=running]::after, .bh-state[data-state=live]::after { background: var(--pf-ok, var(--pl-ok)); }
+.bh-state[data-state=needs_you] { color: var(--pl-ink); font-weight: 600; }
+.bh-state[data-state=needs_you]::after { background: var(--bh-hue); }
+.bh-state[data-state=completed]::after { background: var(--pl-ok); }
+.bh-row mark { background: color-mix(in srgb, var(--bh-hue) 26%, transparent); color: inherit; border-radius: 3px; }
+
+/* Row actions: hidden at rest, they come up over the time on hover or keyboard focus. */
+.bh-actions {
+  position: absolute; top: 6px; right: 6px; display: flex; gap: 1px; padding: 1px; border-radius: 8px;
+  background: var(--pf-raise, var(--pl-hover)); opacity: 0; pointer-events: none;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
+}
+.bh-row:hover .bh-actions, .bh-row:focus-within .bh-actions, .bh-row[data-armed] .bh-actions { opacity: 1; pointer-events: auto; }
+.bh-row:hover .bh-top time, .bh-row:focus-within .bh-top time,
+.bh-row:hover .bh-current, .bh-row:focus-within .bh-current { opacity: 0; }
+.bh-actions button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 22px; height: 22px; padding: 0 5px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--pl-muted); font: inherit; font-size: 11.5px; cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.bh-actions button:hover:not(:disabled) { background: color-mix(in srgb, var(--pl-ink) 8%, transparent); color: var(--pl-ink); }
+.bh-actions button:disabled { opacity: .35; cursor: default; }
+.bh-actions .bh-delete:hover:not(:disabled), .bh-actions .bh-delete[data-armed] { color: var(--pl-danger); }
+.bh-actions .bh-delete[data-armed] { background: color-mix(in srgb, var(--pl-danger) 14%, transparent); }
+
+/* Renaming: the row turns into its own field. */
+.bh-list > .bh-rename { display: flex; align-items: center; gap: 2px; padding: 5px 5px 5px 6px; background: var(--pf-raise, var(--pl-hover)); }
+.bh-rename input {
+  flex: 1; min-width: 0; height: 28px; padding: 0 6px; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--bh-hue) 55%, transparent);
+  border-radius: 7px; outline: 0; background: transparent; color: var(--pl-ink); font: inherit; font-size: 13px; font-weight: 550;
+}
+.bh-rename button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--pl-muted); cursor: pointer; }
+.bh-rename button:hover { background: color-mix(in srgb, var(--pl-ink) 8%, transparent); color: var(--pl-ink); }
+
+.bh-empty { margin: 4px 0; padding: 14px 8px; text-align: center; }
+.bh-error { margin: 0; padding: 7px 9px; border-radius: 8px; font-size: 12px; color: var(--pl-ink); background: color-mix(in srgb, var(--pl-danger) 12%, transparent); }
+
+/* The foot: the quill on the left, "view all" on the right. */
+.bh-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; }
+.bh-new, .bh-more, .bh-close {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--pl-secondary); font: inherit; font-size: 12px; cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.bh-new { color: var(--bh-hue); }
+.bh-new:hover:not(:disabled), .bh-more:hover, .bh-close:hover { background: var(--pf-raise, var(--pl-hover)); color: var(--pl-ink); }
+.bh-new:hover:not(:disabled) { color: var(--bh-hue); }
+.bh-new:disabled { opacity: .45; cursor: default; }
+.bh-more { margin-left: auto; color: var(--pl-muted); }
 .pf-history > .bh-root { flex: 0 1 auto; }
-.bh-dialog { color: var(--pl-ink); background: var(--pf-card); border: 1px solid var(--pl-line); border-radius: 18px; padding: 20px; width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); box-sizing: border-box; }
-.bh-dialog[open] { display: flex; flex-direction: column; gap: 14px; }
+
+.bh-dialog { color: var(--pl-ink); background: var(--pf-card, var(--pl-surface-raised)); border: 1px solid var(--pl-line); border-radius: 18px; padding: 18px; width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); box-sizing: border-box; }
+.bh-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
 .bh-dialog::backdrop { background: rgb(0 0 0 / .5); }
 .bh-dialog header { display: flex; align-items: center; justify-content: space-between; flex: none; }
-.bh-dialog h2 { margin: 0; font-size: 17px; }
-.bh-dialog .bh-row { flex: none; }
-.bh-dialog footer { flex: none; }
-.bh-row:focus-visible, .bh-scopes button:focus-visible, .bh-more:focus-visible, .bh-dialog button:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 2px; }
+.bh-dialog h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.bh-dialog .bh-close { width: 30px; padding: 0; justify-content: center; }
+.bh-dialog .bh-list { flex: 1 1 auto; }
+.bh-dialog footer { flex: none; display: flex; }
+
+.bh-open:focus-visible, .bh-scopes button:focus-visible, .bh-new:focus-visible, .bh-more:focus-visible, .bh-clear:focus-visible,
+.bh-actions button:focus-visible, .bh-rename button:focus-visible, .bh-dialog button:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 1px; }

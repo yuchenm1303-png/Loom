@@ -23,6 +23,7 @@ import {
   History, Search, Sparkles, Square, X,
 } from "lucide-react";
 import { BuildHistory, type BuildHistoryEntry } from "./BuildHistory";
+import { NewConversationRow } from "./NewConversationRow";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ApprovalCard, ErrorRow } from "./Transcript";
 import { ThinkingGlyph } from "./ThinkingGlyph";
@@ -131,6 +132,10 @@ export interface FlowActions {
   /** Open another 建造 conversation from the history card, or begin a new one. */
   onOpenThread?(id: string): Promise<unknown> | void;
   onNewThread?(): void;
+  /** Rename, archive or delete one of them from the history card (the sidebar's actions). */
+  onRenameThread?(id: string, title: string): Promise<unknown> | void;
+  onArchiveThread?(id: string): Promise<unknown> | void;
+  onDeleteThread?(id: string): Promise<unknown> | void;
   /** Answer a step the agent asks the person to allow, as the chat's approval card does. */
   onApproval?(item: TranscriptItem, decision: ApprovalDecision, feedback?: string): void;
   /** Start the proposed project, with the budget and agents set in the footer. */
@@ -1145,6 +1150,11 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 </button>
               ))}
             </span>
+            {/* The quill: a new 建造 conversation in this project, straight into a fresh hub. */}
+            {actions.onNewThread ? (
+              <NewConversationRow className="pf-new-thread" label={text.newThread} title={text.newThread}
+                                  onNew={() => { if (!actions.busy) actions.onNewThread?.(); }} />
+            ) : null}
             {!data.models && data.model ? <span className="pf-model">{data.model}</span> : null}
             {/* While the person writes a draft, the head says what the keys do; it fades, it never takes room from the state. */}
             {draftMode ? (
@@ -1305,7 +1315,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             <Card id="history" side="right" className="pf-listed pf-history" icon={<History size={12} />} label={text.history}
                   register={register}>
               <BuildHistory entries={history} workspace={data.repository.path} lang={lang} error={data.historyError} busy={actions.busy}
-                onOpen={actions.onOpenThread} onNew={actions.onNewThread} />
+                onOpen={actions.onOpenThread} onNew={actions.onNewThread}
+                onRename={actions.onRenameThread} onArchive={actions.onArchiveThread} onDelete={actions.onDeleteThread} />
             </Card>
           </div>
         ) : null}
