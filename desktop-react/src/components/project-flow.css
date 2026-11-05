@@ -542,9 +542,6 @@ html[data-loom-theme="light"] .pf-stage {
 
 .pf-composer-head { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 6px 0 8px; white-space: nowrap; }
 
-.pf-mode { display: inline-flex; align-items: center; gap: 7px; min-width: 0; color: var(--pl-ink); font-size: 12px; }
-.pf-mode-text { overflow: hidden; text-overflow: ellipsis; }
-
 /* The branches' buttons: one well of marks, each lit in its card's colour while the card is
    plugged in, faint while folded. Pressing one is the event; the card and its cable answer. */
 .pf-branch-toggles {
@@ -620,20 +617,6 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-new-thread svg { width: 17px; height: 17px; }
 .pf-new-thread:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 1px; }
 .pf-new-thread + .pf-control { margin-left: auto; }
-/* The state's dot: hollow before the run starts, filled once it runs; a running run sends a slow
-   ring out of it (the one ambient loop in the head), a run that needs you breathes in caution. */
-.pf-mode-dot { position: relative; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--pl-faint); }
-.pf-mode-dot[data-state="draft"] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--pl-faint); }
-.pf-mode-dot[data-state="running"] { background: var(--pf-ok); }
-.pf-mode-dot[data-state="running"]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--pf-ok);
-  animation: pf-halo var(--loom-period-shimmer) var(--loom-ease-out) infinite;
-}
-.pf-mode-dot[data-state="needs_you"] { background: var(--pf-warn); animation: pf-breathe var(--loom-period-breathe) var(--loom-ease-inout) infinite; }
 
 /* What the keys do, while a draft is written: faint, in the head's free room, and only once
    something is typed in a focused field. It fades; it takes no room from anything. */
@@ -669,7 +652,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-keyhint i { width: 1px; height: 10px; margin: 0 4px; background: var(--loom-workspace-hover); }
 /* The model gives way first when the header is narrow; the state and budget stay whole. */
 .pf-model { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--pl-muted); font-size: 12px; text-overflow: ellipsis; }
-.pf-mode, .pf-budget, .pf-control { flex: none; }
+.pf-budget, .pf-control { flex: none; }
 
 .pf-budget { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; color: var(--pl-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
@@ -926,16 +909,13 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 /* The budget takes the free space before it; the controls follow it, or take it themselves when there is no budget. */
 .pf-budget + .pf-control { margin-left: 4px; }
 .pf-model + .pf-control,
-.pf-mode + .pf-control,
 .pf-branch-toggles + .pf-control { margin-left: auto; }
-/* A narrow hub: the budget keeps its numbers and drops its track, and the state's words shorten
-   (whole in the title) before anything leaves the head. */
+/* A narrow hub: the budget keeps its numbers and drops its track before anything leaves the head. */
 .pf-composer { container: pf-hub / inline-size; }
 @container pf-hub (max-width: 452px) { .pf-budget-track { display: none; } }
 /* Narrower still: the access chip keeps its shield (its word in the title), then the hint goes. */
 @container pf-hub (max-width: 420px) { .pf-settings .pf-chip-label { display: none; } .pf-settings .pf-chip:first-child { padding: 0 7px; } }
 @container pf-hub (max-width: 380px) { .pf-keyhint { display: none; } }
-.pf-composer-head > .pf-mode { flex: 0 1 auto; }
 
 .pf-error { margin: 0; padding: 0 8px; color: var(--semantic-danger-text); font-size: 12px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 
@@ -1616,7 +1596,6 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 /* Both ends are insets: from an inset to `none` a clip does not interpolate, it jumps. */
 @keyframes pf-wash { from { transform: translateX(-100%); } }
 @keyframes pf-spin { to { rotate: 360deg; } }
-@keyframes pf-halo { from { opacity: .55; scale: 1; } 70%, to { opacity: 0; scale: 3.2; } }
 @keyframes pf-breathe { 0%, 100% { opacity: .45; scale: .8; } 50% { opacity: 1; scale: 1; } }
 
 /* The 对话 / 建造 switch (modeMorph.ts) carries the chat composer into the hub and back.
@@ -1654,8 +1633,6 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   .pf-loom,
   .pf-loom-span,
   .pf-attention-dot,
-  .pf-mode-dot,
-  .pf-mode-dot::after,
   .pf-chip-mark,
   .pf-send > svg,
   .pf-busy,

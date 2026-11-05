@@ -184,7 +184,7 @@ const zhText = {
   dirtyShow: "查看并提交", dirtyHide: "收起", dirtyMore: (n: number) => `还有 ${n} 个`, commitAll: "全部提交",
   commitMessage: "保存改动，准备开始建造", commitHint: "不想提交的文件，先加入 .gitignore 或移出仓库。",
   now: "现在", files: "参考文件", filesEmpty: "需求文档、规格或样例数据，每一轮的 agent 都能读到", addFiles: "添加文件",
-  remove: "移除", modelCard: "模型", modelSearch: "搜索模型", modelGroups: "模型来源", modelRecent: "最近", modelNone: "没有匹配的模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "建造", stage: (n: number) => `阶段 ${n}`, notStarted: "未开始",
+  remove: "移除", modelCard: "模型", modelSearch: "搜索模型", modelGroups: "模型来源", modelRecent: "最近", modelNone: "没有匹配的模型", vision: "识图", modelHint: "已开始的 agent 沿用原模型，新开始的使用所选模型", mode: "建造", stage: (n: number) => `阶段 ${n}`,
   draftPlaceholder: "和它聊聊，或描述一个想持续完成的大目标", steerPlaceholder: "继续对话：问进度、补充要求或调整方向",
   attach: "添加附件，也可以粘贴或拖入文件", attachLimit: `每条消息最多 ${MAX_COMPOSER_ATTACHMENTS} 个附件`,
   proposal: "建造提案", startProposal: "开始建造", dismissProposal: "不用了", replying: "正在思考…", stopReply: "停止回复", copy: "复制", copied: "已复制", latest: "最新",
@@ -211,7 +211,7 @@ const enText: typeof zhText = {
   commitMessage: "Save work before Weave", commitHint: "Add files you do not want committed to .gitignore, or move them out of the repository.",
   now: "now", files: "Reference files", filesEmpty: "Specs, documents or sample data; every episode can read them",
   addFiles: "Add files", remove: "Remove", modelCard: "Model", modelSearch: "Search models", modelGroups: "Model sources", modelRecent: "Recent", modelNone: "No matching models", vision: "vision",
-  modelHint: "Agents already started keep their model; new ones use the choice", mode: "Weave", stage: (n: number) => `milestone ${n}`, notStarted: "not started",
+  modelHint: "Agents already started keep their model; new ones use the choice", mode: "Weave", stage: (n: number) => `milestone ${n}`,
   draftPlaceholder: "Talk it through, or describe a large objective to pursue",
   steerPlaceholder: "Keep talking: ask about progress, add requirements or change direction",
   attach: "Attach files, or paste and drop them here", attachLimit: `At most ${MAX_COMPOSER_ATTACHMENTS} attachments per message`,
@@ -224,11 +224,6 @@ const enText: typeof zhText = {
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
 };
-const stateWord = {
-  zh: { running: "运行中", paused: "已暂停", needs_you: "等你处理", completed: "已完成", starting: "启动中" },
-  en: { running: "running", paused: "paused", needs_you: "needs you", completed: "completed", starting: "starting" },
-};
-
 type Side = "left" | "right" | "below";
 /** A cable's corner radius, the most its lanes stand apart (a cable's 9px plus a gap), and its plugs apart on the hub. */
 const CABLE_R = 12, LANE_STEP = 15, PLUG_APART = 22;
@@ -1141,11 +1136,6 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                  onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
                  onDrop={(event) => void dropFiles(event)}>
           <header className="pf-composer-head">
-            {/* The header switch already says 建造; the hub names the stage and its state (the words give way first when narrow). */}
-            <span className="pf-mode" title={draftMode ? text.notStarted : `${text.stage(data.milestone)} · ${stateWord[lang][data.state]}`}>
-              <span className="pf-mode-dot" data-state={draftMode ? "draft" : data.state} />
-              <span className="pf-mode-text">{draftMode ? text.notStarted : `${text.stage(data.milestone)} · ${stateWord[lang][data.state]}`}</span>
-            </span>
             {/* One button per branch, lit in its card's colour while the card is plugged in. */}
             <span className="pf-branch-toggles" role="group" aria-label={text.branches}>
               {toggles.map(({ id, icon: Icon, label }) => (
