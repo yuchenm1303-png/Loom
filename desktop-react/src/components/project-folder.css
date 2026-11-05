@@ -1,11 +1,164 @@
-.pf-folder-path { font-size: 11px; opacity: .65; overflow-wrap: anywhere; }
-.pf-folder-picker { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 8px; padding: 9px 12px; border: 1px dashed currentColor; border-radius: 12px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
-.pf-folder-picker:hover:not(:disabled) { background: rgb(128 128 128 / 10%); }
-.pf-folder-picker:disabled { opacity: .4; cursor: default; }
-.pf-folder-picker:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
-.pf-workspace-controls { font-size: 11px; margin-top: 10px; line-height: 1.6; }
-.pf-workspace-controls label { display: grid; gap: 5px; }
-.pf-workspace-controls select { min-width: 0; width: 100%; padding: 7px; border: 1px solid rgb(128 128 128 / 25%); border-radius: 8px; background: var(--pl-surface, #202329); color: inherit; font: inherit; text-overflow: ellipsis; }
-.pf-workspace-controls p { opacity: .7; overflow-wrap: anywhere; margin: 7px 0; }
-.pf-workspace-setup { margin-top: 10px; }
-.pf-workspace-setup summary { cursor: pointer; }
+/* The repository card's folder controls (ProjectWorkspacePicker.tsx) and its project menu.
+   The menu is portalled to <body>, outside .pf-stage, so it reads the app's workspace tokens directly. */
+
+.pf-workspace-controls { display: grid; gap: 6px; min-width: 0; font-size: 11.5px; line-height: 17px; }
+
+/* The switch: a quiet ring that fills like a well on hover, never a dashed box. */
+.pf-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 9px 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--loom-workspace-ink) 11%, transparent);
+  color: var(--pl-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out),
+    box-shadow var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-switch > svg { flex: none; color: var(--pl-muted); transition: color var(--loom-dur-fast) var(--loom-ease-out); }
+.pf-switch > span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pf-switch:hover:not(:disabled),
+.pf-switch[data-open] { background: var(--pf-well); color: var(--pl-ink); box-shadow: inset 0 0 0 1px transparent; }
+.pf-switch:hover:not(:disabled) > svg:first-child,
+.pf-switch[data-open] > svg:first-child { color: var(--pf-hue, var(--pl-ink)); }
+.pf-switch .pf-switch-chevron { transition: rotate var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out); }
+.pf-switch[data-open] .pf-switch-chevron { rotate: 180deg; }
+.pf-switch:disabled { box-shadow: none; background: transparent; color: var(--pl-muted); opacity: .7; cursor: default; }
+.pf-switch:focus-visible { outline: 2px solid color-mix(in srgb, var(--loom-workspace-accent) 70%, transparent); outline-offset: 2px; }
+
+.pf-workspace-note {
+  margin: 0;
+  padding: 6px 9px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--pf-warn) 10%, transparent);
+  color: var(--pl-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* Preparing the folder: a fold that opens into an explanation and one confirming button. */
+.pf-workspace-setup { border-radius: 9px; background: var(--pf-well); }
+.pf-workspace-setup summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 10px;
+  color: var(--pl-ink);
+  list-style: none;
+  cursor: pointer;
+}
+.pf-workspace-setup summary::-webkit-details-marker { display: none; }
+.pf-workspace-setup summary::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pf-warn);
+}
+.pf-workspace-setup p { margin: 0; padding: 0 10px; color: var(--pl-muted); overflow-wrap: anywhere; }
+.pf-setup-button {
+  width: calc(100% - 12px);
+  margin: 8px 6px 6px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--loom-workspace-accent) 18%, transparent);
+  color: var(--pl-ink);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-setup-button:hover:not(:disabled) { background: color-mix(in srgb, var(--loom-workspace-accent) 28%, transparent); }
+.pf-setup-button:disabled { opacity: .45; cursor: default; }
+.pf-setup-button:focus-visible { outline: 2px solid color-mix(in srgb, var(--loom-workspace-accent) 70%, transparent); outline-offset: 2px; }
+
+/* The menu. */
+.pf-switch-menu {
+  --pf-switch-hue: #ef8fa0;
+  position: fixed;
+  z-index: 1000;
+  box-sizing: border-box;
+  display: grid;
+  gap: 1px;
+  align-content: start;
+  padding: 5px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--loom-workspace-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--loom-workspace-ink) 3%, var(--loom-workspace-panel));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .18), 0 22px 44px -16px rgba(0, 0, 0, .6);
+  color: var(--loom-workspace-secondary);
+  font-size: 12px;
+  line-height: 17px;
+  transform-origin: top left;
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--loom-dur-fast) var(--loom-ease-out), transform var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-switch-menu[data-up] { transform-origin: bottom left; }
+@starting-style { .pf-switch-menu { opacity: 0; transform: translateY(-4px) scale(.98); } }
+@starting-style { .pf-switch-menu[data-up] { opacity: 0; transform: translateY(4px) scale(.98); } }
+html[data-loom-theme="light"] .pf-switch-menu { box-shadow: 0 2px 6px rgba(32, 42, 58, .06), 0 22px 44px -18px rgba(32, 42, 58, .28); }
+html[data-loom-theme="light"] .pf-switch-menu { --pf-switch-hue: #d0566d; }
+
+.pf-switch-caption { padding: 5px 8px 4px; color: var(--loom-workspace-muted); font-size: 11.5px; }
+
+.pf-switch-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px 5px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color var(--loom-dur-fast) var(--loom-ease-out);
+}
+.pf-switch-option[data-active] { background: color-mix(in srgb, var(--loom-workspace-ink) 7%, transparent); }
+.pf-switch-mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--loom-workspace-ink) 6%, transparent);
+  color: var(--loom-workspace-muted);
+}
+.pf-switch-option[aria-selected="true"] .pf-switch-mark {
+  background: color-mix(in srgb, var(--pf-switch-hue) 16%, transparent);
+  color: var(--pf-switch-hue);
+}
+.pf-switch-text { display: grid; min-width: 0; }
+.pf-switch-name, .pf-switch-path { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pf-switch-name { color: var(--loom-workspace-ink); font-size: 13px; font-weight: 500; line-height: 18px; }
+.pf-switch-path { color: var(--loom-workspace-muted); font-size: 11.5px; line-height: 16px; }
+.pf-switch-check { color: var(--pf-switch-hue); }
+
+.pf-switch-browse { position: relative; margin-top: 6px; }
+.pf-switch-browse::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  right: 6px;
+  left: 6px;
+  height: 1px;
+  background: var(--loom-workspace-line);
+}
+.pf-switch-browse:first-child { margin-top: 0; }
+.pf-switch-browse:first-child::before { display: none; }
+.pf-switch-browse .pf-switch-name { color: var(--loom-workspace-secondary); font-weight: 400; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-switch-menu { transition: opacity var(--loom-dur-fast) linear; }
+  @starting-style { .pf-switch-menu, .pf-switch-menu[data-up] { transform: none; } }
+}

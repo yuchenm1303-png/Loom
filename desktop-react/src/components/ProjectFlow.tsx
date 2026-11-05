@@ -40,6 +40,7 @@ import { imageAttachmentState } from "./modelInput";
 import { UserMessageContent, optimisticUserMessageContent } from "./UserMessageContent";
 import type { ApprovalDecision, Attachment, ModelReasoningState, TranscriptItem } from "../types/loom";
 import { RETAIN } from "../motion/tokens";
+import { shortPath } from "./ProjectWorkspacePicker";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./composer.css";
 import "./composer-attachment-polish.css";
@@ -906,18 +907,24 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           <div className="pf-slot pf-offset-2" data-glide="repo" {...hover("repo")} {...slot("repo")}>
             <Card id="repo" side="left" icon={<GitBranch size={12} />} label={text.repository} register={register}>
               <div className="pf-well pf-repo">
-                <strong>{data.repository.name}</strong>
-                {data.repository.path ? <span className="pf-folder-path" title={data.repository.path}>{data.repository.path}</span> : null}
-                <span key={data.repository.commit} className="pf-repo-commit">{[data.repository.commit, data.repository.subject].filter(Boolean).join(" · ")}</span>
+                <strong title={data.repository.name}>{data.repository.name}</strong>
+                {data.repository.path ? <span className="pf-folder-path" title={data.repository.path}>{shortPath(data.repository.path)}</span> : null}
+                {data.repository.commit || data.repository.subject ? (
+                  <span key={data.repository.commit} className="pf-repo-commit" title={data.repository.subject || undefined}>
+                    {data.repository.commit ? <code>{data.repository.commit.slice(0, 7)}</code> : null}
+                    {data.repository.subject ? <span>{data.repository.subject}</span> : null}
+                  </span>
+                ) : null}
                 <Wash on={data.repository.commit} />
               </div>
               <div className="pf-well pf-branch"><GitBranch size={12} /><span>{data.repository.branch}</span></div>
-              <button type="button" className="pf-folder-picker" disabled={data.phase !== "draft" || actions.busy || !actions.onChooseWorkspace}
-                      title={data.phase !== "draft" ? (lang === "zh" ? "已开始的项目保留原文件夹；新任务请新建会话" : "This project keeps its folder; use a new conversation for another project") : undefined}
-                      onClick={() => actions.onChooseWorkspace?.()}>
-                <FolderOpen size={14} />{lang === "zh" ? "选择文件夹" : "Choose folder"}
-              </button>
-              {actions.workspaceControls}
+              {actions.workspaceControls ?? (
+                <button type="button" className="pf-switch" disabled={data.phase !== "draft" || actions.busy || !actions.onChooseWorkspace}
+                        title={data.phase !== "draft" ? (lang === "zh" ? "已开始的项目保留原文件夹；新任务请新建会话" : "This project keeps its folder; use a new conversation for another project") : undefined}
+                        onClick={() => actions.onChooseWorkspace?.()}>
+                  <FolderOpen size={14} /><span>{lang === "zh" ? "选择文件夹" : "Choose folder"}</span>
+                </button>
+              )}
             </Card>
           </div>
         ) : null}

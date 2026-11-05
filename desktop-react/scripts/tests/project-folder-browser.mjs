@@ -8,28 +8,41 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   const open = async query => {
     await page.goto(`${origin}/scripts/fixtures/project-folder.html${query}`);
-    await page.locator(".pf-folder-picker").first().waitFor();
+    await page.locator(".pf-switch").first().waitFor();
+  };
+  // The switch opens a menu: existing projects, then "choose another folder" (the last option).
+  const browse = async () => {
+    await page.locator(".pf-switch").click();
+    await page.locator(".pf-switch-browse").click();
   };
   await open("");
   assert.equal(await page.locator(".pf-branch").textContent(), "—");
-  await page.locator(".pf-folder-picker").click();
+  await browse();
   await page.getByText("C:\\Projects\\我的新项目", { exact: true }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.folderFixture.calls), ["pick", "C:\\Projects\\我的新项目"]);
   await open("");
   await page.evaluate(() => window.folderFixture.cancel());
-  await page.locator(".pf-folder-picker").click();
+  await browse();
   assert.deepEqual(await page.evaluate(() => window.folderFixture.calls), ["pick"]);
   await open("?fail=1");
-  await page.locator(".pf-folder-picker").click();
+  await browse();
   await page.getByText("Folder unavailable", { exact: true }).waitFor();
   assert.ok(await page.getByText("C:\\Projects\\original", { exact: true }).isVisible());
   await open("?live=1");
-  assert.ok(await page.locator(".pf-folder-picker").isDisabled());
-  assert.ok(await page.locator(".pf-workspace-controls select").isDisabled());
+  assert.ok(await page.locator(".pf-switch").isDisabled());
   await open("");
-  await page.locator(".pf-workspace-controls select").selectOption("existing");
+  await page.locator(".pf-switch").click();
+  await page.locator(".pf-switch-option", { hasText: "已有项目" }).click();
   await page.getByText("C:\\Projects\\已有项目", { exact: true }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.folderFixture.calls), ["project:existing"]);
+  assert.equal(await page.locator(".pf-switch-menu").count(), 0);
+  // Keyboard: arrows move, Enter picks, Escape closes.
+  await open("");
+  await page.locator(".pf-switch").focus();
+  await page.keyboard.press("ArrowDown");
+  await page.locator(".pf-switch-menu").waitFor();
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator(".pf-switch-menu").count(), 0);
   for (const [status, action] of [["not_git", "initialize"], ["unborn", "initialize"], ["detached", "branch"]]) {
     await open(`?setup=${status}`);
     assert.ok(await page.locator(".pf-proposal-start").isDisabled());

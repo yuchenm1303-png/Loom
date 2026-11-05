@@ -21,7 +21,7 @@ try {
   assert.equal(await toggle.getByRole("radio").nth(0).getAttribute("aria-checked"), "true");
   await page.evaluate(() => { window.modeFixture.fail = false; });
   await toggle.getByRole("radio").nth(1).click();
-  await page.locator(".pf-folder-picker").first().waitFor();
+  await page.locator(".pf-switch").first().waitFor();
   assert.equal(await toggle.getByRole("radio").nth(1).getAttribute("aria-checked"), "true");
   assert.deepEqual(await page.evaluate(() => ({ starts: window.modeFixture.starts.length, turns: window.modeFixture.turns })), { starts: 2, turns: 0 });
   await toggle.getByRole("radio").nth(0).click();
@@ -38,7 +38,7 @@ try {
   // Exercise the existing project action's callback; this fixture's hover layer covers its glyph.
   await agentProject.locator(".project-group-actions button").first().evaluate(button => button.click());
   await toggle.getByRole("radio").nth(1).click();
-  await page.locator(".pf-folder-picker").first().waitFor();
+  await page.locator(".pf-switch").first().waitFor();
   assert.equal(await page.evaluate(() => window.modeFixture.starts.at(-1).projectId), "agent", "draft mode creation keeps the chosen sidebar project");
   assert.equal(await page.evaluate(() => window.modeFixture.turns), 0);
   assert.deepEqual(errors, []);

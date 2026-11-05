@@ -274,9 +274,15 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-row > svg { flex: none; color: var(--pl-muted); }
 .pf-row .pf-count { background: var(--pf-raise); }
 
-.pf-repo { display: grid; gap: 1px; padding: 8px 10px; }
-.pf-repo strong { color: var(--pl-ink); font-weight: 500; }
-.pf-repo span { overflow: hidden; color: var(--pl-muted); font-size: 11.5px; white-space: nowrap; text-overflow: ellipsis; }
+.pf-repo { display: grid; gap: 1px; padding: 9px 10px; }
+.pf-repo strong { overflow: hidden; color: var(--pl-ink); font-size: 13px; font-weight: 500; line-height: 19px; white-space: nowrap; text-overflow: ellipsis; }
+.pf-repo span { overflow: hidden; color: var(--pl-muted); font-size: 11.5px; line-height: 17px; white-space: nowrap; text-overflow: ellipsis; }
+/* The head commit: a short hash on its own chip, then the subject, on one line under a hairline. */
+.pf-repo .pf-repo-commit { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 6px; padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--loom-workspace-ink) 7%, transparent); }
+.pf-repo-commit code { flex: none; padding: 0 5px; border-radius: 5px; background: var(--pf-raise); color: var(--pl-secondary);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11.5px; line-height: 17px; }
+.pf-repo-commit > span { flex: 1; min-width: 0; }
 
 .pf-branch { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 10px; color: var(--pl-ink); }
 .pf-branch svg:first-child { color: var(--pf-ok); }

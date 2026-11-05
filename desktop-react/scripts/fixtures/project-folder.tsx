@@ -37,7 +37,16 @@ function Fixture() {
     onAddProject={async root => { calls.push(root); }} onRenameProject={noop} onRemoveProject={noop} onMoveProject={noop}
     onRename={noop} onArchive={noop} onDelete={noop} onFork={noop} onViewChange={noop} />;
   return <div style={{height:"100vh", display:"grid"}}><ProjectMode threadId="folder-thread" workspace={workspace}
-    projects={[{ id: "existing", name: "已有项目", root: "C:\\Projects\\已有项目" } as ProjectRecord]}
+    projects={[{ id: "existing", name: "已有项目", root: "C:\\Projects\\已有项目" } as ProjectRecord,
+      // ?many=1: a realistic list, with a home-folder path and a very long one.
+      ...(params.has("many") ? [
+        { id: "loom", name: "Loom", root: "C:\\Users\\someone\\Loom" },
+        { id: "runner", name: "ef24d8d9-c3e7-4a50-8331-17af1a1c2b88", root: "C:\\Users\\someone\\.loom\\project-runner\\workspaces\\ef24d8d9-c3e7-4a50-8331-17af1a1c2b88" },
+        { id: "sticker", name: "Loom-sticker", root: "C:\\Users\\someone\\Loom-sticker" },
+        { id: "quote", name: "loom电力报价系统", root: "C:\\Users\\someone\\loom电力报价系统" },
+        { id: "termrelay", name: "termrelay", root: "C:\\Users\\someone\\repos\\termrelay" },
+        { id: "e", name: "项目", root: "E:\\项目" },
+      ] as ProjectRecord[] : [])]}
     onSelectProject={async id => { calls.push(`project:${id}`); mockPath = "C:\\Projects\\已有项目"; setWorkspace(mockPath); }}
     onChangeWorkspace={async path => { calls.push(path); if (params.has("fail")) throw new Error("Folder unavailable"); mockPath = path; setWorkspace(path); }} /></div>;
 }

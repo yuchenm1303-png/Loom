@@ -184,17 +184,19 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   const workspaceReady = !overview.workspace?.status || overview.workspace.status === "ready";
   const workBranch = `codex/build-${threadId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12)}`;
 
+  const chooseWorkspace = !run && !chatting && onChangeWorkspace && window.loom.pickDirectory ? () => void act(async () => {
+    const picked = await window.loom.pickDirectory!();
+    if (picked) await onChangeWorkspace(picked);
+  }) : undefined;
+
   return (
     <ProjectFlow lang={lang} data={data} actions={{
       workspaceControls: <ProjectWorkspacePicker projects={projects} workspace={{ ...overview.workspace, path: data.repository.path }}
         locked={workspaceLocked} lang={lang} branch={workBranch}
-        onSelect={onSelectProject ? id => void act(() => onSelectProject(id)) : undefined}
+        onSelect={onSelectProject ? id => void act(() => onSelectProject(id)) : undefined} onBrowse={chooseWorkspace}
         onPrepare={!workspaceLocked ? action => void act(() => window.loom.call("projectRun/prepareWorkspace", {
           threadId, action, confirmed: true, expectedPath: overview.workspace?.path, branch: workBranch })) : undefined} />,
-      onChooseWorkspace: !run && !chatting && onChangeWorkspace && window.loom.pickDirectory ? () => void act(async () => {
-        const picked = await window.loom.pickDirectory!();
-        if (picked) await onChangeWorkspace(picked);
-      }) : undefined,
+      onChooseWorkspace: chooseWorkspace,
       busy,
       error: error || (offline ? (lang === "en" ? "Lost the Host; reconnecting…" : "与 Host 的连接中断，正在重连…") : ""),
       onPickFiles: window.loom.pickFiles ? () => window.loom.pickFiles() : undefined,
