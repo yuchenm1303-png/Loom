@@ -916,6 +916,19 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 /* Narrower still: the access chip keeps its shield (its word in the title), then the hint goes. */
 @container pf-hub (max-width: 420px) { .pf-settings .pf-chip-label { display: none; } .pf-settings .pf-chip:first-child { padding: 0 7px; } }
 @container pf-hub (max-width: 380px) { .pf-keyhint { display: none; } }
+/* The head never spills past the hub: under ~440px its marks and gaps tighten, and should that still not do, the
+   well of branch marks is the one part that gives way (it scrolls sideways) so pause and stop stay on the card. */
+.pf-composer-head > .pf-branch-toggles { flex: 0 1 auto; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.pf-composer-head > .pf-branch-toggles::-webkit-scrollbar { display: none; }
+/* A state label in the head gives its words up first, down to its dot, before the marks give way. */
+.pf-composer .pf-composer-head > .pf-mode { display: inline-flex; flex: 0 1000 auto; align-items: center; gap: 7px; min-width: 6px; }
+.pf-composer-head > .pf-mode > .pf-mode-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@container pf-hub (max-width: 400px) { .pf-composer-head > .pf-mode > .pf-mode-text { display: none; } }
+@container pf-hub (max-width: 440px) {
+  .pf-composer-head { gap: 6px; padding-right: 4px; }
+  .pf-branch-toggle { width: 23px; }
+  .pf-budget + .pf-control { margin-left: 0; }
+}
 
 .pf-error { margin: 0; padding: 0 8px; color: var(--semantic-danger-text); font-size: 12px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 
