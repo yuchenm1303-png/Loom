@@ -381,18 +381,16 @@ export interface FlowMessage {
   live?: boolean;
   /** A work stage something came after (or whose turn is over): it reads as one line until opened. */
   superseded?: boolean;
-  /** The agent's last commentary in a turn that ended without an answer (stopped, failed): it stays in sight. */
-  aside?: boolean;
 }
 
 // Tool steps, as the transcript's work log groups them (executionSequence.isActivityItem; repeated so this file stays pure).
 const WORK = new Set(["tool_call", "process", "file_edit"]);
 
-/** The conversation as the hub reads it: what the person said, the agent's answers and the work between them, newest last.
- *  Commentary (the agent narrating its work) belongs to the work: a stage holds it between its steps, so the live stage
- *  reads as the chat's work log does and a folded one keeps it a click away. A turn that ended without an answer (the
- *  person stopped it, or it failed) keeps its last commentary in sight under its stage: with no answer, that is what the
- *  agent last told the person, and folding it away would leave nothing to read. */
+/** The conversation as the hub reads it: what the person said, what the agent said and the work between them, newest last.
+ *  What the agent says to the person is body text wherever it falls: its commentary stands between the stages, as the
+ *  chat's live layout has it, and never shrinks into a step row while the person reads it. Only once a turn is over
+ *  with an answer does its commentary fold into the turn's stage (the chat's fold on completion): the answer is what
+ *  remains, the narration a click away. A turn that ended without one (stopped, failed) keeps every word in place. */
 export function toConversation(items: TranscriptItem[], chatting: boolean, limit = 40): { messages: FlowMessage[]; activity: string } {
   const messages: FlowMessage[] = [];
   const lastTurn = [...items].reverse().find((item) => item.turnId)?.turnId;
@@ -400,13 +398,13 @@ export function toConversation(items: TranscriptItem[], chatting: boolean, limit
   for (const item of items) {
     if (item.type === "assistant_message" && item.phase !== "commentary" && !item.runtimeAuthored && String(item.text || "").trim()) answered.add(item.turnId);
   }
+  const folds = (turnId: string | null | undefined) => answered.has(turnId) && !(chatting && turnId === lastTurn);
   for (const item of items) {
     const text = String(item.text || "").trim();
     const previous = messages[messages.length - 1];
     const commentary = item.type === "assistant_message" && item.phase === "commentary";
-    if (commentary && (!text || item.runtimeAuthored)) continue;
-    if (WORK.has(item.type) || commentary) {
-      // Steps, and what the agent says between them, join the stage before them until an answer, an approval or an error.
+    if (WORK.has(item.type) || (commentary && text && !item.runtimeAuthored && folds(item.turnId))) {
+      // Steps join the stage before them until something said, an approval or an error comes between.
       if (previous?.role === "work" && previous.turnId === item.turnId) previous.items = [...previous.items!, item];
       else messages.push({ id: `work:${item.id}`, role: "work", text: "", turnId: item.turnId, items: [item] });
     } else if (item.type === "approval" || item.type === "error") {
@@ -418,30 +416,18 @@ export function toConversation(items: TranscriptItem[], chatting: boolean, limit
       messages.push({ id: item.id, role: "assistant", text, turnId: item.turnId });
     }
   }
-  const shaped: FlowMessage[] = [];
-  messages.forEach((message, index) => {
-    if (message.role !== "work" || (chatting && message.turnId === lastTurn)) { shaped.push(message); return; }
-    const stageItems = message.items!;
-    const lastStage = !messages.slice(index + 1).some((later) => later.role === "work" && later.turnId === message.turnId);
-    let said = -1;
-    if (!answered.has(message.turnId) && lastStage) {
-      for (let at = stageItems.length - 1; at >= 0; at -= 1) if (stageItems[at].type === "assistant_message") { said = at; break; }
-    }
-    const steps = said < 0 ? stageItems : stageItems.filter((_, at) => at !== said);
-    // A finished stage with no steps (the agent spoke, then answered) has nothing to fold; its answer says the rest.
-    if (steps.some((item) => WORK.has(item.type))) shaped.push(said < 0 ? message : { ...message, items: steps });
-    if (said >= 0) shaped.push({ id: stageItems[said].id, role: "assistant", aside: true, text: String(stageItems[said].text || "").trim(), turnId: message.turnId });
-  });
+  // A folded turn's stage with no steps (the agent spoke, then answered) has nothing to fold; its answer says the rest.
+  const shaped = messages.filter((message) => message.role !== "work" || message.items!.some((item) => WORK.has(item.type)));
   // A stage folds to one line once anything follows it or its turn is over; the stage at the live edge stays open.
   shaped.forEach((message, index) => {
     if (message.role !== "work") return;
     message.live = chatting && message.turnId === lastTurn;
     message.superseded = !message.live || index < shaped.length - 1;
   });
-  // As the transcript does: while a turn runs, its newest answer is the one still arriving.
+  // As the transcript does: while a turn runs, the newest thing it said is the one still arriving.
   const tail = shaped[shaped.length - 1];
   if (chatting && tail?.role === "assistant" && tail.turnId === lastTurn) tail.streaming = true;
-  // The live stage shows what the agent says as it says it, so the thinking row keeps its own quiet label.
+  // What the agent says is on the page, so the thinking row keeps its own quiet label.
   return { messages: shaped.slice(-limit), activity: "" };
 }
 

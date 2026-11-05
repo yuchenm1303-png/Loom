@@ -367,9 +367,9 @@ html[data-loom-theme="light"] .pf-stage {
   animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
 }
 .pf-reply[data-streaming] { padding-bottom: 4px; }
-/* The last thing the agent said in a turn that ended without an answer: the work log's note voice, not an answer's. */
-.pf-reply.pf-aside { padding: 0 2px 2px; color: var(--pl-secondary); font-size: 13px; line-height: 20px; }
-
+/* What the agent says is body text: compact keeps its tighter spacing, not its aside voice (13/14 em, muted), which made
+   every answer and every line of commentary read as the work log's small print. */
+.pf-reply .markdown-compact { color: var(--md-text); font-size: inherit; line-height: inherit; }
 /* An answer's tools sit under it and show while the pointer (or focus) is on it. */
 .pf-reply-tools {
   display: flex;

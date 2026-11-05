@@ -1022,11 +1022,6 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 ? (actions.onApproval ? <ApprovalCard item={message.items![0]} onApproval={actions.onApproval} /> : null)
                 : <ErrorRow item={message.items![0]} />}
             </div>
-          ) : message.aside ? (
-            // A turn that ended without an answer: the agent's last words, quieter than an answer, under the steps they led.
-            <div key={message.id} className="pf-reply pf-aside">
-              <MarkdownMessage content={message.text} compact glow={false} messageKey={message.id} workspace={data.repository.path} />
-            </div>
           ) : (
             <div key={message.id} className="pf-reply" data-streaming={message.streaming || undefined}>
               <MarkdownMessage content={message.text} compact glow streaming={message.streaming} messageKey={message.id}

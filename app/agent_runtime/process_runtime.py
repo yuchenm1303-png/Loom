@@ -156,6 +156,52 @@ class ProcessBackend(Protocol):
     def close(self) -> None: ...
 
 
+def _console_code_page() -> str | None:
+    """The OEM code page Windows console tools write to a pipe in (cp936 on Chinese Windows), or None for UTF-8."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        page = int(ctypes.windll.kernel32.GetOEMCP())  # type: ignore[attr-defined]
+    except Exception:
+        return None
+    if page in (0, 65001):
+        return None
+    name = f"cp{page}"
+    try:
+        codecs.lookup(name)
+    except LookupError:
+        return None
+    return name
+
+
+class ConsoleOutputDecoder:
+    """Pipe output as text: UTF-8 until the bytes prove otherwise, then the console code page.
+
+    PowerShell, cmd and most Windows tools write to a pipe in the OEM code page, not UTF-8, so a user folder named
+    in Chinese came out as U+FFFD runs and the agent read a path that does not exist. The stream switches once, at
+    the first byte that is not UTF-8 (a sequence cut at a chunk's end is only held, not a failure).
+    """
+
+    def __init__(self, fallback: str | None) -> None:
+        self._fallback = fallback
+        self._utf8 = codecs.getincrementaldecoder("utf-8")("strict" if fallback else "replace")
+        self._legacy: codecs.IncrementalDecoder | None = None
+
+    def decode(self, data: bytes, final: bool = False) -> str:
+        if self._legacy is not None:
+            return self._legacy.decode(data, final)
+        try:
+            return self._utf8.decode(data, final)
+        except UnicodeDecodeError as exc:
+            # exc.object is the decoder's held bytes plus this chunk; all before exc.start was valid UTF-8.
+            pending = bytes(exc.object)
+            self._legacy = codecs.getincrementaldecoder(self._fallback or "utf-8")("replace")
+            head = pending[: exc.start].decode("utf-8")
+            return head + self._legacy.decode(pending[exc.start :], final)
+
+
 class PipeProcessBackend:
     name = "pipe"
     pty = False
@@ -178,8 +224,8 @@ class PipeProcessBackend:
             env=dict(env),
             **kwargs,
         )
-        self._stdout_decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-        self._stderr_decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self._stdout_decoder = ConsoleOutputDecoder(_console_code_page())
+        self._stderr_decoder = ConsoleOutputDecoder(_console_code_page())
 
     @property
     def pid(self) -> int:

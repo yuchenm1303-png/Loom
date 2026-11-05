@@ -235,7 +235,7 @@ test("a proposal after the last project ended turns the hub to that new start", 
   assert.equal(toFlowData({ ...overview(), proposal }, now, "zh").phase, "live");
 });
 
-test("the conversation reads what was said and answered; commentary is read in the stage", () => {
+test("the conversation reads what was said and answered; what the agent says is body text", () => {
   const items = [
     { id: "u1", threadId: "t", turnId: "a", type: "user_message", text: "你好" },
     { id: "a1", threadId: "t", turnId: "a", type: "assistant_message", text: "你好！想做什么？", phase: "final_answer" },
@@ -245,8 +245,7 @@ test("the conversation reads what was said and answered; commentary is read in t
   ];
   const live = toConversation(items, true);
   assert.deepEqual(live.messages.map((m) => [m.role, m.text, Boolean(m.streaming)]),
-    [["user", "你好", false], ["assistant", "你好！想做什么？", false], ["user", "做个 CLI", false], ["work", "", false]]);
-  assert.deepEqual(live.messages[3].items.map((item) => item.id), ["c2"]);
+    [["user", "你好", false], ["assistant", "你好！想做什么？", false], ["user", "做个 CLI", false], ["assistant", "先看看仓库", true]]);
   assert.equal(live.activity, "");
   const answered = toConversation([...items, { id: "a2", threadId: "t", turnId: "b", type: "assistant_message", text: "提案已放在上面" }], true);
   assert.equal(answered.messages.at(-1).streaming, true);
@@ -255,22 +254,31 @@ test("the conversation reads what was said and answered; commentary is read in t
     .messages.map((m) => m.role), ["user", "assistant", "user", "assistant"]);
 });
 
-test("a turn that ended without an answer keeps the agent's last words in sight under its folded stage", () => {
+test("commentary stays body text between the stages; it folds into the stage only once the turn is answered and over", () => {
   const items = [
     { id: "u1", threadId: "t", turnId: "a", type: "user_message", text: "清理 C 盘" },
     { id: "c1", threadId: "t", turnId: "a", type: "assistant_message", phase: "commentary", text: "先看看空间" },
-    { id: "p1", threadId: "t", turnId: "a", type: "process", status: "failed", argv: ["cmd"] },
-    { id: "c2", threadId: "t", turnId: "a", type: "assistant_message", phase: "commentary", text: "进程起不来，换桌面操作" },
-    { id: "k1", threadId: "t", turnId: "a", type: "tool_call", toolName: "computer_action", status: "failed" },
-    { id: "e1", threadId: "t", turnId: "a", type: "error", text: "turn_cancelled" },
+    { id: "p1", threadId: "t", turnId: "a", type: "process", status: "completed", argv: ["powershell"] },
+    { id: "c2", threadId: "t", turnId: "a", type: "assistant_message", phase: "commentary", text: "只剩 23.4GB，扫描大目录" },
+    { id: "p2", threadId: "t", turnId: "a", type: "process", status: "running", argv: ["powershell"] },
   ];
-  const { messages } = toConversation(items, false);
-  assert.deepEqual(messages.map((m) => [m.role, m.items?.map((item) => item.id) ?? m.text, Boolean(m.aside), Boolean(m.superseded)]),
-    [["user", "清理 C 盘", false, false], ["work", ["c1", "p1", "k1"], false, true], ["assistant", "进程起不来，换桌面操作", true, false], ["notice", ["e1"], false, false]]);
-  // While it runs, every word stays in the open stage, in order.
-  const live = toConversation(items.slice(0, 5), true);
-  assert.deepEqual(live.messages[1].items.map((item) => item.id), ["c1", "p1", "c2", "k1"]);
-  assert.equal(live.messages.some((m) => m.aside), false);
+  const shape = (messages) => messages.map((m) => [m.role, m.items?.map((item) => item.id) ?? m.text]);
+  // Live: what it said stays where it said it, at full size, while the steps run under it.
+  const live = toConversation(items, true);
+  assert.deepEqual(shape(live.messages), [["user", "清理 C 盘"], ["assistant", "先看看空间"], ["work", ["p1"]], ["assistant", "只剩 23.4GB，扫描大目录"], ["work", ["p2"]]]);
+  assert.equal(live.messages.some((m) => m.streaming), false);
+  // The newest line is the one still arriving while it is the last thing on the page.
+  assert.equal(toConversation(items.slice(0, 4), true).messages.at(-1).streaming, true);
+  // Stopped: nothing moves.
+  const stopped = toConversation([...items, { id: "e1", threadId: "t", turnId: "a", type: "error", text: "turn_cancelled" }], false);
+  assert.deepEqual(shape(stopped.messages), [...shape(live.messages), ["notice", ["e1"]]]);
+  // Answered and over: one stage holds the narration, the answer remains.
+  const over = toConversation([...items, { id: "a1", threadId: "t", turnId: "a", type: "assistant_message", phase: "final_answer", text: "可清理约 9GB" }], false);
+  assert.deepEqual(shape(over.messages), [["user", "清理 C 盘"], ["work", ["c1", "p1", "c2", "p2"]], ["assistant", "可清理约 9GB"]]);
+  assert.equal(over.messages[1].superseded, true);
+  // Still running with its answer arriving: nothing folds yet.
+  const answering = toConversation([...items, { id: "a1", threadId: "t", turnId: "a", type: "assistant_message", phase: "final_answer", text: "可清理" }], true);
+  assert.deepEqual(answering.messages.map((m) => m.role), ["user", "assistant", "work", "assistant", "work", "assistant"]);
 });
 
 test("the conversation keeps the work between messages: one stage per run of steps, folded once anything follows", () => {
@@ -282,12 +290,13 @@ test("the conversation keeps the work between messages: one stage per run of ste
   ];
   const live = toConversation(items, true);
   assert.deepEqual(live.messages.map((m) => [m.role, m.items?.map((item) => item.id) ?? null]),
-    [["user", null], ["work", ["s1", "c1", "p1"]]]);
-  assert.equal(live.messages[1].live, true);
-  assert.equal(live.messages[1].superseded, false);
+    [["user", null], ["work", ["s1"]], ["assistant", null], ["work", ["p1"]]]);
+  assert.equal(live.messages[3].live, true);
+  assert.equal(live.messages[3].superseded, false);
+  assert.equal(live.messages[1].superseded, true);
   const asked = toConversation([...items, { id: "ap", threadId: "t", turnId: "a", type: "approval", status: "pending" }], true);
-  assert.deepEqual(asked.messages.map((m) => m.role), ["user", "work", "notice"]);
-  assert.equal(asked.messages[1].superseded, true);
+  assert.deepEqual(asked.messages.map((m) => m.role), ["user", "work", "assistant", "work", "notice"]);
+  assert.equal(asked.messages[3].superseded, true);
   const over = toConversation([...items, { id: "a1", threadId: "t", turnId: "a", type: "assistant_message", text: "都过了" }], false);
   assert.deepEqual(over.messages.map((m) => [m.role, Boolean(m.live), Boolean(m.superseded), Boolean(m.streaming)]),
     [["user", false, false, false], ["work", false, true, false], ["assistant", false, false, false]]);
