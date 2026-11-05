@@ -124,14 +124,10 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-center { gap: 0; }
 
 .pf-slot { flex: none; min-height: 0; opacity: 1; transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
-/* Arriving, a card unrolls into the room its neighbours make (projectArrange.ts cuts it to that room
-   every frame) and its surface fades in; it never travels on its own. Sizes change on the hub's clock. */
+/* Arriving, a card is born at its cable's tip (projectArrange.ts: a dot, a pill, the card, cut by clip-path): it is
+   opaque all the way and never fades, so nothing behind it shows through. Sizes change on the hub's clock. */
 .pf-slot > .pf-card {
-  opacity: 1;
-  transition: opacity var(--loom-dur-base) var(--loom-ease-out), padding var(--loom-dur-panel) var(--loom-spring-settle), gap var(--loom-dur-panel) var(--loom-spring-settle);
-}
-@starting-style {
-  .pf-slot > .pf-card { opacity: 0; }
+  transition: padding var(--loom-dur-panel) var(--loom-spring-settle), gap var(--loom-dur-panel) var(--loom-spring-settle);
 }
 /* The cards that hold lists give height first; their rows scroll inside them. */
 .pf-slot[data-fit],
@@ -164,43 +160,21 @@ html[data-loom-theme="light"] .pf-stage {
   overscroll-behavior: contain;
 }
 
-/* A card opens out of its cable's tip and closes back into it: it scales about the point its cable plugs into
-   (projectArrange.ts plugs a side cable 34px down, or halfway down a shorter card). */
-.pf-card[data-side="right"] { transform-origin: left min(34px, 50%); }
-.pf-card[data-side="left"] { transform-origin: right min(34px, 50%); }
-.pf-card[data-side="below"] { transform-origin: 50% 0; }
-
-/* Leaving is the entrance played backwards, on the exit steps (useDeparting keeps it for RETAIN.panel):
-   what the card holds fades first; then the bare surface closes into the cable's tip while its neighbours fold
-   the gap; then the cable retracts into the hub and its socket goes. */
+/* Leaving is the birth played backwards (projectArrange.ts leave(); useDeparting keeps it for RETAIN.panel): what
+   the card holds blurs out; the bare surface closes to a pill and draws into the dot at its cable's tip; then the
+   cable retracts into the hub with the dot as its end, and its socket goes. The neighbours close the room after. */
 .pf-loom[data-leaving] {
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit);
 }
 .pf-slot[data-leaving] { pointer-events: none; }
-.pf-slot[data-leaving] > .pf-card > * {
-  opacity: 0;
-  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
-}
-.pf-slot[data-leaving] > .pf-card {
-  opacity: 0;
-  /* Narrowing toward the plug while the neighbours fold it flat: it ends as a point at the cable's tip. */
-  /* It starts narrowing with the contents' fade, so it is already drawing in when the fold flattens it. */
-  scale: .45 .9;
-  transition: opacity var(--loom-dur-base-out) var(--loom-ease-exit) var(--pf-shell-out-delay),
-              scale var(--loom-dur-flow-out) var(--loom-ease-inout);
-}
 
-/* The surface starts closing as the contents are mostly gone; the cable lets go once the surface is mostly closed.
-   Content 0-120 ms, surface 90-290, cable 150-410: inside RETAIN.panel (420). */
-.pf-stage {
-  --pf-shell-out-delay: var(--loom-dur-press);
-  --pf-cable-out-delay: var(--loom-dur-fast);
-}
+/* Contents 0-120 ms, surface 45-285 (a dot from ~240), cable 200-400 as the dot goes: inside RETAIN.panel (420). */
+.pf-stage { --pf-cable-out-delay: var(--loom-dur-base-out); }
 .pf-cable[data-leaving] .pf-cable-body {
   stroke-dashoffset: -100;
-  transition: stroke-dashoffset var(--loom-dur-flow-out) var(--loom-ease-exit) var(--pf-cable-out-delay);
+  transition: stroke-dashoffset var(--loom-dur-base-out) var(--loom-ease-exit) var(--pf-cable-out-delay);
 }
 
 .pf-cable[data-leaving] .pf-socket {

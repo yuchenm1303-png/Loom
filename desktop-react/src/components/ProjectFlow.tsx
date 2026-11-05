@@ -20,7 +20,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import {
   ArrowDown, ArrowUp, Bot, BookMarked, ChartGantt, Check, Circle, CircleDot, Compass, Copy, File, FileCode, FileImage,
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldAlert, ShieldCheck,
-  History, Search, Sparkles, Square, X,
+  History, Search, Sparkles, Square, X, Gauge, RefreshCw, ExternalLink,
 } from "lucide-react";
 import { BuildHistory, type BuildHistoryEntry } from "./BuildHistory";
 import { NewConversationRow } from "./NewConversationRow";
@@ -31,7 +31,7 @@ import { WeaveStage } from "./WeaveFlow";
 import { ProcessNotesContext } from "./transcriptContexts";
 import { isExecutingActivityStatus, itemStatus } from "./activityModel";
 import { ProviderMark } from "./ModelPanel";
-import { ModelUsageIndicator } from "./ModelUsageIndicator";
+import { UsageRing, resetText, usageDetail, usageScopeText, usageWindowLabel, useModelUsage } from "./ModelUsageIndicator";
 import type { FlowMessage, WeaveProposal } from "./projectOverview";
 import { HUB_CLOCK, HUB_EASE, useGlide, visibleBox } from "./projectArrange";
 import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
@@ -718,15 +718,24 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   // the agents: opening one folds the other away, on the same clock (its card leaves as the other arrives).
   const toggle = (id: string) => {
     if (id !== "history") { fold(id); return; }
-    if (!historyOpen) setModelOpen(false);
+    if (!historyOpen) { setModelOpen(false); setUsageOpen(false); }
     showHistory(!historyOpen);
   };
   const toggleModel = () => {
-    if (!modelOpen && historyOpen) showHistory(false);
+    if (!modelOpen) { if (historyOpen) showHistory(false); setUsageOpen(false); }
     setModelOpen(!modelOpen);
   };
+  // The quota is the third picker-sized branch of the right column, grown from the ring beside the model chip.
+  const [usageOpen, setUsageOpen] = useState(false);
+  const usage = useModelUsage(models?.current.selection ?? "");
+  const usageZh = lang !== "en";
+  const toggleUsage = () => {
+    if (!usageOpen) { if (historyOpen) showHistory(false); setModelOpen(false); }
+    setUsageOpen(!usageOpen);
+  };
   const agents = useDeparting(open("agents") ? data.agents : []);
-  const branches = useDeparting([...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : [])]);
+  const branches = useDeparting([...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : []),
+                                 ...(usageOpen && data.models ? [{ id: "usage" }] : [])]);
   const below = useDeparting(open("plan") ? [{ id: "plan" }] : []);
   const loom = useDeparting(data.timeline && open("loom") ? [{ id: "loom" }] : []);
   // Files the person picked before starting; once started, the Host's copies are what count.
@@ -1253,11 +1262,14 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 <span key={data.models.current.selection}>{data.models.current.name}</span>
               </button>
             ) : null}
-            {/* What is left of the model's quota: the chat composer's ring, right against the chip it reports on. */}
+            {/* What is left of the model's quota, right against the chip it reports on; it grows the quota card. */}
             {data.models ? (
-              <span className="pf-usage">
-                <ModelUsageIndicator selection={data.models.current.selection} zh={lang !== "en"} />
-              </span>
+              <button type="button" className="pf-usage" data-open={usageOpen || undefined} aria-expanded={usageOpen} aria-controls="pf-usage-card"
+                      title={`${usageZh ? "余额与额度" : "Balance & quota"}${usage.percent !== undefined || usage.data?.balances.length ? ` · ${usageDetail(usage.data, usage.percent, usageZh)}` : ""}`}
+                      onClick={toggleUsage} onKeyDown={(event) => { if (event.key === "Escape") setUsageOpen(false); }}
+                      {...hover("usage")}>
+                <UsageRing percent={usage.percent} />
+              </button>
             ) : null}
             {/* While the agent answers, an empty field's button stops it; anything typed is sent (it steers the answer). */}
             <button type="button" className="pf-send" data-stop={stopping || undefined}
@@ -1387,6 +1399,49 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                       );
                     }) : <p className="pf-empty">{text.modelNone}</p>}
                   </div>
+                </div>
+              ) : null}
+            </Card>
+          </div>
+        ) : null}
+        {data.models && branches.some((item) => item.id === "usage") ? (
+          // What is left of the model's plan, window by window, or the money on its account.
+          <div className="pf-slot pf-usage-slot" id="pf-usage-card" data-glide="usage" {...hover("usage")} {...slot("usage")}
+               onKeyDown={(event) => { if (event.key === "Escape") setUsageOpen(false); }}>
+            <Card id="usage" side="right" className="pf-usage-card" icon={<Gauge size={12} />} label={usageZh ? "额度" : "Quota"}
+                  count={usage.data?.provider || undefined} register={register}>
+              {!usage.data ? <p className="pf-empty">{usageZh ? "正在查询…" : "Loading…"}</p> : null}
+              {usage.data?.windows.map((row) => (
+                <div key={row.label} className="pf-well pf-usage-row" data-low={row.remainingPercent <= 20 || undefined}>
+                  <span>{usageWindowLabel(row.label, usageZh)}</span>
+                  <strong>{row.remainingPercent}%</strong>
+                  <span className="pf-usage-meter" aria-hidden="true" style={{ "--pf-left": row.remainingPercent / 100 } as React.CSSProperties}><i /></span>
+                  {row.resetsAt ? <em title={new Date(row.resetsAt).toLocaleString(usageZh ? "zh-CN" : undefined)}>{resetText(row.resetsAt, usageZh)}</em> : null}
+                </div>
+              ))}
+              {usage.data?.balances.map((row) => (
+                <div key={row.currency} className="pf-well pf-usage-row">
+                  <span>{usageZh ? "可用余额" : "Available"}</span>
+                  <strong>{row.currency} {row.total}</strong>
+                  {row.toppedUp !== undefined || row.granted !== undefined ? <em>
+                    {[row.toppedUp !== undefined ? `${usageZh ? "充值" : "Paid"} ${row.toppedUp}` : "", row.granted !== undefined ? `${usageZh ? "赠送" : "Granted"} ${row.granted}` : ""]
+                      .filter(Boolean).join(" · ")}
+                  </em> : null}
+                </div>
+              ))}
+              {usage.data?.message ? <p className="pf-usage-note" data-error={usage.data.status === "error" || undefined} role="status">{usage.data.message}</p> : null}
+              {usageScopeText(usage.data, usageZh) ? <p className="pf-usage-note">{usageScopeText(usage.data, usageZh)}</p> : null}
+              {usage.data ? (
+                <div className="pf-usage-foot">
+                  <span>{usage.data.status === "ok"
+                    ? `${usage.data.stale ? (usageZh ? "上次成功 " : "Last good ") : (usageZh ? "更新于 " : "Updated ")}${new Date(usage.data.checkedAt).toLocaleTimeString(usageZh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}`
+                    : ""}</span>
+                  {usage.data.dashboardUrl ? (
+                    <button type="button" title={usageZh ? "打开供应商控制台" : "Open provider console"} aria-label={usageZh ? "打开供应商控制台" : "Open provider console"}
+                            onClick={() => void window.loom?.openExternal?.(usage.data!.dashboardUrl!)}><ExternalLink size={12} /></button>
+                  ) : null}
+                  <button type="button" title={usageZh ? "刷新" : "Refresh"} aria-label={usageZh ? "刷新" : "Refresh"} disabled={usage.loading}
+                          onClick={() => void usage.refresh(true)}>{usage.loading ? <LoaderCircle size={12} className="pf-busy" /> : <RefreshCw size={12} />}</button>
                 </div>
               ) : null}
             </Card>
