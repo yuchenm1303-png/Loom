@@ -4,17 +4,24 @@ const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIU
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
 const settle = page => page.waitForTimeout(800);
 // A card surface's birth cut (projectArrange.ts), read from its computed clip-path as px from each edge of its box. The
-// far edges are written as calc(100% - <px>) so a growing box keeps the shape; a whole card's cut reaches past its box.
+// edges are calc() of the live box (a share of its width, or the box less the shape) so a box that is still growing
+// keeps the shape; a whole card's cut reaches past its box. Each length is evaluated against its side of the box.
 const CUT_OF = `
   const text = getComputedStyle(card).clipPath || "";
   if (!text.startsWith("inset(")) return null;
-  const parts = text.slice(6, text.lastIndexOf(")")).split(" round ")[0].match(/calc\\([^)]*\\)|\\S+/g) || [];
+  const body = text.slice(6, text.lastIndexOf(")")).split(" round ")[0];
+  const parts = [];
+  let depth = 0, token = "";
+  for (const ch of body) {
+    if (ch === " " && !depth) { if (token) parts.push(token); token = ""; continue; }
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth -= 1;
+    token += ch;
+  }
+  if (token) parts.push(token);
   const box = card.getBoundingClientRect();
-  const value = (token, size) => {
-    const far = /calc\\(100% - ([\\d.]+)px\\)/.exec(token);
-    if (far) return size - parseFloat(far[1]);
-    return token.endsWith("%") ? size * parseFloat(token) / 100 : parseFloat(token);
-  };
+  const value = (length, size) => Function("return " + length.replace(/calc/g, "")
+    .replace(/(-?[\\d.]+)%/g, (_, n) => "(" + n + "*" + size + "/100)").replace(/px/g, ""))();
   const [t, r = t, b = t, l = r] = parts;
   return { box, t: value(t, box.height), r: value(r, box.width), b: value(b, box.height), l: value(l, box.width) };
 `;

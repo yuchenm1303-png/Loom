@@ -82,7 +82,13 @@ function cut({ width, height, side, plugX, plugY, round }: Shape, s: number, w: 
   // Measured from the top left corner only: the far edges are "the box less the shape", so a box that is still
   // growing (or shrinking) shows the same shape in the same place instead of a slab cut from both of its edges.
   const far = (start: number, size: number) => `calc(100% - ${(start + size).toFixed(1)}px)`;
-  return `inset(${f(y0)} ${far(x0, cw)} ${far(y0, ch)} ${f(x0)} round ${f(r)})`;
+  // Along a side card the shape is a share of the card's live width: the column can widen as the card's contents
+  // mount (the model card's tabs come a render late), and a shape sized to the first width stood short of the right
+  // edge until its last frame, then snapped out to it.
+  const open = (1 - w).toFixed(4);
+  const along = `calc((100% - ${dot.toFixed(1)}px) * ${open})`;
+  const [right, left] = side === "right" ? [along, "0px"] : side === "left" ? ["0px", along] : [far(x0, cw), f(x0)];
+  return `inset(${f(y0)} ${right} ${far(y0, ch)} ${left} round ${f(r)})`;
 }
 /** The birth as keyframes, sampled finely (each phase has its own curve) and played linearly. */
 function births(shape: Shape, reverse: boolean) {
