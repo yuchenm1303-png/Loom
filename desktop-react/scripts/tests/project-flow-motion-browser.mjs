@@ -321,7 +321,9 @@ try {
   const full = await page.locator('.pf-disclosure').evaluate(node => node.getBoundingClientRect().height);
   // Opening, the details take their room at once and are uncovered as the hub glides away from them.
   const thread = await page.locator('.pf-thread').evaluate(node => node.getBoundingClientRect().height);
-  assert.ok(middle === full && thread > 0, `workspace disclosure takes its room at once: ${middle}, ${full}`);
+  // An ancestor's in-flight transform can change a sampled bound by a floating
+  // point fraction (319.99997 vs 320); the allocated room must remain pixel-stable.
+  assert.ok(Math.abs(middle - full) < 0.5 && thread > 0, `workspace disclosure takes its room at once: ${middle}, ${full}`);
   await button.click();
   await settle(page);
   assert.equal(await page.locator('.pf-disclosure').evaluate(node => node.inert && node.getBoundingClientRect().height < 1), true);

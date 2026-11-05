@@ -195,6 +195,9 @@ const zhText = {
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算：点击或滚轮切换，↑↓ 也可以", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
+  scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
+  agentsPending: "当前没有可查看的 agent，任务调度后自动启用", timelinePending: "还没有执行记录，建造开始后自动启用",
+  filesUnavailable: "当前没有可查看或添加的参考文件", historyUnavailable: "当前环境未提供对话记录",
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
@@ -223,6 +226,9 @@ const enText: typeof zhText = {
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget: click or scroll to change, or use ↑↓", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
+  scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
+  agentsPending: "No agents to inspect yet; available once tasks are dispatched", timelinePending: "No execution records yet; available once the build starts",
+  filesUnavailable: "No reference files to view or add here", historyUnavailable: "Conversation history is not available here",
 };
 type Side = "left" | "right" | "below";
 /** A cable's corner radius, the most its lanes stand apart (a cable's 9px plus a gap), and its plugs apart on the hub. */
@@ -743,13 +749,18 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                        ...(data.knowledge.checks + data.knowledge.notes ? [{ id: "knowledge" }] : [])];
   const context = useDeparting(contextList.filter((item) => open(item.id)));
   // The buttons, in the order the cards hang: the context on the left, the plan below, the agents and the timeline.
-  const toggles: { id: string; icon: typeof Check; label: string }[] = [
-    ...contextList.map(({ id }) => ({ id, ...{ repo: { icon: GitBranch, label: text.repository }, scope: { icon: FolderOpen, label: text.scope },
-                                              files: { icon: Paperclip, label: text.files }, knowledge: { icon: BookMarked, label: text.knowledge } }[id]! })),
+  // Keep the navigation inventory stable, including before a project has data.
+  // Empty branches have a visible, explained disabled entry rather than disappearing.
+  const toggles: { id: string; icon: typeof Check; label: string; unavailable?: string }[] = [
+    { id: "repo", icon: GitBranch, label: text.repository },
+    { id: "scope", icon: FolderOpen, label: text.scope, unavailable: data.scope.length ? undefined : text.scopePending },
+    { id: "files", icon: Paperclip, label: text.files, unavailable: filesShown ? undefined : text.filesUnavailable },
+    { id: "knowledge", icon: BookMarked, label: text.knowledge,
+      unavailable: data.knowledge.checks + data.knowledge.notes ? undefined : text.knowledgePending },
     data.outcome ? { id: "plan", icon: Check, label: text.outcome } : { id: "plan", icon: Compass, label: text.plan(data.milestone) },
-    ...(data.agents.length ? [{ id: "agents", icon: Bot, label: text.agentCards }] : []),
-    ...(data.timeline ? [{ id: "loom", icon: ChartGantt, label: text.loom }] : []),
-    ...(history ? [{ id: "history", icon: History, label: text.history }] : []),
+    { id: "agents", icon: Bot, label: text.agentCards, unavailable: data.agents.length ? undefined : text.agentsPending },
+    { id: "loom", icon: ChartGantt, label: text.loom, unavailable: data.timeline ? undefined : text.timelinePending },
+    { id: "history", icon: History, label: text.history, unavailable: history ? undefined : text.historyUnavailable },
   ];
   // A card that starts leaving changes the layout already (it is lifted out and the others close up), not only once it is gone.
   const ids = (list: { id: string; leaving?: boolean }[]) => list.map((item) => `${item.id}${item.leaving ? "~" : ""}`).join(",");
@@ -1135,12 +1146,14 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                  } : undefined}
                  onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
                  onDrop={(event) => void dropFiles(event)}>
-          <header className="pf-composer-head">
+          <header className="pf-composer-head" style={{ flexWrap: "wrap" }}>
             {/* One button per branch, lit in its card's colour while the card is plugged in. */}
             <span className="pf-branch-toggles" role="group" aria-label={text.branches}>
-              {toggles.map(({ id, icon: Icon, label }) => (
-                <button key={id} type="button" className="pf-branch-toggle" data-branch={id} aria-pressed={open(id)} aria-label={label}
-                        title={open(id) ? text.foldBranch(label) : text.unfoldBranch(label)} onClick={() => toggle(id)}
+              {toggles.map(({ id, icon: Icon, label, unavailable }) => (
+                <button key={id} type="button" className="pf-branch-toggle" data-branch={id} aria-pressed={!unavailable && open(id)} aria-label={label}
+                        disabled={Boolean(unavailable)} aria-description={unavailable}
+                        style={unavailable ? { cursor: "help" } : undefined}
+                        title={unavailable ? `${label} · ${unavailable}` : open(id) ? text.foldBranch(label) : text.unfoldBranch(label)} onClick={() => toggle(id)}
                         {...(id === "agents" ? {} : hover(id))}>
                   <Icon size={12} />
                 </button>

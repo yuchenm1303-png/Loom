@@ -217,7 +217,7 @@ function variant(data: FlowData): FlowData {
 }
 function variantOf(data: FlowData): FlowData {
   if (params.has("draft")) return { ...data, phase: "draft", objective: "", narration: { summary: "", text: "描述一个大目标，它会被拆成阶段和任务，并行开发、独立复审后集成。" },
-    tasks: [], agents: [], scope: [], knowledge: { checks: 0, notes: 0, latest: "" }, controls: { pause: false, resume: false, cancel: false },
+    tasks: [], agents: [], scope: [], timeline: undefined, knowledge: { checks: 0, notes: 0, latest: "" }, controls: { pause: false, resume: false, cancel: false },
     // &dirty=1: the repository has uncommitted changes, shown as a reminder; the start still goes.
     workspace: params.has("dirty") ? { changeCount: 11, head: "0a1d215", branch: "main",
       changes: [{ status: "M", path: "src/relay/server.py" }, { status: "M", path: "src/relay/client.py" }, { status: "A", path: "src/relay/auth.py" },
@@ -239,7 +239,9 @@ function Preview() {
   const [model, setModel] = useState(MODELS[0].selection);
   const [picks, setPicks] = useState(0);
   const [draftProposal, setDraftProposal] = useState<typeof PROPOSAL | null>(null);
-  useEffect(() => { Object.assign(window, { projectControlsFixture: { propose: () => setDraftProposal({ ...PROPOSAL, id: crypto.randomUUID() }) } }); }, []);
+  const [activated, setActivated] = useState(false);
+  useEffect(() => { Object.assign(window, { projectControlsFixture: { propose: () => setDraftProposal({ ...PROPOSAL, id: crypto.randomUUID() }),
+    activate: () => setActivated(true), clear: () => setActivated(false) } }); }, []);
   const current = MODELS.find((item) => item.selection === model)!;
   const [effort, setEffort] = useState("high");
   const [recent, setRecent] = useState<string[]>([MODELS[2].selection]);
@@ -264,7 +266,7 @@ function Preview() {
       </header>
       {mode === "project"
         ? <div className="project-mode-stage" style={{ gridRow: "2" }}>
-            <ProjectFlow data={{ ...turnTalk(variant(play(count, workers)), scene), ...(draftProposal ? { proposal: draftProposal } : {}), models, references: REFERENCES, history: THREADS, conversationPermissionMode: conversationAccess }}
+            <ProjectFlow data={{ ...turnTalk(activated ? play(count, workers) : variant(play(count, workers)), scene), ...(draftProposal ? { proposal: draftProposal } : {}), models, references: REFERENCES, history: THREADS, conversationPermissionMode: conversationAccess }}
                          actions={{ onChat: (...args) => { (window as unknown as { sent: unknown }).sent = args; }, onInterrupt: () => {}, onApproval: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {}, onOpenThread: (id) => { (window as unknown as { opened: unknown }).opened = id; }, onNewThread: () => {},
                                     onPermissionModeChange: conversationAccess ? async value => setConversationAccess(value) : undefined,
                                     error: params.has("error") ? "Lost the Host; reconnecting…" : undefined,
