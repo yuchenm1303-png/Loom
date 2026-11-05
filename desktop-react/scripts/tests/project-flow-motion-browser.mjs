@@ -3,10 +3,25 @@ const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwri
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
 const settle = page => page.waitForTimeout(800);
+// A card surface's birth cut (projectArrange.ts), read from its computed clip-path as px from each edge of its box. The
+// far edges are written as calc(100% - <px>) so a growing box keeps the shape; a whole card's cut reaches past its box.
+const CUT_OF = `
+  const text = getComputedStyle(card).clipPath || "";
+  if (!text.startsWith("inset(")) return null;
+  const parts = text.slice(6, text.lastIndexOf(")")).split(" round ")[0].match(/calc\\([^)]*\\)|\\S+/g) || [];
+  const box = card.getBoundingClientRect();
+  const value = (token, size) => {
+    const far = /calc\\(100% - ([\\d.]+)px\\)/.exec(token);
+    if (far) return size - parseFloat(far[1]);
+    return token.endsWith("%") ? size * parseFloat(token) / 100 : parseFloat(token);
+  };
+  const [t, r = t, b = t, l = r] = parts;
+  return { box, t: value(t, box.height), r: value(r, box.width), b: value(b, box.height), l: value(l, box.width) };
+`;
 const toggle = (page, id) => page.locator(`.pf-branch-toggle[data-branch="${id}"]`);
 // Runs `act` and samples every painted frame for 500 ms: the most one visible card overlaps another (boxes cut
 // by their clip-path, faint ones ignored), and how far the named card moved while it was visible.
-const watch = (page, act, follow) => page.evaluate(async ({ act, follow }) => {
+const watch = (page, act, follow) => page.evaluate(async ({ act, follow, CUT_OF }) => {
   const inset = (node) => {
     const match = /inset\(([^r)]*)/.exec(node.style.clipPath || "");
     if (!match) return [0, 0];
@@ -18,6 +33,7 @@ const watch = (page, act, follow) => page.evaluate(async ({ act, follow }) => {
     for (let n = node.querySelector(":scope > .pf-card") || node; n && n !== document.body; n = n.parentElement) o *= Number(getComputedStyle(n).opacity);
     return o;
   };
+  const cutOf = new Function("card", CUT_OF);
   let overlap = 0, drift = 0, start = null;
   new Function(act)();
   const end = performance.now() + 500;
@@ -26,11 +42,9 @@ const watch = (page, act, follow) => page.evaluate(async ({ act, follow }) => {
     // A card's surface is also cut to its birth shape (a dot, a pill, the card): what is painted is inside both cuts.
     const own = (node) => {
       const surface = node.querySelector(":scope > .pf-card");
-      const match = surface && /inset\(([^r)]*)/.exec(getComputedStyle(surface).clipPath || "");
-      if (!match) return null;
-      const v = match[1].trim().split(/\s+/).map(parseFloat);
-      const [t, r, b, l] = [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]];
-      const box = surface.getBoundingClientRect();
+      const cut = surface && cutOf(surface);
+      if (!cut) return null;
+      const { box, t, r, b, l } = cut;
       return { left: box.left + l, right: box.right - r, top: box.top + t, bottom: box.bottom - b };
     };
     const seen = [...document.querySelectorAll("[data-glide]")].filter((node) => shown(node) > 0.05).map((node) => {
@@ -47,7 +61,7 @@ const watch = (page, act, follow) => page.evaluate(async ({ act, follow }) => {
     if (card) { const y = card.node.getBoundingClientRect().top; start ??= y; drift = Math.max(drift, Math.abs(y - start)); }
   }
   return { overlap, drift };
-}, { act, follow });
+}, { act, follow, CUT_OF });
 
 try {
   for (const theme of ["dark", "light"]) {
@@ -117,20 +131,22 @@ try {
     for (const id of ["scope", "plan"]) {
       await toggle(page, id).click();
       await settle(page);
-      const shapes = await page.evaluate(async (id) => {
+      const shapes = await page.evaluate(async ({ id, CUT_OF }) => {
+        const cutOf = new Function("card", CUT_OF);
         document.querySelector(`[data-branch="${id}"]`).click();
         const seen = [];
         for (const end = performance.now() + 700; performance.now() < end;) {
           await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
           const card = document.querySelector(`[data-glide="${id}"] > .pf-card`);
-          const match = /inset\(([^r)]*)/.exec(getComputedStyle(card).clipPath || "");
+          const cut = cutOf(card);
           const box = card.getBoundingClientRect();
-          if (!match) { seen.push({ w: box.width, h: box.height, full: true }); continue; }
-          const [t, r, b, l] = match[1].trim().split(/\s+/).map(parseFloat);
+          // The last frame of a birth leaves room around the card for its shadow: that is the whole card.
+          if (!cut || (cut.t <= 0 && cut.r <= 0 && cut.b <= 0 && cut.l <= 0)) { seen.push({ w: box.width, h: box.height, full: true }); continue; }
+          const { t, r, b, l } = cut;
           seen.push({ w: box.width - l - r, h: box.height - t - b, W: box.width, H: box.height, opacity: Number(getComputedStyle(card).opacity) });
         }
         return seen;
-      }, id);
+      }, { id, CUT_OF });
       const visible = shapes.filter((shape) => shape.w > 0.5 && shape.h > 0.5);
       const first = visible[0];
       assert.ok(first && !first.full && first.w <= 13 && first.h <= 13, `${id}: born as a dot: ${JSON.stringify(first)}`);

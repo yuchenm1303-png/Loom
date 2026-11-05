@@ -35,7 +35,7 @@ const BIRTH = DUR.flow;
 /** The dot: a little wider than the cable (9px), as its socket is. */
 const DOT = 12;
 /** The contents wait until the shape is most of the way open: text comes into focus, it is never seen stretching. */
-const CONTENT_AT = 0.62;
+const CONTENT_AT = 0.45;
 /** The marks land a beat after the rows, as the last word of the entrance. */
 const MARK_PAUSE = DUR.fast;
 const MARKS = ".pf-count, .pf-agent-time, .pf-agent-check, .pf-add";
@@ -60,8 +60,11 @@ const smooth = (t: number, a: number, b: number) => { const x = clamp01((t - a) 
 interface Shape { width: number; height: number; side: string; plugX: number; plugY: number; round: number }
 /** Where a card plugs into its cable, in its own px (ProjectFlow.tsx's cables: 34px down a side, or halfway down
  *  a short card; a card below plugs at its top, 72px in). */
-function shapeOf(surface: HTMLElement): Shape {
-  const width = surface.offsetWidth, height = surface.offsetHeight, side = surface.dataset.side ?? "right";
+function shapeOf(surface: HTMLElement, arriving: boolean): Shape {
+  // An arriving card's box may still be growing into a column that makes room for it on a size transition (the model
+  // card starts 18px tall while the agents shrink): it is born to the size of what it holds, not to that first box.
+  const width = surface.offsetWidth, side = surface.dataset.side ?? "right";
+  const height = arriving ? Math.max(surface.offsetHeight, surface.scrollHeight) : surface.offsetHeight;
   const round = parseFloat(getComputedStyle(surface).borderTopLeftRadius) || 0;
   return { width, height, side, round,
            plugX: side === "left" ? width : side === "below" ? Math.min(72, width / 2) : 0,
@@ -76,7 +79,10 @@ function cut({ width, height, side, plugX, plugY, round }: Shape, s: number, w: 
   const y0 = side === "below" ? 0 : Math.min(height - ch, Math.max(0, plugY - ch / 2));
   const r = Math.min(Math.max(round, DOT / 2), ch / 2, cw / 2);
   const f = (value: number) => `${Math.max(0, value).toFixed(1)}px`;
-  return `inset(${f(y0)} ${f(width - x0 - cw)} ${f(height - y0 - ch)} ${f(x0)} round ${f(r)})`;
+  // Measured from the top left corner only: the far edges are "the box less the shape", so a box that is still
+  // growing (or shrinking) shows the same shape in the same place instead of a slab cut from both of its edges.
+  const far = (start: number, size: number) => `calc(100% - ${(start + size).toFixed(1)}px)`;
+  return `inset(${f(y0)} ${far(x0, cw)} ${far(y0, ch)} ${f(x0)} round ${f(r)})`;
 }
 /** The birth as keyframes, sampled finely (each phase has its own curve) and played linearly. */
 function births(shape: Shape, reverse: boolean) {
@@ -91,18 +97,56 @@ function births(shape: Shape, reverse: boolean) {
       : cut(shape, phaseOut(t, 0, 0.14), phaseOut(t, 0.08, 0.5), phaseOut(t, 0.26, 1));
     frames.push({ clipPath: clip, offset: t });
   }
+  // Whole, whatever size the box has come to, with room around it for the card's drop shadow (a cut at the box
+  // would take the shadow away the moment an exit starts and give it back all at once as a birth ends).
+  frames[reverse ? 0 : N].clipPath = `inset(-${SHADOW_ROOM}px round ${shape.round + SHADOW_ROOM}px)`;
   return frames;
+}
+
+/** How far outside its box a card's shadow reaches (it is 0 14px 30px -22px: 22px below), with a margin. */
+const SHADOW_ROOM = 40;
+/** The card's shadow fades in once it is whole and out as it starts to leave, so it never pops at a cut's edge. */
+function shade(surface: HTMLElement, show: boolean, delay: number, duration: number) {
+  const shadow = getComputedStyle(surface).boxShadow;
+  if (!shadow || shadow === "none") return;
+  const clear = shadow.replace(/rgba?\([^)]*\)/g, "rgba(0, 0, 0, 0)");
+  surface.animate([{ boxShadow: show ? clear : shadow }, { boxShadow: show ? shadow : clear }],
+    { duration, delay, easing: show ? EASE.out : EASE.exit, fill: show ? "backwards" : "forwards" }).id = show ? "pf-shell" : "pf-exit";
 }
 
 /** The beats of an arriving card (its shape, then its parts, then its marks). Returns how long they run. */
 function enter(surface: HTMLElement, lead: number) {
   for (const running of surface.getAnimations({ subtree: true })) if (running.id === "pf-exit") running.cancel();
-  surface.animate(births(shapeOf(surface), false), { duration: BIRTH, delay: lead, easing: "linear", fill: "backwards" }).id = "pf-shell";
+  surface.animate(births(shapeOf(surface, true), false), { duration: BIRTH, delay: lead, easing: "linear", fill: "backwards" }).id = "pf-shell";
+  shade(surface, true, lead + BIRTH * 0.96, DUR.base);
   const content = lead + BIRTH * CONTENT_AT;
+  const focus = (part: HTMLElement) => {
+    let first: Animation | null = null;
+    for (const target of [part, ...scrollersIn(part)]) {
+      const animation = target.animate([{ opacity: 0, filter: "blur(4px)" }, { opacity: 1, filter: "blur(0)" }],
+        { duration: DUR.base, delay: content, easing: EASE.out, fill: "backwards" });
+      animation.id = "pf-part";
+      first ??= animation;
+    }
+    return first!;
+  };
+  let pace: Animation | null = null;
   for (const part of surface.children) {
-    if (part instanceof HTMLElement) part.animate([{ opacity: 0, filter: "blur(4px)" }, { opacity: 1, filter: "blur(0)" }],
-      { duration: DUR.base, delay: content, easing: EASE.out, fill: "backwards" }).id = "pf-part";
+    if (!(part instanceof HTMLElement)) continue;
+    const animation = focus(part);
+    pace ??= animation;
   }
+  // A part that mounts a render later (the model card's provider tabs) comes into focus with the others, on their
+  // clock, instead of standing on the bare surface from its first frame.
+  const late = new MutationObserver((changes) => {
+    for (const change of changes) for (const part of change.addedNodes) {
+      if (!(part instanceof HTMLElement) || part.parentElement !== surface) continue;
+      const animation = focus(part);
+      if (pace?.currentTime != null) animation.currentTime = pace.currentTime;
+    }
+  });
+  late.observe(surface, { childList: true });
+  window.setTimeout(() => late.disconnect(), content + DUR.base);
   const rows = [...surface.querySelectorAll<HTMLElement>(ROWS)].slice(0, MAX_ROWS);
   rows.forEach((row, index) => {
     row.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR.base, delay: content + (index + 1) * STAGGER_MS, easing: EASE.out, fill: "backwards" }).id = "pf-row";
@@ -114,6 +158,16 @@ function enter(surface: HTMLElement, lead: number) {
   return Math.max(lead + BIRTH, marks + DUR.base);
 }
 
+/** The scrolling boxes inside a part (the model card's provider tabs and list). Chrome paints a scroller on a layer
+ *  of its own that a fade or blur animated on an ancestor does not reach: filmed, the model list stood sharp and
+ *  whole while the rest of its card had faded out. They get the fade themselves. */
+function scrollersIn(part: HTMLElement) {
+  return [...part.querySelectorAll<HTMLElement>("*")].filter((node) => {
+    const style = getComputedStyle(node);
+    return /auto|scroll/.test(style.overflowY + style.overflowX);
+  });
+}
+
 /** Whether a slot's surface is playing its exit. */
 function exiting(node: HTMLElement) {
   return Boolean(node.querySelector(":scope > .pf-card")?.getAnimations().some((running) => running.id === "pf-exit"));
@@ -122,11 +176,12 @@ function exiting(node: HTMLElement) {
 /** A leaving card's beats, the birth backwards. Held by `fill: forwards` until useDeparting takes it out. */
 function leave(surface: HTMLElement) {
   for (const running of surface.getAnimations({ subtree: true })) if (ENTRANCE_IDS.has(running.id)) running.cancel();
-  for (const part of surface.children) {
-    if (part instanceof HTMLElement) part.animate([{ opacity: 1, filter: "blur(0)" }, { opacity: 0, filter: "blur(3px)" }],
+  shade(surface, false, 0, EXIT_SHELL_DELAY);
+  for (const part of [...surface.children].flatMap((child) => child instanceof HTMLElement ? [child, ...scrollersIn(child)] : [])) {
+    part.animate([{ opacity: 1, filter: "blur(0)" }, { opacity: 0, filter: "blur(3px)" }],
       { duration: EXIT_CONTENT, easing: EASE.exit, fill: "forwards" }).id = "pf-exit";
   }
-  surface.animate(births(shapeOf(surface), true), { duration: EXIT_SHELL, delay: EXIT_SHELL_DELAY, easing: "linear", fill: "both" }).id = "pf-exit";
+  surface.animate(births(shapeOf(surface, false), true), { duration: EXIT_SHELL, delay: EXIT_SHELL_DELAY, easing: "linear", fill: "both" }).id = "pf-exit";
 }
 
 type Place = { x: number; y: number; width: number; height: number };
@@ -251,18 +306,20 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     // Removing a flex item also recentres its column: every held card is placed again against the new column.
     for (const [node, from] of held.current) pin(node, from, root);
     const reduce = prefersReducedMotionNow();
-    // The columns a card has just started to leave: their other cards wait for it to have mostly gone.
-    // Not a column whose other cards change size with it (the agents grow back as the model card goes): a size
-    // transition is not held, so its cards must move with it, and the leaving card is folded by them instead.
-    const resizing = (column: Element | null) => [...(column?.children ?? [])].some((item) => item instanceof HTMLElement
-      && !item.hasAttribute("data-leaving") && item.getAnimations({ subtree: true }).some((running) =>
-        running instanceof CSSTransition && SIZE.test(running.transitionProperty)));
+    // The columns a card has just started to leave: their other cards wait for it to have mostly gone. That
+    // includes their size changes (the agents grow back as the model card goes): those CSS transitions have just
+    // started, and are held by as much, so the cards grow as they move instead of shoving the leaving card aside.
+    const sizing = (column: Element | null) => [...(column?.children ?? [])].flatMap((item) =>
+      item instanceof HTMLElement && !item.hasAttribute("data-leaving") ? item.getAnimations({ subtree: true }) : [])
+      .filter((running): running is CSSTransition => running instanceof CSSTransition && SIZE.test(running.transitionProperty)
+        && Number(running.currentTime ?? 0) < 1);
     const holding = new Set<Element | null>();
     if (!reduce) for (const node of leavers) {
       const surface = node.querySelector<HTMLElement>(":scope > .pf-card");
       if (!surface) continue;
       leave(surface);
-      if (!resizing(node.parentElement)) holding.add(node.parentElement);
+      if (!holding.has(node.parentElement)) for (const transition of sizing(node.parentElement)) transition.effect?.updateTiming({ delay: EXIT_HOLD });
+      holding.add(node.parentElement);
     }
     const holdOf = (node: HTMLElement) => holding.has(node.parentElement) ? EXIT_HOLD : 0;
     if (reduce) {
