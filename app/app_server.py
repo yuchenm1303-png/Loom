@@ -2203,8 +2203,9 @@ class JsonRpcStdioServer:
         method = payload.get("method")
         # ``projectRun/overview`` is Weave's view, re-read every few seconds: queued behind
         # the control worker it took up to a minute, longer than the view's poll, and the
-        # hub stayed blank.
-        if method in {"profile/insights", "projectRun/overview"}:
+        # hub stayed blank. ``projectWeave/history`` (the hub's conversations card) reads every
+        # conversation and run; queued there it held up ``thread/start`` from the hub's quill.
+        if method in {"profile/insights", "projectRun/overview", "projectWeave/history"}:
             return True
         params = payload.get("params")
         return (

@@ -767,7 +767,8 @@ export function useLoom() {
     void refreshThreads("active");
   }, [clearActive, refreshThreads]);
 
-  const startThread = useCallback(async (pendingMessage?: TranscriptItem, draftParams = draftThreadParamsRef.current, navigationVersion = openRequestRef.current) => {
+  const startThread = useCallback(async (pendingMessage?: TranscriptItem, draftParams = draftThreadParamsRef.current, navigationVersion = openRequestRef.current,
+                                         beforeOpen?: (thread: ThreadRecord) => void) => {
     const requestId = openRequestRef.current === navigationVersion ? ++openRequestRef.current : -1;
     const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", draftParams);
     setThreads((current) => {
@@ -786,6 +787,8 @@ export function useLoom() {
     // conversation. Render it immediately instead of serially rescanning the
     // catalogue and reading the same empty thread back from disk.
     if (openRequestRef.current === requestId) {
+      // The caller's own state for the new thread (its mode) lands in the same render as the thread.
+      beforeOpen?.(result.thread);
       threadViewRef.current = "active";
       setThreadViewState("active");
       activeIdRef.current = result.thread.id;
@@ -805,14 +808,17 @@ export function useLoom() {
   }, [installItems, refreshThreads]);
 
   // A mode choice can materialize the draft without sending a user turn or model request.
-  const createEmptyThread = useCallback(async () => {
+  // With params it creates the thread there directly (the 建造 hub's quill): the open conversation stays on screen
+  // until the new one replaces it, instead of falling back to the home page while the Host works.
+  const createEmptyThread = useCallback(async (options: { params?: { workspace?: string; projectId?: string };
+                                                         beforeOpen?: (thread: ThreadRecord) => void } = {}) => {
     if (homeSendPendingRef.current) throw new Error("正在创建对话，请稍后重试。");
     homeSendPendingRef.current = true;
-    const draftParams = { ...draftThreadParamsRef.current };
+    const draftParams = options.params ? { ...options.params } : { ...draftThreadParamsRef.current };
     const navigationVersion = openRequestRef.current;
     try {
       while (modelSwitchTasks.current.has("draft")) await modelSwitchTasks.current.get("draft");
-      return await startThread(undefined, draftParams, navigationVersion);
+      return await startThread(undefined, draftParams, navigationVersion, options.beforeOpen);
     } finally {
       homeSendPendingRef.current = false;
     }

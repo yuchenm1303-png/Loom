@@ -668,8 +668,7 @@ export default function App() {
     modeStartPending.current = true;
     setModeStarting(true);
     try {
-      const created = await loom.createEmptyThread();
-      rememberMode(created.id, "project");
+      await loom.createEmptyThread({ beforeOpen: (created) => rememberMode(created.id, "project") });
     } catch (cause) {
       setModeError(errorMessage(cause));
     } finally {
@@ -1747,9 +1746,12 @@ export default function App() {
                            imageSupport={loom.models?.current?.vision ?? null}
                            history={buildThreads} onOpenThread={async id => { rememberMode(id, "project"); await loom.openThread(id); }}
                            onNewThread={async () => {
-                             // In the same project (or folder), straight into the hub.
-                             await loom.newThread(thread.projectId ? undefined : thread.workspace, thread.projectId || undefined);
-                             rememberMode((await loom.createEmptyThread()).id, "project");
+                             // In the same project (or folder), from this hub straight into the new one: the thread is
+                             // created first and opens already in 建造, never passing through the chat home page.
+                             await loom.createEmptyThread({
+                               params: thread.projectId ? { projectId: thread.projectId } : thread.workspace ? { workspace: thread.workspace } : {},
+                               beforeOpen: (created) => rememberMode(created.id, "project"),
+                             });
                            }}
                            onRenameThread={loom.renameThread}
                            onArchiveThread={id => loom.archiveThread(id, true)}
