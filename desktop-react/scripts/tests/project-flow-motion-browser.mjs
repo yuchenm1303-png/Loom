@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
-const settle = page => page.waitForTimeout(650);
+const settle = page => page.waitForTimeout(800);
 const toggle = (page, id) => page.locator(`.pf-branch-toggle[data-branch="${id}"]`);
 // Runs `act` and samples every painted frame for 500 ms: the most one visible card overlaps another (boxes cut
 // by their clip-path, faint ones ignored), and how far the named card moved while it was visible.
@@ -23,10 +23,22 @@ const watch = (page, act, follow) => page.evaluate(async ({ act, follow }) => {
   const end = performance.now() + 500;
   while (performance.now() < end) {
     await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+    // A card's surface is also cut to its birth shape (a dot, a pill, the card): what is painted is inside both cuts.
+    const own = (node) => {
+      const surface = node.querySelector(":scope > .pf-card");
+      const match = surface && /inset\(([^r)]*)/.exec(getComputedStyle(surface).clipPath || "");
+      if (!match) return null;
+      const v = match[1].trim().split(/\s+/).map(parseFloat);
+      const [t, r, b, l] = [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]];
+      const box = surface.getBoundingClientRect();
+      return { left: box.left + l, right: box.right - r, top: box.top + t, bottom: box.bottom - b };
+    };
     const seen = [...document.querySelectorAll("[data-glide]")].filter((node) => shown(node) > 0.05).map((node) => {
-      const r = node.getBoundingClientRect(), [top, bottom] = inset(node);
-      return { node, left: r.left, right: r.right, top: r.top + top, bottom: r.bottom - bottom };
-    });
+      const r = node.getBoundingClientRect(), [top, bottom] = inset(node), s = own(node);
+      const box = { node, left: r.left, right: r.right, top: r.top + top, bottom: r.bottom - bottom };
+      if (s) Object.assign(box, { left: Math.max(box.left, s.left), right: Math.min(box.right, s.right), top: Math.max(box.top, s.top), bottom: Math.min(box.bottom, s.bottom) });
+      return box;
+    }).filter((box) => box.right > box.left && box.bottom > box.top);
     for (let i = 0; i < seen.length; i += 1) for (let j = i + 1; j < seen.length; j += 1) {
       const a = seen[i], b = seen[j];
       if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0) overlap = Math.max(overlap, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
@@ -101,8 +113,35 @@ try {
     }
     assert.equal(await page.locator('[data-glide][style*="clip-path"]').count(), 0, "no cut is left behind");
 
-    // An arriving card hangs from the top of its room: its head is in sight from the first frames, the rows unroll under it.
-    for (const id of ["scope", "plan", "loom"]) {
+    // A card with a surface is born at its cable's tip: a dot on the plug, a pill along the card, then the card.
+    for (const id of ["scope", "plan"]) {
+      await toggle(page, id).click();
+      await settle(page);
+      const shapes = await page.evaluate(async (id) => {
+        document.querySelector(`[data-branch="${id}"]`).click();
+        const seen = [];
+        for (const end = performance.now() + 700; performance.now() < end;) {
+          await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+          const card = document.querySelector(`[data-glide="${id}"] > .pf-card`);
+          const match = /inset\(([^r)]*)/.exec(getComputedStyle(card).clipPath || "");
+          const box = card.getBoundingClientRect();
+          if (!match) { seen.push({ w: box.width, h: box.height, full: true }); continue; }
+          const [t, r, b, l] = match[1].trim().split(/\s+/).map(parseFloat);
+          seen.push({ w: box.width - l - r, h: box.height - t - b, W: box.width, H: box.height, opacity: Number(getComputedStyle(card).opacity) });
+        }
+        return seen;
+      }, id);
+      const visible = shapes.filter((shape) => shape.w > 0.5 && shape.h > 0.5);
+      const first = visible[0];
+      assert.ok(first && !first.full && first.w <= 13 && first.h <= 13, `${id}: born as a dot: ${JSON.stringify(first)}`);
+      assert.ok(visible.some((shape) => !shape.full && shape.w > shape.W * 0.6 && shape.h < shape.H * 0.4), `${id}: stretches into a pill before it opens`);
+      assert.ok(visible.every((shape) => shape.full || shape.opacity === 1), `${id}: the surface never fades, it changes shape`);
+      assert.ok(shapes.at(-1).full, `${id}: ends as the whole card`);
+      await settle(page);
+    }
+    // A card without a surface of its own (the timeline) hangs from the top of its room: its head is in sight from
+    // the first frames, the rows unroll under it.
+    for (const id of ["loom"]) {
       await toggle(page, id).click();
       await settle(page);
       const head = await page.evaluate(async (id) => {
@@ -134,7 +173,8 @@ try {
       return { files: delay("files"), knowledge: delay("knowledge"), rows };
     }, id);
     const closing = await ripple("scope");
-    assert.ok(closing.files === 0 && closing.knowledge > 0, `closing in, the nearest card leads: ${JSON.stringify(closing)}`);
+    // Closing in waits for the leaving card to have mostly gone (EXIT_HOLD), then ripples from the nearest card.
+    assert.ok(closing.files >= 150 && closing.knowledge > closing.files, `closing in, after the exit, the nearest card leads: ${JSON.stringify(closing)}`);
     await settle(page);
     const opening = await ripple("scope");
     assert.ok(opening.knowledge === 0 && opening.files > 0, `making room, the farthest card leads: ${JSON.stringify(opening)}`);

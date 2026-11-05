@@ -388,7 +388,7 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
   }, [stage, hub, cards]);
 
   /** Draws one frame; says whether anything is still on its way. */
-  const draw = useCallback((fresh: boolean) => {
+  const draw = useCallback((fresh: boolean, hold = 0) => {
     const list = geometry();
     if (!list) return false;
     const now = performance.now();
@@ -404,7 +404,8 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
       rebase.current?.clock.cancel();
       rebase.current = null;
       if (offsets.size) {
-        const clock = new Animation(new KeyframeEffect(null, [], { duration: HUB_CLOCK, easing: HUB_EASE, fill: "forwards" }));
+        // A leaving card holds its column for a moment (projectArrange.ts EXIT_HOLD); the plugs wait with the cards.
+        const clock = new Animation(new KeyframeEffect(null, [], { duration: HUB_CLOCK, delay: hold, easing: HUB_EASE, fill: "both" }));
         clock.play();
         rebase.current = { offsets, clock };
       }
@@ -459,8 +460,8 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
     setCables((current) => current.length === drawn.current.length
       && current.every((cable, index) => cable.d === drawn.current[index].d && cable.id === drawn.current[index].id) ? current : drawn.current);
   }, []);
-  const measure = useCallback((fresh = false) => {
-    const moving = draw(fresh);
+  const measure = useCallback((fresh = false, hold = 0) => {
+    const moving = draw(fresh, hold);
     if (frame.current) return;
     if (!moving) { settle(); return; }
     const step = () => {
