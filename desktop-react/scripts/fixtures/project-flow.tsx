@@ -15,6 +15,12 @@ import { I18nProvider } from "../../src/i18n";
 import "../../src/renderer-styles";
 
 const params = new URLSearchParams(location.search);
+// The quota ring beside the model chip asks for usage; answer as a plan with a 5-hour and a weekly window.
+const loomBridge = ((window as unknown as { loom?: Record<string, unknown> }).loom ??= {});
+loomBridge.queryModelUsage ??= async (selection: string) => ({
+  status: "ok", provider: selection.split(":")[0] || selection, checkedAt: Date.now(), balances: [],
+  windows: [{ label: "5h", remainingPercent: 64, resetsAt: Date.now() + 2.4 * 3_600_000 }, { label: "Weekly", remainingPercent: 87, resetsAt: Date.now() + 4 * 86_400_000 }],
+});
 applyThemePreference(params.get("theme") === "light" ? "light" : "dark", { animate: false, syncNative: false });
 
 const start: FlowData = {

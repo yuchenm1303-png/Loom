@@ -31,6 +31,7 @@ import { WeaveStage } from "./WeaveFlow";
 import { ProcessNotesContext } from "./transcriptContexts";
 import { isExecutingActivityStatus, itemStatus } from "./activityModel";
 import { ProviderMark } from "./ModelPanel";
+import { ModelUsageIndicator } from "./ModelUsageIndicator";
 import type { FlowMessage, WeaveProposal } from "./projectOverview";
 import { HUB_CLOCK, HUB_EASE, useGlide, visibleBox } from "./projectArrange";
 import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
@@ -1251,6 +1252,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                 <ProviderMark id={data.models.current.groupId} name={data.models.current.group} size="small" />
                 <span key={data.models.current.selection}>{data.models.current.name}</span>
               </button>
+            ) : null}
+            {/* What is left of the model's quota: the chat composer's ring, right against the chip it reports on. */}
+            {data.models ? (
+              <span className="pf-usage">
+                <ModelUsageIndicator selection={data.models.current.selection} zh={lang !== "en"} />
+              </span>
             ) : null}
             {/* While the agent answers, an empty field's button stops it; anything typed is sent (it steers the answer). */}
             <button type="button" className="pf-send" data-stop={stopping || undefined}

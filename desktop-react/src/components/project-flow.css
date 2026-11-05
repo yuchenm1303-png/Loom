@@ -907,6 +907,13 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-image-notice:not([data-blocked]) { color: var(--pl-muted); }
 /* With a model chip, the chip takes the free room and send stands right after it. */
 .pf-model-chip ~ .pf-send { margin-left: 0; }
+/* The quota ring, right against the model chip: it reports on that model. */
+.pf-usage { display: inline-flex; flex: none; margin-left: -4px; }
+/* Its panel hangs over the agent column: lift the hub's column above its neighbours while the panel is up. */
+.pf-col:has(.pf-usage .composer-popover), .pf-composer:has(.pf-usage .composer-popover) { z-index: 4; }
+.pf-usage .model-usage-button { width: 30px; height: 30px; color: var(--pl-faint); }
+.pf-usage .model-usage-button:hover:not(:disabled),
+.pf-usage .model-usage-button[aria-expanded="true"] { background: var(--pf-well); color: var(--pl-muted); }
 /* Nothing to send: a quiet well, not a faded ink square that still reads as a button. */
 .pf-send:disabled { background: var(--pf-well); color: var(--pl-faint); cursor: default; }
 /* While the agent answers and nothing is typed, the button stops the answer. */
