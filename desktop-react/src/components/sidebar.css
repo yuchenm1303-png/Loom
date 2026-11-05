@@ -856,7 +856,7 @@ html[data-loom-theme="light"] .compact-thread-row.is-waiting-approval {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  gap: 2px 6px;
   padding: 5px 10px 2px;
 }
 

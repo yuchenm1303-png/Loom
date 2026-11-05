@@ -1,10 +1,13 @@
+/* Sits on the right of the footer row, opposite the archive link. It reads as
+   a quiet footer link until there is something to act on: downloading tints
+   the text, a downloaded update fills the pill. */
 .sidebar-update {
   --sidebar-update-color: #2385ce;
   display: contents;
 }
 
 .sidebar-update-button {
-  justify-self: start;
+  justify-self: end;
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -13,35 +16,56 @@
   max-width: 100%;
   padding: 4px 9px;
   border: 0;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--sidebar-update-color) 14%, transparent);
-  color: var(--sidebar-update-color);
+  border-radius: var(--sb-radius, 8px);
+  background: transparent;
+  color: var(--sb-ink-3);
   font: inherit;
   font-size: 12px;
   line-height: 20px;
   cursor: pointer;
-  transition: background-color var(--loom-dur-fast) ease;
+  transition:
+    background-color var(--loom-dur-fast) ease,
+    color var(--loom-dur-fast) ease;
 }
 
-.sidebar-update-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--sidebar-update-color) 24%, transparent);
+.sidebar-update-button[data-tone="idle"]:hover {
+  color: var(--sb-ink);
+  background: var(--sb-hover);
+}
+
+.sidebar-update-button[data-tone="busy"] { color: var(--sidebar-update-color); }
+.sidebar-update-button[data-tone="done"] { color: var(--sb-ink-3); }
+
+.sidebar-update-button[data-tone="ready"] {
+  background: color-mix(in srgb, var(--sidebar-update-color) 16%, transparent);
+  color: var(--sidebar-update-color);
+}
+.sidebar-update-button[data-tone="ready"]:hover {
+  background: color-mix(in srgb, var(--sidebar-update-color) 26%, transparent);
 }
 
 .sidebar-update-button:focus-visible {
   outline: 2px solid currentColor;
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 
 .sidebar-update-button:disabled { cursor: default; }
-.sidebar-update-button svg { flex: none; }
-.sidebar-update-button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-update-button svg { flex: none; width: 14px; height: 14px; }
+.sidebar-update-button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .sidebar-update-arrow { border: 1px solid currentColor; border-radius: 50%; padding: 1px; }
 
 html[data-loom-theme="dark"] .sidebar-update { --sidebar-update-color: #65bcfa; }
 
+/* Only errors reach this line; it wraps under the whole row. */
 .sidebar-update-feedback {
   display: block;
   grid-column: 1 / -1;
+  padding: 0 9px 2px;
   color: var(--sb-ink-3);
   font-size: 11px;
   line-height: 16px;
