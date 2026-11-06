@@ -8,7 +8,16 @@ const source = readFileSync(new URL("../../src/components/projectOverview.ts", i
 const module = { exports: {} };
 new Function("module", "exports", "require", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(
   module, module.exports, () => ({}));
-const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice, readableError, toConversation, toHistory, whenSaid } = module.exports;
+const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice, readableError, toConversation, toHistory, whenSaid, toTurnTasks } = module.exports;
+
+test("a conversation's task list becomes the plan card's rows, each status its state", () => {
+  const rows = toTurnTasks([{ step: "读后端", status: "completed" }, { step: "读前端", status: "in_progress" },
+                            { step: "跑测试", status: "blocked", blocker: "没有 Python" }, { step: "汇总", status: "pending" }]);
+  assert.deepEqual(rows.map((row) => row.state), ["integrated", "working", "rework", "pending"]);
+  assert.deepEqual(rows.map((row) => row.title), ["读后端", "读前端", "跑测试", "汇总"]);
+  assert.equal(rows[2].detail, "没有 Python");
+  assert.equal(new Set(rows.map((row) => row.id)).size, 4);
+});
 
 const now = Date.parse("2026-10-30T10:00:00Z");
 const run = (extra = {}) => ({

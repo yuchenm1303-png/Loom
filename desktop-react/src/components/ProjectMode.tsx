@@ -7,7 +7,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
-import { raisedBudget, readableError, toConversation, toFlowData, toHistory, toModelChoice, type ProjectOverview } from "./projectOverview";
+import { raisedBudget, readableError, toConversation, toFlowData, toHistory, toModelChoice, toTurnTasks, type ProjectOverview } from "./projectOverview";
+import { latestTaskPlan } from "./liveTaskProgress";
 import type { ApprovalDecision, ModelSnapshot, TranscriptItem, ProjectRecord } from "../types/loom";
 import { ProjectWorkspacePicker } from "./ProjectWorkspacePicker";
 import { DUR } from "../motion/tokens";
@@ -163,6 +164,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   useEffect(() => { if (!chatting) void load(true); }, [chatting, load]);
   const liveConversation = useMemo(() => toConversation(items.filter((item) => item.threadId === threadId), chatting),
                                    [items, threadId, chatting]);
+  const turnTasks = useMemo(() => toTurnTasks(latestTaskPlan(items.filter((item) => item.threadId === threadId))),
+                            [items, threadId]);
   // Opening another conversation: what is written fades at once, while its overview is read ahead. The hub goes over to
   // it when the fade is done and its overview is known, not before: the conversation it was showing stays until then.
   const [fading, setFading] = useState(false);
@@ -224,6 +227,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
                  chatting: chatting && here && !renewal?.cleared, conversationPermissionMode: permissionMode,
                  history: history ? toHistory(historyRows || history.filter(entry => entry.id === threadId).map(entry => ({ ...entry, workspace: entry.workspace || (entry.id === threadId ? workspace : undefined) })), threadId, now, lang) : undefined,
                  historyError };
+  // No project yet: the plan card holds this conversation's task list; a started project's own plan takes over.
+  if (data.phase === "draft" && here && !renewal?.cleared) data.tasks = turnTasks;
   const proposal = data.phase === "draft" ? shownOverview.proposal : null;
   data.repository.path = run?.repository || workspace;
   if (!run) data.repository.branch = shownOverview.workspace?.branch || "—";

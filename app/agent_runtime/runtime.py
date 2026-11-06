@@ -179,6 +179,7 @@ class AgentRuntime:
         self.store = store
         self.tools = tools or ToolRegistry()
         self._request_context_providers = {}
+        self._turn_plan_holds: dict[str, tuple[str, int]] = {}
         from .evidence_tools import durable_tool_result_tool, run_scratch_dir_tool, task_history_tool
         from .task_plan import update_plan_tool
         from .plan_tools import manage_plan_tool
@@ -1051,6 +1052,10 @@ class AgentRuntime:
         actions retain their original multiplicity.
         """
         step = self._resolve_batch_step(session, step, calls)
+        from .turn_plan import held_calls
+        held = held_calls(self, session, step, calls)
+        if held:
+            return ToolBatchPlan(runnable=(), immediate=held, blocked=True, execution_step=step)
         faults: dict[str, ToolResult] = {}
         for call in calls:
             try:

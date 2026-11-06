@@ -95,7 +95,7 @@ def update_plan_tool(store):
                 raise ValueError("replacing an active plan requires an explanation")
             if previous.get("mode") == "graph" and not replacing:
                 raise ValueError("graph definitions are immutable; use manage_plan, or explicitly replace the plan")
-        elif "plan_id" in arguments or "expected_revision" in arguments:
+        elif "plan_id" in arguments or arguments.get("expected_revision", 0) != 0:
             raise ValueError("no active plan matches these version fields; inspect manage_plan")
         mode = arguments.get("mode", previous.get("mode", "milestones") if previous and not replacing else "milestones")
         if previous and not replacing and mode != previous.get("mode", "milestones"):

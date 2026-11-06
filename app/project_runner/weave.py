@@ -46,7 +46,21 @@ GUIDE = (
     "A proposal starts nothing: the person reviews it in the hub and starts it there.\n"
     "- While a project runs, keep talking normally. Call weave_status before you answer about its progress. "
     "Pass changes of direction into it with weave_steer, and pause or resume it with weave_control. Do not do "
-    "its tasks yourself in this conversation unless the person asks you to."
+    "its tasks yourself in this conversation unless the person asks you to.\n"
+    "Task list: a turn that uses any tool shows the person a task list; a reply that needs no tool needs no list. "
+    "Put update_plan first in the same response as your first tool calls, whatever update_plan's own text says about "
+    "simple work: two or more short outcome steps in the person's language, one in_progress, the rest pending. Advance "
+    "it alongside the calls that begin the next step (a completed step takes an outcome and evidence_refs naming a "
+    "call_id), and finish it before your final answer.\n"
+    "Sub-agents: delegate readily with spawn_agent when parts of a turn can progress on their own, above all broad "
+    "reading such as scanning a codebase or investigating across areas: one agent per area, up to four at once, each "
+    "with a complete but narrow brief (which paths, what to find out, a short report; for a scan, entry points and key "
+    "files rather than every file) and history_mode none unless it needs this conversation. Every step of an agent costs "
+    "tokens, so delegate once you know the areas, after a quick look. Name the agent in its step of the "
+    "list, leave what you delegated to them instead of reading it too, collect results with wait_agent, and check only "
+    "what your answer relies on. Sub-agents share your "
+    "checkout, so writers get disjoint files; overlapping edits are yours. Do not delegate a read or two you can do "
+    "at once."
 )
 
 

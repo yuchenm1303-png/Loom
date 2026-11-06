@@ -138,6 +138,110 @@ def test_the_planner_sizes_its_plan_and_reads_the_repository_first():
     assert prompt.endswith("Say hello")
 
 
+LIST = {"plan": [{"step": "读代码", "status": "in_progress"}, {"step": "回答", "status": "pending"}]}
+
+
+def batch(*calls):
+    return ModelResponse(tool_calls=tuple(ToolCall(call_id=f"call-{name}-{index}", name=name, arguments=arguments)
+                                          for index, (name, arguments) in enumerate(calls)), usage=ModelUsage(5, 0, 5))
+
+
+def tool_events(runtime, source, kind):
+    return [event for event in runtime.store.events(source) if event.kind.value == kind]
+
+
+def probe_tool(ran):
+    from app.agent_runtime import AgentTool, ToolEffect, ToolResult
+
+    def handler(_context, _arguments):
+        ran.append(1)
+        return ToolResult(ok=True, content="read")
+    return AgentTool(name="probe", description="Read something", input_schema={"type": "object", "properties": {}},
+                     effect=ToolEffect.READ_ONLY, handler=handler)
+
+
+def test_a_weave_turn_with_its_list_in_the_first_batch_loses_no_step(tmp_path):
+    ran = []
+    service, runtime, platform, _, source = build(tmp_path, [
+        batch(("update_plan", LIST), ("probe", {})), answer("好了")], tools=(probe_tool(ran),))
+    try:
+        turn(service, source, "看看代码", weave_mode=True)
+        assert ran == [1] and len(platform.requests) == 2
+        assert not tool_events(runtime, source, "tool_failed")
+    finally:
+        runtime.close()
+
+
+def test_work_without_a_list_is_held_and_says_how_to_go_on(tmp_path):
+    ran = []
+    service, runtime, platform, _, source = build(tmp_path, [
+        batch(("probe", {})), batch(("update_plan", LIST), ("probe", {})), answer("好了")], tools=(probe_tool(ran),))
+    try:
+        turn(service, source, "看看代码", weave_mode=True)
+        assert ran == [1]  # once, after the list; the first call never ran
+        failed = tool_events(runtime, source, "tool_failed")
+        assert [event.data["data"]["failure_kind"] for event in failed] == ["turn_plan_required"]
+        assert "update_plan" in failed[0].data["content"]
+        assert service._load(source).status.value == "completed"
+    finally:
+        runtime.close()
+
+
+def test_a_model_that_never_writes_a_list_loses_the_list_not_the_turn(tmp_path):
+    ran = []
+    service, runtime, platform, _, source = build(tmp_path, [
+        batch(("probe", {})), batch(("probe", {})), batch(("probe", {})), answer("好了")], tools=(probe_tool(ran),))
+    try:
+        turn(service, source, "看看代码", weave_mode=True)
+        assert ran == [1] and len(tool_events(runtime, source, "tool_failed")) == 2
+        assert service._load(source).status.value == "completed"
+    finally:
+        runtime.close()
+
+
+def test_a_first_list_may_say_revision_zero(tmp_path):
+    ran = []
+    service, runtime, platform, _, source = build(tmp_path, [
+        batch(("update_plan", {**LIST, "expected_revision": 0}), ("probe", {})), answer("好了")], tools=(probe_tool(ran),))
+    try:
+        turn(service, source, "看看代码", weave_mode=True)
+        assert ran == [1] and not tool_events(runtime, source, "tool_failed")
+        assert len(tool_events(runtime, source, "plan_updated")) == 1
+    finally:
+        runtime.close()
+
+
+def test_each_turn_shows_its_own_list_and_is_told_of_the_active_one(tmp_path):
+    ran = []
+    service, runtime, platform, _, source = build(tmp_path, [
+        batch(("update_plan", LIST), ("probe", {})), answer("一"),
+        batch(("probe", {})), answer("二")], tools=(probe_tool(ran),))
+    try:
+        turn(service, source, "第一件事", weave_mode=True)
+        turn(service, source, "第二件事", weave_mode=True)
+        failed = tool_events(runtime, source, "tool_failed")
+        assert len(failed) == 1 and "plan_id=" in failed[0].data["content"] and "replace=true" in failed[0].data["content"]
+    finally:
+        runtime.close()
+
+
+def test_chat_mode_and_the_modes_own_tools_are_never_held(tmp_path):
+    ran = []
+    service, runtime, platform, _, source = build(tmp_path, [
+        batch(("probe", {})), answer("chat"), batch(("weave_status", {})), answer("no project")], tools=(probe_tool(ran),))
+    try:
+        turn(service, source, "看看", weave_mode=False)
+        assert ran == [1]
+        turn(service, source, "项目怎样了", weave_mode=True)
+        assert not tool_events(runtime, source, "tool_failed")
+    finally:
+        runtime.close()
+
+
+def test_the_guide_asks_for_the_list_and_for_sub_agents():
+    assert "update_plan first" in weave.GUIDE and "spawn_agent" in weave.GUIDE and "disjoint files" in weave.GUIDE
+
+
 def test_budget_suggestions_snap_to_the_hubs_choices():
     assert weave.snap_budget(3_000_000) in (2_000_000, 4_000_000)
     assert weave.snap_budget(50_000_000) == 16_000_000

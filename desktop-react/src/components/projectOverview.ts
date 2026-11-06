@@ -2,6 +2,7 @@
  * Pure functions, so the mapping is tested without a Host (scripts/tests/project-overview.test.mjs). */
 import type { FlowAgent, FlowData, FlowTaskState } from "./ProjectFlow";
 import type { BuildHistoryEntry } from "./BuildHistory";
+import type { TaskMilestone } from "./liveTaskProgress";
 import type { ProjectRun } from "./projectRuns";
 import type { WorkspaceState } from "./ProjectWorkspacePicker";
 import type { ModelProfile, ModelSnapshot, TranscriptItem } from "../types/loom";
@@ -385,6 +386,12 @@ export interface FlowMessage {
 
 // Tool steps, as the transcript's work log groups them (executionSequence.isActivityItem; repeated so this file stays pure).
 const WORK = new Set(["tool_call", "process", "file_edit"]);
+
+/** The conversation's task list as rows of the hub's plan card. */
+export function toTurnTasks(steps: TaskMilestone[]): FlowData["tasks"] {
+  const states: Record<TaskMilestone["status"], FlowTaskState> = { pending: "pending", in_progress: "working", completed: "integrated", blocked: "rework" };
+  return steps.map((step, index) => ({ id: `turn-${index}`, title: step.step, state: states[step.status], detail: step.blocker }));
+}
 
 /** The conversation as the hub reads it: what the person said, what the agent said and the work between them, newest last.
  *  What the agent says to the person is body text wherever it falls: its commentary stands between the stages, as the

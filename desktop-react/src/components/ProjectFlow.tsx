@@ -173,7 +173,7 @@ const taskIcon: Record<FlowTaskState, typeof Check> = { pending: Circle, working
 
 const zhText = {
   repository: "仓库", scope: "工作范围", knowledge: "项目知识", checks: "条检查", notes: "条笔记", plan: (n: number) => `阶段 ${n} 计划`,
-  planEmpty: "规划完成后在这里显示任务", outcome: "已完成", outcomeCount: (n: number) => `${n} 个阶段`, episodes: (n: number) => `${n} 轮`,
+  taskList: "任务清单", planEmpty: "规划完成后在这里显示任务", outcome: "已完成", outcomeCount: (n: number) => `${n} 个阶段`, episodes: (n: number) => `${n} 轮`,
   donePlaceholder: "目标已完成", loom: "建造时间线", phases: { plan: "规划", work: "开发", review: "复审" },
   loomStats: (s: { episodes: number; trouble: number; perHour: number; peak?: number; waitMinutes?: number }) =>
     `${s.episodes} 轮 · 重试 ${s.trouble} · ${compact(s.perHour)}/时${(s.peak || 0) > 1 ? ` · 最多同时 ${s.peak}` : ""}${s.waitMinutes ? ` · 排队 ${s.waitMinutes} 分` : ""}`,
@@ -201,7 +201,7 @@ const zhText = {
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
-  planEmpty: "Tasks appear here once the plan is made", outcome: "Complete", outcomeCount: (n: number) => `${n} milestones`,
+  taskList: "Task list", planEmpty: "Tasks appear here once the plan is made", outcome: "Complete", outcomeCount: (n: number) => `${n} milestones`,
   episodes: (n: number) => `${n} episodes`, donePlaceholder: "The objective is complete",
   loom: "Timeline", phases: { plan: "Plan", work: "Build", review: "Review" },
   loomStats: (s: { episodes: number; trouble: number; perHour: number; peak?: number; waitMinutes?: number }) =>
@@ -1433,7 +1433,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
               ))}
             </Card>
           ) : (
-          <Card id={item.id} side="below" icon={<Compass size={12} />} label={text.plan(view.milestone)}
+          <Card id={item.id} side="below" icon={<Compass size={12} />} label={view.phase === "draft" && view.tasks.length ? text.taskList : text.plan(view.milestone)}
                 count={view.tasks.length ? `${view.tasks.filter((task) => task.state === "integrated").length}/${view.tasks.length}` : undefined}
                 under={view.tasks.length ? (
                   // The stage at a glance: one segment per task, coloured by its state; a segment fills as its task lands.
