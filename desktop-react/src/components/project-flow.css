@@ -396,9 +396,9 @@ html[data-loom-theme="light"] .pf-stage {
   animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards;
 }
 .pf-reply[data-streaming] { padding-bottom: 4px; }
-/* What the agent says is body text: compact keeps its tighter spacing, not its aside voice (13/14 em, muted), which made
-   every answer and every line of commentary read as the work log's small print. */
-.pf-reply .markdown-compact { color: var(--md-text); font-size: inherit; line-height: inherit; }
+/* What the agent says keeps compact's spacing at the body size, in compact's muted ink: the typing edge (useTypingLight)
+   is a near-white highlight, and on body-coloured text it could not be seen at all. */
+.pf-reply .markdown-compact { font-size: inherit; line-height: inherit; }
 /* An answer's tools sit under it and show while the pointer (or focus) is on it. */
 .pf-reply-tools {
   display: flex;
