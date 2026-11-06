@@ -152,9 +152,9 @@ try {
           const cut = cutOf(card);
           const box = card.getBoundingClientRect();
           // The last frame of a birth leaves room around the card for its shadow: that is the whole card.
-          if (!cut || (cut.t <= 0 && cut.r <= 0 && cut.b <= 0 && cut.l <= 0)) { seen.push({ w: box.width, h: box.height, full: true }); continue; }
+          if (!cut || (cut.t <= 0 && cut.r <= 0 && cut.b <= 0 && cut.l <= 0)) { seen.push({ w: box.width, h: box.height, full: true, t: document.timeline.currentTime }); continue; }
           const { t, r, b, l } = cut;
-          seen.push({ w: box.width - l - r, h: box.height - t - b, W: box.width, H: box.height, opacity: Number(getComputedStyle(card).opacity) });
+          seen.push({ w: box.width - l - r, h: box.height - t - b, W: box.width, H: box.height, opacity: Number(getComputedStyle(card).opacity), t: document.timeline.currentTime });
         }
         return seen;
       }, { id, CUT_OF });
@@ -164,6 +164,19 @@ try {
       assert.ok(visible.some((shape) => !shape.full && shape.w > shape.W * 0.6 && shape.h < shape.H * 0.4), `${id}: stretches into a pill before it opens`);
       assert.ok(visible.every((shape) => shape.full || shape.opacity === 1), `${id}: the surface never fades, it changes shape`);
       assert.ok(shapes.at(-1).full, `${id}: ends as the whole card`);
+      // One movement: it never stands still on the way, and it doesn't reach most of its height early and crawl the rest,
+      // which reads as a card that stops halfway.
+      const opening = visible.filter((shape) => !shape.full);
+      const whole = visible.find((shape) => shape.full);
+      let still = 0;
+      for (let at = 1, since = opening[0].t; at < opening.length; at += 1) {
+        if (opening[at].h - opening[at - 1].h > 0.05 || opening[at].w - opening[at - 1].w > 0.05) since = opening[at].t;
+        else if (opening[at].h < opening[at].H * 0.95) still = Math.max(still, opening[at].t - since);
+      }
+      assert.ok(still < 30, `${id}: the shape stood still for ${still} ms`);
+      const most = opening.find((shape) => shape.h >= shape.H * 0.85);
+      const tail = (whole.t - most.t) / (whole.t - opening[0].t);
+      assert.ok(tail < 0.3, `${id}: the last 15% of the height took ${(tail * 100).toFixed(0)}% of the opening`);
       await settle(page);
     }
     // Contents only fade. A blur redrawn every frame over a whole card halved the frame rate as the shape opened.
@@ -428,6 +441,28 @@ try {
       assert.equal(frames.at(-1).beads, false, `${name}: the beads are back when the hub is still`);
       await settle(page);
     }
+    // A cable that stays stays: closing a card next to it does not make it grow again (React moved its node to match the
+    // order cables are dealt in, and a node put back in the page starts over from `@starting-style`).
+    await toggle(page, "history").click();
+    await settle(page);
+    await page.locator(".pf-model-chip").click();
+    await settle(page);
+    const stayed = await page.evaluate(async () => {
+      const bodies = new Map([...document.querySelectorAll(".pf-cable")].filter((g) => g.dataset.cable !== "model").map((g) => [g.dataset.cable, g.querySelector(".pf-cable-body")]));
+      const hidden = new Set();
+      document.querySelector(".pf-model-chip").click();
+      for (const end = performance.now() + 1200; performance.now() < end;) {
+        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+        for (const [id, body] of bodies) {
+          if (!body.isConnected || parseFloat(getComputedStyle(body).strokeDashoffset) < -1) hidden.add(id);
+        }
+      }
+      return [...hidden];
+    });
+    assert.deepEqual(stayed, [], "closing the model card leaves the other cables where they are");
+    await toggle(page, "history").click();
+    await settle(page);
+
     // A short window still contains every card; lists take the overflow.
     await page.setViewportSize({ width: 1200, height: 700 });
     await page.locator('.pf-model-chip').click();

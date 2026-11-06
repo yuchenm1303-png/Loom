@@ -481,8 +481,18 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
         }
       }
     }
-    const key = out.map((cable) => `${cable.id}:${cable.side}`).join("|");
-    if (key !== listed.current) { listed.current = key; setCables(out); }
+    // The list only gains and loses cables, it is never reordered, whatever order they are dealt in: React would move a
+    // node to match, and a node that moves is inserted again, so `@starting-style` grows its cable again from nothing
+    // (the history card's cable vanished as the model card closed).
+    const key = out.map((cable) => `${cable.id}:${cable.side}`).sort().join("|");
+    if (key !== listed.current) {
+      listed.current = key;
+      setCables((current) => {
+        const now = new Map(out.map((cable) => [cable.id, cable]));
+        const kept = current.filter((cable) => now.has(cable.id)).map((cable) => now.get(cable.id)!);
+        return [...kept, ...out.filter((cable) => !current.some((item) => item.id === cable.id))];
+      });
+    }
     return going.current.size > 0 || following;
   }, [geometry]);
 

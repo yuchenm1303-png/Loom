@@ -50,7 +50,7 @@ const DOT = 12;
 /** The contents wait until the shape is most of the way open: text fades in, it is never seen stretching. It only
  *  fades: a blur on them, redrawn every frame over a card this size, took the hub from 60 frames a second to about 30
  *  right as the shape was opening, and the card visibly stopped for a moment two thirds of the way down. */
-const CONTENT_AT = 0.45;
+const CONTENT_AT = 0.6;
 /** The marks land a beat after the rows, as the last word of the entrance. */
 const MARK_PAUSE = DUR.fast;
 const MARKS = ".pf-count, .pf-agent-time, .pf-agent-check, .pf-add";
@@ -70,10 +70,13 @@ const SIZE = /height|width|padding|margin|gap|grid-template/;
 const ENTRANCE_IDS = new Set(["pf-glide", "pf-row", "pf-shell", "pf-part", "pf-mark", "pf-exit"]);
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
-/** Progress of a phase that runs from `a` to `b` of the whole, eased out (cubic) or in. */
-const phaseOut = (t: number, a: number, b: number) => 1 - (1 - clamp01((t - a) / (b - a))) ** 3;
+/** Progress of a phase that runs from `a` to `b` of the whole, eased in. */
 const phaseIn = (t: number, a: number, b: number) => clamp01((t - a) / (b - a)) ** 2;
 const smooth = (t: number, a: number, b: number) => { const x = clamp01((t - a) / (b - a)); return x * x * (3 - 2 * x); };
+/** A phase of a birth: from rest to rest, a little ahead of the middle. Eased out instead, each phase set off at its
+ *  top speed and nearly stopped before the next: the shape stood still as a pill, shot to 85% of its height in 100 ms and
+ *  crawled the rest, and that crawl read as a card that stops halfway. */
+const rise = (t: number, a: number, b: number) => smooth(clamp01((t - a) / (b - a)) ** 0.9, 0, 1);
 
 interface Shape { width: number; height: number; side: string; plugX: number; plugY: number; round: number }
 /** Where a card plugs into its cable, in its own px (ProjectFlow.tsx's cables: 34px down a side, or halfway down
@@ -114,11 +117,11 @@ function births(shape: Shape, reverse: boolean) {
   const N = 28;
   for (let i = 0; i <= N; i += 1) {
     const t = i / N;
-    // In: the dot appears, then it stretches (width leads), then it opens (height follows on a long settle).
+    // In: the dot appears, stretches (width leads) and opens (height follows). The phases overlap: one movement, no stops.
     // Out: it draws in toward the plug, lower first and then narrower (a small block, a pill), into the dot, which goes last.
     const clip = reverse
       ? cut(shape, 1 - phaseIn(t, 0.84, 1), 1 - smooth(t, 0.12, 0.86), 1 - smooth(t, 0, 0.62))
-      : cut(shape, phaseOut(t, 0, 0.14), phaseOut(t, 0.08, 0.5), phaseOut(t, 0.26, 1));
+      : cut(shape, rise(t, 0, 0.18), rise(t, 0.05, 0.55), rise(t, 0.14, 1));
     frames.push({ clipPath: clip, offset: t });
   }
   // Whole, whatever size the box has come to, with room around it for the card's drop shadow (a cut at the box
