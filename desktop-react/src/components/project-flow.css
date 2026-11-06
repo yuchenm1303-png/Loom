@@ -66,12 +66,13 @@ html[data-loom-theme="light"] .pf-stage {
   stroke-linejoin: round;
   stroke-dasharray: 100;
   stroke-dashoffset: 0;
-  /* A cable grows out of the hub to its card on the hub's clock (projectArrange.ts), and retracts back into the hub. */
-  transition: stroke var(--loom-dur-fast) var(--loom-ease-out), stroke-dashoffset var(--loom-dur-panel) var(--loom-spring-settle);
+  /* A cable grows out of the hub once the others have made room (projectArrange.ts sets the delay), with no overshoot
+     past its card, and retracts back into the hub. */
+  transition: stroke var(--loom-dur-fast) var(--loom-ease-out), stroke-dashoffset var(--loom-dur-flow) var(--loom-ease-glide) var(--pf-cable-in-delay, 0ms);
 }
 @starting-style { .pf-cable-body { stroke-dashoffset: -100; } }
 
-.pf-socket { fill: var(--pf-cable); opacity: 1; transition: fill var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-base) var(--loom-ease-out); }
+.pf-socket { fill: var(--pf-cable); opacity: 1; transition: fill var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-fast) var(--loom-ease-out) var(--pf-cable-in-delay, 0ms); }
 @starting-style { .pf-socket { opacity: 0; } }
 
 .pf-cable[data-hot] .pf-cable-body { stroke: var(--pf-cable-hot); }
@@ -87,21 +88,23 @@ html[data-loom-theme="light"] .pf-stage {
   stroke-dashoffset: -100;
   animation: pf-pulse var(--loom-dur-slow) var(--loom-ease-glide);
 }
-/* An agent at work: beads stream out of the hub along its cable to it, a few px apart in pairs, so the cable
-   reads as carrying something. The hub's second loop after the live dot, on the spin period; gone under
-   reduced motion. Paths run card -> hub, so a growing offset carries the
-   beads toward the card. */
+/* An agent at work: beads stream out of the hub along its cable to it, evenly spaced, so the cable reads as carrying
+   something. The hub's second loop after the live dot, on the spin period; gone under reduced motion. Paths run
+   card -> hub, so a growing offset carries the beads toward the card. They are measured along a path, so a cable
+   that changes shape slides them around: while the hub rearranges they leave the wire and come back once it is still. */
 .pf-flow {
   fill: none;
   stroke: var(--pf-live);
   stroke-width: 2.5;
   stroke-linecap: round;
-  stroke-dasharray: 0 7 0 17;
+  stroke-dasharray: 0 12;
   opacity: .7;
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out);
   /* Stepped: 16 moves of 1.5px a period (~18 a second). Smooth at 165 Hz it cost ~150 ms of main thread a second
      (style + paint every frame); stepped it measures the same as no beads. */
   animation: pf-flow var(--loom-period-spin) steps(16) infinite, pf-fade var(--loom-dur-base) var(--loom-ease-out) var(--loom-dur-panel) backwards;
 }
+.pf-cables[data-moving] .pf-flow { opacity: 0; transition: opacity var(--loom-dur-press) var(--loom-ease-exit); }
 @keyframes pf-flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 24; } }
 /* A merge runs the other way, out of the hub into the repository, in the colour of landed work. */
 .pf-pulse[data-back] { stroke: var(--pf-ok); stroke-dasharray: 14 100; animation-name: pf-pulse-back; }

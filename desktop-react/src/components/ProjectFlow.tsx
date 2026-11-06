@@ -33,7 +33,7 @@ import { isExecutingActivityStatus, itemStatus } from "./activityModel";
 import { ProviderMark } from "./ModelPanel";
 import { UsageRing, resetText, usageDetail, usageScopeText, usageWindowLabel, useModelUsage } from "./ModelUsageIndicator";
 import type { FlowMessage, WeaveProposal } from "./projectOverview";
-import { HUB_CLOCK, HUB_EASE, useGlide, visibleBox } from "./projectArrange";
+import { glideProgress, HUB_CLOCK, HUB_EASE, LEAVE_RETAIN, useGlide, visibleBox } from "./projectArrange";
 import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
 import {
@@ -42,7 +42,6 @@ import {
 import { imageAttachmentState } from "./modelInput";
 import { UserMessageContent, optimisticUserMessageContent } from "./UserMessageContent";
 import type { ApprovalDecision, Attachment, ModelReasoningState, TranscriptItem } from "../types/loom";
-import { RETAIN } from "../motion/tokens";
 import { shortPath } from "./ProjectWorkspacePicker";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./composer.css";
@@ -291,8 +290,9 @@ function useDeparting<T extends { id: string }>(items: T[]): (T & { leaving?: bo
     if (!gone.length) return;
     // Keep the in-place exit until it has finished.
     const ids = gone.map(({ item }) => item.id);
-    // The hub's exit runs in three beats (contents, surface, cable: project-flow.css) on the hub's clock.
-    const timer = window.setTimeout(() => setGone((list) => list.filter(({ item }) => !ids.includes(item.id))), reduce ? 0 : RETAIN.panel);
+    // Its exit runs in three beats (contents, surface, cable: project-flow.css), then the others close its room: it is
+    // taken out when all of that has come to rest.
+    const timer = window.setTimeout(() => setGone((list) => list.filter(({ item }) => !ids.includes(item.id))), reduce ? 0 : LEAVE_RETAIN);
     return () => window.clearTimeout(timer);
   }, [gone, reduce]);
   const out: (T & { leaving?: boolean })[] = [...items];
@@ -306,24 +306,28 @@ function useDeparting<T extends { id: string }>(items: T[]): (T & { leaving?: bo
  *
  *  A cable is drawn where the cards are on this very frame: while the hub moves, every frame writes the
  *  paths straight into the SVG (no React render per frame, which drew them a frame or more behind the
- *  cards and re-rendered the whole hub sixty times a second). React holds the list of cables and is told
- *  their final shape once the hub is still.
+ *  cards and re-rendered the whole hub sixty times a second). React only knows which cables there are; what it
+ *  renders for them is read from the last frame drawn, so a render never writes an older path back.
  *
- *  Two parts of a cable are not tied to a moving card and used to jump: where it plugs into the hub (the
- *  plugs of a side are re-spaced when a card comes or goes) and the lane its turn stands in (lanes are
- *  re-dealt when cables change order). When the layout changes, each plug starts from where it was seen
- *  and eases to its new place on the hub's clock, with the cards; a lane change springs across. */
+ *  Two parts of a cable are not tied to where its card is: where it plugs into the hub (the plugs of a side are
+ *  re-spaced when a card comes or goes) and the lane its turn stands in (lanes are re-dealt when cables change
+ *  order). They are towed by the card, on the card's own clock: both wait while it waits, and start and land with it.
+ *  A cable whose card stays put goes on the hub's clock. It is one formula for the card and for both of these: from
+ *  where it was seen to where the layout has it now. */
 function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.RefObject<HTMLElement | null>,
                    cards: React.RefObject<Map<string, { side: Side; node: HTMLElement }>>, layout: string) {
   const [cables, setCables] = useState<Cable[]>([]);
   const svg = useRef<SVGSVGElement>(null);
-  // What each cable showed on the last frame drawn: its plug, its turn and the turn's speed.
-  const shown = useRef(new Map<string, { y2: number; turn: number; speed: number }>());
-  // Plugs easing from where they were seen to where the new layout puts them.
-  const rebase = useRef<{ offsets: Map<string, number>; clock: Animation } | null>(null);
+  // What each cable showed on the last frame drawn.
+  const shown = useRef(new Map<string, { x1: number; y1: number; y2: number; turn: number }>());
+  // The cables on their way to a new plug or lane: where they set off from, and the card that tows each (none: the hub's clock).
+  const going = useRef(new Map<string, { y2: number; turn: number; card: HTMLElement | null }>());
+  const hubClock = useRef<Animation | null>(null);
   const drawn = useRef<Cable[]>([]);
   const listed = useRef("");
   const frame = useRef(0);
+  // The last time the glide drew a frame: while it runs, it draws them (after it has placed the cards).
+  const driven = useRef(0);
   const before = useRef(0);
 
   const geometry = useCallback(() => {
@@ -351,14 +355,14 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
           const view = sideView(item.node), low = view ? view.top - base.top : -Infinity, high = view ? view.bottom - base.top : Infinity;
           const inView = (y: number) => Math.max(low, Math.min(high, y));
           return { id, x1: side === "left" ? b.right : b.left, y1: inView(Math.min(b.top + 34, b.top + b.height / 2)), head: inView(head), y2: 0, lane: 0,
-                   held: Boolean(item.node.closest("[data-leaving]")) };
+                   card: item.node, held: Boolean(item.node.closest("[data-leaving]")) };
         })
         .sort((a, b) => a.head - b.head);
       // A card that leaves keeps its plug while its cable retracts; the others are dealt as if it had gone
       // already, so they move once, now, not again when it is taken out of the page.
       const all = list;
       list = list.filter((item) => !item.held);
-      for (const item of all) if (item.held) out.push({ id: item.id, side, toward, x1: item.x1, y1: item.y1, x2: side === "left" ? m.left : m.right,
+      for (const item of all) if (item.held) out.push({ id: item.id, card: item.card, side, toward, x1: item.x1, y1: item.y1, x2: side === "left" ? m.left : m.right,
                                                        y2: item.head + hubShift, turn: (side === "left" ? m.left : m.right) - toward * (CABLE_R + 2), held: true });
       if (!list.length) continue;
       const x2 = side === "left" ? m.left : m.right;
@@ -381,12 +385,12 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
       const edge = side === "left" ? Math.max(...list.map((item) => item.x1)) : Math.min(...list.map((item) => item.x1));
       const room = Math.abs(near - (edge + toward * (CABLE_R + 4)));
       const step = lanes > 1 ? Math.max(4, Math.min(LANE_STEP, room / (lanes - 1))) : 0;
-      for (const { id, x1, y1, y2, lane } of list) out.push({ id, side, toward, x1, y1, x2, y2: y2 + hubShift, turn: near - toward * lane * step });
+      for (const { id, card, x1, y1, y2, lane } of list) out.push({ id, card, side, toward, x1, y1, x2, y2: y2 + hubShift, turn: near - toward * lane * step });
     }
     for (const [id, item] of entries.filter(([, item]) => item.side === "below")) {
       const b = box(visibleBox(item.node));
       const x = Math.max(b.left + 72, m.left + 72);
-      out.push({ id, side: "below", toward: 0, x1: x, y1: b.top, x2: x, y2: m.bottom, turn: x });
+      out.push({ id, card: item.node, side: "below", toward: 0, x1: x, y1: b.top, x2: x, y2: m.bottom, turn: x });
     }
     return out;
   }, [stage, hub, cards]);
@@ -399,48 +403,71 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
     const dt = Math.min(0.032, Math.max(0, (now - before.current) / 1000));
     before.current = now;
     const still = prefersReducedMotionNow();
+    if (still) { going.current.clear(); hubClock.current?.cancel(); hubClock.current = null; }
     if (fresh && !still) {
-      const offsets = new Map<string, number>();
+      // Every cable that has somewhere else to be sets off from where it is now, on its card's clock if the card is
+      // moving and that clock has some way to go. A clock under way keeps going: only the end changes.
+      const startClock = () => {
+        hubClock.current?.cancel();
+        hubClock.current = new Animation(new KeyframeEffect(null, [], { duration: HUB_CLOCK, delay: hold, easing: HUB_EASE, fill: "both" }));
+        hubClock.current.play();
+      };
+      let hubAgain = false;
       for (const item of list) {
         const seen = shown.current.get(item.id);
-        if (seen && Math.abs(seen.y2 - item.y2) > 0.5) offsets.set(item.id, seen.y2 - item.y2);
+        if (!seen || item.held) continue;
+        if (Math.abs(seen.y2 - item.y2) <= 0.5 && Math.abs(seen.turn - item.turn) <= 0.2) continue;
+        const towed = glideProgress(item.card);
+        if (towed !== null && towed < 0.9) {
+          going.current.set(item.id, { y2: (seen.y2 - item.y2 * towed) / (1 - towed), turn: (seen.turn - item.turn * towed) / (1 - towed), card: item.card });
+        } else {
+          going.current.set(item.id, { y2: seen.y2, turn: seen.turn, card: null });
+          hubAgain = true;
+        }
       }
-      rebase.current?.clock.cancel();
-      rebase.current = null;
-      if (offsets.size) {
-        // A leaving card holds its column for a moment (projectArrange.ts EXIT_HOLD); the plugs wait with the cards.
-        const clock = new Animation(new KeyframeEffect(null, [], { duration: HUB_CLOCK, delay: hold, easing: HUB_EASE, fill: "both" }));
-        clock.play();
-        rebase.current = { offsets, clock };
+      if (hubAgain) {
+        // The others on the hub's clock go on from here too.
+        for (const [id, on] of going.current) {
+          if (on.card) continue;
+          const seen = shown.current.get(id);
+          if (seen) { on.y2 = seen.y2; on.turn = seen.turn; }
+        }
+        startClock();
       }
     }
-    const progress = rebase.current ? Number(rebase.current.clock.effect?.getComputedTiming().progress ?? 1) : 1;
-    let moving = progress < 1;
-    const next = new Map<string, { y2: number; turn: number; speed: number }>();
+    const hubProgress = hubClock.current ? Number(hubClock.current.effect?.getComputedTiming().progress ?? 1) : 1;
+    const next = new Map<string, { x1: number; y1: number; y2: number; turn: number }>();
     const out: Cable[] = [];
+    let following = false;
     for (const item of list) {
       const seen = shown.current.get(item.id);
       if (item.held && seen) {
-        // Leaving: plugged where it was seen, its cable retracting into that plug.
-        next.set(item.id, { ...seen, speed: 0 });
-        out.push(cablePath(item, seen.y2, seen.turn));
+        // Leaving: its tip stays with the dot it closes into and its plug where it was seen, as it retracts.
+        going.current.delete(item.id);
+        next.set(item.id, seen);
+        out.push(cablePath({ ...item, x1: seen.x1, y1: seen.y1 }, seen.y2, seen.turn));
         continue;
       }
-      const y2 = item.y2 + (still ? 0 : (rebase.current?.offsets.get(item.id) ?? 0) * (1 - progress));
-      // The turn springs to its lane (critically damped, settling with the hub's clock).
-      let turn = item.turn, speed = 0;
-      if (seen && !still && item.side !== "below" && (Math.abs(seen.turn - item.turn) > 0.2 || Math.abs(seen.speed) > 1)) {
-        speed = seen.speed + (TURN_SPRING ** 2 * (item.turn - seen.turn) - 2 * TURN_SPRING * seen.speed) * dt;
-        turn = seen.turn + speed * dt;
-        moving = true;
+      const on = going.current.get(item.id);
+      let y2 = item.y2, turn = item.turn;
+      if (on) {
+        const progress = on.card ? (glideProgress(on.card) ?? 1) : hubProgress;
+        if (progress >= 1) going.current.delete(item.id);
+        else { y2 = on.y2 + (item.y2 - on.y2) * progress; turn = on.turn + (item.turn - on.turn) * progress; }
       }
-      next.set(item.id, { y2, turn, speed });
+      // A lane is dealt on a layout that may be moving: a cable can change lanes as its card passes its plug. That is
+      // followed, never snapped to.
+      if (seen && !still && item.side !== "below") {
+        const followed = seen.turn + (turn - seen.turn) * (1 - Math.exp(-dt * TURN_FOLLOW));
+        if (Math.abs(followed - turn) > 0.2) { turn = followed; following = true; }
+      }
+      next.set(item.id, { x1: item.x1, y1: item.y1, y2, turn });
       out.push(cablePath(item, y2, turn));
     }
     shown.current = next;
-    if (progress >= 1) rebase.current = null;
+    if (hubProgress >= 1) { hubClock.current = null; }
     drawn.current = out;
-    // Written here, on the frame the cards moved; React's copy follows when the hub is still.
+    // Written here, on the frame the cards moved.
     const root = svg.current;
     if (root) {
       for (const cable of out) {
@@ -456,28 +483,25 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
     }
     const key = out.map((cable) => `${cable.id}:${cable.side}`).join("|");
     if (key !== listed.current) { listed.current = key; setCables(out); }
-    return moving;
+    return going.current.size > 0 || following;
   }, [geometry]);
 
-  const settle = useCallback(() => {
-    // React's copy, so a later render writes what is drawn.
-    setCables((current) => current.length === drawn.current.length
-      && current.every((cable, index) => cable.d === drawn.current[index].d && cable.id === drawn.current[index].id) ? current : drawn.current);
-  }, []);
   const follow = useCallback(() => {
     const step = () => {
-      if (draw(false)) frame.current = requestAnimationFrame(step);
-      else { frame.current = 0; settle(); }
+      // The glide's frame, if it is running, comes with the cards already placed: that one counts.
+      const moving = performance.now() - driven.current < 34 || draw(false);
+      frame.current = moving ? requestAnimationFrame(step) : 0;
     };
     frame.current = requestAnimationFrame(step);
-  }, [draw, settle]);
+  }, [draw]);
   const measure = useCallback((fresh = false, hold = 0) => {
-    const moving = draw(fresh, hold);
-    if (frame.current) return;
-    if (!moving) { settle(); return; }
-    follow();
-  }, [draw, settle, follow]);
-  useLayoutEffect(() => () => { cancelAnimationFrame(frame.current); rebase.current?.clock.cancel(); }, []);
+    if (draw(fresh, hold) && !frame.current) follow();
+  }, [draw, follow]);
+  const glideFrame = useCallback((fresh = false, hold = 0) => {
+    driven.current = performance.now();
+    measure(fresh, hold);
+  }, [measure]);
+  useLayoutEffect(() => () => { cancelAnimationFrame(frame.current); hubClock.current?.cancel(); }, []);
   useLayoutEffect(() => {
     // The stage has a fixed size, so watching it alone missed every reflow inside it (a card growing,
     // the thread pushing the hub down) and left the cables where the cards had been. Watch what moves.
@@ -486,22 +510,20 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
     const sides = [...(root?.querySelectorAll<HTMLElement>(".pf-side") ?? [])];
     const observer = new ResizeObserver(() => { measure(); sides.forEach(markScrollEdges); });
     if (root) for (const node of [root, ...root.querySelectorAll<HTMLElement>(".pf-col, .pf-composer, .pf-card")]) observer.observe(node);
-    // Scrolled, a column's cables are written on the frame it moved; React's copy follows once it rests.
-    let rest = 0;
+    // Scrolled, a column's cables are written on the frame it moved.
     const scrolled = (event: Event) => {
       markScrollEdges(event.currentTarget as HTMLElement);
       if (draw(false) && !frame.current) follow();
-      window.clearTimeout(rest);
-      rest = window.setTimeout(settle, 120);
     };
     for (const side of sides) side.addEventListener("scroll", scrolled, { passive: true });
     return () => {
       observer.disconnect();
-      window.clearTimeout(rest);
       for (const side of sides) side.removeEventListener("scroll", scrolled);
     };
-  }, [measure, draw, follow, settle, layout]);
-  return { cables, measure, svg };
+  }, [measure, draw, follow, layout]);
+  // Rendered as drawn last, whatever the state's copy from when the list last changed says.
+  const latest = new Map(drawn.current.map((cable) => [cable.id, cable]));
+  return { cables: cables.map((cable) => latest.get(cable.id) ?? cable), measure: glideFrame, svg };
 }
 
 /** The room around a side column's cards for their shadows, which a scroller would otherwise cut: --pf-side-shade. */
@@ -533,9 +555,9 @@ function layoutTop(node: HTMLElement, root: HTMLElement) {
   return top;
 }
 
-/** The spring of a cable's turn when its lane changes, rad/s: critically damped, still within the hub's clock. */
-const TURN_SPRING = 18;
-interface Geometry { id: string; side: Side; toward: number; x1: number; y1: number; x2: number; y2: number; turn: number; held?: boolean }
+/** How fast a turn follows its lane, per second: a tenth of a second to be there, under anything a clock asks of it. */
+const TURN_FOLLOW = 30;
+interface Geometry { id: string; card: HTMLElement; side: Side; toward: number; x1: number; y1: number; x2: number; y2: number; turn: number; held?: boolean }
 
 /** One path shape for every cable, straight or bent: a bend of zero radius is a straight line, so a cable
  *  that straightens or starts to bend changes smoothly instead of switching drawings. */

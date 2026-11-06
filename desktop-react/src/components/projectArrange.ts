@@ -1,8 +1,15 @@
 /* How the build hub's cards (ProjectFlow.tsx) make room for each other.
  *
  * The columns lay the cards out by themselves. When that layout changes (a card arrives or
- * leaves, one grows), it changes on one clock:
- *   - every card that changed place glides there from where it was seen last (FLIP on transform);
+ * leaves, one grows), one thing happens after the other, as in the reference this follows:
+ *   arriving   the others make room; the cable grows out of the hub; the card is born at its tip;
+ *   leaving    the card closes into the dot at its cable's tip; the cable retracts; the others close the room.
+ * And it changes on one clock:
+ *   - every card that changed place goes there from where it was seen last. Its place on each frame is one formula,
+ *     lerp(where it was seen, where the layout has it now, its clock), written from here on the frame the cables are
+ *     drawn. The layout may itself be moving under it (the agents shrink on a size transition): a card then still
+ *     has one curve, not a transform on one clock laid over a layout on another, and it can't drift from its cable
+ *     as a transform run by the compositor does when the main thread is busy;
  *   - a card that arrives, leaves or grows is clipped, every frame, to the room its neighbours
  *     leave it: it unrolls into the gap as they part and is folded away as they close in, so no
  *     card is ever painted over another one; its surface hangs from the top of that room, so its head
@@ -11,7 +18,7 @@
  * A card that leaves is lifted out of its column at the place it was seen and held there (its
  * column may re-centre under it) while it folds and fades. */
 import { useLayoutEffect, useRef } from "react";
-import { DUR, DUR_OUT, EASE, SPRING, STAGGER_MS } from "../motion/tokens";
+import { DUR, DUR_OUT, EASE, RETAIN_MARGIN_MS, SPRING, STAGGER_MS } from "../motion/tokens";
 import { onReducedMotionChange, prefersReducedMotionNow } from "../motion/useReducedMotion";
 
 /** One clock for every layout move of the hub; the size changes in project-flow.css run on the same step and curve.
@@ -21,6 +28,12 @@ export const HUB_CLOCK = DUR.panel;
 export const HUB_EASE = SPRING.settle;
 /** How far apart the cards of a column set off when they move together. */
 const RIPPLE_MS = STAGGER_MS / 2;
+/** A long way takes longer: at the hub's clock alone the agents crossed 311px in under 300 ms when the model card made
+ *  them shrink. What a stage's longest move adds to its clock (px -> ms, up to the most it can add). */
+const LONG_WAY_RATE = 0.35;
+const LONG_WAY_MOST = DUR.slow - DUR.panel;
+/** A move smaller than this is not "making room": nothing waits for it, and the beads stay on the wire. */
+const ROOM_MIN = 8;
 /** The rows of an arriving card, which come in one after another as it unrolls. */
 const ROWS = ".pf-well, .pf-task, .pf-loom-lane, .pf-model-option, .pf-empty";
 const MAX_ROWS = 8;
@@ -29,7 +42,7 @@ const MAX_ROWS = 8;
  *  pill opens to the card's full height. The surface is opaque all the way: it changes shape, never transparency,
  *  so nothing behind it shows through. Then what it holds comes into focus, the rows one after another, and the
  *  small marks (counts, clocks, checks) land last, a beat later. */
-const SHELL_LEAD = DUR.fast - STAGGER_MS / 2;
+const SHELL_LEAD = DUR.fast + STAGGER_MS;
 /** How long the shape takes from dot to card. */
 const BIRTH = DUR.flow;
 /** The dot: a little wider than the cable (9px), as its socket is. */
@@ -45,8 +58,11 @@ const MARKS = ".pf-count, .pf-agent-time, .pf-agent-check, .pf-add";
 const EXIT_CONTENT = DUR_OUT.fast;
 const EXIT_SHELL_DELAY = DUR.press / 2;
 const EXIT_SHELL = DUR.base;
-/** When the neighbours set off to close a leaving card's room: as it has become a pill folding into its dot. */
-export const EXIT_HOLD = DUR.fast + STAGGER_MS;
+/** When the neighbours set off to close a leaving card's room: as it has become the dot, about to go. */
+export const EXIT_HOLD = DUR.base;
+/** A card that leaves stays mounted until all of it has come to rest: taking it out re-renders the hub, and doing that
+ *  with the neighbours in the middle of closing the room dropped frames right where they move fastest. */
+export const LEAVE_RETAIN = EXIT_HOLD + HUB_CLOCK + LONG_WAY_MOST + 3 * RIPPLE_MS + RETAIN_MARGIN_MS;
 /** The transitions that change a card's size (project-flow.css runs them on the hub's clock). */
 const SIZE = /height|width|padding|margin|gap|grid-template/;
 const ENTRANCE_IDS = new Set(["pf-glide", "pf-row", "pf-shell", "pf-part", "pf-mark", "pf-exit"]);
@@ -260,6 +276,31 @@ function places(root: HTMLElement) {
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
+/** A card on its way: where it set off from (stage px), its clock, and the offset written on the last frame. The clock
+ *  is an animation with no keyframes on the card, so it is found and slowed like any other. */
+interface Glide { clock: Animation; from: { x: number; y: number }; dx: number; dy: number }
+const glides = new WeakMap<HTMLElement, Glide>();
+const progressOf = (clock: Animation) => clock.playState === "finished" ? 1 : Number(clock.effect?.getComputedTiming().progress ?? 1);
+
+/** How far along its way a card is, 0 while it waits for its turn; null if it is not going anywhere. A cable is towed
+ *  by this: its plug and its turn move on its own card's clock, not one of their own. */
+export function glideProgress(node: HTMLElement) {
+  const slot = node.closest<HTMLElement>("[data-glide]");
+  const glide = slot && glides.get(slot);
+  if (!glide) return null;
+  const progress = progressOf(glide.clock);
+  return progress >= 1 ? null : progress;
+}
+
+function stopGlide(node: HTMLElement) {
+  const glide = glides.get(node);
+  if (!glide) return;
+  glide.clock.cancel();
+  glides.delete(node);
+  node.style.transform = "";
+  node.style.willChange = "";
+}
+
 /** Cards glide from where they were seen to where the layout put them whenever `key` changes.
  *  The old places are read while rendering the change (the DOM is still the old one then), so a
  *  card caught mid-glide starts again from where it is, not from where it was headed. */
@@ -281,13 +322,21 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     }
     reveals.current = [];
   };
-  useLayoutEffect(() => () => { cancelAnimationFrame(frame.current); clock.current?.cancel(); }, []);
+  const gliding = useRef(new Set<HTMLElement>());
+  const stopAll = () => { for (const node of gliding.current) stopGlide(node); gliding.current.clear(); };
+  const beads = (moving: boolean) => {
+    const wires = stage.current?.querySelector(".pf-cables");
+    if (moving) wires?.setAttribute("data-moving", ""); else wires?.removeAttribute("data-moving");
+  };
+  useLayoutEffect(() => () => { cancelAnimationFrame(frame.current); clock.current?.cancel(); stopAll(); }, []);
   useLayoutEffect(() => onReducedMotionChange(() => {
     if (!prefersReducedMotionNow()) return;
     cancelAnimationFrame(frame.current);
     for (const animation of stage.current?.getAnimations({ subtree: true }) ?? []) {
       if (ENTRANCE_IDS.has(animation.id)) animation.cancel();
     }
+    stopAll();
+    beads(false);
     clear();
     onFrame();
   }), [stage, onFrame]);
@@ -307,7 +356,7 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     for (const node of nodes) {
       if (!node.hasAttribute("data-leaving") || held.current.has(node)) continue;
       const from = before.current.get(node.dataset.glide!);
-      if (from) { held.current.set(node, from); leavers.push(node); }
+      if (from) { stopGlide(node); gliding.current.delete(node); held.current.set(node, from); leavers.push(node); }
     }
     // Removing a flex item also recentres its column: every held card is placed again against the new column.
     for (const [node, from] of held.current) pin(node, from, root);
@@ -331,7 +380,8 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     }
     const holdOf = (node: HTMLElement) => holding.has(node.parentElement) ? EXIT_HOLD : 0;
     if (reduce) {
-      for (const node of nodes) for (const running of node.getAnimations()) if (running.id === "pf-glide") running.cancel();
+      stopAll();
+      beads(false);
       clear();
       onFrame();
       return;
@@ -351,24 +401,49 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     for (const node of nodes) {
       if (node.dataset.pinned) continue;
       const target = final.get(node)!;
-      const running = node.getAnimations().find((animation) => animation.id === "pf-glide");
+      const glide = glides.get(node);
+      const running = glide && glide.clock.playState !== "finished";
       const previousTarget = targets.current.get(node);
       targets.current.set(node, target);
       // A status update need not restart a card already going to this place.
       if (running && previousTarget && Math.hypot(target.x - previousTarget.x, target.y - previousTarget.y) < 0.5) { moved = true; continue; }
-      running?.cancel();
       const from = before.current.get(node.dataset.glide!);
+      // A layout that changes while the card is still going the same way (the model card's tabs mount a render later)
+      // does not stop it: same clock, same place on this frame, a new end.
+      if (running && from && previousTarget) {
+        const progress = progressOf(glide.clock);
+        const same = (target.y - from.y) * (previousTarget.y - from.y) >= 0 && (target.x - from.x) * (previousTarget.x - from.x) >= 0;
+        if (progress < 0.9 && same) {
+          glide.from = { x: (from.x - target.x * progress) / (1 - progress), y: (from.y - target.y * progress) / (1 - progress) };
+          moved = true;
+          continue;
+        }
+      }
+      stopGlide(node);
+      gliding.current.delete(node);
       if (!from) continue;
       const dx = from.x - target.x, dy = from.y - target.y;
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
       started.push({ node, target, dy });
-      node.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: HUB_CLOCK, delay: holdOf(node), easing: HUB_EASE, fill: "backwards" }).id = "pf-glide";
+      const timer = node.animate([], { duration: HUB_CLOCK, delay: holdOf(node), easing: HUB_EASE, fill: "both" });
+      timer.id = "pf-glide";
+      glides.set(node, { clock: timer, from: { x: from.x, y: from.y }, dx, dy });
+      gliding.current.add(node);
+      node.style.willChange = "transform";
+      node.style.transform = `translate(${dx}px, ${dy}px)`;
       moved = true;
     }
+    // All of a stage's moves take as long as its longest, so they land together and the ripple's order holds. A card
+    // whose column is changing sizes goes further than its offset says: the layout carries it the rest of the way.
+    const resized = [...new Set(started.map(({ node }) => node.parentElement))].some((column) => sizing(column).length > 0);
+    const longest = resized ? Infinity : Math.max(0, ...started.map(({ dy }) => Math.abs(dy)));
+    const glideMs = HUB_CLOCK + Math.min(LONG_WAY_MOST, longest * LONG_WAY_RATE);
+    for (const { node } of started) glides.get(node)?.clock.effect?.updateTiming({ duration: glideMs });
     // A ripple: cards of one column that travel the same way set off one after another, the one in front first.
     // In front means ahead in the direction of travel, so the gaps between them only open on the way and no card
     // runs into the one ahead of it. Closing in, the cards nearest the change go first; making room, the farthest.
-    let lastDelay = holding.size ? EXIT_HOLD : 0;
+    const hold = holding.size ? EXIT_HOLD : 0;
+    let lastDelay = hold;
     const groups = new Map<string, typeof started>();
     for (const item of started) {
       const column = item.node.parentElement;
@@ -381,8 +456,7 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
       group.sort((a, b) => down ? b.target.y - a.target.y : a.target.y - b.target.y);
       group.forEach(({ node }, index) => {
         if (!index) return;
-        const glide = node.getAnimations().find((animation) => animation.id === "pf-glide");
-        glide?.effect?.updateTiming({ delay: holdOf(node) + index * RIPPLE_MS });
+        glides.get(node)?.clock.effect?.updateTiming({ delay: holdOf(node) + index * RIPPLE_MS });
         lastDelay = Math.max(lastDelay, holdOf(node) + index * RIPPLE_MS);
       });
     }
@@ -464,6 +538,20 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
                   from: fromEdges, to: toEdges, round, hung, gap, morph: kind !== "grow" && surface !== node });
     }
     reveals.current = next;
+    // One thing after the other: while the others make room, a newcomer and its cable wait. A move too small to see
+    // holds nothing up.
+    const staysAndMoves = started.some(({ node, target }) => {
+      if (kindOf.get(node) === "arrive") return false;
+      const from = startOf(node);
+      return Boolean(from) && Math.hypot(from!.x - target.x, from!.y - target.y) >= ROOM_MIN;
+    });
+    const crowding = [...kindOf].some(([node, kind]) => kind === "arrive" && sizing(columnOf(node)).length > 0);
+    const making = staysAndMoves || crowding;
+    // A newcomer's cable sets off when they are nine tenths there (half of their clock, on this curve): the rest of
+    // the way goes with the cable growing.
+    const room = making ? lastDelay + Math.round(glideMs / 2) : hold;
+    root.style.setProperty("--pf-cable-in-delay", `${room}ms`);
+    if (making || holding.size) beads(true);
     // The entrances: a card that has a cable waits for it; cards arriving together in one column follow each other
     // down it, a stagger apart, as their cables reach them. A card with no surface of its own (the timeline) only
     // fades its rows; one called back mid-exit is born again from its cable's tip.
@@ -484,7 +572,7 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
           });
           return;
         }
-        const end = enter(surface, holdOf(node) + SHELL_LEAD + index * STAGGER_MS);
+        const end = enter(surface, room + SHELL_LEAD + index * STAGGER_MS);
         lastDelay = Math.max(lastDelay, end - HUB_CLOCK);
       });
     }
@@ -493,14 +581,14 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
       const surface = node.querySelector<HTMLElement>(":scope > .pf-card");
       if (surface && !node.hasAttribute("data-leaving") && exiting(node)) enter(surface, 0);
     }
-    // `fresh`: the first frame of a new layout, from which the cables ease their plugs to it.
-    const hold = holding.size ? EXIT_HOLD : 0;
-    if (!moved && !next.length && !held.current.size) { onFrame(true, hold); return; }
+    // `fresh`: the first frame of a new layout, from which the cables go to it.
+    if (!moved && !next.length && !held.current.size) { beads(false); onFrame(true, hold); return; }
 
     clock.current?.cancel();
     clock.current = new Animation(new KeyframeEffect(null, [], { duration: HUB_CLOCK, easing: HUB_EASE, fill: "forwards" }));
     // The cuts follow live neighbours, so the frames go on until the last card of a ripple has landed.
     const until = performance.now() + HUB_CLOCK + lastDelay;
+    const holdEnd = performance.now() + hold;
     clock.current.play();
     let first = true;
     const tick = () => {
@@ -508,6 +596,23 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
       const t = Number(timing?.progress ?? 1);
       const now = root.getBoundingClientRect();
       for (const [node, from] of held.current) if (node.isConnected) pin(node, from, root);
+      // Every card that is on its way is placed: where it was seen, on its way to where the layout has it now.
+      const moves: { node: HTMLElement; glide: Glide; x: number; y: number; done: boolean }[] = [];
+      for (const node of gliding.current) {
+        const glide = glides.get(node);
+        if (!glide || !node.isConnected) { gliding.current.delete(node); continue; }
+        const at = node.getBoundingClientRect();
+        const left = at.left - now.left - glide.dx, top = at.top - now.top - glide.dy;
+        const progress = progressOf(glide.clock);
+        moves.push({ node, glide, x: (glide.from.x - left) * (1 - progress), y: (glide.from.y - top) * (1 - progress), done: progress >= 1 });
+      }
+      for (const { node, glide, x, y, done } of moves) {
+        if (done) { stopGlide(node); gliding.current.delete(node); continue; }
+        glide.dx = x;
+        glide.dy = y;
+        node.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)`;
+      }
+      if (!gliding.current.size && performance.now() >= holdEnd) beads(false);
       // Reads first, then writes: a frame lays the hub out once. The cards that leave are cut first: a newcomer
       // next to one unrolls against what it still shows this frame (its box stays whole while it is held).
       const shown = new Map<HTMLElement, Edges>();
@@ -545,8 +650,8 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
       }
       onFrame(first, first ? hold : undefined);
       first = false;
-      if (t < 1 || performance.now() < until) frame.current = requestAnimationFrame(tick);
-      else clear();
+      if (t < 1 || performance.now() < until || gliding.current.size) frame.current = requestAnimationFrame(tick);
+      else { clear(); onFrame(); }
     };
     cancelAnimationFrame(frame.current);
     tick();

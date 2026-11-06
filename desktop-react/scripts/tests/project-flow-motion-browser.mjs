@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
-const settle = page => page.waitForTimeout(800);
+// A whole change: an exit, the room closing on a long way, or the room opening, the cable and a birth.
+const settle = page => page.waitForTimeout(1300);
 // A card surface's birth cut (projectArrange.ts), read from its computed clip-path as px from each edge of its box. The
 // edges are calc() of the live box (a share of its width, or the box less the shape) so a box that is still growing
 // keeps the shape; a whole card's cut reaches past its box. Each length is evaluated against its side of the box.
@@ -26,7 +27,7 @@ const CUT_OF = `
   return { box, t: value(t, box.height), r: value(r, box.width), b: value(b, box.height), l: value(l, box.width) };
 `;
 const toggle = (page, id) => page.locator(`.pf-branch-toggle[data-branch="${id}"]`);
-// Runs `act` and samples every painted frame for 500 ms: the most one visible card overlaps another (boxes cut
+// Runs `act` and samples every painted frame for a whole change: the most one visible card overlaps another (boxes cut
 // by their clip-path, faint ones ignored), and how far the named card moved while it was visible.
 const watch = (page, act, follow) => page.evaluate(async ({ act, follow, CUT_OF }) => {
   const inset = (node) => {
@@ -43,7 +44,7 @@ const watch = (page, act, follow) => page.evaluate(async ({ act, follow, CUT_OF 
   const cutOf = new Function("card", CUT_OF);
   let overlap = 0, drift = 0, start = null;
   new Function(act)();
-  const end = performance.now() + 500;
+  const end = performance.now() + 1200;
   while (performance.now() < end) {
     await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
     // A card's surface is also cut to its birth shape (a dot, a pill, the card): what is painted is inside both cuts.
@@ -145,7 +146,7 @@ try {
         const cutOf = new Function("card", CUT_OF);
         document.querySelector(`[data-branch="${id}"]`).click();
         const seen = [];
-        for (const end = performance.now() + 700; performance.now() < end;) {
+        for (const end = performance.now() + 1200; performance.now() < end;) {
           await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
           const card = document.querySelector(`[data-glide="${id}"] > .pf-card`);
           const cut = cutOf(card);
@@ -216,7 +217,7 @@ try {
       chip.focus();
       chip.click();
       const seen = [];
-      for (const end = performance.now() + 500; performance.now() < end;) {
+      for (const end = performance.now() + 900; performance.now() < end;) {
         await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
         seen.push(document.querySelector('.pf-agent').getBoundingClientRect().height);
       }
@@ -327,7 +328,7 @@ try {
       let lag = 0, last = ends();
       const step = {}, path = {};
       document.querySelector('[data-branch="repo"]').click();
-      for (const end = performance.now() + 500; performance.now() < end;) {
+      for (const end = performance.now() + 1100; performance.now() < end;) {
         await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
         const now = ends();
         for (const [id, { a, b }] of Object.entries(now)) {
@@ -345,6 +346,69 @@ try {
     await toggle(page, "repo").click();
     await settle(page);
 
+    // One thing after the other, and a cable towed by its card. Traced through the model card opening and closing, the
+    // hardest case (the agents shrink on a size transition as they make room, and grow back as they close it).
+    const trace = (act) => page.evaluate(async (act) => {
+      const stage = document.querySelector(".pf-stage");
+      const read = () => {
+        const cables = {};
+        for (const g of document.querySelectorAll(".pf-cable[data-side='right']")) {
+          const body = g.querySelector(".pf-cable-body");
+          const n = body.getAttribute("d").match(/-?[\d.]+/g).map(Number);
+          cables[g.dataset.cable] = { turn: n[4], plug: n.at(-1), offset: parseFloat(getComputedStyle(body).strokeDashoffset) };
+        }
+        const cards = {};
+        for (const slot of document.querySelectorAll("[data-glide^='agent:'], [data-glide='model']")) cards[slot.dataset.glide] = slot.getBoundingClientRect().top;
+        const model = document.querySelector("[data-glide='model'] > .pf-card");
+        const cut = model ? getComputedStyle(model).clipPath : "";
+        return { t: document.timeline.currentTime, cables, cards, born: Boolean(model) && !cut.startsWith("inset(100%") && model.getAnimations().some((a) => a.id === "pf-shell" && a.currentTime > a.effect.getTiming().delay),
+                 beads: stage.querySelector(".pf-cables").hasAttribute("data-moving") };
+      };
+      const frames = [];
+      const zero = document.timeline.currentTime;
+      new Function(act)();
+      for (const end = performance.now() + 1200; performance.now() < end;) {
+        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+        frames.push(read());
+      }
+      return frames.map((frame) => ({ ...frame, t: frame.t - zero }));
+    }, act);
+    const moves = (frames, get) => {
+      const at = [];
+      for (let i = 1; i < frames.length; i += 1) {
+        const a = get(frames[i - 1]), b = get(frames[i]);
+        if (a != null && b != null && Math.abs(b - a) > 0.4) at.push({ t: frames[i].t, by: Math.abs(b - a) / Math.max(1, (frames[i].t - frames[i - 1].t) / 16.67) });
+      }
+      return at;
+    };
+    for (const [name, kind] of [["model open", "open"], ["model close", "close"]]) {
+      const frames = await trace("document.querySelector('.pf-model-chip').click()");
+      const agents = Object.keys(frames[0].cards).filter((id) => id.startsWith("agent:"));
+      const started = Math.min(...agents.map((id) => moves(frames, (f) => f.cards[id])[0]?.t ?? Infinity));
+      assert.ok(Number.isFinite(started), `${name}: the agents move`);
+      for (const id of agents) {
+        const turn = moves(frames, (f) => f.cables[id]?.turn), plug = moves(frames, (f) => f.cables[id]?.plug);
+        const card = moves(frames, (f) => f.cards[id]);
+        // The cable moves with its card: not before it (a turn that set off 180 ms ahead read as a jump), not in one go.
+        if (turn[0]) assert.ok(turn[0].t >= (card[0]?.t ?? started) - 34, `${name}: ${id}'s turn set off at ${turn[0].t}, its card at ${card[0]?.t}`);
+        if (plug[0]) assert.ok(plug[0].t >= (card[0]?.t ?? started) - 34, `${name}: ${id}'s plug set off at ${plug[0].t}, its card at ${card[0]?.t}`);
+        assert.ok(Math.max(0, ...turn.map((step) => step.by)) < 9, `${name}: ${id}'s turn jumped ${JSON.stringify(turn)}`);
+        assert.ok(Math.max(0, ...plug.map((step) => step.by)) < 14, `${name}: ${id}'s plug jumped ${JSON.stringify(plug)}`);
+      }
+      if (kind === "open") {
+        // Room first: the cable waits for the agents to be well on their way, the card for the cable. The beads leave the wire meanwhile.
+        const grows = frames.find((f) => f.cables.model && f.cables.model.offset > -99);
+        const born = frames.find((f) => f.born);
+        assert.ok(grows && grows.t >= started + 150, `the model's cable grew at ${grows?.t}, the agents set off at ${started}`);
+        assert.ok(born && born.t >= grows.t + 120, `the model card was born at ${born?.t}, its cable grew at ${grows?.t}`);
+        assert.ok(frames.some((f) => f.t < grows.t && f.beads), "the beads are off the wire while the hub makes room");
+      } else {
+        // The dot goes first, then the room closes: the agents wait for the exit.
+        assert.ok(started >= 200, `the agents started closing the room at ${started}`);
+      }
+      assert.equal(frames.at(-1).beads, false, `${name}: the beads are back when the hub is still`);
+      await settle(page);
+    }
     // A short window still contains every card; lists take the overflow.
     await page.setViewportSize({ width: 1200, height: 700 });
     await page.locator('.pf-model-chip').click();
@@ -372,6 +436,33 @@ try {
     assert.equal(await page.locator('[data-glide="files"]').count(), 0);
     assert.equal(await page.evaluate(() => document.getAnimations().some(a => a.id === "pf-glide")), false);
     assert.deepEqual(errors, []);
+    await page.close();
+  }
+
+  // In a live run, what mounts on a cable (beads as an agent starts, a pulse as it finishes a step) is drawn on the cable as
+  // it is now, not as it was when the list of cables last changed, however the hub has moved since.
+  {
+    const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+    await page.goto(`${origin}/scripts/fixtures/project-flow.html?workers=3&theme=dark`);
+    await page.locator('[data-glide="hub"]').waitFor();
+    await page.waitForTimeout(1200);
+    const off = await page.evaluate(async () => {
+      const chip = document.querySelector(".pf-model-chip");
+      let worst = null, mounted = 0;
+      const known = new WeakSet();
+      for (const end = performance.now() + 14000; performance.now() < end;) {
+        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+        if (chip.getAttribute("aria-expanded") !== "true") chip.click();
+        for (const path of document.querySelectorAll(".pf-flow, .pf-pulse")) {
+          const body = document.querySelector(`.pf-cable-body[data-of="${CSS.escape(path.dataset.of)}"]`);
+          if (!known.has(path)) { known.add(path); mounted += 1; }
+          if (body && path.getAttribute("d") !== body.getAttribute("d")) worst ??= { of: path.dataset.of, path: path.getAttribute("d"), body: body.getAttribute("d") };
+        }
+      }
+      return { worst, mounted };
+    });
+    assert.ok(off.mounted >= 2, `beads or pulses mounted during the run: ${JSON.stringify(off)}`);
+    assert.equal(off.worst, null, `a path mounted off its cable: ${JSON.stringify(off.worst)}`);
     await page.close();
   }
 
