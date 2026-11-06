@@ -40,19 +40,21 @@ const MAX_ROWS = 8;
 /** An arriving card is born at the tip of its cable. The cable grows out of the hub first (project-flow.css); when
  *  it is nearly there, a dot the cable's width appears at its tip, stretches along the card into a pill, and the
  *  pill opens to the card's full height. The surface is opaque all the way: it changes shape, never transparency,
- *  so nothing behind it shows through. Then what it holds comes into focus, the rows one after another, and the
+ *  so nothing behind it shows through. Then what it holds fades in, the rows one after another, and the
  *  small marks (counts, clocks, checks) land last, a beat later. */
 const SHELL_LEAD = DUR.fast + STAGGER_MS;
 /** How long the shape takes from dot to card. */
 const BIRTH = DUR.flow;
 /** The dot: a little wider than the cable (9px), as its socket is. */
 const DOT = 12;
-/** The contents wait until the shape is most of the way open: text comes into focus, it is never seen stretching. */
+/** The contents wait until the shape is most of the way open: text fades in, it is never seen stretching. It only
+ *  fades: a blur on them, redrawn every frame over a card this size, took the hub from 60 frames a second to about 30
+ *  right as the shape was opening, and the card visibly stopped for a moment two thirds of the way down. */
 const CONTENT_AT = 0.45;
 /** The marks land a beat after the rows, as the last word of the entrance. */
 const MARK_PAUSE = DUR.fast;
 const MARKS = ".pf-count, .pf-agent-time, .pf-agent-check, .pf-add";
-/** A leaving card plays the birth backwards: its contents blur out, its surface closes to a pill and into the dot at
+/** A leaving card plays the birth backwards: its contents fade out, its surface closes to a pill and into the dot at
  *  the cable's tip, then the cable retracts (project-flow.css, `--pf-cable-out-delay`). Its neighbours close the room
  *  only once it has mostly gone: one thing after the other, as the reference does. */
 const EXIT_CONTENT = DUR_OUT.fast;
@@ -145,7 +147,7 @@ function enter(surface: HTMLElement, lead: number) {
   const focus = (part: HTMLElement) => {
     let first: Animation | null = null;
     for (const target of [part, ...scrollersIn(part)]) {
-      const animation = target.animate([{ opacity: 0, filter: "blur(4px)" }, { opacity: 1, filter: "blur(0)" }],
+      const animation = target.animate([{ opacity: 0 }, { opacity: 1 }],
         { duration: DUR.base, delay: content, easing: EASE.out, fill: "backwards" });
       animation.id = "pf-part";
       first ??= animation;
@@ -158,7 +160,7 @@ function enter(surface: HTMLElement, lead: number) {
     const animation = focus(part);
     pace ??= animation;
   }
-  // A part that mounts a render later (the model card's provider tabs) comes into focus with the others, on their
+  // A part that mounts a render later (the model card's provider tabs) fades in with the others, on their
   // clock, instead of standing on the bare surface from its first frame.
   const late = new MutationObserver((changes) => {
     for (const change of changes) for (const part of change.addedNodes) {
@@ -181,7 +183,7 @@ function enter(surface: HTMLElement, lead: number) {
 }
 
 /** The scrolling boxes inside a part (the model card's provider tabs and list). Chrome paints a scroller on a layer
- *  of its own that a fade or blur animated on an ancestor does not reach: filmed, the model list stood sharp and
+ *  of its own that a fade animated on an ancestor does not reach: filmed, the model list stood sharp and
  *  whole while the rest of its card had faded out. They get the fade themselves. */
 function scrollersIn(part: HTMLElement) {
   return [...part.querySelectorAll<HTMLElement>("*")].filter((node) => {
@@ -200,7 +202,7 @@ function leave(surface: HTMLElement) {
   for (const running of surface.getAnimations({ subtree: true })) if (ENTRANCE_IDS.has(running.id)) running.cancel();
   shade(surface, false, 0, EXIT_SHELL_DELAY);
   for (const part of [...surface.children].flatMap((child) => child instanceof HTMLElement ? [child, ...scrollersIn(child)] : [])) {
-    part.animate([{ opacity: 1, filter: "blur(0)" }, { opacity: 0, filter: "blur(3px)" }],
+    part.animate([{ opacity: 1 }, { opacity: 0 }],
       { duration: EXIT_CONTENT, easing: EASE.exit, fill: "forwards" }).id = "pf-exit";
   }
   surface.animate(births(shapeOf(surface, false), true), { duration: EXIT_SHELL, delay: EXIT_SHELL_DELAY, easing: "linear", fill: "both" }).id = "pf-exit";

@@ -166,6 +166,25 @@ try {
       assert.ok(shapes.at(-1).full, `${id}: ends as the whole card`);
       await settle(page);
     }
+    // Contents only fade. A blur redrawn every frame over a whole card halved the frame rate as the shape opened.
+    const blurred = await page.evaluate(async () => {
+      const found = [];
+      const look = () => {
+        for (const running of document.querySelector(".pf-stage").getAnimations({ subtree: true })) {
+          if (running.effect?.getKeyframes().some((frame) => frame.filter && frame.filter !== "none")) found.push(running.id);
+        }
+      };
+      document.querySelector('[data-branch="scope"]').click();
+      await new Promise(requestAnimationFrame);
+      look();
+      await new Promise((resolve) => setTimeout(resolve, 1300));
+      document.querySelector('[data-branch="scope"]').click();
+      await new Promise(requestAnimationFrame);
+      look();
+      await new Promise((resolve) => setTimeout(resolve, 1300));
+      return found;
+    });
+    assert.deepEqual(blurred, [], "no blur is animated as a card opens or closes");
     // A card without a surface of its own (the timeline) hangs from the top of its room: its head is in sight from
     // the first frames, the rows unroll under it.
     for (const id of ["loom"]) {

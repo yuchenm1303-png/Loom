@@ -187,7 +187,7 @@ html[data-loom-theme="light"] .pf-stage {
 }
 
 /* Leaving is the birth played backwards (projectArrange.ts leave(); useDeparting keeps it for RETAIN.panel): what
-   the card holds blurs out; the bare surface closes to a pill and draws into the dot at its cable's tip; then the
+   the card holds fades out; the bare surface closes to a pill and draws into the dot at its cable's tip; then the
    cable retracts into the hub with the dot as its end, and its socket goes. The neighbours close the room after. */
 .pf-loom[data-leaving] {
   opacity: 0;
