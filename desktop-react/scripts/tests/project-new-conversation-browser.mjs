@@ -105,6 +105,32 @@ try {
     await page.close();
   }
 
+  // In a conversation nothing has been said in, new stays there: no thread is made, the hub does not stir, the field is ready.
+  {
+    const { page, errors } = await open("latency=0");
+    await page.evaluate(() => document.querySelector(".pf-new-thread").click());
+    await page.waitForTimeout(1800);
+    const created = () => page.evaluate(async () => (await window.loom.call("thread/list", {})).threads.filter((entry) => entry.id.startsWith("new-")).length);
+    assert.equal(await created(), 1);
+    await page.locator(".pf-input textarea").fill("正在写的话");
+    await page.locator('[data-branch="history"]').focus();
+    const stayed = await page.evaluate(async () => {
+      const stage = document.querySelector(".pf-stage");
+      document.querySelector(".pf-new-thread").click();
+      let renewed = false;
+      for (let i = 0; i < 20; i += 1) {
+        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+        renewed ||= stage.hasAttribute("data-renewing") || document.querySelector("[data-leaving]") !== null;
+      }
+      return { renewed, active: document.activeElement?.tagName };
+    });
+    assert.deepEqual(stayed, { renewed: false, active: "TEXTAREA" }, "the empty conversation stays");
+    assert.equal(await created(), 1, "no second empty conversation");
+    assert.equal(await page.locator(".pf-input textarea").inputValue(), "正在写的话", "what is being written stays");
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+
   // Refused: what the hub showed comes back, and it says why.
   {
     const { page } = await open("newFails=1&latency=120");

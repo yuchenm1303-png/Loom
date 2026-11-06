@@ -989,6 +989,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     setPicked([]);
   };
   const stopping = Boolean(data.chatting && !draft.trim() && !attached.length && actions.onInterrupt);
+  // New, in a conversation nothing has been said in, stays there: the field is where to begin.
+  const emptyConversation = draftMode && !proposal && !data.chatting && !data.conversation?.length;
+  const newThread = actions.onNewThread && (() => {
+    if (emptyConversation) { input.current?.focus(); return; }
+    if (!actions.busy) actions.onNewThread?.();
+  });
   const settingUp = draftMode;
   const addFiles = async () => {
     const paths = await actions.onPickFiles?.() || [];
@@ -1252,10 +1258,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
               ))}
             </span>
             {/* The quill: a new 建造 conversation in this project, straight into a fresh hub. */}
-            {actions.onNewThread ? (
-              <NewConversationRow className="pf-new-thread" label={text.newThread} title={text.newThread}
-                                  onNew={() => { if (!actions.busy) actions.onNewThread?.(); }} />
-            ) : null}
+            {newThread ? <NewConversationRow className="pf-new-thread" label={text.newThread} title={text.newThread} onNew={newThread} /> : null}
             {!data.models && data.model ? <span className="pf-model">{data.model}</span> : null}
             {/* While the person writes a draft, the head says what the keys do; it fades, it never takes room from the state. */}
             {draftMode ? (
@@ -1428,7 +1431,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
             <Card id="history" side="right" className="pf-listed pf-history" icon={<History size={12} />} label={text.history}
                   register={register}>
               <BuildHistory entries={history} workspace={data.repository.path} lang={lang} error={data.historyError} busy={actions.busy}
-                onOpen={actions.onOpenThread} onNew={actions.onNewThread}
+                onOpen={actions.onOpenThread} onNew={newThread}
                 onRename={actions.onRenameThread} onArchive={actions.onArchiveThread} onDelete={actions.onDeleteThread} />
             </Card>
           </div>
