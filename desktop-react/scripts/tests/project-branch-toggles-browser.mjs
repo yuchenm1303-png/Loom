@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
 const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH, headless: true });
 const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173";
-const inventory = ["repo", "scope", "files", "knowledge", "plan", "agents", "loom", "history"];
+const inventory = ["repo", "scope", "files", "knowledge", "plan", "tasks", "agents", "loom", "history"];
 try {
   for (const theme of ["dark", "light"]) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -14,7 +14,7 @@ try {
     await buttons.first().waitFor();
     assert.deepEqual(await buttons.evaluateAll(nodes => nodes.map(node => node.dataset.branch)), inventory);
     await page.evaluate(() => { window.branchNodes = [...document.querySelectorAll(".pf-branch-toggle")]; });
-    for (const id of ["scope", "knowledge", "agents", "loom"]) {
+    for (const id of ["scope", "knowledge", "tasks", "agents", "loom"]) {
       assert.equal(await button(id).isVisible(), true);
       assert.equal(await button(id).isDisabled(), true);
       assert.equal(await button(id).getAttribute("aria-pressed"), "false");
@@ -66,5 +66,5 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log("Eight stable branch controls: explained empty states, fold actions, automatic readiness, preserved folds and narrow/live header bounds passed in both themes");
+  console.log("Nine stable branch controls: explained empty states, fold actions, automatic readiness, preserved folds and narrow/live header bounds passed in both themes");
 } finally { await browser.close(); }

@@ -244,6 +244,7 @@ html[data-loom-theme="light"] .pf-stage {
 .pf-agent-slot, [data-branch="agents"] { --pf-hue: #8fc9e8; }
 .pf-loom, [data-branch="loom"] { --pf-hue: #c3a6f5; }
 [data-glide="history"], [data-branch="history"] { --pf-hue: #e8b48a; }
+[data-glide="tasks"], [data-branch="tasks"] { --pf-hue: #7fd6c2; }
 .pf-card-icon { display: inline-grid; place-items: center; color: var(--pf-hue, var(--pl-muted)); }
 
 .pf-count {
@@ -1146,6 +1147,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-model-card .pf-card-icon { color: #f2c76b; }
 .pf-model-card .pf-count { font-variant-numeric: normal; }
 .pf-model-now { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; padding: 7px 9px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+
 /* The quota card: a well per window (what is left, a bar, when it resets), the balances, and when it was read. */
 .pf-usage-card { display: flex; flex-direction: column; width: 100%; box-sizing: border-box; }
 .pf-usage-card .pf-card-icon { color: #7cc4a0; }

@@ -20,7 +20,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import {
   ArrowDown, ArrowUp, Bot, BookMarked, ChartGantt, Check, Circle, CircleDot, Compass, Copy, File, FileCode, FileImage,
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldAlert, ShieldCheck,
-  History, Search, Sparkles, Square, X, Gauge, RefreshCw, ExternalLink,
+  History, ListChecks, Search, Sparkles, Square, X, Gauge, RefreshCw, ExternalLink,
 } from "lucide-react";
 import { BuildHistory, type BuildHistoryEntry } from "./BuildHistory";
 import { NewConversationRow } from "./NewConversationRow";
@@ -77,6 +77,8 @@ export interface FlowData {
   scope: { path: string; count: number }[];
   knowledge: { checks: number; notes: number; latest: string };
   tasks: { id: string; title: string; state: FlowTaskState; detail?: string; agentId?: string; agentName?: string }[];
+  /** The conversation's own task list, kept by its agent; a branch of its own, with or without a project. */
+  taskList?: { id: string; title: string; state: FlowTaskState; detail?: string }[];
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
   models?: { current: ModelOption & { reasoning?: ModelReasoningState; vision?: boolean }; recent: ModelOption[];
              groups: { id: string; name: string; options: ModelOption[] }[] };
@@ -195,7 +197,7 @@ const zhText = {
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算：点击或滚轮切换，↑↓ 也可以", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
-  scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
+  taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
   agentsPending: "当前没有可查看的 agent，任务调度后自动启用", timelinePending: "还没有执行记录，建造开始后自动启用",
   filesUnavailable: "当前没有可查看或添加的参考文件", historyUnavailable: "当前环境未提供对话记录",
 };
@@ -226,7 +228,7 @@ const enText: typeof zhText = {
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget: click or scroll to change, or use ↑↓", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
-  scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
+  taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
   agentsPending: "No agents to inspect yet; available once tasks are dispatched", timelinePending: "No execution records yet; available once the build starts",
   filesUnavailable: "No reference files to view or add here", historyUnavailable: "Conversation history is not available here",
 };
@@ -803,7 +805,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   const usageZh = lang !== "en";
   const toggleUsage = () => setUsageOpen(!usageOpen);
   const agents = useDeparting(open("agents") ? data.agents : []);
-  const branches = useDeparting([...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : []),
+  const branches = useDeparting([...(data.taskList?.length && open("tasks") ? [{ id: "tasks" }] : []),
+                                 ...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : []),
                                  ...(usageOpen && data.models ? [{ id: "usage" }] : [])]);
   // Before a project the plan is a different card from the project's: one leaves as the other is born.
   const below = useDeparting(open("plan") ? [{ id: draftMode ? "plan-draft" : "plan" }] : []);
@@ -826,6 +829,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     { id: "knowledge", icon: BookMarked, label: text.knowledge,
       unavailable: data.knowledge.checks + data.knowledge.notes ? undefined : text.knowledgePending },
     data.outcome ? { id: "plan", icon: Check, label: text.outcome } : { id: "plan", icon: Compass, label: text.plan(data.milestone) },
+    { id: "tasks", icon: ListChecks, label: text.taskList, unavailable: data.taskList?.length ? undefined : text.taskListPending },
     { id: "agents", icon: Bot, label: text.agentCards, unavailable: data.agents.length ? undefined : text.agentsPending },
     { id: "loom", icon: ChartGantt, label: text.loom, unavailable: data.timeline ? undefined : text.timelinePending },
     { id: "history", icon: History, label: text.history, unavailable: history ? undefined : text.historyUnavailable },
@@ -834,7 +838,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   const ids = (list: { id: string; leaving?: boolean }[]) => list.map((item) => `${item.id}${item.leaving ? "~" : ""}`).join(",");
   const layout = [ids(context), ids(branches), ids(agents), ids(below), ids(loom), files.length, history?.length ?? 0,
                   modelTotal, modelView, query, reasoningState?.value ?? "",
-                  data.tasks.length, data.scope.length, data.attention ? 1 : 0, data.phase,
+                  data.tasks.length, data.taskList?.length ?? 0, data.scope.length, data.attention ? 1 : 0, data.phase,
                   dirtyOpen, objectiveOpen, draft, data.narration.summary, data.narration.text,
                   data.conversation?.length ?? 0, proposal?.id ?? "", data.chatting ? 1 : 0].join("|");
   const { cables, measure, svg } = useCables(stage, hub, cards, layout);
@@ -1433,7 +1437,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
               ))}
             </Card>
           ) : (
-          <Card id={item.id} side="below" icon={<Compass size={12} />} label={view.phase === "draft" && view.tasks.length ? text.taskList : text.plan(view.milestone)}
+          <Card id={item.id} side="below" icon={<Compass size={12} />} label={text.plan(view.milestone)}
                 count={view.tasks.length ? `${view.tasks.filter((task) => task.state === "integrated").length}/${view.tasks.length}` : undefined}
                 under={view.tasks.length ? (
                   // The stage at a glance: one segment per task, coloured by its state; a segment fills as its task lands.
@@ -1463,7 +1467,32 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
       </div>
 
       {/* With the model card open, the agents under it fold to one line each, so both fit the column. */}
-      <div className="pf-col pf-right pf-side" data-crowded={branches.some((item) => !item.leaving) || undefined}>
+      <div className="pf-col pf-right pf-side" data-crowded={branches.some((item) => !item.leaving && item.id !== "tasks") || undefined}>
+        {branches.some((item) => item.id === "tasks") ? (() => {
+          // What the conversation's agent is doing this turn, as its own list says; a leaving card keeps what it showed.
+          const list = leavingView("tasks").taskList ?? [];
+          return (
+            <div className="pf-slot" data-glide="tasks" data-fit="" {...hover("tasks")} {...slot("tasks")}>
+              <Card id="tasks" side="right" className="pf-listed pf-task-list" icon={<ListChecks size={12} />} label={text.taskList}
+                    count={`${list.filter((task) => task.state === "integrated").length}/${list.length}`}
+                    under={<div className="pf-strip" aria-hidden="true">
+                      {list.map((task) => <span key={task.id} className="pf-strip-cell" data-state={task.state}><span key={task.state} /></span>)}
+                    </div>} register={register}>
+                <div className="pf-list">
+                  {list.map((task) => {
+                    const Icon = taskIcon[task.state];
+                    return (
+                      <div key={task.id} className="pf-well pf-row pf-task" data-state={task.state} title={task.detail || task.title}>
+                        <span className="pf-task-mark" key={task.state}><Icon size={11} strokeWidth={2.4} /></span>
+                        <span className="pf-task-title"><Inline text={task.title} /></span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            </div>
+          );
+        })() : null}
         {history && branches.some((item) => item.id === "history") ? (
           // The other 建造 conversations: one click opens it here, in the hub.
           <div className="pf-slot" data-glide="history" data-fit="" {...hover("history")} {...slot("history")}>

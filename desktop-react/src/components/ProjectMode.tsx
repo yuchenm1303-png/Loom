@@ -227,8 +227,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
                  chatting: chatting && here && !renewal?.cleared, conversationPermissionMode: permissionMode,
                  history: history ? toHistory(historyRows || history.filter(entry => entry.id === threadId).map(entry => ({ ...entry, workspace: entry.workspace || (entry.id === threadId ? workspace : undefined) })), threadId, now, lang) : undefined,
                  historyError };
-  // No project yet: the plan card holds this conversation's task list; a started project's own plan takes over.
-  if (data.phase === "draft" && here && !renewal?.cleared) data.tasks = turnTasks;
+  data.taskList = here && !renewal?.cleared ? turnTasks : [];
   const proposal = data.phase === "draft" ? shownOverview.proposal : null;
   data.repository.path = run?.repository || workspace;
   if (!run) data.repository.branch = shownOverview.workspace?.branch || "—";
