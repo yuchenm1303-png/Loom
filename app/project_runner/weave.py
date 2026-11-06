@@ -52,15 +52,14 @@ GUIDE = (
     "simple work: two or more short outcome steps in the person's language, one in_progress, the rest pending. Advance "
     "it alongside the calls that begin the next step (a completed step takes an outcome and evidence_refs naming a "
     "call_id), and finish it before your final answer.\n"
-    "Sub-agents: delegate readily with spawn_agent when parts of a turn can progress on their own, above all broad "
-    "reading such as scanning a codebase or investigating across areas: one agent per area, up to four at once, each "
-    "with a complete but narrow brief (which paths, what to find out, a short report; for a scan, entry points and key "
-    "files rather than every file) and history_mode none unless it needs this conversation. Every step of an agent costs "
-    "tokens, so delegate once you know the areas, after a quick look. Name the agent in its step of the "
-    "list, leave what you delegated to them instead of reading it too, collect results with wait_agent, and check only "
-    "what your answer relies on. Sub-agents share your "
-    "checkout, so writers get disjoint files; overlapping edits are yours. Do not delegate a read or two you can do "
-    "at once."
+    "Sub-agents: each one costs many times what the same reading costs you, so do the work yourself by default, a "
+    "scan or an investigation of an ordinary repository included. Use spawn_agent only when the person asks for it, or "
+    "when a quick look shows the work has separate areas that are each too large to read well in this turn, such as "
+    "several subsystems of hundreds of files. Then: one agent per area, at most four, each with a narrow brief (which "
+    "paths, what to find out, a short report) and history_mode none unless it needs this conversation. Name the agent "
+    "in its step of the list, leave what you delegated to them instead of reading it too, collect results with "
+    "wait_agent, and check only what your answer relies on. Sub-agents share your checkout, so writers get disjoint "
+    "files; overlapping edits are yours."
 )
 
 
