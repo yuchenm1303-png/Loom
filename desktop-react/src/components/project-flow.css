@@ -322,8 +322,7 @@ html[data-loom-theme="light"] .pf-stage {
   overscroll-behavior: contain;
   /* ProjectFlow follows the newest line itself; the browser's anchoring would hold an older one in place. */
   overflow-anchor: none;
-  /* A new conversation's first words come last, once the hub has come to rest: words fade, they never travel. */
-  transition: opacity var(--loom-dur-base) var(--loom-ease-out) calc(var(--loom-dur-panel) + var(--loom-dur-base));
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out);
 }
 .pf-stage[data-renewing] .pf-thread { opacity: 0; transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit); }
 .pf-composer { flex: none; }

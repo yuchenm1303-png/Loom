@@ -33,6 +33,7 @@ import { isExecutingActivityStatus, itemStatus } from "./activityModel";
 import { ProviderMark } from "./ModelPanel";
 import { UsageRing, resetText, usageDetail, usageScopeText, usageWindowLabel, useModelUsage } from "./ModelUsageIndicator";
 import type { FlowMessage, WeaveProposal } from "./projectOverview";
+import { DUR, EASE } from "../motion/tokens";
 import { glideProgress, HUB_CLOCK, HUB_EASE, LEAVE_RETAIN, useGlide, visibleBox } from "./projectArrange";
 import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
@@ -260,9 +261,10 @@ function compact(value: number) {
 /** Changes when `value` changes after the first render: keys a one-shot animation to that moment. */
 function useMoment(value: unknown) {
   const [moment, setMoment] = useState(0);
-  const first = useRef(true);
+  const last = useRef(value);
   useEffect(() => {
-    if (first.current) { first.current = false; return; }
+    if (last.current === value) return;
+    last.current = value;
     setMoment((count) => count + 1);
   }, [value]);
   return moment;
@@ -661,11 +663,13 @@ function Wash({ on }: { on: unknown }) {
   return moment ? <span key={moment} className="pf-task-wash" aria-hidden="true" /> : null;
 }
 
-export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, renewing = false }: { data: FlowData; actions?: FlowActions; lang?: "zh" | "en";
-  /** The same hub can go on into a new conversation (ProjectMode.tsx): what was being written stays behind. */
+export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, renewing = false, brandNew = false }: { data: FlowData; actions?: FlowActions; lang?: "zh" | "en";
+  /** The same hub goes on into another conversation (ProjectMode.tsx): what was being written stays behind. */
   conversationId?: string;
-  /** A new conversation is being made: what the hub says is fading, and nothing can be sent to either. */
-  renewing?: boolean; }) {
+  /** The hub is going over to another conversation: what it says is fading, and nothing can be sent to either. */
+  renewing?: boolean;
+  /** That conversation was made just now: the hub has shown its empty state already. */
+  brandNew?: boolean; }) {
   const text = lang === "en" ? enText : zhText;
   const stage = useRef<HTMLDivElement>(null);
   const hub = useRef<HTMLElement>(null);
@@ -927,7 +931,31 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     settingsTouched.current = { workers: false, tokens: false };
     following.current = true;
     setBehind(false);
-    input.current?.focus();
+    if (thread.current) thread.current.scrollTop = thread.current.scrollHeight;
+    if (emptyConversation) input.current?.focus();
+  }, [conversationId]);  // eslint-disable-line react-hooks/exhaustive-deps
+  // Words fade, they never travel: another conversation's come in once the hub and they have reached their places.
+  const [wordsHeld, setWordsHeld] = useState(false);
+  if (renewing && !wordsHeld) setWordsHeld(true);
+  useEffect(() => {
+    if (renewing || !wordsHeld) return;
+    let frame = 0;
+    const check = () => {
+      if (glideProgress(thread.current!) !== null || glideProgress(hub.current!) !== null) frame = requestAnimationFrame(check);
+      else setWordsHeld(false);
+    };
+    frame = requestAnimationFrame(check);
+    return () => cancelAnimationFrame(frame);
+  }, [renewing, wordsHeld]);
+  // The cards both conversations have stay where they are bound for, and what is in them comes into focus.
+  const contentsOf = useRef(conversationId);
+  useLayoutEffect(() => {
+    if (contentsOf.current === conversationId) return;
+    contentsOf.current = conversationId;
+    if (brandNew || prefersReducedMotionNow()) return;
+    for (const part of stage.current?.querySelectorAll<HTMLElement>(".pf-slot:not([data-leaving]) > .pf-card > *, .pf-loom:not([data-leaving]) > *") ?? []) {
+      part.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR.base, easing: EASE.out, fill: "backwards" }).id = "pf-contents";
+    }
   }, [conversationId]);  // eslint-disable-line react-hooks/exhaustive-deps
   const share = Math.min(1, data.budget.tokens / Math.max(1, data.budget.tokenLimit));
   const done = data.tasks.filter((task) => task.state === "integrated").length;
@@ -1014,7 +1042,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   };
 
   return (
-    <div className="pf-stage" ref={stage} data-state={data.state} data-phase={data.phase} data-renewing={renewing || undefined}>
+    <div className="pf-stage" ref={stage} data-state={data.state} data-phase={data.phase} data-renewing={renewing || wordsHeld || undefined}>
       <svg className="pf-cables" aria-hidden="true" ref={svg}>
         {cables.map((cable) => (
           <g key={cable.id} className="pf-cable" data-cable={cable.id} data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || hot === cable.id.replace("-draft", "") || undefined}
@@ -1037,7 +1065,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
           return agent && !agent.done ? <Pulse key={cable.id} of={cable.id} d={cable.d} step={agent.step} /> : null;
         })}
         {/* A task lands: its work runs back out of the hub into the repository. */}
-        {draftMode ? null : cables.filter((cable) => cable.id === "repo").map((cable) => <Pulse key="merge" of={cable.id} d={cable.d} step={done} back />)}
+        {draftMode ? null : cables.filter((cable) => cable.id === "repo").map((cable) => <Pulse key={`merge:${conversationId}`} of={cable.id} d={cable.d} step={done} back />)}
       </svg>
 
       <div className="pf-col pf-left pf-side">
@@ -1053,7 +1081,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                     {data.repository.subject ? <span>{data.repository.subject}</span> : null}
                   </span>
                 ) : null}
-                {draftMode ? null : <Wash on={data.repository.commit} />}
+                {draftMode ? null : <Wash key={conversationId} on={data.repository.commit} />}
               </div>
               <div className="pf-well pf-branch"><GitBranch size={12} /><span>{data.repository.branch}</span></div>
               {actions.workspaceControls ?? (

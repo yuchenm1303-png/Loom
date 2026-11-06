@@ -173,21 +173,115 @@ try {
     await page.close();
   }
 
-  // Opening a conversation that already exists is still a hub of its own.
-  {
-    const { page } = await open("latency=0");
-    await page.evaluate(() => document.querySelector(".pf-new-thread").click());
-    await page.waitForTimeout(1200);
-    await page.evaluate(() => { window.__hub = document.querySelector(".pf-stage"); });
-    await page.locator('[data-branch="history"]').click();
-    await page.waitForTimeout(500);
-    const others = page.locator(".bh-row:not([data-current]) .bh-open");
-    if (await others.count()) {
-      await others.first().click();
-      await page.waitForTimeout(800);
-      assert.equal(await page.evaluate(() => document.querySelector(".pf-stage") === window.__hub), false, "another conversation is another hub");
+  // Opening a conversation that exists: the same hub again, words out first and in last, the cards rearranged between.
+  const go = (page, id, ms = 1600) => page.evaluate(async ({ id, ms }) => {
+    const stage = document.querySelector(".pf-stage"), hub = document.querySelector(".pf-composer");
+    const words = stage.querySelector(".pf-thread").textContent;
+    const seen = { noHub: 0, otherHub: 0, travelled: 0, oldUnderNew: 0, fade: [], pulses: 0, washes: 0, sendWhileGoing: null };
+    let y = null;
+    document.querySelector(`[data-thread-id="${id}"] button`).click();
+    const start = performance.now();
+    while (performance.now() - start < ms) {
+      await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+      const now = document.querySelector(".pf-stage");
+      if (!now) { seen.noHub += 1; continue; }
+      if (now !== stage || now.querySelector(".pf-composer") !== hub) seen.otherHub += 1;
+      const thread = now.querySelector(".pf-thread"), opacity = Number(getComputedStyle(thread).opacity), bottom = thread.getBoundingClientRect().bottom;
+      if (y != null && opacity > 0.05) seen.travelled += Math.abs(bottom - y);
+      y = bottom;
+      if (now.dataset.phase === "live" && now.hasAttribute("data-renewing")) seen.fade.push(opacity);
+      if (now.hasAttribute("data-renewing") && seen.sendWhileGoing == null) seen.sendWhileGoing = now.querySelector(".pf-send").disabled;
+      seen.pulses += now.querySelectorAll('.pf-pulse[data-back]').length;
+      seen.washes += now.querySelectorAll('[data-glide="repo"] .pf-task-wash').length;
     }
+    return { ...seen, phase: stage.dataset.phase, renewing: stage.hasAttribute("data-renewing"), active: document.activeElement?.tagName, changed: stage.querySelector(".pf-thread").textContent !== words };
+  }, { id, ms });
+  const hubIsWhole = (seen, what) => {
+    assert.equal(seen.noHub, 0, `${what}: never a frame without a hub`);
+    assert.equal(seen.otherHub, 0, `${what}: the same hub all the way`);
+    assert.ok(seen.travelled < 1, `${what}: words fade, they do not travel: ${seen.travelled}`);
+    assert.equal(seen.renewing, false, `${what}: at rest in the end`);
+    assert.equal(seen.changed, true, `${what}: the words are the other conversation's`);
+    assert.equal(seen.pulses + seen.washes, 0, `${what}: nothing 'landed' because the conversation changed`);
+  };
+  for (const theme of ["dark", "light"]) {
+    const { page, errors } = await open(`theme=${theme}&latency=40`);
+    await page.locator(".pf-input textarea").fill("写给第一个对话");
+    const toEmpty = await go(page, "live-1");
+    hubIsWhole(toEmpty, "to an empty one");
+    assert.equal(toEmpty.phase, "draft");
+    assert.ok(toEmpty.fade.some((value) => value < 0.95), `what is written fades at once: ${toEmpty.fade}`);
+    assert.equal(toEmpty.sendWhileGoing, true, "nothing can be sent while the hub goes over");
+    assert.equal(await page.locator(".pf-input textarea").inputValue(), "", "what was being written stays behind");
+    assert.equal(await page.locator('[data-glide^="agent:"], [data-leaving], [data-pinned]').count(), 0, "its cards have left");
+    assert.equal(await page.locator('[data-glide="repo"]').count(), 1);
+    const back = await go(page, "live-0");
+    hubIsWhole(back, "back, already read");
+    assert.equal(back.phase, "live");
+    assert.notEqual(back.active, "TEXTAREA", "a conversation with something in it does not take the caret");
+    assert.ok(await page.locator('[data-glide^="agent:"]').count() >= 1, "its cards came back");
+    assert.equal(await page.locator('[data-glide][style*="clip-path"]').count(), 0, "no cut is left behind");
+    assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log("Project new conversation: one hub with no blank frame, fade then leave then first words, caret and cleared field, slow Host, double click, refusal, reduced motion and opening an existing one passed in both themes.");
+  // Not read yet: what the hub shows stays, without its words and its buttons, until the other's overview is here.
+  {
+    const { page, errors } = await open("latency=0&overviewLatency=900");
+    const waiting = page.evaluate(async () => {
+      document.querySelector('[data-thread-id="live-1"] button').click();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const stage = document.querySelector(".pf-stage");
+      return { phase: stage.dataset.phase, renewing: stage.hasAttribute("data-renewing"), agents: stage.querySelectorAll('[data-glide^="agent:"]').length,
+               opacity: Number(getComputedStyle(stage.querySelector(".pf-thread")).opacity), pause: stage.querySelector('.pf-control')?.disabled };
+    });
+    const during = await waiting;
+    assert.equal(during.phase, "live", "the hub holds what it shows");
+    assert.equal(during.renewing, true);
+    assert.ok(during.agents >= 1 && during.opacity < 0.05, `its cards stay, its words are gone: ${JSON.stringify(during)}`);
+    assert.equal(during.pause, true, "its buttons no longer reach anything");
+    await page.waitForTimeout(1900);
+    assert.equal(await page.locator(".pf-stage").getAttribute("data-phase"), "draft");
+    assert.equal(await page.locator(".pf-stage").getAttribute("data-renewing"), null);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+  // Asked for two in a row: it ends at the last, with nothing left halfway.
+  {
+    const { page, errors } = await open("latency=80&overviewLatency=100");
+    await page.evaluate(async () => {
+      document.querySelector('[data-thread-id="live-1"] button').click();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      document.querySelector('[data-thread-id="live-2"] button').click();
+    });
+    await page.waitForTimeout(2200);
+    assert.equal(await page.locator(".pf-stage").getAttribute("data-phase"), "live", "at the last one asked for");
+    assert.equal(await page.locator(".pf-stage").getAttribute("data-renewing"), null);
+    assert.equal(await page.locator('[data-leaving], [data-pinned]').count(), 0);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+  // The other's overview cannot be read: it says so, with the way to try again, not the first one's cards under its title.
+  {
+    const { page } = await open("latency=0");
+    await page.evaluate(() => {
+      const call = window.loom.call;
+      window.loom.call = (method, args) => method === "projectRun/overview" && args.threadId === "live-1" ? Promise.reject(new Error("no")) : call.call(window.loom, method, args);
+      document.querySelector('[data-thread-id="live-1"] button').click();
+    });
+    await page.waitForTimeout(800);
+    assert.equal(await page.locator(".pf-loading-note button").count(), 1, "the way to try again");
+    await page.close();
+  }
+  // Reduced motion: at once.
+  {
+    const { page, errors } = await open("latency=0", { reduced: true });
+    await page.evaluate(() => document.querySelector('[data-thread-id="live-1"] button').click());
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator(".pf-stage").getAttribute("data-phase"), "draft");
+    assert.equal(await page.locator('[data-glide^="agent:"]').count(), 0);
+    assert.equal(await page.evaluate(() => document.getAnimations().some((animation) => animation.id === "pf-glide" || animation.id === "pf-contents")), false);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+  console.log("Project conversations: one hub with no blank frame for a new one and for opening one, fade then rearrange then words, caret and cleared field, slow reads, double clicks, two in a row, refusal, failed read and reduced motion passed in both themes.");
 } finally { await browser.close(); }

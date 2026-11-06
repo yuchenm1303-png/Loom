@@ -84,7 +84,7 @@ const threads = [
 }));
 const THREAD = threads[0].id;
 const newThreads = params.get("newThreads") === "1";
-if (newThreads) Object.assign(threads[0], { weave: true });
+if (newThreads) for (const entry of threads.slice(0, 3)) Object.assign(entry, { weave: true });
 
 // ?runs=1: other conversations work in the background (the conversations palette and the split pane read them).
 // live-1 runs and takes a step every 1.2 s, live-2 waits for an approval, live-3 finishes a few seconds in.
@@ -779,7 +779,7 @@ function projectOverview() {
   };
 }
 Object.assign(handlers, {
-  "projectRun/overview": (args: Record<string, unknown>) => String(args.threadId).startsWith("new-")
+  "projectRun/overview": (args: Record<string, unknown>) => String(args.threadId).startsWith("new-") || (newThreads && args.threadId === threads.find((entry) => entry.id === "live-1")?.id)
     ? { run: null, program: null, children: [], agents: [], events: [] } : projectOverview(),
   "projectProgram/create": () => { projectStarted = true; return { program: { id: "program-1" } }; },
   "projectRun/steer": (args: Record<string, unknown>) => { projectGuidance.push(String(args.text)); return { run: {} }; },

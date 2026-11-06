@@ -1826,7 +1826,7 @@ export default function App() {
         {showProject && thread ? (
           <div className="project-mode-stage" inert={threadSwitching}>
             <Suspense fallback={null}>
-              <ProjectMode threadId={thread.id} workspace={selectedThread?.workspace || workspace} model={currentModel}
+              <ProjectMode threadId={thread.id} opening={loom.openingThreadId} workspace={selectedThread?.workspace || workspace} model={currentModel}
                            projects={loom.projects} onSelectProject={!running ? id => handleMoveProject(thread.id, id) : undefined}
                            onChangeWorkspace={!running ? async (root) => {
                              const project = await loom.createProject(root);
