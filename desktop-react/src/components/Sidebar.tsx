@@ -26,11 +26,12 @@ import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import { branchDepth, orderThreadBranches } from "../state/threadBranches";
+import type { Space } from "../state/threadSpaces";
 import { endThreadDrag, startThreadDrag } from "../threadDrag";
 import "./sidebar.css";
 import { LoomMark } from "./LoomMark";
 import { SidebarUpdate } from "./SidebarUpdate";
-import { RETAIN } from "../motion/tokens";
+import { DUR, EASE, RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 import { useSidebarSelectionMotion } from "./useSidebarSelectionMotion";
 
@@ -41,6 +42,14 @@ type ContextMenuState = { threadId: string; x: number; y: number };
 // Sidebar copy follows the interface language, like the rest of the shell.
 const SIDEBAR_COPY = {
   en: {
+    build: {
+      newConversation: "New build conversation",
+      newInProject: (name: string) => `New build conversation in ${name}`,
+      noConversations: "No build conversations yet",
+      noMatches: "No matching build conversations",
+      projects: "Build projects",
+      search: "Search build conversations",
+    },
     addProject: "Add project",
     archive: "Archive",
     archiveEmpty: "Archive is empty",
@@ -117,6 +126,14 @@ const SIDEBAR_COPY = {
     untitled: "New conversation",
   },
   zh: {
+    build: {
+      newConversation: "新建建造对话",
+      newInProject: (name: string) => `在 ${name} 中新建建造对话`,
+      noConversations: "还没有建造对话",
+      noMatches: "没有匹配的建造对话",
+      projects: "建造项目",
+      search: "搜索建造对话",
+    },
     addProject: "添加项目",
     archive: "归档",
     archiveEmpty: "归档为空",
@@ -195,7 +212,9 @@ const SIDEBAR_COPY = {
 } as const;
 
 interface SidebarProps {
+  /** The current space's conversations (threadSpaces.ts). */
   threads: ThreadRecord[];
+  space?: Space;
   /** The first list has not arrived yet: show placeholders, not "No conversations yet". */
   loading?: boolean;
   projects: ProjectRecord[];
@@ -343,6 +362,7 @@ function threadBelongsToProject(thread: ThreadRecord, projectIds: Set<string>): 
 // Memoized: App renders on every streamed update, and the conversation list has no business redrawing for them.
 export const Sidebar = memo(function Sidebar({
   threads,
+  space = "chat",
   loading,
   activeId,
   activeProjectId,
@@ -368,7 +388,10 @@ export const Sidebar = memo(function Sidebar({
   onSearchOpenChange,
 }: SidebarProps) {
   const { language } = useI18n();
-  const copy = SIDEBAR_COPY[language === "zh-CN" ? "zh" : "en"];
+  const copy = useMemo(() => {
+    const words = SIDEBAR_COPY[language === "zh-CN" ? "zh" : "en"];
+    return space === "project" ? { ...words, ...words.build } : words;
+  }, [language, space]);
   const [query, setQuery] = useState("");
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => readStoredIds(PINNED_STORAGE_KEY));
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => readStoredIds(UNREAD_STORAGE_KEY));
@@ -388,6 +411,16 @@ export const Sidebar = memo(function Sidebar({
   const searchRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   useSidebarSelectionMotion(scrollRef, activeId);
+  // Another space, another list: it fades in, and its own scroll starts at the top.
+  const shownSpace = useRef(space);
+  useEffect(() => {
+    if (shownSpace.current === space) return;
+    shownSpace.current = space;
+    const list = scrollRef.current;
+    if (!list) return;
+    list.scrollTop = 0;
+    if (!prefersReducedMotionNow()) list.animate([{ opacity: 0 }, { opacity: 1 }], { duration: DUR.base, easing: EASE.out });
+  }, [space]);
   const renameRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const renameCommittingRef = useRef(false);
@@ -927,7 +960,8 @@ export const Sidebar = memo(function Sidebar({
           {projectSections.map(({ project, threads: projectThreads }) => {
             const collapsed = !expandedProjectIds.has(project.id);
             const selected = activeProjectId === project.id;
-            const visibleCount = projectThreads.length || project.threadCount || 0;
+            // The project's own count covers both spaces, so in 建造 only the listed ones are counted.
+            const visibleCount = projectThreads.length || (space === "chat" ? project.threadCount || 0 : 0);
             return (
               <section className={`project-group ${collapsed ? "is-collapsed" : ""} ${selected ? "is-selected" : ""}`} key={project.id}>
                 <div className="project-group-row">

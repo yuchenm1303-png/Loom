@@ -202,7 +202,7 @@ test("a new conversation is one stroke of the quill, and never under reduced mot
   const controls = read("components/SidebarControls.tsx");
   assert.match(controls, /<NewConversationRow\s/, "the toolbar does not draw the quill through the row");
   const app = read("App.tsx");
-  assert.match(app, /sidebarControlsRef\.current\?\.write\(\);\s*void loom\.newThread\(\);/, "the new-conversation shortcut does not stroke the quill");
+  assert.match(app, /sidebarControlsRef\.current\?\.write\(\);\s*void newInSpace\(\);/, "the new-conversation shortcut does not stroke the quill");
   for (const other of ["components/Sidebar.tsx", "components/ThreadHeader.tsx"]) {
     assert.doesNotMatch(read(other), /<Quill\b|NewConversationRow/, `${other} draws a quill of its own`);
   }

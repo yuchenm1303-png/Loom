@@ -129,7 +129,17 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     totals: { activeDays: 0, modelCalls: 0 }, streaks: { current: 0 }, peakDay: null,
     days: [],
   }),
-  "thread/list": () => ({ threads, counts: { active: threads.length, archived: 50, all: threads.length + 50 } }),
+  "thread/list": args => ({ threads: threads.filter(thread => Boolean((thread as { archived?: boolean }).archived) === (args.view === "archived")),
+    counts: { active: threads.length, archived: 50, all: threads.length + 50 } }),
+  "thread/archive": args => {
+    const thread = threads.find(thread => thread.id === args.threadId)!;
+    Object.assign(thread, { archived: args.archived });
+    return { thread: { ...thread } };
+  },
+  "thread/delete": args => {
+    threads.splice(threads.findIndex(thread => thread.id === args.threadId), 1);
+    return {};
+  },
   "project/list": () => ({ projects, unfiledThreadCount: 0 }),
   "thread/read": args => {
     const id = String(args.threadId);

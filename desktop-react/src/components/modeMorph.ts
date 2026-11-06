@@ -1,30 +1,30 @@
-/* The 对话 / 建造 switch as one object moving: the chat composer is the build hub.
+/* The 对话 / 建造 switch as one object moving: the chat composer is the build hub, carried between two spaces.
  *
- * To build: the composer's contents fade where they are (lift), then an empty shell of the
- * composer's material carries its box up into the hub's place and takes the hub's look (rise),
- * while the build canvas covers the conversation. Landed, the shell is the hub: its contents fade
- * in, the cables grow out of it and the cards appear at their ends (landed).
- * Back to chat: the cables retract into the hub and the cards and the hub's contents fade
- * (unplug), the shell carries the hub down into the composer's place while the canvas lifts off
- * the conversation (sink), and the composer's contents fade in (arrive).
+ * To build: the composer's contents fade where they are (lift), an empty shell of the composer's
+ * material takes its box (rise) and waits there while the other space's conversation opens. Once the
+ * hub is drawn the shell carries the box up into its place and takes its look. Landed, the shell is
+ * the hub: its contents fade in, the cables grow out of it and the cards appear at their ends (landed).
+ * Back to chat: the cables retract and the cards and the hub's contents fade (unplug), the shell takes
+ * the hub's box and waits; then it carries the box down into the composer's place (sink), and the
+ * composer's contents fade in (arrive).
  *
- * Text only fades; only the empty shell travels. Styles: project-mode-toggle.css (stage, shell,
- * composer) and project-flow.css (the hub's cards and cables). Reduced motion: an instant swap. */
-import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+ * The two views are never mounted together: they show different conversations, so the old one stays
+ * until the new one is ready and they swap under the shell. Text only fades; only the empty shell
+ * travels. Styles: project-mode-toggle.css (stage, shell, composer) and project-flow.css (the hub's
+ * cards and cables). Reduced motion: an instant swap. */
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { DUR, DUR_OUT, EASE, travelMs } from "../motion/tokens";
 import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 
 export type Mode = "chat" | "project";
 export type MorphPhase = "lift" | "rise" | "landed" | "unplug" | "sink" | "arrive";
-interface Morph { id: number; to: Mode; /** When the outgoing contents have left: the box sets off then. */ exitEnd: number }
 
 const CHAT = ":scope > .composer-stage .composer";
 const HUB = ":scope > .project-mode-stage .pf-composer";
 /** The main pane (the one whose header holds the switch); a split pane beside it is left alone. */
 const pane = () => document.querySelector(".pf-toggle")?.closest<HTMLElement>(".workspace") ?? null;
 const CLEAR = "rgba(0, 0, 0, 0) 0px 0px 0px 0px";
-/** How long the shell waits at the composer for the hub to be drawn (its overview is still loading). */
+/** How long the shell waits for the other view to be drawn once its conversation is open (a hub's overview is still loading). */
 const WAIT_MS = 1500;
 
 function look(node: HTMLElement) {
@@ -77,8 +77,7 @@ function drawn(selector: string, alive: () => boolean) {
 }
 
 /** Writes the phase on the views it concerns. Phases are attributes, not React state: a phase
- *  change re-rendering the whole app cost the landing frame ~50 ms. React renders only twice per
- *  morph, when it starts (both views mount) and when it is over (one unmounts). */
+ *  change re-rendering the whole app cost the landing frame ~50 ms. */
 function mark(phase: MorphPhase | null) {
   for (const [selector, name] of [[".project-mode-stage", "morph"], [".conversation-stage", "modeMorph"], [".composer-stage", "modeMorph"]] as const) {
     for (const node of pane()?.querySelectorAll<HTMLElement>(`:scope > ${selector}`) ?? []) {
@@ -87,64 +86,65 @@ function mark(phase: MorphPhase | null) {
   }
 }
 
-/** The mode switch with its morph. `change` is what the header's switch calls; a different conversation never morphs.
- *  `morph` (which way, while it runs) is what keeps both views mounted. */
-export function useModeMorph(threadId: string | undefined, setMode: (mode: Mode) => void) {
-  const [morph, setMorph] = useState<Morph | null>(null);
+/** The header's switch: `carry(mode, open)` moves to the other space, `open` being what opens its conversation.
+ *  Rejects if `open` does. Opening a conversation any other way ends a carry still in the air only by landing it. */
+export function useModeMorph() {
   const count = useRef(0);
   const timers = useRef<number[]>([]);
   const shell = useRef<{ remove(): void } | null>(null);
+  const phase = useRef<MorphPhase | null>(null);
   const stop = useCallback(() => {
-    count.current += 1;  // whatever is still in flight belongs to a morph that is over
+    count.current += 1;  // whatever is still in flight belongs to a carry that is over
     timers.current.forEach((timer) => window.clearTimeout(timer));
     timers.current = [];
     shell.current?.remove();
     shell.current = null;
+    phase.current = null;
     mark(null);
-    setMorph(null);
   }, []);
-  useEffect(() => stop, [threadId, stop]);
+  useEffect(() => stop, [stop]);
+  // The view that mounts on the swap starts in the current phase, before its first paint.
+  useLayoutEffect(() => { if (phase.current) mark(phase.current); });
 
-  const change = useCallback((mode: Mode) => {
+  const carry = useCallback(async (mode: Mode, open: () => Promise<unknown>) => {
     stop();
-    if (prefersReducedMotionNow() || document.hidden || !pane()?.querySelector(mode === "project" ? CHAT : HUB)) { setMode(mode); return; }
-    // The outgoing contents start leaving on this very frame, written on the DOM; mounting the other
-    // view (the transcript is ~100 ms of work) renders in the background meanwhile, in slices.
-    mark(mode === "project" ? "lift" : "unplug");
-    const morph = { id: count.current, to: mode, exitEnd: performance.now() + DUR_OUT.fast };
-    startTransition(() => { setMode(mode); setMorph(morph); });
-  }, [setMode, stop]);
-
-  useLayoutEffect(() => {
-    if (!morph) return;
-    const { id, to, exitEnd } = morph;
+    const toBuild = mode === "project";
+    if (prefersReducedMotionNow() || document.hidden || !pane()?.querySelector(toBuild ? CHAT : HUB)) { await open(); return; }
+    const id = count.current;
     const current = () => count.current === id;
     const after = (ms: number) => new Promise<void>((resolve) => { timers.current.push(window.setTimeout(resolve, ms)); });
-    // The view that just mounted starts in the same phase, before its first paint.
-    mark(to === "project" ? "lift" : "unplug");
-    void (async () => {
-      await after(Math.max(0, exitEnd - performance.now()));
-      const from = current() && pane()?.querySelector<HTMLElement>(to === "project" ? CHAT : HUB);
-      if (!from) return;
+    const enter = (next: MorphPhase) => { phase.current = next; mark(next); };
+    try {
+      enter(toBuild ? "lift" : "unplug");
+      await after(DUR_OUT.fast);
+      // Another carry or a navigation took over during the exit: the conversation still has to open.
+      const from = current() && pane()?.querySelector<HTMLElement>(toBuild ? CHAT : HUB);
+      if (!from) { await open(); stop(); return; }
       // The shell takes the box on the frame its owner hides it.
       const carried = shellOver(from);
       shell.current = carried;
-      mark(to === "project" ? "rise" : "sink");
-      const target = await drawn(to === "project" ? HUB : CHAT, current);
+      if (toBuild) enter("rise");
+      // Only now: a conversation that opens at once would otherwise swap the views before the box was taken.
+      await open();
+      if (!current()) return;
+      if (!toBuild) enter("sink");
+      const target = await drawn(toBuild ? HUB : CHAT, current);
       if (!current()) return;
       if (!target) { stop(); return; }
       await carried.fly(target);
       if (!current()) return;
       // The target shows on the same frame the shell goes, so the hand-over has no gap.
-      mark(to === "project" ? "landed" : "arrive");
+      enter(toBuild ? "landed" : "arrive");
       carried.remove();
       shell.current = null;
       // To build, the cables grow for a flow step and the cards follow a press later; to chat, the contents fade in.
-      await after(to === "project" ? DUR.flow + DUR.press : DUR.base);
-      // The view that leaves unmounts before its marks go, or it would paint one frame as it is when unmarked.
-      if (current()) { flushSync(() => setMorph(null)); mark(null); }
-    })();
-  }, [morph]);  // eslint-disable-line react-hooks/exhaustive-deps
+      await after(toBuild ? DUR.flow + DUR.press : DUR.base);
+      if (current()) stop();
+    } catch (cause) {
+      stop();
+      throw cause;
+    }
+  }, [stop]);
 
-  return { morph, change };
+  return { carry };
 }

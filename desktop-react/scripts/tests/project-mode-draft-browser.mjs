@@ -30,16 +30,21 @@ try {
   await page.locator(".sidebar-new-conversation").click();
   assert.ok(await toggle.isVisible());
   assert.equal(await toggle.getByRole("radio").nth(0).getAttribute("aria-checked"), "true");
-  await toggle.getByRole("radio").nth(1).click();
-  await page.locator('.compact-thread-row[data-thread-id="visual-1"] .compact-thread-main').click({ position: { x: 12, y: 14 } });
-  await page.waitForTimeout(600);
-  assert.equal(await page.locator(".compact-thread-row.active").getAttribute("data-thread-id"), "visual-1", "late creation must not replace the conversation opened meanwhile");
-  const agentProject = page.locator(".project-group").filter({ has: page.locator(".project-group-main", { hasText: "loom-agent-test" }) });
-  // Exercise the existing project action's callback; this fixture's hover layer covers its glyph.
-  await agentProject.locator(".project-group-actions button").first().evaluate(button => button.click());
+  // Back in 建造: it lands on the conversation already there and creates nothing.
   await toggle.getByRole("radio").nth(1).click();
   await page.locator(".pf-switch").first().waitFor();
-  assert.equal(await page.evaluate(() => window.modeFixture.starts.at(-1).projectId), "agent", "draft mode creation keeps the chosen sidebar project");
+  assert.equal(await page.evaluate(() => window.modeFixture.starts.length), 2, "an existing build conversation is opened, not a new one created");
+  assert.equal(await page.locator(".compact-thread-row.active").getAttribute("data-thread-id"), "mode-draft-2");
+  const projectNew = (name) => page.locator(".project-group").filter({ has: page.locator(".project-group-main", { hasText: name }) })
+    // Exercise the existing project action's callback; this fixture's hover layer covers its glyph.
+    .locator(".project-group-actions button").first().evaluate(button => button.click());
+  await projectNew("loom-agent-test");
+  await page.waitForFunction(() => document.querySelector(".compact-thread-row.active")?.getAttribute("data-thread-id") === "mode-draft-3");
+  assert.equal(await page.evaluate(() => window.modeFixture.starts.at(-1).projectId), "agent", "a new build from a project's row goes in that project");
+  await projectNew("loom");
+  await page.locator('.compact-thread-row[data-thread-id="mode-draft-2"] .compact-thread-main').click({ position: { x: 12, y: 14 } });
+  await page.waitForTimeout(600);
+  assert.equal(await page.locator(".compact-thread-row.active").getAttribute("data-thread-id"), "mode-draft-2", "late creation must not replace the conversation opened meanwhile");
   assert.equal(await page.evaluate(() => window.modeFixture.turns), 0);
   assert.deepEqual(errors, []);
   console.log("Header mode toggle stays on new drafts, enters build without a turn, recovers errors and switches back");

@@ -59,6 +59,7 @@ import { useMotionPresence } from "./motion/useMotionPresence";
 import { DUR, EASE, RETAIN } from "./motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "./motion/useReducedMotion";
 import { useModeMorph } from "./components/modeMorph";
+import { landingThread, threadSpace, type Space } from "./state/threadSpaces";
 import { RUN_STRIP_EXIT_MS } from "./presentationTiming";
 import {
   SHORTCUTS_CHANGED_EVENT,
@@ -92,6 +93,15 @@ const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 const SPLIT_RATIO_KEY = "loom.layout.splitRatio";
 
 /** Conversation ids remembered under `key`; storage may be missing or hold something else. */
+function readLastInSpace(): Partial<Record<Space, string>> {
+  try {
+    const stored = JSON.parse(localStorage.getItem("loom.lastInSpace") || "{}");
+    return stored && typeof stored === "object" ? stored : {};
+  } catch {
+    return {};
+  }
+}
+
 function readModeIds(key: string): string[] {
   try {
     const value = JSON.parse(localStorage.getItem(key) || "[]");
@@ -635,10 +645,10 @@ export default function App() {
   // turn (`weave`); this machine remembers a switch made since, which no turn has carried yet.
   const [projectModeIds, setProjectModeIds] = useState<string[]>(() => readModeIds("loom.projectMode"));
   const [chatModeIds, setChatModeIds] = useState<string[]>(() => readModeIds("loom.chatMode"));
-  const isBuild = useCallback((entry: { id: string; weave?: boolean }) =>
-    projectModeIds.includes(entry.id) || (Boolean(entry.weave) && !chatModeIds.includes(entry.id)), [projectModeIds, chatModeIds]);
+  const spaceOf = useCallback((entry: { id: string; weave?: boolean }) => threadSpace(entry, projectModeIds, chatModeIds), [projectModeIds, chatModeIds]);
+  const isBuild = useCallback((entry: { id: string; weave?: boolean }) => spaceOf(entry) === "project", [spaceOf]);
   const projectMode = Boolean(thread && isBuild({ id: thread.id, weave: (loom.threads.find((entry) => entry.id === thread.id) ?? thread).weave }));
-  const rememberMode = useCallback((id: string, mode: "chat" | "project") => {
+  const rememberMode = useCallback((id: string, mode: Space) => {
     const into = (key: string, keep: boolean) => (ids: string[]) => {
       const next = keep ? [...ids.filter((item) => item !== id), id].slice(-50) : ids.filter((item) => item !== id);
       try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* private window */ }
@@ -647,38 +657,121 @@ export default function App() {
     setProjectModeIds(into("loom.projectMode", mode === "project"));
     setChatModeIds(into("loom.chatMode", mode === "chat"));
   }, []);
-  const setProjectMode = useCallback((mode: "chat" | "project") => {
-    if (thread?.id) rememberMode(thread.id, mode);
-  }, [thread?.id, rememberMode]);
-  // The hub's history card: the 建造 conversations, the way the sidebar holds them all.
+  // The hub's history card: the 建造 conversations, the way the sidebar holds them.
   const buildThreads = useMemo(() => loom.threads
     .filter((entry) => !entry.archived && !entry.parentThreadId && isBuild(entry))
     .map((entry) => ({ id: entry.id, title: entry.title, updatedAt: entry.updatedAt, projectId: entry.projectId, workspace: entry.workspace, live: Boolean(entry.active) })),
   [loom.threads, isBuild]);
-  // The header's switch carries the composer into the hub and back (modeMorph.ts); both views stay mounted for it.
-  const { morph: modeMorph, change: changeMode } = useModeMorph(thread?.id, setProjectMode);
-  const [modeStarting, setModeStarting] = useState(false);
+  // 对话 and 建造 are two spaces (threadSpaces.ts): the sidebar lists the current one's conversations and the header's
+  // switch moves between them, carrying the composer into the hub and back (modeMorph.ts). The space being moved to
+  // holds from the click until its conversation is open.
+  const { carry } = useModeMorph();
+  const [spaceTarget, setSpaceTarget] = useState<Space | null>(null);
+  const space: Space = spaceTarget ?? (projectMode ? "project" : "chat");
   const [modeError, setModeError] = useState("");
   const modeStartPending = useRef(false);
-  const chooseMode = async (mode: "chat" | "project") => {
+  const lastInSpace = useRef<Partial<Record<Space, string>>>(readLastInSpace());
+  useEffect(() => {
+    if (!thread?.id || thread.archived) return;
+    lastInSpace.current = { ...lastInSpace.current, [projectMode ? "project" : "chat"]: thread.id };
+    try { localStorage.setItem("loom.lastInSpace", JSON.stringify(lastInSpace.current)); } catch { /* private window */ }
+  }, [thread?.id, thread?.archived, projectMode]);
+  const threadRef = useRef(thread);
+  threadRef.current = thread;
+  // Opens the space's conversation; a space without one gets what starts one: a new build, or the chat home page.
+  const enterSpace = useCallback(async (target: Space, list: ThreadRecord[]) => {
+    const landing = landingThread(list, spaceOf, target, lastInSpace.current[target]);
+    if (landing) { await loom.openThread(landing.id); return; }
+    if (target === "chat") { await loom.newThread(); return; }
+    const from = threadRef.current;
+    await loom.createEmptyThread({
+      params: from?.projectId ? { projectId: from.projectId } : from?.workspace ? { workspace: from.workspace } : undefined,
+      beforeOpen: (created) => rememberMode(created.id, "project"),
+    });
+  }, [loom.createEmptyThread, loom.newThread, loom.openThread, rememberMode, spaceOf]);
+  const holdSpace = useCallback(async (target: Space, move: () => Promise<unknown>) => {
+    modeStartPending.current = true;
+    setSpaceTarget(target);
+    try {
+      await move();
+    } finally {
+      modeStartPending.current = false;
+      setSpaceTarget(null);
+    }
+  }, []);
+  const chooseMode = async (mode: Space) => {
     if (modeStartPending.current) return;
     setModeError("");
-    if (thread?.id) { changeMode(mode); return; }
-    if (mode === "chat") return;
+    const { threadView, threads, setThreadView, prefetchThread } = loom;
+    // The list changes on the click; the conversation is read ahead while the composer's contents leave.
     modeStartPending.current = true;
-    setModeStarting(true);
+    setSpaceTarget(mode);
+    const landing = threadView === "archived" ? undefined : landingThread(threads, spaceOf, mode, lastInSpace.current[mode]);
+    if (landing) prefetchThread(landing.id);
+    const release = () => { modeStartPending.current = false; setSpaceTarget(null); };
     try {
-      await loom.createEmptyThread({ beforeOpen: (created) => rememberMode(created.id, "project") });
+      await carry(mode, async () => {
+        try {
+          await enterSpace(mode, threadView === "archived" ? await setThreadView("active") : threads);
+        } finally {
+          release();
+        }
+      });
     } catch (cause) {
       setModeError(errorMessage(cause));
     } finally {
-      modeStartPending.current = false;
-      setModeStarting(false);
+      release();
     }
   };
-  const showProject = projectMode || modeMorph?.to === "chat";
-  // The conversation goes once the morph is over: unmounting it on the landing frame cost that frame.
-  const showChat = !projectMode || modeMorph?.to === "project";
+  // New, wherever it is asked for, means new in this space. A build conversation exists from the start, so a new one
+  // is created at once, and asking again from one nothing has been said in stays there.
+  const emptyBuildOpen = useRef(false);
+  emptyBuildOpen.current = projectMode && !running && !loom.items.length;
+  const newInSpace = useCallback(async (workspace?: string, projectId?: string) => {
+    if (space !== "project") { await loom.newThread(workspace, projectId); return; }
+    const from = threadRef.current;
+    const elsewhere = Boolean(projectId ? projectId !== from?.projectId : workspace && workspace !== from?.workspace);
+    if (emptyBuildOpen.current && !elsewhere) return;
+    await loom.createEmptyThread({
+      params: projectId ? { projectId } : workspace ? { workspace } : from?.projectId ? { projectId: from.projectId } : from?.workspace ? { workspace: from.workspace } : undefined,
+      beforeOpen: (created) => rememberMode(created.id, "project"),
+    });
+  }, [loom.createEmptyThread, loom.newThread, rememberMode, space]);
+  // Archiving or deleting the open conversation stays in its space.
+  const archiveInSpace = useCallback(async (id: string, archived: boolean) => {
+    const here = space;
+    let nothingLeft = false;
+    const pick = (list: ThreadRecord[]) => {
+      const landing = landingThread(list, spaceOf, here, lastInSpace.current[here]);
+      nothingLeft = !landing;
+      return landing;
+    };
+    if (loom.threadView === "archived" || !archived || threadRef.current?.id !== id) { await loom.archiveThread(id, archived); return; }
+    await holdSpace(here, async () => {
+      await loom.archiveThread(id, archived, pick);
+      if (nothingLeft && here === "project") await enterSpace(here, []);
+    });
+  }, [enterSpace, holdSpace, loom.archiveThread, loom.threadView, space, spaceOf]);
+  const deleteInSpace = useCallback(async (id: string) => {
+    if (space !== "project" || threadRef.current?.id !== id) { await loom.deleteThread(id); return; }
+    await holdSpace("project", async () => enterSpace("project", await loom.deleteThread(id)));
+  }, [enterSpace, holdSpace, loom.deleteThread, space]);
+  // The archive holds both spaces; leaving it goes back to the space it was opened from.
+  const archiveOpenedFrom = useRef<Space>("chat");
+  const changeThreadView = useCallback(async (view: "active" | "archived") => {
+    if (view === "archived") {
+      archiveOpenedFrom.current = space;
+      await loom.setThreadView(view);
+      return;
+    }
+    const list = await loom.setThreadView(view);
+    if (archiveOpenedFrom.current === "project" && !threadRef.current) await holdSpace("project", () => enterSpace("project", list));
+  }, [enterSpace, holdSpace, loom.setThreadView, space]);
+  const sidebarThreads = useMemo(() => loom.threadView === "archived"
+    ? loom.threads
+    : loom.threads.filter((entry) => spaceOf(entry) === space), [loom.threadView, loom.threads, space, spaceOf]);
+  const showProject = projectMode;
+  const showChat = !projectMode;
   const permissionMode = thread?.permissionMode || loom.draftPermissionMode || loom.runtime.defaultPermissionMode;
   const capabilitySettings = loom.runtime.settings?.capabilities ?? {};
   const attachmentsEnabled = capabilitySettings.attachments !== false;
@@ -1215,7 +1308,7 @@ export default function App() {
         setSettingsOpen(false);
         if (!sidebarOpen) runLayoutTransition(() => setSidebarOpen(true), "left-open");
         sidebarControlsRef.current?.write();
-        void loom.newThread();
+        void newInSpace();
         return;
       }
 
@@ -1277,7 +1370,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut, true);
     return () => window.removeEventListener("keydown", handleShortcut, true);
-  }, [loom, reviewOpen, runLayoutTransition, running, shortcuts, sidebarOpen, sidebarSearchOpen, terminalOpen, rightSurfaceOpen]);
+  }, [loom, newInSpace, reviewOpen, runLayoutTransition, running, shortcuts, sidebarOpen, sidebarSearchOpen, terminalOpen, rightSurfaceOpen]);
 
   // An approval the reader answers folds away instead of taking its height back in one frame.
   const transcriptItems = useLeavingItems(
@@ -1513,7 +1606,7 @@ export default function App() {
       setSidebarSearchOpen(true);
     }, "left-open");
   }, [runLayoutTransition, sidebarOpen]);
-  const startConversation = useCallback(() => loom.newThread(), [loom.newThread]);
+  const startConversation = useCallback(() => newInSpace(), [newInSpace]);
 
   const progressProps = {
     modelActivity: loom.modelActivity,
@@ -1627,7 +1720,8 @@ export default function App() {
         onNew={startConversation}
       />
       <Sidebar
-        threads={loom.threads}
+        threads={sidebarThreads}
+        space={space}
         loading={connecting}
         activeId={selectedThreadId}
         activeProjectId={selectedProjectId}
@@ -1635,7 +1729,7 @@ export default function App() {
         archivedCount={loom.threadCounts.archived}
         onOpen={loom.openThread}
         onPrefetch={loom.prefetchThread}
-        onNew={loom.newThread}
+        onNew={newInSpace}
         onOpenProject={stableOpenProject}
         projects={loom.projects}
         projectsSupported={loom.projectsSupported}
@@ -1644,11 +1738,11 @@ export default function App() {
         onRemoveProject={loom.removeProject}
         onMoveProject={stableMoveProject}
         onRename={loom.renameThread}
-        onArchive={loom.archiveThread}
-        onDelete={loom.deleteThread}
+        onArchive={archiveInSpace}
+        onDelete={deleteInSpace}
         onFork={loom.forkThread}
         onOpenSplit={openInSplit}
-        onViewChange={loom.setThreadView}
+        onViewChange={changeThreadView}
         searchOpen={sidebarSearchOpen}
         onSearchOpenChange={setSidebarSearchOpen}
       />
@@ -1692,8 +1786,8 @@ export default function App() {
           compacting={!threadSwitching && loom.compacting}
           compactionProgress={threadSwitching ? null : loom.compactionProgress}
           onCompactContext={() => void loom.compactContext()}
-          mode={projectMode || (!thread && modeStarting) ? "project" : "chat"}
-          modePending={modeStarting || threadSwitching || loom.connection !== "ready"}
+          mode={space}
+          modePending={Boolean(spaceTarget) || threadSwitching || loom.connection !== "ready"}
           modeError={modeError}
           onModeChange={chooseMode}
         />
@@ -1730,7 +1824,7 @@ export default function App() {
         />
 
         {showProject && thread ? (
-          <div className="project-mode-stage" inert={threadSwitching || modeMorph?.to === "chat"}>
+          <div className="project-mode-stage" inert={threadSwitching}>
             <Suspense fallback={null}>
               <ProjectMode key={thread.id} threadId={thread.id} workspace={selectedThread?.workspace || workspace} model={currentModel}
                            projects={loom.projects} onSelectProject={!running ? id => handleMoveProject(thread.id, id) : undefined}
@@ -1761,7 +1855,7 @@ export default function App() {
         ) : null}
         {showChat ? (<>
         <div className={`conversation-stage ${running ? "is-running" : ""}`}
-             inert={threadSwitching || modeMorph?.to === "project"}>
+             inert={threadSwitching}>
           {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
           {thread?.parentThreadId ? (
             <div className="loom-branch-parent-strip" role="group" aria-label={t("branch.child")}>
@@ -1820,7 +1914,7 @@ export default function App() {
           />
         </div>
 
-        <div className="composer-stage" inert={threadSwitching || modeMorph?.to === "project"}>
+        <div className="composer-stage" inert={threadSwitching}>
           {gitBarPresence.mounted && gitBarProject ? (
             <div className="project-git-fold" data-motion-phase={gitBarPresence.phase} inert={!currentProject}>
               <div className="project-git-fold-body">
@@ -1905,7 +1999,7 @@ export default function App() {
         threads={loom.threads}
         activeThreadId={thread?.id}
         onClose={closeProjectDetails}
-        onNewThread={(project) => loom.newThread(project.root || undefined, project.id)}
+        onNewThread={(project) => newInSpace(project.root || undefined, project.id)}
         onOpenThread={loom.openThread}
         onSetInstructions={loom.setProjectInstructions}
         onGitChanged={() => { void loom.refreshProjects(); }}

@@ -88,9 +88,8 @@
 
 @keyframes pf-mode-fade { from { opacity: 0; } }
 
-/* The switch's morph (modeMorph.ts): while it runs both views are mounted on the same rows, the
-   stage over the conversation. Its canvas fading in covers the conversation; fading out (sink)
-   uncovers it. The chat composer gives its box to the travelling shell and gets it back. */
+/* The switch's morph (modeMorph.ts): one view at a time, swapped under the shell once the other
+   space's conversation is open. The chat composer gives its box to the travelling shell and gets it back. */
 /* Pinned to the one column too: with only a row given, auto-placement opens a second column rather than overlap. */
 .conversation-stage[data-mode-morph] { grid-area: 2 / 1; }
 .composer-stage[data-mode-morph] { grid-area: 3 / 1; }
@@ -98,10 +97,6 @@
 .conversation-stage[data-mode-morph],
 .composer-stage[data-mode-morph] { z-index: 0; }
 .project-mode-stage[data-morph] { z-index: 2; grid-column: 1; }
-.project-mode-stage:is([data-morph="sink"], [data-morph="arrive"]) {
-  background-color: transparent;
-  transition: background-color var(--loom-dur-base-out) var(--loom-ease-exit);
-}
 
 .composer-stage:is([data-mode-morph="lift"], [data-mode-morph="rise"], [data-mode-morph="unplug"], [data-mode-morph="sink"]) .composer > * {
   opacity: 0;

@@ -746,13 +746,14 @@ export function useLoom() {
     setThreadViewState(view);
     const list = await refreshThreads(view);
     const currentId = activeIdRef.current;
-    if (currentId && list.some((thread) => thread.id === currentId)) return;
+    if (currentId && list.some((thread) => thread.id === currentId)) return list;
 
     // A list-view switch is navigation, not a request to open whichever row
     // happens to sort first. Invalidate any in-flight read from the previous
     // view, then leave the destination list unselected until the user clicks.
     openRequestRef.current += 1;
     clearActive();
+    return list;
   }, [clearActive, refreshThreads]);
 
   const newThread = useCallback(async (workspace?: string, projectId?: string) => {
@@ -831,16 +832,17 @@ export function useLoom() {
     setActive((current) => current && current.thread.id === updated.id ? { ...current, thread: updated } : current);
   }, []);
 
-  const archiveThread = useCallback(async (threadId: string, archived: boolean) => {
+  // `next` chooses what opens if the open conversation leaves the list; without it, the list's first row.
+  const archiveThread = useCallback(async (threadId: string, archived: boolean, next?: (list: ThreadRecord[]) => ThreadRecord | undefined) => {
     await requireBridge().call<{ thread: ThreadRecord }>("thread/archive", { threadId, archived });
     const list = await refreshThreads();
-    await ensureSelection(list);
+    await ensureSelection(next ? (() => { const row = next(list); return row ? [row] : []; })() : list);
   }, [ensureSelection, refreshThreads]);
 
   const deleteThread = useCallback(async (threadId: string) => {
     await requireBridge().call("thread/delete", { threadId });
     if (activeIdRef.current === threadId || openingThreadIdRef.current === threadId) clearActive();
-    await refreshThreads();
+    return refreshThreads();
   }, [clearActive, refreshThreads]);
 
   const forkThread = useCallback(async (threadId: string) => {

@@ -212,7 +212,11 @@ export function useCompanionThread(threadId: string): CompanionThread {
       text: input, status: "sending", submittedAt: new Date().toISOString(),
     }]);
     try {
-      const result = await bridge().call<{ turn: TurnRecord }>("turn/start", { threadId: current.id, input });
+      const result = await bridge().call<{ turn: TurnRecord }>("turn/start", {
+        threadId: current.id, input,
+        // A build conversation answered from the split pane stays one: a turn without this leaves 建造.
+        ...(current.weave ? { weave: true } : {}),
+      });
       const turn = result.turn;
       setItems(list => list.map(item => item.id === pendingId ? { ...item, turnId: turn.id } : item));
       setThread(latest => latest && !(latest.currentTurnId === turn.id && terminalStatus(latest.status))
