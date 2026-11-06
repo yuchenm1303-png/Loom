@@ -1127,10 +1127,11 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                 : <ErrorRow item={message.items![0]} />}
             </div>
           ) : (
-            <div key={message.id} className="pf-reply" data-streaming={message.streaming || undefined}>
+            <div key={message.id} className="pf-reply" data-streaming={message.live || undefined}>
               <MarkdownMessage content={message.text} compact glow streaming={message.streaming} messageKey={message.id}
                                workspace={data.repository.path} />
-              {message.streaming ? null : <CopyReply value={message.text} label={text.copy} done={text.copied} />}
+              {/* An answer is copied once its turn is over: until then this is narration, whatever follows it. */}
+              {message.live ? null : <CopyReply value={message.text} label={text.copy} done={text.copied} />}
             </div>
           ))}
           {thinking ? (

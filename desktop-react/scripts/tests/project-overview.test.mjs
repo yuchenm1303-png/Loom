@@ -267,11 +267,14 @@ test("commentary stays body text between the stages; it folds into the stage onl
   const live = toConversation(items, true);
   assert.deepEqual(shape(live.messages), [["user", "清理 C 盘"], ["assistant", "先看看空间"], ["work", ["p1"]], ["assistant", "只剩 23.4GB，扫描大目录"], ["work", ["p2"]]]);
   assert.equal(live.messages.some((m) => m.streaming), false);
+  // Everything said in the running turn counts as live, so no copy button until it is over, also on lines steps came after.
+  assert.deepEqual(live.messages.filter((m) => m.role === "assistant").map((m) => m.live), [true, true]);
   // The newest line is the one still arriving while it is the last thing on the page.
   assert.equal(toConversation(items.slice(0, 4), true).messages.at(-1).streaming, true);
   // Stopped: nothing moves.
   const stopped = toConversation([...items, { id: "e1", threadId: "t", turnId: "a", type: "error", text: "turn_cancelled" }], false);
   assert.deepEqual(shape(stopped.messages), [...shape(live.messages), ["notice", ["e1"]]]);
+  assert.deepEqual(stopped.messages.filter((m) => m.role === "assistant").map((m) => m.live), [false, false]);
   // Answered and over: one stage holds the narration, the answer remains.
   const over = toConversation([...items, { id: "a1", threadId: "t", turnId: "a", type: "assistant_message", phase: "final_answer", text: "可清理约 9GB" }], false);
   assert.deepEqual(shape(over.messages), [["user", "清理 C 盘"], ["work", ["c1", "p1", "c2", "p2"]], ["assistant", "可清理约 9GB"]]);

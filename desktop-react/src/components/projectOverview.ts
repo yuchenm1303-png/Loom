@@ -377,7 +377,7 @@ export interface FlowMessage {
   items?: TranscriptItem[];
   /** Files on a message still being sent, before the Host writes their manifest into `text`. */
   attachments?: { path: string; name: string }[];
-  /** A work stage of the turn that runs now. */
+  /** A work stage or a message of the turn that runs now. */
   live?: boolean;
   /** A work stage something came after (or whose turn is over): it reads as one line until opened. */
   superseded?: boolean;
@@ -420,6 +420,7 @@ export function toConversation(items: TranscriptItem[], chatting: boolean, limit
   const shaped = messages.filter((message) => message.role !== "work" || message.items!.some((item) => WORK.has(item.type)));
   // A stage folds to one line once anything follows it or its turn is over; the stage at the live edge stays open.
   shaped.forEach((message, index) => {
+    if (message.role === "assistant") message.live = chatting && message.turnId === lastTurn;
     if (message.role !== "work") return;
     message.live = chatting && message.turnId === lastTurn;
     message.superseded = !message.live || index < shaped.length - 1;
