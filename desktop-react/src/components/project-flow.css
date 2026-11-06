@@ -121,6 +121,30 @@ html[data-loom-theme="light"] .pf-stage {
   max-height: 100%;
 }
 .pf-right { gap: 12px; }
+/* A side column shows whatever is open, all of it at once. Its lists give height first; what still does not fit
+   scrolls, inside the row, faded at the edge it continues past. The box is always the row's full height and the cards
+   are centred in it, not the box on the row: a box that shrank with its cards would cut those gliding in from further out.
+   It stands out by the shade, so that the scroller does not cut the cards' shadows (SIDE_SHADE in ProjectFlow.tsx); the
+   scrollbar always keeps its gutter inside that, so that its coming does not narrow the cards. */
+.pf-side {
+  --pf-side-shade: 16px;
+  --pf-side-fade: calc(var(--pf-side-shade) + 14px);
+  align-self: stretch;
+  justify-content: safe center;
+  box-sizing: border-box;
+  max-height: none;
+  margin: calc(-1 * var(--pf-side-shade));
+  padding: var(--pf-side-shade) calc(var(--pf-side-shade) - 4px) var(--pf-side-shade) var(--pf-side-shade);
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  container-type: size;
+}
+.pf-side[data-more-up] { mask-image: linear-gradient(to bottom, transparent, #000 var(--pf-side-fade)); }
+.pf-side[data-more-down] { mask-image: linear-gradient(to top, transparent, #000 var(--pf-side-fade)); }
+.pf-side[data-more-up][data-more-down] { mask-image: linear-gradient(to bottom, transparent, #000 var(--pf-side-fade), #000 calc(100% - var(--pf-side-fade)), transparent); }
+/* A list at its end hands the wheel on to its column. */
+.pf-stage .pf-side :is(.pf-list, .pf-model-options) { overscroll-behavior: auto; }
 .pf-center { gap: 0; }
 
 .pf-slot { flex: none; min-height: 0; opacity: 1; transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
@@ -131,18 +155,17 @@ html[data-loom-theme="light"] .pf-stage {
 }
 /* The cards that hold lists give height first; their rows scroll inside them. */
 .pf-slot[data-fit],
-.pf-model-slot,
 .pf-below { display: flex; flex: 0 1 auto; flex-direction: column; }
 .pf-below > .pf-card { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 /* What scrolls in the hub wears the sidebar's bar: 4px, no arrow buttons, seen only while the
    pointer is over it. The global `* { scrollbar-width: thin }` would bring back Windows' native
    bar with its arrows, so these name `auto` with a more specific selector. */
-.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options) { scrollbar-width: auto; scrollbar-color: auto; }
-.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar { width: 4px; height: 4px; }
-.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar-button { display: none; }
-.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar-track { background: transparent; }
-.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar-thumb { border-radius: 999px; background: transparent; }
-.pf-stage :is(.pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options):hover::-webkit-scrollbar-thumb {
+.pf-stage :is(.pf-side, .pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options) { scrollbar-width: auto; scrollbar-color: auto; }
+.pf-stage :is(.pf-side, .pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar { width: 4px; height: 4px; }
+.pf-stage :is(.pf-side, .pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar-button { display: none; }
+.pf-stage :is(.pf-side, .pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar-track { background: transparent; }
+.pf-stage :is(.pf-side, .pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options)::-webkit-scrollbar-thumb { border-radius: 999px; background: transparent; }
+.pf-stage :is(.pf-side, .pf-thread, .pf-below > .pf-card, .pf-list, .pf-model-options):hover::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--loom-workspace-ink) 18%, transparent);
 }
 /* Scope and files: the head (and the add button) stay; the rows between them scroll, one stays in sight. */
@@ -1011,7 +1034,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 
 .pf-empty { margin: 0; padding: 6px 4px 4px; color: var(--pl-faint); font-size: 12px; }
 /* The history card: a row per 建造 conversation, the one open here marked and not a button. */
-.pf-slot[data-glide="history"] { min-height: 118px; }
+.pf-slot[data-glide="history"] { flex: none; }
 /* A button's minimum is its whole title: the track holds the rows to the card, and titles end in an ellipsis. */
 .pf-history > .pf-list { grid-template-columns: minmax(0, 1fr); overflow-x: hidden; }
 .pf-history-row {
@@ -1234,8 +1257,9 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
   flex: 0 1 auto;
   align-content: start;
   gap: 2px;
-  min-height: 94px;
-  max-height: 216px;
+  /* Sized by the column, not by what else is open (a squeezed flex item would go down to nothing): as long as leaves
+     room for the card's other rows and three folded agents. Past that, with more open, the column scrolls. */
+  max-height: clamp(94px, 100cqh - 413px, 216px);
   overflow-y: auto;
   overscroll-behavior: contain;
   animation: pf-fade var(--loom-dur-fast) var(--loom-ease-out) backwards;

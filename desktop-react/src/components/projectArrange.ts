@@ -311,6 +311,8 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     }
     // Removing a flex item also recentres its column: every held card is placed again against the new column.
     for (const [node, from] of held.current) pin(node, from, root);
+    // A scrolled column clamps its scroll as it loses the card, and a card held at the old scroll keeps part of it: again.
+    for (const [node, from] of held.current) pin(node, from, root);
     const reduce = prefersReducedMotionNow();
     // The columns a card has just started to leave: their other cards wait for it to have mostly gone. That
     // includes their size changes (the agents grow back as the model card goes): those CSS transitions have just

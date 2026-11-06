@@ -347,7 +347,10 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
         .map(([id, item]) => {
           const b = box(visibleBox(item.node));
           const head = layoutTop(item.node, root) + Math.min(34, item.node.offsetHeight / 2);
-          return { id, x1: side === "left" ? b.right : b.left, y1: Math.min(b.top + 34, b.top + b.height / 2), head, y2: 0, lane: 0,
+          // A card scrolled out of its column keeps its cable, which runs to the column's edge.
+          const view = sideView(item.node), low = view ? view.top - base.top : -Infinity, high = view ? view.bottom - base.top : Infinity;
+          const inView = (y: number) => Math.max(low, Math.min(high, y));
+          return { id, x1: side === "left" ? b.right : b.left, y1: inView(Math.min(b.top + 34, b.top + b.height / 2)), head: inView(head), y2: 0, lane: 0,
                    held: Boolean(item.node.closest("[data-leaving]")) };
         })
         .sort((a, b) => a.head - b.head);
@@ -461,27 +464,59 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
     setCables((current) => current.length === drawn.current.length
       && current.every((cable, index) => cable.d === drawn.current[index].d && cable.id === drawn.current[index].id) ? current : drawn.current);
   }, []);
-  const measure = useCallback((fresh = false, hold = 0) => {
-    const moving = draw(fresh, hold);
-    if (frame.current) return;
-    if (!moving) { settle(); return; }
+  const follow = useCallback(() => {
     const step = () => {
       if (draw(false)) frame.current = requestAnimationFrame(step);
       else { frame.current = 0; settle(); }
     };
     frame.current = requestAnimationFrame(step);
   }, [draw, settle]);
+  const measure = useCallback((fresh = false, hold = 0) => {
+    const moving = draw(fresh, hold);
+    if (frame.current) return;
+    if (!moving) { settle(); return; }
+    follow();
+  }, [draw, settle, follow]);
   useLayoutEffect(() => () => { cancelAnimationFrame(frame.current); rebase.current?.clock.cancel(); }, []);
   useLayoutEffect(() => {
     // The stage has a fixed size, so watching it alone missed every reflow inside it (a card growing,
     // the thread pushing the hub down) and left the cables where the cards had been. Watch what moves.
     // A layout change itself is drawn by the glide (useGlide calls measure(true) on its first frame).
-    const observer = new ResizeObserver(() => measure());
     const root = stage.current;
+    const sides = [...(root?.querySelectorAll<HTMLElement>(".pf-side") ?? [])];
+    const observer = new ResizeObserver(() => { measure(); sides.forEach(markScrollEdges); });
     if (root) for (const node of [root, ...root.querySelectorAll<HTMLElement>(".pf-col, .pf-composer, .pf-card")]) observer.observe(node);
-    return () => observer.disconnect();
-  }, [measure, layout]);
+    // Scrolled, a column's cables are written on the frame it moved; React's copy follows once it rests.
+    let rest = 0;
+    const scrolled = (event: Event) => {
+      markScrollEdges(event.currentTarget as HTMLElement);
+      if (draw(false) && !frame.current) follow();
+      window.clearTimeout(rest);
+      rest = window.setTimeout(settle, 120);
+    };
+    for (const side of sides) side.addEventListener("scroll", scrolled, { passive: true });
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(rest);
+      for (const side of sides) side.removeEventListener("scroll", scrolled);
+    };
+  }, [measure, draw, follow, settle, layout]);
   return { cables, measure, svg };
+}
+
+/** The room around a side column's cards for their shadows, which a scroller would otherwise cut: --pf-side-shade. */
+const SIDE_SHADE = 16;
+/** Where a card's side column shows it, once the column has more than it can show. */
+function sideView(node: HTMLElement) {
+  const side = node.closest<HTMLElement>(".pf-side");
+  if (!side || side.scrollHeight <= side.clientHeight + 1) return null;
+  const box = side.getBoundingClientRect();
+  return { top: box.top + SIDE_SHADE, bottom: box.bottom - SIDE_SHADE };
+}
+/** Fades the edges past which a side column has more to show. Marked by hand: scrolling must not render the hub. */
+function markScrollEdges(side: HTMLElement) {
+  side.toggleAttribute("data-more-up", side.scrollTop > 1);
+  side.toggleAttribute("data-more-down", side.scrollHeight - side.clientHeight - side.scrollTop > 1);
 }
 
 /** How far down the stage the layout puts a node: offsets leave out transforms (a glide) and clips (an unroll). */
@@ -716,25 +751,17 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     try { localStorage.setItem(HISTORY_KEY, value ? "1" : "0"); } catch { /* kept for this session only */ }
     setHistoryOpen(value);
   };
-  // The history and the model are the right column's two pickers, and the column has room for one beside
-  // the agents: opening one folds the other away, on the same clock (its card leaves as the other arrives).
+  // Every branch opens on its own, and no card ever closes another: a column's lists give height, then it scrolls (.pf-side).
   const toggle = (id: string) => {
     if (id !== "history") { fold(id); return; }
-    if (!historyOpen) { setModelOpen(false); setUsageOpen(false); }
     showHistory(!historyOpen);
   };
-  const toggleModel = () => {
-    if (!modelOpen) { if (historyOpen) showHistory(false); setUsageOpen(false); }
-    setModelOpen(!modelOpen);
-  };
+  const toggleModel = () => setModelOpen(!modelOpen);
   // The quota is the third picker-sized branch of the right column, grown from the ring beside the model chip.
   const [usageOpen, setUsageOpen] = useState(false);
   const usage = useModelUsage(models?.current.selection ?? "");
   const usageZh = lang !== "en";
-  const toggleUsage = () => {
-    if (!usageOpen) { if (historyOpen) showHistory(false); setModelOpen(false); }
-    setUsageOpen(!usageOpen);
-  };
+  const toggleUsage = () => setUsageOpen(!usageOpen);
   const agents = useDeparting(open("agents") ? data.agents : []);
   const branches = useDeparting([...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : []),
                                  ...(usageOpen && data.models ? [{ id: "usage" }] : [])]);
@@ -832,6 +859,21 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const thinking = Boolean(data.chatting) && !(tail?.streaming
     || (tail?.role === "work" && tail.live && tail.items!.some((item) => isExecutingActivityStatus(itemStatus(item))))
     || (tail?.role === "notice" && tail.items![0].type === "approval"));
+  // A card just opened comes into sight. Before the glide measures, so that this scroll is part of where everything glides to.
+  const openedCards = useRef<Set<string> | null>(null);
+  const openedKey = `${ids(context)}|${ids(branches)}`;
+  useLayoutEffect(() => {
+    const now = [...context, ...branches].filter((item) => !item.leaving).map((item) => item.id);
+    const fresh = openedCards.current && now.find((id) => !openedCards.current!.has(id));
+    openedCards.current = new Set(now);
+    const card = fresh ? stage.current?.querySelector<HTMLElement>(`[data-glide="${fresh}"]`) : null;
+    const side = card?.closest<HTMLElement>(".pf-side");
+    if (!card || !side) return;
+    const view = side.getBoundingClientRect(), box = card.getBoundingClientRect();
+    const above = box.top - view.top - SIDE_SHADE, below = box.bottom - view.bottom + SIDE_SHADE;
+    if (above < 0) side.scrollTop += above;
+    else if (below > 0) side.scrollTop += Math.min(above, below);
+  }, [openedKey]);  // eslint-disable-line react-hooks/exhaustive-deps
   useGlide(stage, layout, measure);
   const share = Math.min(1, data.budget.tokens / Math.max(1, data.budget.tokenLimit));
   const done = data.tasks.filter((task) => task.state === "integrated").length;
@@ -932,7 +974,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         {cables.filter((cable) => cable.id === "repo").map((cable) => <Pulse key="merge" of={cable.id} d={cable.d} step={done} back />)}
       </svg>
 
-      <div className="pf-col pf-left">
+      <div className="pf-col pf-left pf-side">
         {shown("repo") ? (
           <div className="pf-slot pf-offset-2" data-glide="repo" {...hover("repo")} {...slot("repo")}>
             <Card id="repo" side="left" icon={<GitBranch size={12} />} label={text.repository} register={register}>
@@ -1326,7 +1368,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
       </div>
 
       {/* With the model card open, the agents under it fold to one line each, so both fit the column. */}
-      <div className="pf-col pf-right" data-crowded={branches.some((item) => !item.leaving) || undefined}>
+      <div className="pf-col pf-right pf-side" data-crowded={branches.some((item) => !item.leaving) || undefined}>
         {history && branches.some((item) => item.id === "history") ? (
           // The other 建造 conversations: one click opens it here, in the hub.
           <div className="pf-slot" data-glide="history" data-fit="" {...hover("history")} {...slot("history")}>

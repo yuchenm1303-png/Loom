@@ -34,7 +34,8 @@
 
 /* Rows. A long title must not widen the card: the list's single column may shrink to nothing. */
 .bh-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; overflow: auto; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin; }
-.bh-root > .bh-list { max-height: 310px; }
+/* Sized by its column (.pf-side), like the model list: room for the card's other rows and three folded agents. */
+.bh-root > .bh-list { max-height: clamp(108px, 100cqh - 330px, 310px); }
 .bh-list > .bh-row { position: relative; display: block; min-width: 0; border-radius: 10px; transition: background-color var(--loom-dur-fast) var(--loom-ease-out); }
 .bh-list > .bh-row:hover, .bh-list > .bh-row:focus-within { background: var(--pf-raise, var(--pl-hover)); }
 .bh-row[data-current] { box-shadow: inset 2px 0 0 var(--bh-hue); }

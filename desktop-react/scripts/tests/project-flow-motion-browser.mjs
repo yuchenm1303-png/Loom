@@ -58,6 +58,9 @@ const watch = (page, act, follow) => page.evaluate(async ({ act, follow, CUT_OF 
       const r = node.getBoundingClientRect(), [top, bottom] = inset(node), s = own(node);
       const box = { node, left: r.left, right: r.right, top: r.top + top, bottom: r.bottom - bottom };
       if (s) Object.assign(box, { left: Math.max(box.left, s.left), right: Math.min(box.right, s.right), top: Math.max(box.top, s.top), bottom: Math.min(box.bottom, s.bottom) });
+      // A scrolling column shows only what is inside it.
+      const side = node.closest(".pf-side")?.getBoundingClientRect();
+      if (side) Object.assign(box, { top: Math.max(box.top, side.top), bottom: Math.min(box.bottom, side.bottom) });
       return box;
     }).filter((box) => box.right > box.left && box.bottom > box.top);
     for (let i = 0; i < seen.length; i += 1) for (let j = i + 1; j < seen.length; j += 1) {
@@ -236,18 +239,73 @@ try {
     assert.equal(await page.locator('[data-glide^="agent:"]').count(), 3);
     assert.equal(await page.locator('[data-pinned]').count(), 0);
 
-    // The right column's two pickers take turns: the model card unrolls under the history card as it rolls up,
-    // never painted over it, and the history button lets go.
+    // Every branch opens on its own, and none closes another: the model and the quota open beside the history, each
+    // unrolling without being painted over a neighbour, and all three stay open whole, however little room is left.
     await toggle(page, "history").click();
     await settle(page);
-    const swap = await watch(page, "document.querySelector('.pf-model-chip').click()");
-    assert.ok(swap.overlap <= 1, `picker hand-over paints no card over another: ${JSON.stringify(swap)}`);
+    for (const [name, chip] of [["model", ".pf-model-chip"], ["quota", ".pf-usage"]]) {
+      const opening = await watch(page, `document.querySelector('${chip}').click()`);
+      assert.ok(opening.overlap <= 1, `opening the ${name} beside the others paints no card over another: ${JSON.stringify(opening)}`);
+      await settle(page);
+    }
+    const allOpen = async () => [await toggle(page, "history").getAttribute("aria-pressed"),
+      await page.locator('.pf-model-chip').getAttribute("aria-expanded"), await page.locator('.pf-usage').getAttribute("aria-expanded")];
+    assert.deepEqual(await allOpen(), ["true", "true", "true"], "no branch closed another");
+    const whole = async () => page.locator('.pf-right').evaluate((column) => ({
+      scrolls: column.scrollHeight > column.clientHeight,
+      list: column.querySelector('.pf-model-options').clientHeight, history: column.querySelector('.bh-list').clientHeight,
+      cut: [...column.querySelectorAll(':scope > [data-glide] > .pf-card')].filter((card) => card.scrollHeight > card.clientHeight + 1).map((card) => card.parentElement.dataset.glide) }));
+    for (const height of [1000, 700]) {
+      await page.setViewportSize({ width: 1500, height });
+      await settle(page);
+      const fit = await whole();
+      assert.ok(fit.scrolls && fit.list >= 94 && fit.history >= 100 && !fit.cut.length, `at ${height}px the column scrolls and squeezes no card: ${JSON.stringify(fit)}`);
+    }
+    // The column scrolls by the wheel, also over a list at its end, and its cables stay on their cards on the frame it moves.
+    const lag = await page.evaluate(async () => {
+      const column = document.querySelector('.pf-right'), stage = document.querySelector('.pf-stage').getBoundingClientRect();
+      const view = column.getBoundingClientRect();
+      let worst = 0;
+      for (let i = 0; i < 8; i += 1) {
+        column.scrollTop += i < 4 ? 50 : -50;
+        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+        for (const cable of column.closest('.pf-stage').querySelectorAll(".pf-cable[data-side='right']")) {
+          const card = document.querySelector(`[data-glide="${CSS.escape(cable.dataset.cable)}"]`);
+          if (!card) continue;
+          const r = (card.querySelector('.pf-card') || card).getBoundingClientRect();
+          const want = Math.max(view.top + 16, Math.min(view.bottom - 16, Math.min(r.top + 34, r.top + r.height / 2))) - stage.top;
+          worst = Math.max(worst, Math.abs(cable.querySelector('.pf-cable-body').getPointAtLength(0).y - want));
+        }
+      }
+      column.scrollTop = column.scrollHeight;
+      return worst;
+    });
+    assert.ok(lag < 1, `cables follow a scrolled column: ${lag}`);
     await settle(page);
-    assert.equal(await toggle(page, "history").getAttribute("aria-pressed"), "false");
-    const back = await watch(page, `document.querySelector('[data-branch="history"]').click()`);
-    assert.ok(back.overlap <= 1, `and back: ${JSON.stringify(back)}`);
+    assert.equal(await page.locator('.pf-right').evaluate((column) => column.hasAttribute('data-more-up') && !column.hasAttribute('data-more-down')), true, "the edge it continues past is faded");
+    // Scrolled away, a card just opened comes into sight.
+    await toggle(page, "history").click();
     await settle(page);
-    assert.equal(await page.locator('.pf-model-chip').getAttribute("aria-expanded"), "false");
+    await page.locator('.pf-right').evaluate((column) => { column.scrollTop = column.scrollHeight; });
+    await page.waitForTimeout(100);
+    await toggle(page, "history").click();
+    await settle(page);
+    const sight = await page.locator('.pf-right').evaluate((column) => {
+      const view = column.getBoundingClientRect(), card = column.querySelector('[data-glide="history"]').getBoundingClientRect();
+      return card.top >= view.top && card.top < view.bottom - 40;
+    });
+    assert.equal(sight, true, "a card opened above the scrolled part is brought into sight");
+    // Each closes alone too, and takes no other with it.
+    await page.locator('.pf-usage').click();
+    await settle(page);
+    assert.deepEqual(await allOpen(), ["true", "true", "false"]);
+    await page.locator('.pf-model-chip').click();
+    await settle(page);
+    assert.deepEqual(await allOpen(), ["true", "false", "false"]);
+    await toggle(page, "history").click();
+    await settle(page);
+    await page.setViewportSize({ width: 1500, height: 1000 });
+    await settle(page);
 
     // Cables are drawn on the frame the cards move: each leaves its card's shown head, and a plug eases to
     // its new place on the hub instead of jumping there.
