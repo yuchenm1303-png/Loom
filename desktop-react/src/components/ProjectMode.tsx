@@ -10,6 +10,8 @@ import { ProjectFlow } from "./ProjectFlow";
 import { raisedBudget, readableError, toConversation, toFlowData, toHistory, toModelChoice, type ProjectOverview } from "./projectOverview";
 import type { ApprovalDecision, ModelSnapshot, TranscriptItem, ProjectRecord } from "../types/loom";
 import { ProjectWorkspacePicker } from "./ProjectWorkspacePicker";
+import { DUR } from "../motion/tokens";
+import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 
 const LIVE_POLL_MS = 2000;
 const REST_POLL_MS = 12000;
@@ -21,8 +23,27 @@ const START_EPISODES = 400;
 /** The last overview of each conversation shown here: switching back to 建造 draws the hub at once
  *  (the composer's morph lands on it) and the first read then refreshes it. */
 const lastOverview = new Map<string, ProjectOverview>();
+/** A new conversation begins: what is written fades this long, then the cards of the old one leave. */
+const RENEW_FADE = DUR.fast;
+/** What a new conversation shows until its own read arrives: nothing but the project it is in. */
+const emptied = (from: ProjectOverview): ProjectOverview => ({ run: null, program: null, children: [], agents: [], events: [], workspace: from.workspace });
 
-export function ProjectMode({ threadId, workspace, model, models, onSwitchModel, onReasoning, permissionMode, onPermissionModeChange, items = [], chatting = false, onChat, onInterrupt, imagesAllowed, imageSupport, onApproval, onChangeWorkspace, projects = [], onSelectProject, history, onOpenThread, onNewThread, onRenameThread, onArchiveThread, onDeleteThread }: {
+/** The hub for a conversation. A brand-new one opened from a hub is that same hub (ProjectHub's renewal), so what stays
+ *  stays and the rest leaves on the hub's own choreography; opening an existing one is a hub of its own, as ever. */
+export function ProjectMode(props: React.ComponentProps<typeof ProjectHub>) {
+  const { threadId, history, items } = props;
+  const seat = useRef(threadId);
+  const last = useRef(threadId);
+  const known = useRef(new Set<string>());
+  if (threadId !== last.current) {
+    last.current = threadId;
+    if (known.current.has(threadId) || !history || items?.some((item) => item.threadId === threadId)) seat.current = threadId;
+  }
+  known.current = new Set(history?.map((entry) => entry.id));
+  return <ProjectHub key={seat.current} {...props} />;
+}
+
+function ProjectHub({ threadId, workspace, model, models, onSwitchModel, onReasoning, permissionMode, onPermissionModeChange, items = [], chatting = false, onChat, onInterrupt, imagesAllowed, imageSupport, onApproval, onChangeWorkspace, projects = [], onSelectProject, history, onOpenThread, onNewThread, onRenameThread, onArchiveThread, onDeleteThread }: {
   threadId: string; workspace?: string; model?: string;
   onChangeWorkspace?(path: string): Promise<unknown>;
   projects?: ProjectRecord[]; onSelectProject?(id: string): Promise<unknown>;
@@ -45,6 +66,15 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   const { language } = useI18n();
   const lang = language === "zh-CN" ? "zh" : "en";
   const [overview, setOverview] = useState<ProjectOverview | null>(() => lastOverview.get(threadId) ?? null);
+  // A new conversation, from this hub. At once what is written fades (`pending`), then the hub shows an empty project
+  // (`cleared`) until the new conversation's own read arrives: there is never a frame without a hub.
+  const [renewal, setRenewal] = useState<{ from: string; overview: ProjectOverview; cleared: boolean; pending: boolean } | null>(null);
+  const [seenThread, setSeenThread] = useState(threadId);
+  if (seenThread !== threadId) {
+    setSeenThread(threadId);
+    // Opened from elsewhere (the sidebar, the shortcut), or sooner than the fade was over.
+    if (overview) setRenewal((current) => current ? { ...current, cleared: true, pending: false } : { from: seenThread, overview: emptied(overview), cleared: true, pending: false });
+  }
   const [historyRows, setHistoryRows] = useState<Parameters<typeof toHistory>[0] | null>(null);
   const [historyError, setHistoryError] = useState("");
   const historyIds = history?.map(entry => entry.id).sort().join(",");
@@ -102,6 +132,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       if (alive.current && ticket === serial.current) {
         lastOverview.set(threadId, result);
         setOverview(result);
+        setRenewal((current) => current && current.from !== threadId ? null : current);
         setNow(Date.now());
         setOffline(false);
       }
@@ -136,7 +167,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   useEffect(() => { if (!chatting) void load(true); }, [chatting, load]);
   const conversation = useMemo(() => toConversation(items.filter((item) => item.threadId === threadId), chatting),
                                [items, threadId, chatting]);
-  const waiting = !overview;
+  const shownOverview = renewal?.cleared ? renewal.overview : overview;
+  const waiting = !shownOverview;
   useEffect(() => {
     setSlow(false);
     if (!waiting) return;
@@ -157,7 +189,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     }
   }, [load, lang]);
 
-  if (!overview) {
+  if (!shownOverview) {
     return (
       <div className="pf-loading" aria-busy={!offline}>
         {offline ? (
@@ -169,20 +201,21 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       </div>
     );
   }
-  const run = overview.run;
+  const run = shownOverview.run;
   const control = (action: "pause" | "resume" | "cancel", extra: Record<string, unknown> = {}) => act(() =>
     window.loom.call(`projectRun/${action}`, { operationId: crypto.randomUUID(), runId: run!.id, expectedRevision: run!.revision, ...extra }));
   const workspaceName = (workspace || "").split(/[\\/]/).filter(Boolean).pop() || "";
-  const data = { ...toFlowData(overview, now, lang, model || "", workspaceName), models: toModelChoice(models),
-                 conversation: conversation.messages, activity: conversation.activity, chatting, conversationPermissionMode: permissionMode,
+  const data = { ...toFlowData(shownOverview, now, lang, model || "", workspaceName), models: toModelChoice(models),
+                 conversation: renewal?.cleared ? [] : conversation.messages, activity: renewal?.cleared ? "" : conversation.activity,
+                 chatting: chatting && !renewal?.cleared, conversationPermissionMode: permissionMode,
                  history: history ? toHistory(historyRows || history.filter(entry => entry.id === threadId).map(entry => ({ ...entry, workspace: entry.workspace || (entry.id === threadId ? workspace : undefined) })), threadId, now, lang) : undefined,
                  historyError };
-  const proposal = data.phase === "draft" ? overview.proposal : null;
+  const proposal = data.phase === "draft" ? shownOverview.proposal : null;
   data.repository.path = run?.repository || workspace;
-  if (!run) data.repository.branch = overview.workspace?.branch || "—";
-  const programId = overview.program?.id;
+  if (!run) data.repository.branch = shownOverview.workspace?.branch || "—";
+  const programId = shownOverview.program?.id;
   const workspaceLocked = Boolean(run) || chatting || busy;
-  const workspaceReady = !overview.workspace?.status || overview.workspace.status === "ready";
+  const workspaceReady = !shownOverview.workspace?.status || shownOverview.workspace.status === "ready";
   const workBranch = `codex/build-${threadId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12)}`;
 
   const chooseWorkspace = !run && !chatting && onChangeWorkspace && window.loom.pickDirectory ? () => void act(async () => {
@@ -190,13 +223,31 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     if (picked) await onChangeWorkspace(picked);
   }) : undefined;
 
+  const startNew = onNewThread ? async () => {
+    if (renewal?.pending) return;
+    const from = threadId, emptyHub = emptied(shownOverview);
+    setError("");
+    const still = prefersReducedMotionNow();
+    setRenewal({ from, overview: emptyHub, cleared: still, pending: true });
+    const fade = still ? 0 : window.setTimeout(() => setRenewal((current) => current?.from === from ? { ...current, cleared: true } : current), RENEW_FADE);
+    try {
+      await onNewThread();
+      setRenewal((current) => current && { ...current, pending: false });
+    } catch (cause) {
+      // Nothing was created: what the hub showed comes back.
+      window.clearTimeout(fade);
+      setRenewal(null);
+      setError(readableError(cause instanceof Error ? cause.message : String(cause), lang));
+    }
+  } : undefined;
+
   return (
-    <ProjectFlow lang={lang} data={data} actions={{
-      workspaceControls: <ProjectWorkspacePicker projects={projects} workspace={{ ...overview.workspace, path: data.repository.path }}
+    <ProjectFlow lang={lang} data={data} conversationId={threadId} renewing={Boolean(renewal && (renewal.pending || !renewal.cleared))} actions={{
+      workspaceControls: <ProjectWorkspacePicker projects={projects} workspace={{ ...shownOverview.workspace, path: data.repository.path }}
         locked={workspaceLocked} lang={lang} branch={workBranch}
         onSelect={onSelectProject ? id => void act(() => onSelectProject(id)) : undefined} onBrowse={chooseWorkspace}
         onPrepare={!workspaceLocked ? action => void act(() => window.loom.call("projectRun/prepareWorkspace", {
-          threadId, action, confirmed: true, expectedPath: overview.workspace?.path, branch: workBranch })) : undefined} />,
+          threadId, action, confirmed: true, expectedPath: shownOverview.workspace?.path, branch: workBranch })) : undefined} />,
       onChooseWorkspace: chooseWorkspace,
       busy,
       error: error || (offline ? (lang === "en" ? "Lost the Host; reconnecting…" : "与 Host 的连接中断，正在重连…") : ""),
@@ -216,7 +267,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       onInterrupt: onInterrupt ? () => { void onInterrupt(); } : undefined,
       onPermissionModeChange,
       onOpenThread: onOpenThread ? (id) => onOpenThread(id) : undefined,
-      onNewThread: onNewThread ? () => act(async () => { await onNewThread(); }) : undefined,
+      onNewThread: startNew,
       // The card shows these failures on its own rows; the hub's busy state stays the run's.
       onRenameThread, onArchiveThread, onDeleteThread,
       onApproval: onApproval ? (item, decision, feedback) => { void onApproval(item, decision, feedback); } : undefined,
@@ -230,7 +281,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
         : data.attention?.action === "resume"
         ? control("resume")
         : data.attention?.action === "budget"
-        ? control("resume", raisedBudget(run, overview.program))
+        ? control("resume", raisedBudget(run, shownOverview.program))
         : act(() => window.loom.call("projectRun/recover", { operationId: crypto.randomUUID(), runId: run.id }))),
     }} />
   );

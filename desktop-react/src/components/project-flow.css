@@ -240,7 +240,7 @@ html[data-loom-theme="light"] .pf-stage {
 [data-glide="scope"], [data-branch="scope"] { --pf-hue: #e9c46a; }
 [data-glide="files"], [data-branch="files"] { --pf-hue: #9fd0a8; }
 [data-glide="knowledge"], [data-branch="knowledge"] { --pf-hue: #f2a6cf; }
-[data-glide="plan"], [data-branch="plan"] { --pf-hue: #85b8f2; }
+[data-glide^="plan"], [data-branch="plan"] { --pf-hue: #85b8f2; }
 .pf-agent-slot, [data-branch="agents"] { --pf-hue: #8fc9e8; }
 .pf-loom, [data-branch="loom"] { --pf-hue: #c3a6f5; }
 [data-glide="history"], [data-branch="history"] { --pf-hue: #e8b48a; }
@@ -322,7 +322,10 @@ html[data-loom-theme="light"] .pf-stage {
   overscroll-behavior: contain;
   /* ProjectFlow follows the newest line itself; the browser's anchoring would hold an older one in place. */
   overflow-anchor: none;
+  /* A new conversation's first words come last, once the hub has come to rest: words fade, they never travel. */
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out) calc(var(--loom-dur-panel) + var(--loom-dur-base));
 }
+.pf-stage[data-renewing] .pf-thread { opacity: 0; transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit); }
 .pf-composer { flex: none; }
 
 .pf-bubble {

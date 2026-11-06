@@ -83,6 +83,8 @@ const threads = [
   usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 }));
 const THREAD = threads[0].id;
+const newThreads = params.get("newThreads") === "1";
+if (newThreads) Object.assign(threads[0], { weave: true });
 
 // ?runs=1: other conversations work in the background (the conversations palette and the split pane read them).
 // live-1 runs and takes a step every 1.2 s, live-2 waits for an approval, live-3 finishes a few seconds in.
@@ -713,7 +715,14 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     compactions: 0, lastCompactedAt: "", measuredAt: historyAt, measurementPending: false,
   } } : { context: null }),
   // A conversation created from the home screen (the sidebar's "New conversation", then a send): the fixture has one thread.
-  "thread/start": () => ({ thread: { ...thread, status: "idle", currentTurnId: undefined } }),
+  // ?newThreads=1: the build hub's quill makes a real new one, as the Host does; ?newFails=1 refuses it.
+  "thread/start": () => {
+    if (!newThreads) return { thread: { ...thread, status: "idle", currentTurnId: undefined } };
+    if (params.get("newFails") === "1") throw new Error("The Host refused the new conversation.");
+    const created = { ...threads[0], id: `new-${threads.length}`, title: "新对话", customTitle: false, status: "idle", currentTurnId: undefined };
+    threads.unshift(created);
+    return { thread: created };
+  },
   "turn/start": (args) => {
     const text = String(args.input ?? "");
     window.setTimeout(() => void play(text), 0);
@@ -770,7 +779,8 @@ function projectOverview() {
   };
 }
 Object.assign(handlers, {
-  "projectRun/overview": () => projectOverview(),
+  "projectRun/overview": (args: Record<string, unknown>) => String(args.threadId).startsWith("new-")
+    ? { run: null, program: null, children: [], agents: [], events: [] } : projectOverview(),
   "projectProgram/create": () => { projectStarted = true; return { program: { id: "program-1" } }; },
   "projectRun/steer": (args: Record<string, unknown>) => { projectGuidance.push(String(args.text)); return { run: {} }; },
 });

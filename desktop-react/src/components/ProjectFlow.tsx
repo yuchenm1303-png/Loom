@@ -651,7 +651,11 @@ function Wash({ on }: { on: unknown }) {
   return moment ? <span key={moment} className="pf-task-wash" aria-hidden="true" /> : null;
 }
 
-export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowData; actions?: FlowActions; lang?: "zh" | "en" }) {
+export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, renewing = false }: { data: FlowData; actions?: FlowActions; lang?: "zh" | "en";
+  /** The same hub can go on into a new conversation (ProjectMode.tsx): what was being written stays behind. */
+  conversationId?: string;
+  /** A new conversation is being made: what the hub says is fading, and nothing can be sent to either. */
+  renewing?: boolean; }) {
   const text = lang === "en" ? enText : zhText;
   const stage = useRef<HTMLDivElement>(null);
   const hub = useRef<HTMLElement>(null);
@@ -787,7 +791,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const agents = useDeparting(open("agents") ? data.agents : []);
   const branches = useDeparting([...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : []),
                                  ...(usageOpen && data.models ? [{ id: "usage" }] : [])]);
-  const below = useDeparting(open("plan") ? [{ id: "plan" }] : []);
+  // Before a project the plan is a different card from the project's: one leaves as the other is born.
+  const below = useDeparting(open("plan") ? [{ id: draftMode ? "plan-draft" : "plan" }] : []);
   const loom = useDeparting(data.timeline && open("loom") ? [{ id: "loom" }] : []);
   // Files the person picked before starting; once started, the Host's copies are what count.
   const [picked, setPicked] = useState<string[]>([]);
@@ -897,6 +902,23 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
     else if (below > 0) side.scrollTop += Math.min(above, below);
   }, [openedKey]);  // eslint-disable-line react-hooks/exhaustive-deps
   useGlide(stage, layout, measure);
+  const conversationShown = useRef(conversationId);
+  useEffect(() => {
+    if (conversationShown.current === conversationId) return;
+    conversationShown.current = conversationId;
+    setDraft("");
+    attached.forEach(releaseAttachmentPreview);
+    setAttached([]);
+    setAttachError("");
+    setPicked([]);
+    setDirtyOpen(false);
+    setObjectiveOpen(false);
+    setCommitMessage("");
+    settingsTouched.current = { workers: false, tokens: false };
+    following.current = true;
+    setBehind(false);
+    input.current?.focus();
+  }, [conversationId]);  // eslint-disable-line react-hooks/exhaustive-deps
   const share = Math.min(1, data.budget.tokens / Math.max(1, data.budget.tokenLimit));
   const done = data.tasks.filter((task) => task.state === "integrated").length;
   const leaving = new Set([...context.filter((item) => item.leaving).map((item) => item.id),
@@ -905,6 +927,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                            ...loom.filter((item) => item.leaving).map((item) => item.id),
                            ...agents.filter((item) => item.leaving).map((item) => `agent:${item.id}`)]);
   const shown = (id: string) => context.some((item) => item.id === id);
+  // A card that leaves goes with what it showed, not emptied by the change it leaves for.
+  const past = useRef(data);
+  useEffect(() => { if (!leaving.size) past.current = data; });
+  const seen = (item: { leaving?: boolean }) => item.leaving ? past.current : data;
+  const leavingView = (id: string) => leaving.has(id) ? past.current : data;
+  const timeline = data.timeline ?? past.current.timeline;
   const slot = (id: string) => ({ "data-leaving": leaving.has(id) || undefined, inert: leaving.has(id) });
   const hover = (id: string) => ({ onPointerEnter: () => setHot(id), onPointerLeave: () => setHot("") });
   const shownWorkers = draftMode ? workers : data.workers;
@@ -912,7 +940,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   const attaching = Boolean(actions.onChat);
   const imageNotice = imageAttachmentState(attached.some((item) => item.isImage), actions.imagesAllowed ?? true, actions.imageSupport, lang === "zh");
   const submit = () => {
-    if (accessPending.current) return;
+    if (accessPending.current || renewing) return;
     const value = draft.trim();
     if (!value && !attached.length) return;
     if (imageNotice.blocked) return;
@@ -970,10 +998,10 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
   };
 
   return (
-    <div className="pf-stage" ref={stage} data-state={data.state} data-phase={data.phase}>
+    <div className="pf-stage" ref={stage} data-state={data.state} data-phase={data.phase} data-renewing={renewing || undefined}>
       <svg className="pf-cables" aria-hidden="true" ref={svg}>
         {cables.map((cable) => (
-          <g key={cable.id} className="pf-cable" data-cable={cable.id} data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || undefined}
+          <g key={cable.id} className="pf-cable" data-cable={cable.id} data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || hot === cable.id.replace("-draft", "") || undefined}
              data-leaving={leaving.has(cable.id) || undefined}>
             <path className="pf-cable-body" data-of={cable.id} d={cable.d} pathLength={100} />
             <rect className="pf-socket" data-of={cable.id} rx={4}
@@ -993,7 +1021,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           return agent && !agent.done ? <Pulse key={cable.id} of={cable.id} d={cable.d} step={agent.step} /> : null;
         })}
         {/* A task lands: its work runs back out of the hub into the repository. */}
-        {cables.filter((cable) => cable.id === "repo").map((cable) => <Pulse key="merge" of={cable.id} d={cable.d} step={done} back />)}
+        {draftMode ? null : cables.filter((cable) => cable.id === "repo").map((cable) => <Pulse key="merge" of={cable.id} d={cable.d} step={done} back />)}
       </svg>
 
       <div className="pf-col pf-left pf-side">
@@ -1009,7 +1037,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
                     {data.repository.subject ? <span>{data.repository.subject}</span> : null}
                   </span>
                 ) : null}
-                <Wash on={data.repository.commit} />
+                {draftMode ? null : <Wash on={data.repository.commit} />}
               </div>
               <div className="pf-well pf-branch"><GitBranch size={12} /><span>{data.repository.branch}</span></div>
               {actions.workspaceControls ?? (
@@ -1025,9 +1053,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         {shown("scope") ? (
           // data-fit: when the stage is low, the card gives height and its rows scroll between head and foot.
           <div className="pf-slot" data-glide="scope" data-fit="" {...hover("scope")} {...slot("scope")}>
-            <Card id="scope" side="left" className="pf-listed" icon={<FolderOpen size={12} />} label={text.scope} count={data.scope.length} register={register}>
+            <Card id="scope" side="left" className="pf-listed" icon={<FolderOpen size={12} />} label={text.scope} count={leavingView("scope").scope.length} register={register}>
               <div className="pf-list">
-                {data.scope.map((item) => (
+                {leavingView("scope").scope.map((item) => (
                   <div key={item.path} className="pf-well pf-row"><FolderOpen size={12} /><span>{item.path}</span><em className="pf-count">{item.count}</em></div>
                 ))}
               </div>
@@ -1065,9 +1093,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         {shown("knowledge") ? (
           <div className="pf-slot pf-offset-2" data-glide="knowledge" {...hover("knowledge")} {...slot("knowledge")}>
             <Card id="knowledge" side="left" icon={<BookMarked size={12} />} label={text.knowledge}
-                  count={data.knowledge.checks + data.knowledge.notes} register={register}>
-              <div className="pf-facts"><span><strong>{data.knowledge.checks}</strong> {text.checks}</span><span><strong>{data.knowledge.notes}</strong> {text.notes}</span></div>
-              {data.knowledge.latest ? <p className="pf-well pf-note" title={data.knowledge.latest}><Inline text={data.knowledge.latest} /></p> : null}
+                  count={leavingView("knowledge").knowledge.checks + leavingView("knowledge").knowledge.notes} register={register}>
+              <div className="pf-facts"><span><strong>{leavingView("knowledge").knowledge.checks}</strong> {text.checks}</span><span><strong>{leavingView("knowledge").knowledge.notes}</strong> {text.notes}</span></div>
+              {leavingView("knowledge").knowledge.latest ? <p className="pf-well pf-note" title={leavingView("knowledge").knowledge.latest}><Inline text={leavingView("knowledge").knowledge.latest} /></p> : null}
             </Card>
           </div>
         ) : null}
@@ -1336,24 +1364,26 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             ) : null}
             {/* While the agent answers, an empty field's button stops it; anything typed is sent (it steers the answer). */}
             <button type="button" className="pf-send" data-stop={stopping || undefined}
-                    disabled={!stopping && (accessChanging || (!draft.trim() && !attached.length) || imageNotice.blocked)}
+                    disabled={!stopping && (renewing || accessChanging || (!draft.trim() && !attached.length) || imageNotice.blocked)}
                     aria-label={stopping ? text.stopReply : text.send} title={stopping ? text.stopReply : undefined}
                     onClick={stopping ? actions.onInterrupt : submit}>{stopping ? <Square size={12} /> : <ArrowUp size={15} />}</button>
           </footer>
         </section>
 
-        {below.length ? (
-        <div className="pf-slot pf-below" ref={plan} data-glide="plan" {...hover("plan")} {...slot("plan")}>
-          {data.outcome ? (
-            <Card id="plan" side="below" className="pf-outcome" icon={<Check size={12} />} label={text.outcome}
-                  count={text.outcomeCount(data.outcome.milestones.length)} register={register}>
-              {data.outcome.summary ? (
-                <p className="pf-well pf-note pf-outcome-summary" title={data.outcome.summary}><Inline text={data.outcome.summary} /></p>
+        {below.map((item) => {
+          const view = seen(item);
+          return (
+        <div key={item.id} className="pf-slot pf-below" ref={item.leaving ? undefined : plan} data-glide={item.id} {...hover(item.id)} {...slot(item.id)}>
+          {view.outcome ? (
+            <Card id={item.id} side="below" className="pf-outcome" icon={<Check size={12} />} label={text.outcome}
+                  count={text.outcomeCount(view.outcome.milestones.length)} register={register}>
+              {view.outcome.summary ? (
+                <p className="pf-well pf-note pf-outcome-summary" title={view.outcome.summary}><Inline text={view.outcome.summary} /></p>
               ) : null}
-              {data.outcome.milestones.map((item) => (
+              {view.outcome.milestones.map((item) => (
                 // What each milestone took, as a share of the largest: where the work went at a glance.
                 <div key={item.index} className="pf-well pf-row pf-milestone"
-                     style={{ "--pf-share": item.tokens / Math.max(1, ...data.outcome!.milestones.map((other) => other.tokens)) } as React.CSSProperties}>
+                     style={{ "--pf-share": item.tokens / Math.max(1, ...view.outcome!.milestones.map((other) => other.tokens)) } as React.CSSProperties}>
                   <span className="pf-milestone-name">{text.stage(item.index)}</span>
                   <span className="pf-milestone-bar" aria-hidden="true"><span /></span>
                   <em>{text.episodes(item.episodes)} · {compact(item.tokens)}</em>
@@ -1361,15 +1391,15 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
               ))}
             </Card>
           ) : (
-          <Card id="plan" side="below" icon={<Compass size={12} />} label={text.plan(data.milestone)}
-                count={data.tasks.length ? `${done}/${data.tasks.length}` : undefined}
-                under={data.tasks.length ? (
+          <Card id={item.id} side="below" icon={<Compass size={12} />} label={text.plan(view.milestone)}
+                count={view.tasks.length ? `${view.tasks.filter((task) => task.state === "integrated").length}/${view.tasks.length}` : undefined}
+                under={view.tasks.length ? (
                   // The stage at a glance: one segment per task, coloured by its state; a segment fills as its task lands.
                   <div className="pf-strip" aria-hidden="true">
-                    {data.tasks.map((task) => <span key={task.id} className="pf-strip-cell" data-state={task.state}><span key={task.state} /></span>)}
+                    {view.tasks.map((task) => <span key={task.id} className="pf-strip-cell" data-state={task.state}><span key={task.state} /></span>)}
                   </div>
                 ) : undefined} register={register}>
-            {data.tasks.length ? data.tasks.map((task) => {
+            {view.tasks.length ? view.tasks.map((task) => {
               const Icon = taskIcon[task.state];
               const linked = task.agentId && hot === `agent:${task.agentId}`;
               return (
@@ -1386,7 +1416,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
           </Card>
           )}
         </div>
-        ) : null}
+          );
+        })}
       </div>
 
       {/* With the model card open, the agents under it fold to one line each, so both fit the column. */}
@@ -1540,7 +1571,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
         {!agents.length && open("agents") && data.phase === "live" && data.state === "running" ? <p className="pf-empty pf-agents-empty">{text.noAgents}</p> : null}
       </div>
 
-      {data.timeline && loom.length ? (
+      {timeline && loom.length ? (
         // The milestone woven so far: a lane per task, a span per episode, the clock along the bottom.
         <section className="pf-loom" aria-label={text.loom} data-glide="loom" {...slot("loom")}>
           <header className="pf-card-head pf-loom-head">
@@ -1548,19 +1579,19 @@ export function ProjectFlow({ data, actions = {}, lang = "zh" }: { data: FlowDat
             <span className="pf-loom-legend" aria-hidden="true">
               {(["plan", "work", "review"] as const).map((phase) => <span key={phase} data-phase={phase}><i />{text.phases[phase]}</span>)}
             </span>
-            <em className="pf-count">{text.loomStats(data.timeline.stats)}</em>
+            <em className="pf-count">{text.loomStats(timeline.stats)}</em>
           </header>
           <div className="pf-loom-body">
             <div className="pf-loom-grid" aria-hidden="true">
-              {data.timeline.ticks.map((tick) => <span key={tick.label} style={{ left: `${tick.at * 100}%` }}><b>{tick.label}</b></span>)}
-              {data.timeline.live ? <span className="pf-loom-now"><b>{text.now}</b></span> : null}
+              {timeline.ticks.map((tick) => <span key={tick.label} style={{ left: `${tick.at * 100}%` }}><b>{tick.label}</b></span>)}
+              {timeline.live ? <span className="pf-loom-now"><b>{text.now}</b></span> : null}
             </div>
-            {data.timeline.lanes.map((lane) => (
+            {timeline.lanes.map((lane) => (
               <div key={lane.key} className="pf-loom-lane" data-hot={hot === `lane:${lane.taskId || lane.key}` || undefined}
                    onPointerEnter={() => setHot(`lane:${lane.taskId || lane.key}`)} onPointerLeave={() => setHot("")}>
                 <span className="pf-loom-label">{lane.label}</span>
                 <div className="pf-loom-track">
-                  {data.timeline!.spans.filter((span) => span.lane === lane.key).map((span) => (
+                  {timeline.spans.filter((span) => span.lane === lane.key).map((span) => (
                     <span key={span.id} className="pf-loom-span" data-phase={span.phase} data-live={span.live || undefined}
                           data-trouble={span.trouble || undefined} title={text.spanTitle(text.phases[span.phase], span.minutes, span.tokens, span.trouble)}
                           style={{ left: `${span.from * 100}%`, width: `max(4px, ${(span.to - span.from) * 100}%)` }}>
