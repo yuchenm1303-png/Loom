@@ -412,11 +412,11 @@ export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "z
   const en = lang === "en";
   const line = (zh: string, english: string) => `${en ? english : zh} · ${spent}`;
   if (goal.status === "active" && goal.phase === "approval") return { text: line("长目标在等你批准", "The long goal is waiting for your approval"), detail: goal.objective, live: false, action: "pause", dismiss: false };
-  if (goal.status === "active" && goal.phase === "checking") return { text: line("正在独立检查结果", "Independently checking the result"), detail: goal.objective, live: true, action: "pause", dismiss: false };
   if (goal.status === "active" && (goal.retryAt ?? 0) * 1000 > Date.now()) {
     const at = new Date((goal.retryAt as number) * 1000).toLocaleTimeString(en ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
     return { text: line(`模型服务暂时不可用，${at} 自动重试`, `The model provider is unavailable; retrying at ${at}`), detail: goal.objective, live: false, action: "pause", dismiss: false };
   }
+  if (goal.status === "active" && goal.phase === "checking") return { text: line("正在独立检查结果", "Independently checking the result"), detail: goal.objective, live: true, action: "pause", dismiss: false };
   if (goal.status === "active" && goal.phase === "working" && (goal.deepens ?? 0) > 0) {
     return { text: line(`检查已通过，正用剩余时间加深（第 ${goal.deepens} 轮）`, `Checked and correct; going deeper with the time left (pass ${goal.deepens})`), detail: goal.objective, live: true, action: "pause", dismiss: false };
   }

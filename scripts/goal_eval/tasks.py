@@ -135,8 +135,12 @@ def grade_toolkit(workspace):
         _diff_round(["a", "b", "c"], ["a", "x", "c", "d"]), _diff_round(long_a, long_b), _diff_round([], ["x"]), _diff_round(["x"], []),
         _diff_same(long_a, long_b), _diff_same(["a", "b", "c"], ["a", "x", "c"]),
         _raises("diffs", "apply(['z','z','z'], unified(['a','b','c'], ['a','x','c']))", "ValueError"),
-        ("no eval or difflib", "import json, pathlib\ne = pathlib.Path('toolkit/expr.py').read_text('utf-8')\n"
-         "d = pathlib.Path('toolkit/diffs.py').read_text('utf-8')\nprint(json.dumps('eval(' not in e.replace('evaluate(', '') and 'difflib' not in d))"),
+        # What the code does, not what its comments mention: a real diffs.py explained itself by naming difflib.
+        ("no eval or difflib", "import ast, json, pathlib\ne = ast.parse(pathlib.Path('toolkit/expr.py').read_text('utf-8'))\n"
+         "d = ast.parse(pathlib.Path('toolkit/diffs.py').read_text('utf-8'))\n"
+         "calls = any(isinstance(n, ast.Call) and getattr(n.func, 'id', '') in {'eval', 'exec'} for n in ast.walk(e))\n"
+         "names = [a.name for n in ast.walk(d) if isinstance(n, ast.Import) for a in n.names] + [n.module for n in ast.walk(d) if isinstance(n, ast.ImportFrom)]\n"
+         "print(json.dumps(not calls and 'difflib' not in names))"),
     ]
     results = _checks(workspace, cases)
     run = subprocess.run([sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests", "-t", "."], cwd=workspace, capture_output=True,

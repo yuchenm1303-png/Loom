@@ -65,6 +65,8 @@ CHECK_DEEPER = (
     "the result substantially better with the time that is left (more evidence, experiments, coverage, "
     "verification), most valuable first, each concrete enough to act on; [] when the result is already as deep "
     "as the objective calls for. A passed verdict with items in deeper means correct so far, not finished.\n")
+CHECK_RESUME = ("Your last request failed because the model provider was unavailable, not because of the work. Carry on "
+                "with the check from where it stopped.")
 CHECK_NOW = ("Your limit stopped you. Do not start anything new: give your verdict now from what you have already "
              "seen, as that JSON only, and say in the summary what you did not get to check.")
 
@@ -210,7 +212,8 @@ def _spawn_checker(service, thread_id, record, objective):
         deeper = CHECK_DEEPER.format(hours=f"{record['hours']:g} h", left=_span(_left(record)))
     snapshot = service.runtime.agent_control.spawn(thread_id, CHECK_PROMPT + objective + deeper, role="goal-check",
                                                    history_mode="none", background=True)
-    record.update(phase="checking", checkerId=snapshot.node.session_id, checkerPressed=False)
+    record.update(phase="checking", checkerId=snapshot.node.session_id, checkerPressed=False, checkerFailingSince=0,
+                  checkerAttempts=0, checkerRetryAt=0)
     service.weave_goals.put(thread_id, record)
 
 
@@ -229,11 +232,34 @@ def _verdict(text):
     return found
 
 
+def _wait_out_provider(service, thread_id, record, snapshot):
+    """A checker the provider failed has found nothing: it carries on later, with what it has already seen.
+
+    Counted as a faulty check, two connection errors in a row ended a real goal as "could not be checked".
+    """
+    if snapshot.session_status is not AgentStatus.FAILED or not _transient(goal_lines._failure(service, record["checkerId"])):
+        return False
+    now = time.time()
+    record["checkerFailingSince"] = record.get("checkerFailingSince") or now
+    if now - record["checkerFailingSince"] > RETRY_WINDOW:
+        return False
+    if not record.get("checkerRetryAt"):
+        record["checkerAttempts"] = record.get("checkerAttempts", 0) + 1
+        record["checkerRetryAt"] = now + _delay(record["checkerAttempts"])
+    elif now >= record["checkerRetryAt"]:
+        record["checkerRetryAt"] = 0
+        service.runtime.agent_control.send(thread_id, record["checkerId"], CHECK_RESUME)
+    service.weave_goals.put(thread_id, record)
+    return True
+
+
 def _collect(service, thread_id, record, objective):
     """Read the checker's verdict once it has finished."""
     control = service.runtime.agent_control
     snapshot = control.snapshot(thread_id, record["checkerId"])
     if snapshot.execution_running:
+        return False
+    if _wait_out_provider(service, thread_id, record, snapshot):
         return False
     # Still "running" on disk with nothing running it: the app was killed. Waiting for an approval: no one
     # sees a checker's. Either way it will never answer, and waiting for it would hold the goal for good.
@@ -504,6 +530,6 @@ def view(service, thread_id):
             "phase": phase,
             "tokens": record["tokens"], "tokenBudget": record["tokenBudget"], "turns": record["turns"],
             "reason": record["reason"], "summary": record["summary"], "checked": record["checked"],
-            "retryAt": record["retryAt"] if record.get("failures") and phase == "working" else 0,
+            "retryAt": record.get("checkerRetryAt", 0) if phase == "checking" else record["retryAt"] if record.get("failures") and phase == "working" else 0,
             "hours": record.get("hours") or 0, "deepens": record.get("deepens", 0),
             "agents": _working_agents(service, thread_id, record), "lines": goal_lines.view(record)}

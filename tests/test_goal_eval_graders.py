@@ -37,6 +37,12 @@ def test_the_toolkit_grader_passes_a_correct_toolkit_and_fails_an_empty_folder(t
     (tmp_path / "tests" / "test_a.py").write_text("import unittest\n\n\nclass T(unittest.TestCase):\n    def test_x(self):\n        pass\n", "utf-8")
     (tmp_path / "README.md").write_text("expr csvq cron diffs", "utf-8")
     assert failed(grade_toolkit(tmp_path)) == []
+    diffs = tmp_path / "toolkit" / "diffs.py"
+    clean = diffs.read_text("utf-8")
+    diffs.write_text('"""Mirrors difflib, never imports it; no eval( either."""\n' + clean, "utf-8")
+    assert failed(grade_toolkit(tmp_path)) == [], "a comment is not a use"
+    diffs.write_text("import difflib\n" + clean, "utf-8")
+    assert failed(grade_toolkit(tmp_path)) == ["no eval or difflib"]
 
 
 def test_the_phase_answers_are_the_known_ones(tmp_path):

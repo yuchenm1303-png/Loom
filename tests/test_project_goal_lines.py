@@ -98,7 +98,7 @@ def conversation(tmp_path, lead, lines=None, tools=(), input_text="你有一整�
 
 
 def settle(service, source):
-    _wait_until(lambda: not service._is_active(source), timeout=10)
+    _wait_until(lambda: not service._is_active(source), timeout=60)
 
 
 def wait_lines(service, source, timeout=10):
@@ -669,6 +669,90 @@ def test_the_mode_decides_tool_and_guide(tmp_path, monkeypatch, value, tool, say
         names = [item.name for item in weave.tools(service)]
         assert ("weave_lines" in names) is tool
         assert (record_of(service, source)["linesDecision"] == "pending") is tool
+    finally:
+        runtime.close()
+
+
+def fail_checker(service, source, runtime):
+    """The checker's own request fails on a provider that is unavailable."""
+    checker = record_of(service, source)["checkerId"]
+    runtime.agent_control.wait(source, checker, timeout_seconds=10)
+    return checker
+
+
+class CheckerDown(Router):
+    """The checker's requests fail until told otherwise."""
+    down = True
+    error = staticmethod(busy)
+
+    def execute(self, profile, request):
+        said = " ".join(str(message.content) for message in request.messages)
+        if "independent checker" in said and self.down:
+            self.platform.requests.append(request)
+            raise self.error()
+        return super().execute(profile, request)
+
+
+def checker_conversation(tmp_path, error=None):
+    service, runtime, platform, _, source = build(tmp_path, [])
+    runtime.limits = AgentLimits(transport_retries=0, model_retries=0)
+    router = CheckerDown(platform, [START, SOLO, DONE, answer("做完了")])
+    if error:
+        router.error = error
+    service.turn_start({"threadId": source, "input": "你有一整晚", "weave": True})
+    settle(service, source)
+    tick(service, source)
+    return service, runtime, source, router
+
+
+def test_a_checker_the_provider_failed_waits_it_out_instead_of_counting_as_a_faulty_check(tmp_path):
+    # A real goal ended "could not be checked" after two connection errors.
+    service, runtime, source, router = checker_conversation(tmp_path)
+    try:
+        checker = fail_checker(service, source, runtime)
+        tick(service, source)
+        record = record_of(service, source)
+        assert record["checkFaults"] == 0 and record["checkerId"] == checker and record["checkerRetryAt"] > time.time()
+        view = goal.view(service, source)
+        assert view["status"] == "active" and view["phase"] == "checking" and view["retryAt"] == record["checkerRetryAt"]
+        tick(service, source)
+        assert record_of(service, source)["checkerRetryAt"] == record["checkerRetryAt"], "not before its time"
+        router.down = False
+        record["checkerRetryAt"] = 1
+        service.weave_goals.put(source, record)
+        tick(service, source)  # asks the same checker to carry on
+        tick(service, source)  # reads its verdict
+        final = goal.view(service, source)
+        assert final["status"] == "complete" and final["checked"] is True
+    finally:
+        runtime.close()
+
+
+def test_a_checker_failing_for_another_reason_is_not_waited_for(tmp_path):
+    bad = lambda: AITransportError("bad request", retryable=False, status_code=400)  # noqa: E731
+    service, runtime, source, _ = checker_conversation(tmp_path, bad)
+    try:
+        fail_checker(service, source, runtime)
+        tick(service, source)
+        record = record_of(service, source)
+        assert not record.get("checkerRetryAt") and record["checkFaults"] == 1
+    finally:
+        runtime.close()
+
+
+def test_a_provider_down_past_the_window_ends_as_unchecked_not_forever(tmp_path):
+    service, runtime, source, router = checker_conversation(tmp_path)
+    try:
+        fail_checker(service, source, runtime)
+        for _ in range(4):
+            record = record_of(service, source)
+            if record["phase"] == "done":
+                break
+            record["checkerFailingSince"] = time.time() - goal.RETRY_WINDOW - 1
+            service.weave_goals.put(source, record)
+            tick(service, source)
+        final = goal.view(service, source)
+        assert final["status"] == "complete" and final["checked"] is False
     finally:
         runtime.close()
 
