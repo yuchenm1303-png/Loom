@@ -134,13 +134,13 @@ export function ThreadHeader({
 
       <div className="thread-header-actions polished-thread-header-actions">
         {modeError ? <span role="alert" title={modeError} style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{modeError}</span> : null}
-        {mode && onModeChange ? <ProjectModeToggle key={modePending ? "pending" : "ready"} value={mode} disabled={modePending} onChange={onModeChange} lang={language === "zh-CN" ? "zh" : "en"} /> : null}
         <span className={`thread-status-chip ${state.tone}`} title={`Conversation status: ${state.label}`}>
           {archived ? <Archive size={12.5} strokeWidth={1.8} /> : <span className="thread-status-orb" aria-hidden="true" />}
           <span className="thread-status-label">{state.label}</span>
         </span>
 
-        {onCompactContext ? (
+        {/* The build hub has no single conversation context to budget, so the meter is a chat-only control. */}
+        {onCompactContext && mode !== "project" ? (
           <ContextMeter
             report={context}
             pending={contextPending}
@@ -151,6 +151,8 @@ export function ThreadHeader({
           />
         ) : null}
 
+        {/* Last in the row, so the right edge anchors it: neighbours appearing or changing width never move it. */}
+        {mode && onModeChange ? <ProjectModeToggle key={modePending ? "pending" : "ready"} value={mode} disabled={modePending} onChange={onModeChange} lang={language === "zh-CN" ? "zh" : "en"} /> : null}
       </div>
     </header>
   );
