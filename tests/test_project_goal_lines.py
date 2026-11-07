@@ -232,6 +232,90 @@ def test_no_question_after_the_host_comes_back_in_another_mode(tmp_path, monkeyp
         runtime.close()
 
 
+PLAN_CALL = {"plan": [{"step": "一", "status": "in_progress"}, {"step": "二", "status": "pending"}]}
+
+
+def test_the_turn_that_started_lines_stops_there(tmp_path):
+    # Real toolkit run: the lead stayed, polled wait_agent ten times and re-did work, 0.64M against 0.03M for one that stopped.
+    tools, runs = exec_tool()
+    gate = threading.Event()
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, calling("update_plan", PLAN_CALL, "call-plan"), split(line("甲")), calling("run_it", {}, "call-held"), answer("等报告")],
+        {"甲": [gate]}, tools=tools)
+    try:
+        assert runs == [], "not while its line runs"
+        record = record_of(service, source)
+        assert record["linesWaitHolds"] == 1
+        assert any(goal_lines.WAIT[:40] in text for text in said_to_lead(platform))
+    finally:
+        gate.set()
+        runtime.close()
+
+
+def test_stopping_gives_way_rather_than_cost_the_turn(tmp_path):
+    tools, runs = exec_tool()
+    gate = threading.Event()
+    service, runtime, _, source, _ = conversation(tmp_path, [
+        START, calling("update_plan", PLAN_CALL, "call-plan"), split(line("甲")),
+        *[calling("run_it", {}, f"call-{n}") for n in range(goal_lines.MAX_WAIT_HOLDS + 1)], answer("等报告")],
+        {"甲": [gate]}, tools=tools)
+    try:
+        assert len(runs) == 1 and service.store.load(source).status is AgentStatus.COMPLETED
+    finally:
+        gate.set()
+        runtime.close()
+
+
+def test_a_turn_the_person_started_is_not_held(tmp_path):
+    from types import SimpleNamespace
+    gate = threading.Event()
+    service, runtime, _, source, _ = conversation(tmp_path, [
+        START, calling("update_plan", PLAN_CALL, "call-plan"), split(line("甲")), answer("等报告")], {"甲": [gate]})
+    try:
+        record = record_of(service, source)
+        assert goal_lines.live(record)
+        call = [SimpleNamespace(name="run_it")]
+        started = SimpleNamespace(weave=True, session_id=source, current_turn_id=record["linesTurn"])
+        assert goal_lines.hold(service, started, None, call), "the turn that started them is"
+        theirs = SimpleNamespace(weave=True, session_id=source, current_turn_id="the-persons-turn")
+        assert goal_lines.hold(service, theirs, None, call) is None
+    finally:
+        gate.set()
+        runtime.close()
+
+
+def batch(*calls):
+    return ModelResponse(tool_calls=tuple(ToolCall(call_id=f"call-b{at}", name=name, arguments=arguments)
+                                          for at, (name, arguments) in enumerate(calls)), usage=usage())
+
+
+def test_a_goal_asked_for_beside_other_work_still_starts(tmp_path):
+    # Real run, "you have eight hours": weave_goal came with a read and without a list, the whole batch was
+    # refused, the model reissued only the read, and the night's work ran with no goal at all.
+    tools, runs = exec_tool()
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        batch(("weave_goal", {"objective": "研究一晚"}), ("run_it", {})), answer("先到这里")], tools=tools)
+    try:
+        assert record_of(service, source) is not None, "the goal started"
+        assert runs == [], "the call that needed a list did not run"
+        said = said_to_lead(platform)[-1]
+        assert "task list first" in said
+    finally:
+        runtime.close()
+
+
+def test_the_list_runs_while_the_work_beside_it_waits_for_the_split(tmp_path):
+    tools, runs = exec_tool()
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, batch(("update_plan", PLAN_CALL), ("run_it", {})), answer("先到这里")], tools=tools)
+    try:
+        assert runs == [] and record_of(service, source)["linesHolds"] == 1
+        kinds = [event.kind.value for event in service.store.events(source)]
+        assert "plan_updated" in kinds, "the list is not refused with what the Host is asking about"
+    finally:
+        runtime.close()
+
+
 def test_no_question_outside_a_goal(tmp_path):
     tools, runs = exec_tool()
     plan = calling("update_plan", {"plan": [{"step": "一", "status": "in_progress"}, {"step": "二", "status": "pending"}]}, "call-plan")

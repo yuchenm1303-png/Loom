@@ -41,6 +41,7 @@ REPORT_CHARS = 6000
 OBJECTIVE_CHARS = 2000
 LIVE = {"running", "waiting", "reporting"}
 _FREE = PLAN_TOOLS | {"tool_search", "get_thread_state", "mark_thread_goal"}
+MAX_WAIT_HOLDS = 2
 FAILURE_KIND = "goal_lines_required"
 
 GUIDE_LINES = (
@@ -49,9 +50,10 @@ GUIDE_LINES = (
     "and a line's reading and output never enter it. Call weave_lines with up to four lines that do not depend on "
     "each other's results, each worth at least about twenty steps of its own (a survey, an experiment, a module, a "
     "data set), each with a self-contained brief, because a line sees none of this conversation. The Host starts "
-    "them, holds you while they run at no cost, stops what overruns, and brings you back with their reports. Work "
-    "that feeds each other in order, and runs that compete for one GPU or one set of files, are yours or wait for "
-    "a later round; integrating and the final result are yours. Do not read what a line produced except what your "
+    "them, stops what overruns, and brings you back with their reports. After weave_lines you end the turn: no "
+    "waiting, no checking on them, no work of your own meanwhile, and that time costs you nothing. Work that feeds "
+    "each other in order, and runs that compete for one GPU or one set of files, go before the lines or in a later "
+    "round; integrating and the final result are yours. Do not read what a line produced except what your "
     "answer relies on. When nothing here is worth splitting, say why with solo_reason.")
 GUIDE_PROMPT = (
     "Sub-agents: in a long goal you are the lead, and delegating is the default. Split what is left into lines "
@@ -80,6 +82,9 @@ REPORT_NOW = ("Your limit for this line is reached. Do not start anything new: g
               "have, and say what you did not get to.")
 RESUME_LINE = ("The previous attempt at this line stopped because of the model provider or a restart, not because of "
                "your work. Carry on from where it stopped; do not redo what is done.")
+WAIT = ("Not executed: your lines are running. Every step you take now re-sends your whole history, and in a real run "
+        "a lead that stayed and checked on its lines cost 20 times one that stopped. End this turn now with a sentence, and "
+        "no tool call: the Host brings you back with their reports and you spend nothing until then.")
 HELD = ("Not executed: this is a long goal and you have not decided how to split it. Call weave_lines now, with "
         "the lines that can run at the same time, or with solo_reason if nothing is worth splitting. Reading files "
         "first is fine if you need to before deciding.")
@@ -162,7 +167,7 @@ def start(service, thread_id, arguments):
         record["lines"] = []
         stats = record.setdefault("lineStats", {"rounds": 0, "started": 0, "done": 0, "failed": 0, "tokens": 0})
         stats["rounds"] += 1
-        record["linesDecision"] = "lines"
+        record.update(linesDecision="lines", linesTurn=service.store.load(thread_id).current_turn_id, linesWaitHolds=0)
         for line in lines:
             writes = WRITES_ONLY.format(paths=", ".join(line["writes"])) if line["writes"] else WRITES_NONE
             prompt = LINE_PROMPT.format(objective=objective, title=line["title"], brief=line["brief"], writes=writes,
@@ -181,17 +186,37 @@ def start(service, thread_id, arguments):
         service.weave_goals.put(thread_id, record)
         titles = "\n".join(f"- {line['title']}: {'started' if line['agentId'] else line['why']}" for line in record["lines"])
     return ToolResult(ok=True, content=f"Lines started (about {cap:,} tokens and {span(seconds)} each):\n{titles}\n"
-                      "Do not wait for them or do their work. Do any serial part that is yours, then end this turn: "
-                      "you are brought back with their reports, and spend nothing until then.",
+                      "End this turn now, in one sentence and with no tool call: you are brought back with their "
+                      "reports, and spend nothing until then.",
                       data={"lines": len(record["lines"]), "cap": cap})
 
 
+def _hold_while_running(service, session, calls):
+    """The turn that started a round stops there. A prompt asking for that was not enough: one lead did, and spent 0.03M
+    while its lines ran; another stayed, polled and re-checked, and spent 0.64M. A turn the person started is theirs."""
+    waiting = tuple(call for call in calls if not (call.name in _FREE or call.name == "weave_status"))
+    if not waiting:
+        return None
+    with service.project_runner.guard:
+        record = service.weave_goals.get(session.session_id)
+        record["linesWaitHolds"] = record.get("linesWaitHolds", 0) + 1
+        service.weave_goals.put(session.session_id, record)
+        if record["linesWaitHolds"] > MAX_WAIT_HOLDS:  # never at the cost of the turn: five refused batches would fail it
+            return None
+    refusal = ToolResult(False, WAIT, {"failure_kind": FAILURE_KIND, "execution_status": "not_executed", "retry_policy": "end_the_turn"})
+    return tuple((call, refusal) for call in waiting)
+
+
 def hold(service, session, step, calls):
-    """The Host's question before the work: the refusal for each call of a batch, or None when it may run."""
+    """Before a batch runs: the refusal for each of its calls, or None when it may run."""
     if getattr(session, "weave", False) is not True or mode() != "lines":
         return None
     record = service.weave_goals.get(session.session_id)
-    if record is None or record.get("linesDecision") != "pending":
+    if record is None:
+        return None
+    if live(record) and record.get("linesTurn") == session.current_turn_id:
+        return _hold_while_running(service, session, calls)
+    if record.get("linesDecision") != "pending":
         return None
 
     def free(call):
@@ -200,7 +225,8 @@ def hold(service, session, step, calls):
         tool = step.tool_router.get(call.name)
         return tool is not None and tool.effect is ToolEffect.READ_ONLY and call.name != "spawn_agent"
 
-    if all(free(call) for call in calls):
+    waiting = tuple(call for call in calls if not free(call))
+    if not waiting:
         return None
     with service.project_runner.guard:
         record = service.weave_goals.get(session.session_id)
@@ -214,7 +240,7 @@ def hold(service, session, step, calls):
         service.weave_goals.put(session.session_id, record)
     refusal = ToolResult(False, HELD, {"failure_kind": FAILURE_KIND, "execution_status": "not_executed",
                                        "retry_policy": "decide_with_weave_lines"})
-    return tuple((call, refusal) for call in calls)
+    return tuple((call, refusal) for call in waiting)
 
 
 def is_line(service, session_id):

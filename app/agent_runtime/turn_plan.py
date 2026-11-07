@@ -30,10 +30,13 @@ def _refusal(previous):
 
 
 def held_calls(runtime, session, step, calls):
-    """The refusal for each call of a batch that must wait for the list, or None when it may run."""
+    """The refusal for each call of a batch that must wait for the list, or None when all may run.
+
+    What needs no list is not refused with what does."""
     if getattr(session, "weave", False) is not True or step.tool_router.get("update_plan") is None:
         return None
-    if all(call.name in _FREE or call.name.startswith(WEAVE_PREFIX) for call in calls):
+    waiting = tuple(call for call in calls if not (call.name in _FREE or call.name.startswith(WEAVE_PREFIX)))
+    if not waiting:
         return None
     if any(call.name in PLAN_TOOLS for call in calls):
         return None
@@ -46,4 +49,4 @@ def held_calls(runtime, session, step, calls):
         return None
     runtime._turn_plan_holds[session.session_id] = (session.current_turn_id, holds + 1)
     refusal = _refusal(active_plan(events))
-    return tuple((call, refusal) for call in calls)
+    return tuple((call, refusal) for call in waiting)

@@ -1055,8 +1055,14 @@ class AgentRuntime:
         from .turn_plan import held_calls
         gate = getattr(self, "tool_batch_gate", None)
         held = held_calls(self, session, step, calls) or (gate(session, step, calls) if gate else None)
+        held = tuple(held or ())
         if held:
-            return ToolBatchPlan(runnable=(), immediate=held, blocked=True, execution_step=step)
+            # Only what the gate refused: a real weave_goal beside another call was refused with it,
+            # and the model never asked again, so a night's goal never started.
+            waiting = {call.call_id for call, _ in held}
+            calls = [call for call in calls if call.call_id not in waiting]
+            if not calls:
+                return ToolBatchPlan(runnable=(), immediate=held, blocked=True, execution_step=step)
         faults: dict[str, ToolResult] = {}
         for call in calls:
             try:
@@ -1109,7 +1115,7 @@ class AgentRuntime:
                 data={"failure_kind": "duplicate_call", "execution_status": "not_executed",
                       "duplicate_of_call_id": first},
             )))
-        return ToolBatchPlan(runnable=tuple(runnable), immediate=tuple(immediate),
+        return ToolBatchPlan(runnable=tuple(runnable), immediate=held + tuple(immediate),
                              blocked=bool(faults) and not runnable, execution_step=step)
 
     def _process_pending_tools(

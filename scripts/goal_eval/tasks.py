@@ -557,7 +557,19 @@ def grade_pipeline(workspace):
     return results
 
 
+LARGE_PROMPT = "我要出门三个小时，你有三个小时，我不在旁边，不用等我。这个文件夹里有三件彼此无关的事，都要做完：\n\n" + "\n\n".join(
+    f"第{number}件：\n" + prompt.split(AWAY, 1)[1].replace(ONLY_STDLIB, "")
+    for number, prompt in (("一", TOOLKIT_PROMPT), ("二", BUGS_PROMPT), ("三", PHASE_PROMPT))) + "\n" + ONLY_STDLIB
+
+
+def grade_large(workspace):
+    return [{**case, "case": f"{name}: {case['case']}"}
+            for name, grade in (("toolkit", grade_toolkit), ("bugs", grade_bugs), ("phase", grade_phase)) for case in grade(workspace)]
+
+
 TASKS = {
+    # Three unrelated parts in one goal: the size at which one conversation's cost should grow with the square of its steps.
+    "large": {"prompt": LARGE_PROMPT, "prepare": prepare_bugs, "grade": grade_large},
     "toolkit": {"prompt": TOOLKIT_PROMPT, "prepare": None, "grade": grade_toolkit},
     "bugs": {"prompt": BUGS_PROMPT, "prepare": prepare_bugs, "grade": grade_bugs},
     "phase": {"prompt": PHASE_PROMPT, "prepare": None, "grade": grade_phase},

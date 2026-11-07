@@ -98,4 +98,5 @@ def test_the_pipeline_grader_runs_it_from_nothing_and_catches_a_wrong_step(tmp_p
 
 def test_every_prompt_gives_time_and_never_mentions_sub_agents():
     for task in TASKS.values():
-        assert "一个小时" in task["prompt"] and "子代理" not in task["prompt"] and "{python}" in task["prompt"]
+        assert "个小时" in task["prompt"] and "子代理" not in task["prompt"] and "{python}" in task["prompt"]
+    assert "一个小时" not in TASKS["large"]["prompt"] and all(word in TASKS["large"]["prompt"] for word in ("toolkit/", "inventory/", "results.json"))
