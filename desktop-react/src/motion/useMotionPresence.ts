@@ -57,7 +57,6 @@ export function useMotionPresence(open: boolean, exitMs: number = RETAIN.base, _
       return;
     }
     // The exit transition starts with the style of the next frame; so does the clock.
-    stallRef.current = window.setTimeout(() => setRetained(false), exitMs + FRAME_STALL_MS);
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;
       if (stallRef.current !== null) window.clearTimeout(stallRef.current);
@@ -67,6 +66,7 @@ export function useMotionPresence(open: boolean, exitMs: number = RETAIN.base, _
         setRetained(false);
       }, exitMs);
     });
+    stallRef.current = window.setTimeout(() => setRetained(false), exitMs + FRAME_STALL_MS);
     return () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
