@@ -4,6 +4,7 @@
   border: 1px solid var(--loom-workspace-line); border-radius: var(--loom-workspace-radius);
   background: var(--loom-workspace-panel); color: var(--loom-workspace-ink);
 }
+.mp-panel { animation: mp-fade var(--loom-dur-base) var(--loom-ease-out); }
 .mp-panel.is-idle { justify-content: space-between; }
 .mp-panel.is-code { align-items: stretch; padding: 20px; }
 .mp-panel.is-confirm { padding: 22px 24px; gap: 28px; }
@@ -12,9 +13,19 @@
 .mp-copy p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--loom-workspace-secondary); }
 .mp-copy small { margin-top: auto; color: var(--loom-workspace-muted); font-size: 12px; }
 .mp-copy ol { margin: 6px 0 12px; padding-left: 18px; font-size: 13px; line-height: 1.8; color: var(--loom-workspace-secondary); }
+.mp-qr-frame { flex: none; display: flex; flex-direction: column; gap: 8px; }
+.mp-qr-frame .mp-qr { animation: mp-mark-settle var(--loom-dur-flow) var(--loom-ease-out); }
+/* The code's remaining life, as a line that runs out. */
+.mp-time { display: block; height: 3px; border-radius: 2px; background: var(--loom-workspace-accent); transform-origin: left; transition: transform var(--loom-dur-slow) var(--loom-ease-inout); }
 .mp-qr { width: 192px; height: 192px; flex: none; padding: 12px; box-sizing: border-box; border-radius: 10px; background: #fff; }
 .mp-qr svg { display: block; width: 100%; height: 100%; }
-.mp-code { flex: none; font-family: var(--loom-font-mono, "Cascadia Code", Consolas, monospace); font-size: 32px; font-weight: 500; letter-spacing: 2px; white-space: nowrap; }
+.mp-code { display: flex; flex: none; font-family: var(--loom-font-mono, "Cascadia Code", Consolas, monospace); font-size: 32px; font-weight: 500; letter-spacing: 2px; white-space: nowrap; }
+.mp-code span { animation: mp-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.mp-code span:nth-child(2) { animation-delay: var(--loom-stagger); }
+.mp-code span:nth-child(3) { animation-delay: calc(var(--loom-stagger) * 2); margin-right: .5em; }
+.mp-code span:nth-child(4) { animation-delay: calc(var(--loom-stagger) * 3); }
+.mp-code span:nth-child(5) { animation-delay: calc(var(--loom-stagger) * 4); }
+.mp-code span:nth-child(6) { animation-delay: calc(var(--loom-stagger) * 5); }
 .mp-actions { display: flex; gap: 8px; margin-top: 10px; }
 .mp-button {
   flex: none; height: 34px; padding: 0 14px; border: 1px solid var(--loom-workspace-line); border-radius: 9px;
@@ -25,6 +36,7 @@
 .mp-button.is-primary { border-color: transparent; background: var(--loom-workspace-accent); color: var(--loom-workspace-canvas); }
 .mp-button.is-primary:hover:not(:disabled) { background: var(--loom-workspace-accent); }
 .mp-button:disabled { opacity: .55; cursor: default; }
+.mp-note, .mp-phone { animation: mp-fade var(--loom-dur-base) var(--loom-ease-out); }
 .mp-note { margin: 0; color: var(--loom-workspace-secondary); font-size: 13px; }
 .mp-note.is-error { color: #e8826f; }
 .mp-list { display: flex; flex-direction: column; gap: 8px; }
@@ -39,3 +51,5 @@
   .mp-qr { align-self: center; }
   .mp-code { text-align: center; }
 }
+@keyframes mp-fade { from { opacity: 0; } }
+@keyframes mp-mark-settle { from { opacity: 0; transform: scale(.94); } }

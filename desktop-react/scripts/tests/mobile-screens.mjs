@@ -29,7 +29,7 @@ async function check(page, name) {
       if (size < 11.5) small.push(`${size}px ${node.textContent.trim().slice(0, 24)}`);
     }
     const tiny = [...document.querySelectorAll("button, a, input, select, textarea")]
-      .filter((element) => element.getClientRects().length && !element.closest(".transcript-scroll"))
+      .filter((element) => element.getClientRects().length && !element.closest(".transcript-scroll") && getComputedStyle(element).opacity !== "0")
       .map((element) => [element, element.getBoundingClientRect()])
       .filter(([, box]) => box.height < 44 && box.width > 0)
       .map(([element, box]) => `${Math.round(box.width)}x${Math.round(box.height)} ${element.textContent.trim().slice(0, 20) || element.getAttribute("aria-label")}`);

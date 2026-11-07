@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Activity,
   ArrowDown,
@@ -21,6 +21,8 @@ import {
 } from "../components/icons";
 import { Transcript } from "../components/Transcript";
 import { TranscriptScrollController } from "../components/TranscriptScrollController";
+import { RETAIN } from "../motion/tokens";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import { useLoom } from "../state/useLoom";
 import type { ApprovalDecision, ThreadRecord, TranscriptItem } from "../types/loom";
 import {
@@ -90,16 +92,38 @@ function writeCachedThreads(threads: ThreadRecord[]): void {
   try { window.localStorage.setItem(THREAD_CACHE_KEY, JSON.stringify(kept)); } catch {}
 }
 
-function Sheet({ label, onClose, children }: { label: string; onClose(): void; children: ReactNode }) {
+/** What it showed last, so a surface that is closing keeps its content for its exit. */
+function useLatchedWhile<T>(open: boolean, value: T): T {
+  const latched = useRef(value);
+  if (open) latched.current = value;
+  return latched.current;
+}
+
+function Sheet({ open, label, onClose, children }: { open: boolean; label: string; onClose(): void; children: ReactNode }) {
+  const { mounted, phase } = useMotionPresence(open, RETAIN.flow);
+  const content = useLatchedWhile(open, children);
+  if (!mounted) return null;
   return (
-    <div className="m-sheet-host">
+    <div className="m-sheet-host" data-phase={phase}>
       <button type="button" className="m-scrim" aria-label="关闭" onClick={onClose} />
       <section className="m-sheet" role="dialog" aria-modal="true" aria-label={label}>
         <span className="m-grip" aria-hidden="true" />
-        {children}
+        {content}
       </section>
     </div>
   );
+}
+
+/** Makes its own room in the flow, and gives it back the same way. */
+function Fold({ open, children }: { open: boolean; children: ReactNode }) {
+  const { mounted, phase } = useMotionPresence(open, RETAIN.foldBase);
+  const content = useLatchedWhile(open, children);
+  if (!mounted) return null;
+  return <div className="m-fold" data-phase={phase}><div>{content}</div></div>;
+}
+
+function Skeleton({ rows }: { rows: number }) {
+  return <div className="m-skeleton" aria-hidden="true">{Array.from({ length: rows }, (_, index) => <i key={index} />)}</div>;
 }
 
 function Pair() {
@@ -108,10 +132,12 @@ function Pair() {
   const claimed = progress?.state === "claimed" ? progress : null;
   if (claimed) {
     return (
-      <main className="m-pair is-confirming" aria-live="polite">
+      <main className="m-pair is-confirming" key="confirm" aria-live="polite">
         <div className="m-pair-center">
           <p className="m-eyebrow">已识别「{claimed.deviceName || "这台电脑"}」</p>
-          <strong className="m-confirm-code">{claimed.confirmCode.slice(0, 3)} {claimed.confirmCode.slice(3)}</strong>
+          <strong className="m-confirm-code" aria-label={claimed.confirmCode}>
+            {claimed.confirmCode.split("").map((digit, index) => <span aria-hidden="true" key={index}>{digit}</span>)}
+          </strong>
           <h1>在电脑上点「允许」</h1>
           <p>先确认电脑显示的是同一个数字。</p>
           <p className="m-waiting"><RotateCw size={15} strokeWidth={1.75} spinning /> 等待电脑确认</p>
@@ -121,7 +147,7 @@ function Pair() {
     );
   }
   return (
-    <main className="m-pair">
+    <main className="m-pair" key="start">
       <div className="m-pair-center">
         <img className="m-logo" src={`${import.meta.env.BASE_URL}loom-icon.png`} alt="" />
         <h1>连接你的电脑</h1>
@@ -132,7 +158,9 @@ function Pair() {
           <li>扫描电脑上的二维码</li>
         </ol>
       </div>
-      {progress?.state === "failed" ? <p className="m-alert" role="alert"><CircleAlert size={16} strokeWidth={1.75} />{progress.message}</p> : null}
+      <Fold open={progress?.state === "failed"}>
+        <p className="m-alert" role="alert"><CircleAlert size={16} strokeWidth={1.75} />{progress?.state === "failed" ? progress.message : ""}</p>
+      </Fold>
       <button type="button" className="m-button is-primary" onClick={startPairing}>扫描二维码</button>
     </main>
   );
@@ -174,7 +202,7 @@ function Now({ threads, onOpen }: { threads: ThreadRecord[]; onOpen(thread: Thre
           <h2 className="is-wait">需要你 · {waiting.length}</h2>
           {waiting.map((thread) => (
             <button type="button" className="m-wait-card" key={thread.id} onClick={() => onOpen(thread)}>
-              <strong>{thread.title || "新对话"}</strong><span>查看并批准</span>
+              <i className="m-dot is-wait" aria-hidden="true" /><strong>{thread.title || "新对话"}</strong><span>查看并批准</span>
             </button>
           ))}
         </section>
@@ -229,7 +257,7 @@ function Offline({ shell, cached }: { shell: ShellState; cached: CachedThread[] 
   );
 }
 
-function Controls({ loom, onClose }: { loom: Loom; onClose(): void }) {
+function Controls({ open, loom, onClose }: { open: boolean; loom: Loom; onClose(): void }) {
   const thread = loom.active?.thread;
   const mode = thread?.permissionMode || loom.draftPermissionMode || "approval";
   const modes = loom.runtime.permissionModes?.length ? loom.runtime.permissionModes : Object.keys(MODE_COPY);
@@ -247,7 +275,7 @@ function Controls({ loom, onClose }: { loom: Loom; onClose(): void }) {
   });
   const profiles = (loom.models?.profiles ?? []).filter((profile) => profile.configured !== false && profile.accessState !== "denied");
   return (
-    <Sheet label="这个对话的权限与模型" onClose={onClose}>
+    <Sheet open={open} label="这个对话的权限与模型" onClose={onClose}>
       <h2 className="m-sheet-title">权限</h2>
       <div className="m-rows" role="radiogroup" aria-label="权限模式">
         {modes.map((value) => (
@@ -260,7 +288,13 @@ function Controls({ loom, onClose }: { loom: Loom; onClose(): void }) {
       {reasoning?.options?.length ? (
         <>
           <h2 className="m-sheet-title">推理强度</h2>
-          <div className="m-segments" role="radiogroup" aria-label="推理强度">
+          <div
+            className="m-segments"
+            role="radiogroup"
+            aria-label="推理强度"
+            style={{ "--m-count": reasoning.options.length, "--m-index": Math.max(0, reasoning.options.findIndex((option) => option.value === reasoningValue)) } as CSSProperties}
+          >
+            <i className="m-glider" aria-hidden="true" />
             {reasoning.options.map((option) => (
               <button type="button" role="radio" aria-checked={option.value === reasoningValue} key={option.value} onClick={() => attempt(() => loom.setReasoning(reasoning.kind, option.value))}>
                 {option.label ?? option.value}
@@ -278,14 +312,14 @@ function Controls({ loom, onClose }: { loom: Loom; onClose(): void }) {
           </button>
         ))}
       </div>
-      {error ? <p className="m-alert" role="alert"><CircleAlert size={16} strokeWidth={1.75} />{error}</p> : null}
+      <Fold open={Boolean(error)}><p className="m-alert" role="alert"><CircleAlert size={16} strokeWidth={1.75} />{error}</p></Fold>
     </Sheet>
   );
 }
 
-function ProjectChooser({ loom, onChoose, onClose }: { loom: Loom; onChoose(workspace?: string, projectId?: string): void; onClose(): void }) {
+function ProjectChooser({ open, loom, onChoose, onClose }: { open: boolean; loom: Loom; onChoose(workspace?: string, projectId?: string): void; onClose(): void }) {
   return (
-    <Sheet label="选择项目" onClose={onClose}>
+    <Sheet open={open} label="选择项目" onClose={onClose}>
       <h2 className="m-sheet-title">在哪个项目里开始？</h2>
       <div className="m-rows">
         {loom.projects.map((project) => (
@@ -322,8 +356,10 @@ function useApprovalOffscreen(active: boolean): boolean {
   return offscreen;
 }
 
-function ThreadView({ loom, space, online, onBack }: { loom: Loom; space: Space; online: boolean; onBack(): void }) {
+function ThreadView({ loom, space, online, connecting, onBack }: { loom: Loom; space: Space; online: boolean; connecting: boolean; onBack(): void }) {
   const thread = loom.active?.thread;
+  // The screen arrives at once; until the Host answers it must not show the previous conversation.
+  const opening = Boolean(loom.openingThreadId && thread?.id !== loom.openingThreadId);
   const running = Boolean(loom.turnActive || (thread && threadBusy(thread)));
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<{ path: string; name: string }[]>([]);
@@ -331,6 +367,8 @@ function ThreadView({ loom, space, online, onBack }: { loom: Loom; space: Space;
   const [error, setError] = useState("");
   const field = useRef<HTMLTextAreaElement>(null);
   const approvalOffscreen = useApprovalOffscreen(Boolean(loom.active?.pendingApproval));
+  const approvalJump = useMotionPresence(approvalOffscreen, RETAIN.fast);
+  const fieldHeight = useRef(0);
   const fail = (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause));
 
   const handleApproval = useCallback(async (item: TranscriptItem, decision: ApprovalDecision, feedback?: string) => {
@@ -361,25 +399,35 @@ function ThreadView({ loom, space, online, onBack }: { loom: Loom; space: Space;
     } catch (cause) { fail(cause); }
   };
 
-  useEffect(() => {
+  // Measured at auto height with the transition off, then played from the old height to the new one.
+  useLayoutEffect(() => {
     const area = field.current;
     if (!area) return;
+    area.style.transition = "none";
     area.style.height = "auto";
-    area.style.height = `${Math.min(area.scrollHeight, 132)}px`;
+    const next = Math.min(area.scrollHeight, 132);
+    area.style.height = `${fieldHeight.current || next}px`;
+    void area.offsetHeight;
+    area.style.transition = "";
+    area.style.height = `${next}px`;
+    fieldHeight.current = next;
   }, [text]);
 
   const mode = thread?.permissionMode || loom.draftPermissionMode || "approval";
-  const blank = !thread && !loom.items.length;
+  const blank = !thread && !loom.items.length && !opening;
   return (
     <div className="m-thread">
+      <Fold open={!online}><p className="m-banner" role="status">{connecting ? "正在重新连接…" : "电脑离线，暂时不能操作"}</p></Fold>
       <header className="m-thread-head">
         <button type="button" className="m-icon-button" aria-label="返回" onClick={onBack}><ChevronLeft size={24} strokeWidth={1.75} /></button>
         <div>
-          <h1>{thread?.title || (space === "build" ? "新建造" : "新任务")}</h1>
+          <h1 key={thread?.title ?? space}>{opening ? "正在打开…" : thread?.title || (space === "build" ? "新建造" : "新任务")}</h1>
           <p><span className={`m-dot is-${!online ? "idle" : running ? "run" : "on"}`} aria-hidden="true" />{!online ? "电脑离线" : running ? "正在运行" : "在线"}</p>
         </div>
       </header>
-      {blank ? (
+      {opening ? (
+        <div className="m-stage is-opening"><Skeleton rows={4} /></div>
+      ) : blank ? (
         <div className="m-stage is-blank">
           <Empty icon={space === "build" ? <Blocks size={24} strokeWidth={1.5} /> : <MessagesSquare size={24} strokeWidth={1.5} />} title={space === "build" ? "想让电脑建造什么？" : "想让电脑做什么？"} hint="工作在电脑上进行，你可以随时回来看。" />
         </div>
@@ -404,34 +452,34 @@ function ThreadView({ loom, space, online, onBack }: { loom: Loom; space: Space;
             loadingOlder={loom.loadingOlderTurns}
             onLoadOlder={loom.loadOlderTurns}
           />
-          {approvalOffscreen ? (
-            <button type="button" className="m-approval-jump" onClick={() => document.querySelector(".m-stage .approval-card")?.scrollIntoView({ block: "center" })}>
+          {approvalJump.mounted ? (
+            <button type="button" className="m-approval-jump" data-phase={approvalJump.phase} onClick={() => document.querySelector(".m-stage .approval-card")?.scrollIntoView({ block: "center" })}>
               <ArrowDown size={16} strokeWidth={2} />等你批准
             </button>
           ) : null}
         </div>
       )}
       <footer className="m-composer">
-        {error ? <p className="m-alert" role="alert"><CircleAlert size={16} strokeWidth={1.75} />{error}</p> : null}
-        {attachments.length ? <p className="m-attachments">{attachments.map((file) => file.name).join("、")}</p> : null}
+        <Fold open={Boolean(error)}><p className="m-alert" role="alert"><CircleAlert size={16} strokeWidth={1.75} />{error}</p></Fold>
+        <Fold open={attachments.length > 0}><p className="m-attachments">{attachments.map((file) => file.name).join("、")}</p></Fold>
         <div className="m-composer-box">
           <textarea ref={field} rows={1} aria-label={running ? "插话" : "发消息"} placeholder={running ? "插话，下个安全点生效" : "发消息"} value={text} onChange={(event) => setText(event.target.value)} />
           <div className="m-composer-tools">
             <button type="button" className="m-tool" aria-label="添加附件" disabled={!online} onClick={() => void attach()}><Plus {...ICON} /></button>
             <button type="button" className="m-chip" onClick={() => setControls(true)}>
               <ShieldCheck size={15} strokeWidth={1.75} />
-              <span>{MODE_COPY[mode]?.name ?? mode} · {loom.models?.current?.name || loom.models?.current?.model || "模型"}</span>
+              <span key={`${mode}:${loom.models?.current?.selection ?? ""}`}>{MODE_COPY[mode]?.name ?? mode} · {loom.models?.current?.name || loom.models?.current?.model || "模型"}</span>
               <ChevronDown size={14} strokeWidth={1.75} />
             </button>
             {running && !text.trim() ? (
-              <button type="button" className="m-round is-stop" aria-label="停止运行" disabled={!online} onClick={() => void loom.interrupt().catch(fail)}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
+              <button type="button" key="stop" className="m-round is-stop" aria-label="停止运行" disabled={!online} onClick={() => void loom.interrupt().catch(fail)}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
             ) : (
-              <button type="button" className="m-round is-send" aria-label="发送" disabled={!online || (!text.trim() && !attachments.length)} onClick={() => void submit()}><ArrowUp size={19} strokeWidth={2.25} /></button>
+              <button type="button" key="send" className="m-round is-send" aria-label="发送" disabled={!online || (!text.trim() && !attachments.length)} onClick={() => void submit()}><ArrowUp size={19} strokeWidth={2.25} /></button>
             )}
           </div>
         </div>
       </footer>
-      {controls ? <Controls loom={loom} onClose={() => setControls(false)} /> : null}
+      <Controls open={controls} loom={loom} onClose={() => setControls(false)} />
     </div>
   );
 }
@@ -457,7 +505,7 @@ function More({ shell }: { shell: ShellState }) {
       </Group>
       <Group title="这部手机">
         {confirming ? (
-          <div className="m-confirm">
+          <div className="m-confirm" key="confirm">
             <p>解除后这部手机不能再控制电脑，需要重新扫码配对。</p>
             <div>
               <button type="button" className="m-button" onClick={() => setConfirming(false)}>取消</button>
@@ -480,6 +528,9 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   const [choosing, setChoosing] = useState<Space | null>(null);
   const cached = useMemo(readCachedThreads, []);
   const online = shell.socket === "open" && shell.online;
+  const screen = useMotionPresence(Boolean(open), RETAIN.flow);
+  const space = useLatchedWhile(Boolean(open), open ?? "chat");
+  const chosenSpace = useLatchedWhile(Boolean(choosing), choosing ?? "chat");
 
   const threads = useMemo(() => [...loom.threads].filter((thread) => !thread.parentThreadId && !thread.archived)
     .sort((a, b) => Date.parse(String(b.updatedAt)) - Date.parse(String(a.updatedAt))), [loom.threads]);
@@ -514,54 +565,54 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
     return () => window.removeEventListener("loom:mobile-back", back);
   }, [open]);
 
-  if (open) {
-    return (
-      <>
-        {!online ? <p className="m-banner" role="status">{shell.socket === "connecting" ? "正在重新连接…" : "电脑离线，暂时不能操作"}</p> : null}
-        <ThreadView loom={loom} space={open} online={online} onBack={() => setOpen(null)} />
-      </>
-    );
-  }
-
   const list = tab === "chat" ? threads.filter((thread) => !thread.weave) : threads.filter((thread) => thread.weave);
   const showOffline = !online && !threads.length && tab !== "more";
   const loading = online && loom.connection === "connecting" && !threads.length;
+  const title = tab === "now" ? shell.deviceName || "Loom" : TABS.find((entry) => entry.key === tab)?.label;
   return (
-    <div className="m-shell">
-      <header className="m-head">
-        <h1>{tab === "now" ? shell.deviceName || "Loom" : TABS.find((entry) => entry.key === tab)?.label}</h1>
-        <p><span className={`m-dot is-${online ? "on" : shell.socket === "connecting" ? "run" : "idle"}`} aria-hidden="true" />{online ? "在线" : shell.socket === "connecting" ? "连接中" : "离线"}</p>
-      </header>
-      {!online && threads.length ? <p className="m-banner" role="status">{shell.socket === "connecting" ? "正在重新连接…" : "电脑离线，下面是离线前的内容"}</p> : null}
-      <main className="m-body">
-        {showOffline ? <Offline shell={shell} cached={cached} /> : null}
-        {loading ? <p className="m-note">正在读取电脑上的对话…</p> : null}
-        {!showOffline && !loading && tab === "now" ? <Now threads={threads} onOpen={openThread} /> : null}
-        {!showOffline && !loading && (tab === "chat" || tab === "build") ? (
-          list.length ? (
-            <Group>{list.map((thread) => <ThreadRow key={thread.id} thread={thread} detail={thread.status === "waiting_approval" ? "等你批准" : thread.status === "running" ? "运行中" : ago(thread.updatedAt)} onOpen={() => openThread(thread)} />)}</Group>
-          ) : (
-            <Empty icon={tab === "build" ? <Blocks size={24} strokeWidth={1.5} /> : <MessagesSquare size={24} strokeWidth={1.5} />} title={tab === "build" ? "还没有建造" : "还没有对话"} />
-          )
-        ) : null}
-        {tab === "more" ? <More shell={shell} /> : null}
-      </main>
-      {tab !== "more" && online ? (
-        <div className="m-new">
-          <button type="button" onClick={() => setChoosing(tab === "build" ? "build" : "chat")}>
-            <span>{tab === "build" ? "开始一个建造" : `给${shell.deviceName || "电脑"}一个新任务`}</span>
-            <i aria-hidden="true"><Plus size={18} strokeWidth={2.25} /></i>
-          </button>
+    <div className="m-app">
+      <div className="m-shell" data-covered={open ? "" : undefined} inert={Boolean(open)}>
+        <header className="m-head">
+          <h1 key={title}>{title}</h1>
+          <p><span className={`m-dot is-${online ? "on" : shell.socket === "connecting" ? "run" : "idle"}`} aria-hidden="true" />{online ? "在线" : shell.socket === "connecting" ? "连接中" : "离线"}</p>
+        </header>
+        <Fold open={!online && threads.length > 0}><p className="m-banner" role="status">{shell.socket === "connecting" ? "正在重新连接…" : "电脑离线，下面是离线前的内容"}</p></Fold>
+        <main className="m-body" key={tab}>
+          {showOffline ? <Offline shell={shell} cached={cached} /> : null}
+          {loading ? <Skeleton rows={5} /> : null}
+          {!showOffline && !loading && tab === "now" ? <Now threads={threads} onOpen={openThread} /> : null}
+          {!showOffline && !loading && (tab === "chat" || tab === "build") ? (
+            list.length ? (
+              <Group>{list.map((thread) => <ThreadRow key={thread.id} thread={thread} detail={thread.status === "waiting_approval" ? "等你批准" : thread.status === "running" ? "运行中" : ago(thread.updatedAt)} onOpen={() => openThread(thread)} />)}</Group>
+            ) : (
+              <Empty icon={tab === "build" ? <Blocks size={24} strokeWidth={1.5} /> : <MessagesSquare size={24} strokeWidth={1.5} />} title={tab === "build" ? "还没有建造" : "还没有对话"} />
+            )
+          ) : null}
+          {tab === "more" ? <More shell={shell} /> : null}
+        </main>
+        <Fold open={tab !== "more" && online}>
+          <div className="m-new">
+            <button type="button" onClick={() => setChoosing(tab === "build" ? "build" : "chat")}>
+              <span key={tab}>{tab === "build" ? "开始一个建造" : `给${shell.deviceName || "电脑"}一个新任务`}</span>
+              <i aria-hidden="true"><Plus size={18} strokeWidth={2.25} /></i>
+            </button>
+          </div>
+        </Fold>
+        <nav className="m-nav" aria-label="主导航" style={{ "--m-index": TABS.findIndex((entry) => entry.key === tab) } as CSSProperties}>
+          <i className="m-glider" aria-hidden="true" />
+          {TABS.map(({ key, label, icon: Icon }) => (
+            <button type="button" key={key} aria-current={tab === key ? "page" : undefined} onClick={() => setTab(key)}>
+              <i aria-hidden="true"><Icon {...ICON} /></i>{label}
+            </button>
+          ))}
+        </nav>
+      </div>
+      {screen.mounted ? (
+        <div className="m-screen" data-phase={screen.phase}>
+          <ThreadView loom={loom} space={space} online={online} connecting={shell.socket === "connecting"} onBack={() => setOpen(null)} />
         </div>
       ) : null}
-      <nav className="m-nav" aria-label="主导航">
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button type="button" key={key} aria-current={tab === key ? "page" : undefined} onClick={() => setTab(key)}>
-            <i aria-hidden="true"><Icon {...ICON} /></i>{label}
-          </button>
-        ))}
-      </nav>
-      {choosing ? <ProjectChooser loom={loom} onClose={() => setChoosing(null)} onChoose={(workspace, projectId) => begin(choosing, workspace, projectId)} /> : null}
+      <ProjectChooser open={Boolean(choosing)} loom={loom} onClose={() => setChoosing(null)} onChoose={(workspace, projectId) => begin(chosenSpace, workspace, projectId)} />
     </div>
   );
 }

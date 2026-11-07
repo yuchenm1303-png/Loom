@@ -99,6 +99,13 @@ window.LoomShell = {
       let result: unknown = {};
       if (operation === "connect") result = { protocolVersion: 1, serverInfo: { name: "fixture", version: "0" }, capabilities: {}, runtime: { model: "MiniMax-M3", defaultWorkspace: "D:/work/Loom", defaultPermissionMode: "approval", permissionModes: ["read-only", "approval", "workspace", "full-access"] } };
       else if (operation === "listModels") result = models;
+      else if (operation === "setReasoning") {
+        const value = String(args.at(-1));
+        const record = threads.find((entry) => entry.id === args[0]) ?? threads[0];
+        Object.assign(record, { reasoning: { kind: String(args.at(-2)), value } });
+        profile.reasoning.value = value;
+        result = { thread: record, models };
+      }
       else if (operation === "call") result = answers[String(args[0])]?.((args[1] ?? {}) as Record<string, unknown>) ?? {};
       emit({ type: "invoke_result", id, result });
     }, 10);

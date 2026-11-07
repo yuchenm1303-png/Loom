@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import "./mobile-pairing.css";
 
-type Pairing = { pairId: string; code: string; deadline: number };
+type Pairing = { pairId: string; code: string; deadline: number; lifetime: number };
 type Claim = { phoneName: string; confirmCode: string };
 type Phone = { id: string; name: string; created_at: number; last_used_at: number };
 
@@ -66,7 +66,7 @@ export function MobilePairingPanel() {
     setBusy(true); setError(""); setNotice(""); reset();
     try {
       const issued = await bridge.mobilePairStart!();
-      setPairing({ pairId: issued.pairId, code: issued.code, deadline: Date.now() + issued.expiresIn * 1000 });
+      setPairing({ pairId: issued.pairId, code: issued.code, deadline: Date.now() + issued.expiresIn * 1000, lifetime: issued.expiresIn * 1000 });
       setNow(Date.now());
     } catch (cause) { fail(cause); }
     finally { setBusy(false); }
@@ -111,8 +111,8 @@ export function MobilePairingPanel() {
       <div className="settings-page-heading"><div><h1>{copy.title}</h1><p>{copy.intro}</p></div></div>
 
       {claim ? (
-        <section className="mp-panel is-confirm" aria-live="polite">
-          <strong className="mp-code">{claim.confirmCode.slice(0, 3)} {claim.confirmCode.slice(3)}</strong>
+        <section className="mp-panel is-confirm" key="confirm" aria-live="polite">
+          <strong className="mp-code" aria-label={claim.confirmCode}>{claim.confirmCode.split("").map((digit, index) => <span aria-hidden="true" key={index}>{digit}</span>)}</strong>
           <div className="mp-copy">
             <h2>{copy.confirm(claim.phoneName)}</h2>
             <p>{copy.compare}</p>
@@ -123,8 +123,11 @@ export function MobilePairingPanel() {
           </div>
         </section>
       ) : pairing && !expired ? (
-        <section className="mp-panel is-code">
-          <QrCode value={pairing.code} label={copy.scan} />
+        <section className="mp-panel is-code" key="code">
+          <div className="mp-qr-frame">
+            <QrCode value={pairing.code} label={copy.scan} />
+            <i className="mp-time" aria-hidden="true" style={{ transform: `scaleX(${Math.max(0, (pairing.deadline - now) / (pairing.lifetime))})` }} />
+          </div>
           <div className="mp-copy">
             <h2>{copy.scanTitle}</h2>
             <ol>{copy.steps.map((step) => <li key={step}>{step}</li>)}</ol>
@@ -133,7 +136,7 @@ export function MobilePairingPanel() {
           </div>
         </section>
       ) : (
-        <section className="mp-panel is-idle">
+        <section className="mp-panel is-idle" key="idle">
           <div className="mp-copy">
             <h2>{pairing ? copy.expired : copy.addTitle}</h2>
             <p>{copy.addHint}</p>
