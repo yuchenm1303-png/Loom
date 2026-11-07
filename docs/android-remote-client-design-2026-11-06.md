@@ -155,7 +155,7 @@ v1 内容明文经过中继，与现有网页端相同，隐私说明要写清�
 | Host 白名单 | `desktop-react/electron/mobileAccess.ts`、`remoteRelay.ts` | 已实现，有测试 |
 | 电脑端配对页 | 设置 › 手机，`MobilePairingPanel.tsx` | 已实现 |
 | 手机界面 | `desktop-react/src/mobile/` | 用假壳在浏览器验证 |
-| Android 壳 | `android/` | 已写，尚未编译，构建见第 12 节 |
+| Android 壳 | `android/` | 可编译出 APK，构建见第 12 节 |
 
 当前白名单比第 2 节窄，只含对话、审批、模型和只读项目信息。终端、设置修改、MCP 和插件管理还没开放，随阶段 2 的界面一起加。
 
