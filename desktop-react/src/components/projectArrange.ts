@@ -37,18 +37,28 @@ const ROOM_MIN = 8;
 /** The rows of an arriving card, which come in one after another as it unrolls. */
 const ROWS = ".pf-well, .pf-task, .pf-loom-lane, .pf-model-option, .pf-empty";
 const MAX_ROWS = 8;
-/** An arriving card is born at the tip of its cable. The cable grows out of the hub first (project-flow.css); when
- *  it is nearly there, a dot the cable's width appears at its tip, stretches along the card into a pill, and the
+/** An arriving card is born at the tip of its cable. The shared birth clock grows the cable out of the hub first;
+ *  when it reaches the card, a dot appears at its tip, stretches along the card into a pill, and the
  *  pill opens to the card's full height. The surface is opaque all the way: it changes shape, never transparency,
  *  so nothing behind it shows through. Then what it holds fades in, the rows one after another, and the
  *  small marks (counts, clocks, checks) land last, a beat later. */
 const SHELL_LEAD = Math.round(DUR.base * 0.7);
+const birthsInFlight = new WeakMap<HTMLElement, Animation>();
+
+/** The cable and its card share the birth clock, including stagger, pauses and late SVG mounts.
+ *  Finish the cable at the dot before the surface starts to unfold. */
+export function cableBirthProgress(card: HTMLElement) {
+  const birth = birthsInFlight.get(card);
+  if (!birth || birth.playState === "idle" || birth.playState === "finished") return 1;
+  const time = Number(birth.currentTime ?? 0) - Number(birth.effect?.getTiming().delay ?? 0);
+  const progress = Math.max(0, Math.min(1, 1 + time / SHELL_LEAD));
+  return progress * progress * (3 - 2 * progress);
+}
 /** How long the shape takes from dot to card. */
 const BIRTH = DUR.flow;
 /** The cable sets off once the cards making room for it are this far through their clock (about 85% of the way on the
  *  settle spring). At one half they had been standing still for 150 ms when it started: the hub stopped, then went on.
- *  Its own curve (project-flow.css, the cable body) keeps its speed up to the tip, and the card is born as the tip
- *  arrives: a cable that crawled its last fifth while a dot waited at its end was a card stopping halfway. */
+ *  The cable finishes its approach before the card unfolds, on the same clock. */
 const ROOM_SHARE = 0.4;
 /** The dot: a little wider than the cable (9px), as its socket is. */
 const DOT = 12;
@@ -162,7 +172,9 @@ function shade(surface: HTMLElement, show: boolean, delay: number, duration: num
 /** The beats of an arriving card (its shape, then its parts, then its marks). Returns how long they run. */
 function enter(surface: HTMLElement, lead: number) {
   for (const running of surface.getAnimations({ subtree: true })) if (running.id === "pf-exit") running.cancel();
-  surface.animate(births(shapeOf(surface, true), false), { duration: BIRTH, delay: lead, easing: "linear", fill: "backwards" }).id = "pf-shell";
+  const birth = surface.animate(births(shapeOf(surface, true), false), { duration: BIRTH, delay: lead, easing: "linear", fill: "backwards" });
+  birth.id = "pf-shell";
+  birthsInFlight.set(surface, birth);
   shade(surface, true, lead + BIRTH * 0.96, DUR.base);
   const content = lead + BIRTH * CONTENT_AT;
   const focus = (part: HTMLElement) => {
@@ -343,8 +355,7 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     waiting.delete(surface);
     // A card that started to leave meanwhile had its beats called off: they stay off.
     if (surface.closest("[data-leaving]")) return;
-    // The wait counts toward the shape's lead (its cable went on growing meanwhile): it sets off when it would have,
-    // or now if that has passed, not a whole lead after its room came free.
+    // Consume the room-making delay together on the birth clock, keeping the original response time.
     const ahead = Math.max(0, Math.min(performance.now() - since, left));
     for (const beat of beats) {
       if (beat.playState !== "paused") continue;
@@ -600,7 +611,6 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     const making = staysAndMoves || crowding;
     // A newcomer's cable sets off as they slow into place: the rest of the way goes with the cable growing.
     const room = making ? lastDelay + Math.round(glideMs * ROOM_SHARE) : hold;
-    root.style.setProperty("--pf-cable-in-delay", `${room}ms`);
     if (making || holding.size) beads(true);
     // The entrances: a card that has a cable waits for it; cards arriving together in one column follow each other
     // down it, a stagger apart, as their cables reach them. A card with no surface of its own (the timeline) only

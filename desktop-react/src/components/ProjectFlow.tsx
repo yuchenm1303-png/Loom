@@ -35,7 +35,7 @@ import { ProviderMark } from "./ModelPanel";
 import { UsageRing, resetText, usageDetail, usageScopeText, usageWindowLabel, useModelUsage } from "./ModelUsageIndicator";
 import type { FlowMessage, WeaveProposal } from "./projectOverview";
 import { DUR, EASE } from "../motion/tokens";
-import { glideProgress, HUB_CLOCK, HUB_EASE, LEAVE_RETAIN, useGlide, visibleBox } from "./projectArrange";
+import { cableBirthProgress, glideProgress, HUB_CLOCK, HUB_EASE, LEAVE_RETAIN, useGlide, visibleBox } from "./projectArrange";
 import { ReasoningControl, reasoningLabel } from "./ReasoningControl";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
 import {
@@ -240,7 +240,7 @@ const enText: typeof zhText = {
 type Side = "left" | "right" | "below";
 /** A cable's corner radius, the most its lanes stand apart (a cable's 9px plus a gap), and its plugs apart on the hub. */
 const CABLE_R = 12, LANE_STEP = 15, PLUG_APART = 22;
-interface Cable { id: string; side: Side; d: string; socket: { x: number; y: number } }
+interface Cable { id: string; side: Side; d: string; socket: { x: number; y: number }; reveal?: number }
 
 // The branches the person folded away, by id. Storage may be missing or refuse; then nothing is folded.
 const FOLDED_KEY = "loom.buildFolded";
@@ -466,12 +466,14 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
       }
       // A lane is dealt on a layout that may be moving: a cable can change lanes as its card passes its plug. That is
       // followed, never snapped to.
-      if (seen && !still && item.side !== "below") {
+      if (seen && !still && !on && item.side !== "below") {
         const followed = seen.turn + (turn - seen.turn) * (1 - Math.exp(-dt * TURN_FOLLOW));
         if (Math.abs(followed - turn) > 0.2) { turn = followed; following = true; }
       }
       next.set(item.id, { x1: item.x1, y1: item.y1, y2, turn });
-      out.push(cablePath(item, y2, turn));
+      const reveal = still ? 1 : cableBirthProgress(item.card);
+      if (reveal < 1) following = true;
+      out.push({ ...cablePath(item, y2, turn), reveal });
     }
     shown.current = next;
     if (hubProgress >= 1) { hubClock.current = null; }
@@ -481,11 +483,15 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
     if (root) {
       for (const cable of out) {
         for (const node of root.querySelectorAll<SVGElement>(`[data-of="${CSS.escape(cable.id)}"]`)) {
-          if (node instanceof SVGPathElement) node.setAttribute("d", cable.d);
+          if (node instanceof SVGPathElement) {
+            node.setAttribute("d", cable.d);
+            if (node.classList.contains("pf-cable-body")) node.style.strokeDashoffset = cable.reveal == null ? "" : String(-100 * (1 - cable.reveal));
+          }
           else if (node instanceof SVGRectElement) {
             const below = cable.side === "below";
             node.setAttribute("x", String(cable.socket.x - (below ? 10 : 5)));
             node.setAttribute("y", String(cable.socket.y - (below ? 5 : 10)));
+            node.style.opacity = cable.reveal == null ? "" : String(cable.reveal);
           }
         }
       }
@@ -1060,10 +1066,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
         {cables.map((cable) => (
           <g key={cable.id} className="pf-cable" data-cable={cable.id} data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || hot === cable.id.replace("-draft", "") || undefined}
              data-leaving={leaving.has(cable.id) || undefined}>
-            <path className="pf-cable-body" data-of={cable.id} d={cable.d} pathLength={100} />
+            <path className="pf-cable-body" data-of={cable.id} d={cable.d} pathLength={100}
+                  style={cable.reveal == null ? undefined : { strokeDashoffset: -100 * (1 - cable.reveal) }} />
             <rect className="pf-socket" data-of={cable.id} rx={4}
                   x={cable.socket.x - (cable.side === "below" ? 10 : 5)} y={cable.socket.y - (cable.side === "below" ? 5 : 10)}
-                  width={cable.side === "below" ? 20 : 10} height={cable.side === "below" ? 10 : 20} />
+                  width={cable.side === "below" ? 20 : 10} height={cable.side === "below" ? 10 : 20}
+                  style={cable.reveal == null ? undefined : { opacity: cable.reveal }} />
           </g>
         ))}
         {cables.filter((cable) => cable.id.startsWith("agent:") && !leaving.has(cable.id)).map((cable) => {

@@ -66,16 +66,11 @@ html[data-loom-theme="light"] .pf-stage {
   stroke-linejoin: round;
   stroke-dasharray: 100;
   stroke-dashoffset: 0;
-  /* A cable grows out of the hub once the others have made room (projectArrange.ts sets the delay), with no overshoot
-     past its card, and retracts back into the hub. It keeps its speed nearly to the tip, where the card takes over
-     (projectArrange.ts SHELL_LEAD is 70% of this step): on the glide curve it covered 80% in 40% of its time and
-     crawled the rest while the card waited at its end, which read as the card stopping halfway. */
-  transition: stroke var(--loom-dur-fast) var(--loom-ease-out), stroke-dashoffset var(--loom-dur-base) var(--loom-ease-even) var(--pf-cable-in-delay, 0ms);
+  /* Entrance dash offsets are drawn on the card's birth clock; CSS only owns colour and the exit below. */
+  transition: stroke var(--loom-dur-fast) var(--loom-ease-out);
 }
-@starting-style { .pf-cable-body { stroke-dashoffset: -100; } }
 
-.pf-socket { fill: var(--pf-cable); opacity: 1; transition: fill var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-fast) var(--loom-ease-out) var(--pf-cable-in-delay, 0ms); }
-@starting-style { .pf-socket { opacity: 0; } }
+.pf-socket { fill: var(--pf-cable); opacity: 1; transition: fill var(--loom-dur-fast) var(--loom-ease-out); }
 
 .pf-cable[data-hot] .pf-cable-body { stroke: var(--pf-cable-hot); }
 .pf-cable[data-hot] .pf-socket { fill: var(--pf-cable-hot); }
