@@ -987,6 +987,8 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 }
 
 .pf-attention-text { flex: 1; min-width: 0; }
+.pf-goal:not([data-live]) .pf-attention-dot { animation: none; }
+.pf-goal[data-live] .pf-attention-dot { background: var(--pf-live); }
 
 /* Uncommitted changes before a start: the attention line, opened into the files and one commit. */
 .pf-dirty { display: grid; gap: 4px; align-items: stretch; }

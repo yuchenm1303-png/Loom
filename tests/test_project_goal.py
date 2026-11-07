@@ -1,0 +1,279 @@
+"""A long goal: the Host keeps a conversation going until the work is really done."""
+import json
+import time
+
+import pytest
+
+from app.agent_runtime.durable_state import GoalStatus
+from app.ai import ModelResponse, ModelUsage, ToolCall
+from app.project_runner import goal, weave
+import test_app_server
+from test_app_server import _wait_until
+from test_project_runner import build
+
+
+@pytest.fixture(autouse=True)
+def runtime_with_sub_agents(monkeypatch):
+    """The Host's runtime has the agent tree the checker runs in."""
+    from app.agent_runtime.multi_agent_runtime import MultiAgentRuntime
+    monkeypatch.setattr(test_app_server, "DurableAgentRuntime", MultiAgentRuntime)
+
+
+def usage(total=10, cached=0):
+    return ModelUsage(input_tokens=total, output_tokens=0, total_tokens=total, cached_input_tokens=cached)
+
+
+def answer(text, **tokens):
+    return ModelResponse(text=text, usage=usage(**tokens))
+
+
+def calling(name, arguments, call_id="call-1", **tokens):
+    return ModelResponse(tool_calls=(ToolCall(call_id=call_id, name=name, arguments=arguments),), usage=usage(**tokens))
+
+
+START = calling("weave_goal", {"objective": "研究一晚"})
+DONE = calling("mark_thread_goal", {"status": "complete"}, "call-done")
+PASSED = answer(json.dumps({"verdict": "passed", "summary": "跑过了，结果成立", "issues": []}))
+REJECTED = answer(json.dumps({"verdict": "needs_changes", "summary": "结果不成立", "issues": ["评估脚本跑不通"]}))
+
+
+def conversation(tmp_path, responses):
+    service, runtime, platform, _, source = build(tmp_path, responses)
+    service.turn_start({"threadId": source, "input": "你有一整晚", "weave": True})
+    settle(service, source)
+    return service, runtime, platform, source
+
+
+def settle(service, source):
+    _wait_until(lambda: not service._is_active(source), timeout=10)
+
+
+def tick(service, source, times=1):
+    """Run the driver as the scheduler does, each move given its turn to finish."""
+    for _ in range(times):
+        service.__dict__.get("_goal_polled", {}).clear()
+        goal.advance(service)
+        settle(service, source)
+        control = service.runtime.agent_control
+        for snapshot in control.list_tree(source, include_closed=False):
+            control.wait(source, snapshot.node.session_id, timeout_seconds=10)
+
+
+def state(service, source):
+    return goal.view(service, source)
+
+
+def test_a_goal_keeps_going_until_a_check_agrees(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [
+        START, answer("第一轮做完了"), answer("还在做", total=20), DONE, answer("做完了"), PASSED])
+    try:
+        assert state(service, source)["status"] == "active"
+        tick(service, source)
+        assert state(service, source)["turns"] == 1, "a turn that ended is not the end of the goal"
+        tick(service, source)
+        assert runtime.get_goal(source).status is GoalStatus.COMPLETE, "the agent's claim, read by the driver next"
+        tick(service, source, 3)
+        final = state(service, source)
+        assert final["status"] == "complete" and final["checked"] is True and final["phase"] == "done"
+        assert "结果成立" in final["summary"]
+        before = len(platform.requests)
+        tick(service, source, 2)
+        assert len(platform.requests) == before, "a finished goal stays finished"
+    finally:
+        runtime.close()
+
+
+def test_a_rejected_claim_goes_back_to_the_work_with_the_findings(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [
+        START, DONE, answer("做完了"), REJECTED, answer("修好了"), DONE, answer("这次真做完了"), PASSED])
+    try:
+        tick(service, source, 2)
+        assert state(service, source)["status"] == "active" and state(service, source)["phase"] == "working"
+        tick(service, source, 5)
+        assert state(service, source)["checked"] is True
+        said = [json.dumps([message.content for message in request.messages], ensure_ascii=False, default=str)
+                for request in platform.requests]
+        assert any("评估脚本跑不通" in text for text in said), "the next turn is told what the check found"
+    finally:
+        runtime.close()
+
+
+def test_a_check_that_keeps_rejecting_stops_for_the_person(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [
+        START, DONE, answer("1"), REJECTED, DONE, answer("2"), REJECTED, DONE, answer("3"), REJECTED])
+    try:
+        tick(service, source, 10)
+        assert state(service, source)["status"] == "blocked" and "3 times" in state(service, source)["reason"]
+    finally:
+        runtime.close()
+
+
+def test_a_checker_that_gives_no_verdict_does_not_count_as_a_pass(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [START, DONE, answer("做完了"), answer("没有 JSON"), answer("还是没有")])
+    try:
+        tick(service, source, 5)
+        final = state(service, source)
+        assert final["status"] == "complete" and final["checked"] is False, "shown as unchecked, not as checked"
+    finally:
+        runtime.close()
+
+
+def test_the_last_verdict_counts_when_a_checker_gives_more_than_one():
+    # A real checker's reply: a short verdict, then the full one. Reading from the first "{" to the
+    # last "}" lost it, and a report with real defects went on as "could not be checked".
+    reply = ('{"verdict":"needs_changes","summary":"PDF 不可用，{见下}"}\n\n'
+             '{"verdict":"needs_changes","summary":"全文","issues":["公式吞掉了第 28 到 181 行"]}\n\n'
+             "运行时验收记录：本轮修改的 1 个源文件还没有当前验收证据 {注}")
+    assert goal._verdict(reply)["issues"] == ["公式吞掉了第 28 到 181 行"]
+    assert goal._verdict('先说明 {这不是 JSON} 再给 {"verdict":"passed"}')["verdict"] == "passed"
+    assert goal._verdict('{"verdict":"maybe"}') is None and goal._verdict("没有") is None
+
+
+def test_a_checker_stopped_by_a_limit_is_asked_for_its_verdict_before_it_is_replaced(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [START, DONE, answer("做完了"), answer("读到一半"), PASSED])
+    try:
+        tick(service, source)
+        checker = service.weave_goals.get(source)["checkerId"]
+        session = service.store.load(checker)
+        session.status = type(session.status).LIMIT_REACHED
+        service.store.save(session)
+        tick(service, source, 2)
+        assert state(service, source)["checked"] is True
+        said = json.dumps([message.content for message in platform.requests[-1].messages], ensure_ascii=False, default=str)
+        assert goal.CHECK_NOW[:30] in said, "the same checker, not a new one that has seen nothing"
+    finally:
+        runtime.close()
+
+
+def test_turns_without_a_tool_stop_as_stalled(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [START, answer("0"), answer("1"), answer("2"), answer("3")])
+    try:
+        tick(service, source, 6)
+        assert state(service, source)["status"] == "blocked" and "no progress" in state(service, source)["reason"]
+        assert state(service, source)["turns"] == 2
+    finally:
+        runtime.close()
+
+
+def test_the_budget_counts_cached_input_at_a_tenth_and_stops_the_goal(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [
+        calling("weave_goal", {"objective": "研究", "token_budget": 2_000_000}),
+        answer("读了很多缓存", total=1_000_000, cached=1_000_000), answer("没读缓存", total=2_100_000), answer("不该发生")])
+    try:
+        tick(service, source)
+        assert state(service, source)["status"] == "active"
+        assert 90_000 < state(service, source)["tokens"] < 110_000, "a million cached tokens cost a tenth"
+        tick(service, source, 2)
+        assert state(service, source)["status"] == "budget_limited"
+        goal.control(service, {"threadId": source, "action": "resume"})
+        assert state(service, source)["tokenBudget"] == 4_000_000, "resuming a spent goal adds to it"
+    finally:
+        runtime.close()
+
+
+def test_the_person_stopping_a_turn_pauses_the_goal(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [START, answer("继续"), answer("恢复后"), answer("x"), answer("y")])
+    try:
+        record = service.weave_goals.get(source)
+        session = service.store.load(source)
+        session.status = type(session.status).CANCELLED
+        session.current_turn_id = "stopped"
+        service.store.save(session)
+        before = len(platform.requests)
+        tick(service, source)
+        assert state(service, source)["status"] == "paused" and len(platform.requests) == before
+        goal.control(service, {"threadId": source, "action": "resume"})
+        tick(service, source)
+        assert state(service, source)["status"] == "active" and len(platform.requests) == before + 1
+    finally:
+        runtime.close()
+
+
+def test_a_failed_turn_waits_and_tries_again(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [START, answer("0"), answer("重试了")])
+    try:
+        session = service.store.load(source)
+        session.status = type(session.status).FAILED
+        session.current_turn_id = "failed"
+        session.error = "connection reset"
+        service.store.save(session)
+        before = len(platform.requests)
+        tick(service, source)
+        record = service.weave_goals.get(source)
+        assert record["failures"] == 1 and record["retryAt"] > time.time() and len(platform.requests) == before
+        record["retryAt"] = 0
+        service.weave_goals.put(source, record)
+        tick(service, source)
+        assert len(platform.requests) == before + 1
+    finally:
+        runtime.close()
+
+
+def test_a_goal_survives_a_new_driver_and_its_prompt_is_not_shown_as_the_persons(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [START, answer("0"), answer("1"), answer("2")])
+    try:
+        assert goal.Goals(service.project_store.home).get(source)["phase"] == "working"
+        tick(service, source)
+        from app.app_server import _event_item_identity
+        said = [event for event in runtime.store.events(source) if event.kind.value == "user_message"]
+        assert [event.data["source"] for event in said] == ["user", "goal"]
+        assert [_event_item_identity(event) is not None for event in said] == [True, False]
+    finally:
+        runtime.close()
+
+
+def without_git(service, source):
+    import os, shutil, stat
+    folder = f"{service.store.load(source).workspace_dir}/.git"
+    shutil.rmtree(folder, onerror=lambda func, path, _: (os.chmod(path, stat.S_IWRITE), func(path)))
+
+
+def test_a_goal_starts_in_a_folder_with_no_repository(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [answer("0"), START, answer("1"), answer("2")])
+    try:
+        without_git(service, source)
+        service.turn_start({"threadId": source, "input": "开始", "weave": True})
+        settle(service, source)
+        assert state(service, source)["status"] == "active"
+    finally:
+        runtime.close()
+
+
+def test_a_folder_that_cannot_start_a_project_says_so_when_proposing(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [answer("0"), calling("weave_propose", {"objective": "造"}), answer("1")])
+    try:
+        without_git(service, source)
+        service.turn_start({"threadId": source, "input": "提议", "weave": True})
+        settle(service, source)
+        assert service.weave_proposals.get(source) is None
+        failed = [event for event in runtime.store.events(source) if event.kind.value == "tool_failed"]
+        assert "weave_goal" in failed[-1].data["content"]
+    finally:
+        runtime.close()
+
+
+def test_a_project_checkout_is_not_a_project_and_new_conversations_go_to_the_repository(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [answer("0")])
+    try:
+        run = service.project_run_create({"operationId": "x", "threadId": source, "objective": "造", "tokenBudget": 1000, "maxEpisodes": 2})
+        checkout = service.project_store.home / "workspaces" / run["id"]
+        checkout.mkdir(parents=True)
+        opened = service.thread_start({"workspace": str(checkout), "permissionMode": "workspace"})["thread"]
+        assert opened["workspace"] == str(service.store.load(source).workspace_dir)
+        assert not service._internal_workspace(opened["workspace"]) and service._internal_workspace(checkout)
+    finally:
+        runtime.close()
+
+
+def test_the_overview_carries_the_goal_and_the_scheduler_drives_it(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [START, answer("0"), answer("1"), answer("2")])
+    try:
+        assert service.project_overview({"threadId": source})["goal"]["status"] == "active"
+        service.project_runner.tick()
+        settle(service, source)
+        assert state(service, source)["turns"] == 1
+        assert goal.control(service, {"threadId": source, "action": "dismiss"})["goal"] is None
+        with pytest.raises(ValueError):
+            goal.control(service, {"threadId": source, "action": "pause"})
+    finally:
+        runtime.close()

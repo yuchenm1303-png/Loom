@@ -58,6 +58,18 @@ try {
     if (process.env.LOOM_TASKS_SCREENSHOT) await page.screenshot({ path: `${process.env.LOOM_TASKS_SCREENSHOT}-${theme}.png` });
     assert.deepEqual(errors, []);
     await page.close();
+
+    // A long goal runs with no project: one line in the hub, and the person can stop it.
+    const goalPage = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    await goalPage.goto(`${origin}/scripts/fixtures/build-task-list.html?theme=${theme}&goal=1`);
+    const goalRow = goalPage.locator(".pf-goal");
+    await goalRow.waitFor();
+    assert.match(await goalRow.innerText(), /长目标进行中 · 1\.2M \/ 8M/);
+    await goalRow.locator("button").click();
+    await goalPage.waitForFunction(() => window.goalCalls.length === 1);
+    assert.equal(await goalPage.evaluate(() => window.goalCalls[0].action), "pause");
+    if (process.env.LOOM_TASKS_SCREENSHOT) await goalPage.screenshot({ path: `${process.env.LOOM_TASKS_SCREENSHOT}-goal-${theme}.png` });
+    await goalPage.close();
   }
   console.log("The task list is a branch of its own: explained while empty, opens with the list, follows it, folds, and leaves the plan card alone");
 } finally { await browser.close(); }

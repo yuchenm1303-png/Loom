@@ -121,7 +121,7 @@ export function useLoom() {
     input: string,
     attachments: { path: string; name: string }[] = [],
     toolSelection?: string[] | null,
-    options?: { weave?: boolean },
+    options?: { weave?: boolean; weaveBudget?: number },
   ) => {
     const thread = loom.active?.thread;
     const text = input.trim();

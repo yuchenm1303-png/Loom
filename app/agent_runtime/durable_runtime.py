@@ -178,7 +178,14 @@ class DurableAgentRuntime(CoreAgentRuntime):
         limit = self.max_auto_queued_turns if max_turns is None else max(1, int(max_turns))
         return self._drain_queue(session_id, None, max_turns=limit)
 
-    def continue_goal(self, session_id: str, *, max_turns: int = 1) -> AgentRunResult:
+    def continue_goal(
+        self,
+        session_id: str,
+        *,
+        max_turns: int = 1,
+        note: str = "",
+        turn_id: str | None = None,
+    ) -> AgentRunResult:
         session = self.store.load(session_id)
         if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
             raise RuntimeError("cannot continue goal while the thread is active")
@@ -206,7 +213,10 @@ class DurableAgentRuntime(CoreAgentRuntime):
                 "mark_thread_goal with status=complete. If progress cannot continue without an external "
                 "dependency, use mark_thread_goal with status=blocked."
             )
-            result = self._start_turn_once(session_id, prompt, source="goal")
+            if note:
+                prompt += f"\n\nAn independent check rejected the claim that this is finished:\n{note}"
+            result = self._start_turn_once(session_id, prompt, source="goal", turn_id=turn_id)
+            turn_id = None  # a further round is a new turn
             result = self._track_goal_usage(result)
             if result.status is not AgentStatus.COMPLETED:
                 break

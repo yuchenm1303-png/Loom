@@ -246,8 +246,8 @@ def test_the_guide_reaches_past_reading_a_repository():
     # An overnight research goal in an empty folder met neither old condition: nothing to read, nobody asked.
     assert "lines that do not depend on each other" in weave.GUIDE and "one GPU" in weave.GUIDE
     assert "not without sub-agents" in weave.GUIDE
-    # A proposal waits for a click, so one left behind overnight must not be all that happens.
-    assert "open-ended goal" in weave.GUIDE and "start the work yourself in this turn" in weave.GUIDE
+    # A proposal waits for a click, so unattended work starts by itself.
+    assert "weave_goal" in weave.GUIDE and "no repository" in weave.GUIDE
     assert "ordinary repository" in weave.GUIDE, "a scan stays with the agent"
 
 

@@ -245,6 +245,8 @@ def _event_item_identity(event: AgentEvent) -> tuple[str, str] | None:
     if event.kind in {AgentEventKind.MODEL_RESPONSE_REJECTED, AgentEventKind.MODEL_TRANSPORT_RETRY} and data.get("will_retry"):
         return f"model-retry:{event.event_id}", "model_retry"
     if event.kind is AgentEventKind.USER_MESSAGE:
+        if data.get("source") == "goal":
+            return None  # the Host's own continuation; the person never said it
         return _user_item_id(event.event_id), "user_message"
     if event.kind is AgentEventKind.MODEL_RESPONSE and (
         str(data.get("text") or "") or str(data.get("reasoning_summary") or "")
@@ -969,7 +971,8 @@ class LoomAppServerService:
         sessions = self._list_session_objects()
         if bool(params.get("adopt", True)):
             self.projects.adopt(
-                dict.fromkeys(session.workspace_dir for session in sessions),
+                dict.fromkeys(session.workspace_dir for session in sessions
+                              if not self._internal_workspace(session.workspace_dir)),
                 now=utc_now(),
             )
 
@@ -986,6 +989,7 @@ class LoomAppServerService:
             "projects": [
                 dict(project.as_dict(), threadCount=counts.get(project.project_id, 0))
                 for project in self.projects.list()
+                if not self._internal_workspace(project.root)
             ],
             "unfiledThreadCount": unfiled,
         }
@@ -1027,6 +1031,10 @@ class LoomAppServerService:
             for session in self._list_session_objects()
             if project.contains(session.workspace_dir)
         )
+
+    def _internal_workspace(self, path: str | Path) -> bool:
+        """Whether a folder is Loom's own working copy rather than a project of the person's."""
+        return False
 
     def _requested_workspace(self, params: dict[str, Any]) -> Path:
         """The workspace for a new thread, by project or by raw path.
@@ -1287,6 +1295,8 @@ class LoomAppServerService:
                 session.tool_selection = selection
                 # Each turn says which mode sent it; one from the chat composer leaves Weave.
                 session.weave = params.get("weave") is True
+                if type(params.get("weaveBudget")) is int:
+                    self.__dict__.setdefault("weave_budgets", {})[session_id] = params["weaveBudget"]
                 self.store.save(session)
                 self._prepare_turn(session)
             except Exception as exc:
@@ -1627,6 +1637,8 @@ class LoomAppServerService:
             return
 
         if kind is AgentEventKind.USER_MESSAGE:
+            if data.get("source") == "goal":
+                return
             item = _base_item(
                 event,
                 item_id=_user_item_id(event.event_id),

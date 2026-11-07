@@ -14,7 +14,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash, review_progress
-from . import delivery, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
+from . import delivery, goal, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
 from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
@@ -54,6 +54,9 @@ class ProjectExecutor:
 
     def advance_programs(self):
         return program.advance(self.service)
+
+    def advance_goals(self):
+        return goal.advance(self.service)
 
     @staticmethod
     def session_key(run):
@@ -405,6 +408,7 @@ class ProjectServiceMixin(WorkspaceMixin):
         delegation.reconcile(self)
         # Weave mode: the conversation's own agent proposes, reads and steers its project.
         self.weave_proposals = weave.Proposals(home)
+        self.weave_goals = goal.Goals(home)
         for tool in weave.tools(self):
             if self.runtime.tools.get(tool.name) is None:
                 self.runtime.tools.register(tool)
@@ -578,7 +582,8 @@ class ProjectServiceMixin(WorkspaceMixin):
         if root is None:
             # Nothing started yet: what would stop a start (uncommitted changes) is shown before it is tried.
             return {"run": None, "program": current, "children": [], "agents": [], "events": [],
-                    "workspace": self._project_workspace_state(thread_id), "proposal": self.weave_proposals.get(thread_id)}
+                    "workspace": self._project_workspace_state(thread_id), "proposal": self.weave_proposals.get(thread_id),
+                    "goal": goal.view(self, thread_id)}
         children = [run for run in runs if run.get("teamOwnerId") == root["id"]]
         integration = store.get(root["integrationRunId"]) if root.get("integrationRunId") else None
         ledger = integration or root
@@ -603,10 +608,35 @@ class ProjectServiceMixin(WorkspaceMixin):
         measured = {**metrics.summarize(spans, kinds), "waits": metrics.waits(store, ids)}
         return {"run": view, "program": current, "children": children, "integration": integration,
                 "agents": agents, "events": events, "timeline": spans[-120:], "metrics": measured,
-                "proposal": proposal, "workspace": self._project_workspace_state(thread_id) if proposal else None}
+                "proposal": proposal, "workspace": self._project_workspace_state(thread_id) if proposal else None,
+                "goal": goal.view(self, thread_id)}
 
     def _project_workspace_state(self, thread_id):
         return describe_workspace(self._load(thread_id).workspace_dir)
+
+    def _project_checkout(self, path):
+        """The run whose internal checkout this folder is, or None. Such a folder is never a project of the person's."""
+        try:
+            relative = Path(path).resolve().relative_to((self.project_store.home / "workspaces").resolve())
+        except (OSError, ValueError):
+            return None
+        try:
+            return self.project_store.get(relative.parts[0]) if relative.parts else None
+        except ValueError:
+            return None
+
+    def _internal_workspace(self, path):
+        try:
+            Path(path).resolve().relative_to((self.project_store.home / "workspaces").resolve())
+            return True
+        except (OSError, ValueError):
+            return False
+
+    def _requested_workspace(self, params):
+        """A new conversation opened from inside a project's checkout belongs to the repository it came from."""
+        requested = super()._requested_workspace(params)
+        run = self._project_checkout(requested)
+        return Path(run["repository"]) if run else requested
 
     def project_commit_workspace(self, params):
         """Commit every uncommitted change of the conversation's repository, so a project can start from it.
@@ -914,6 +944,9 @@ class ProjectControllerMixin:
                 return {"program": weave.start(self.service, params)}
         if method == "projectWeave/dismiss":
             return weave.dismiss(self.service, params)
+        if method == "projectWeave/goal":
+            with self.service.project_runner.guard:
+                return goal.control(self.service, params)
         if method == "projectProgram/attach":
             with self.service.project_runner.guard:
                 return {"program": program.attach(self.service, params)}

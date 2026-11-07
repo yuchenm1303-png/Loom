@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../src/components/projectOverview.ts", i
 const module = { exports: {} };
 new Function("module", "exports", "require", ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText)(
   module, module.exports, () => ({}));
-const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice, readableError, toConversation, toHistory, whenSaid, toTurnTasks } = module.exports;
+const { toFlowData, eventText, activityText, humanReason, raisedBudget, toTimeline, toModelChoice, readableError, toConversation, toHistory, whenSaid, toTurnTasks, toGoal } = module.exports;
 
 test("a conversation's task list becomes the plan card's rows, each status its state", () => {
   const rows = toTurnTasks([{ step: "读后端", status: "completed" }, { step: "读前端", status: "in_progress" },
@@ -26,6 +26,21 @@ test("a step closed without being done is not a tick on the list", () => {
   assert.deepEqual(rows.map((row) => row.state), ["integrated", "rework", "rework", "integrated", "integrated"]);
   assert.deepEqual(rows.map((row) => row.detail), [undefined, "未覆盖", "验收失败", undefined, undefined]);
   assert.equal(toTurnTasks(steps, "en")[1].detail, "Not covered");
+});
+
+test("a long goal reads as one line with the move the person has", () => {
+  const base = { objective: "研究 AI-RAN", status: "active", phase: "working", tokens: 1_200_000, tokenBudget: 8_000_000, turns: 3, reason: "", summary: "", checked: false };
+  assert.equal(toGoal(null), null);
+  assert.deepEqual(toGoal(base), { text: "长目标进行中 · 1.2M / 8M", detail: "研究 AI-RAN", live: true, action: "pause", dismiss: false });
+  assert.match(toGoal({ ...base, phase: "checking" }).text, /独立检查/);
+  assert.equal(toGoal({ ...base, status: "paused" }).action, "resume");
+  assert.equal(toGoal({ ...base, status: "budget_limited" }).action, "resume");
+  const blocked = toGoal({ ...base, status: "blocked", reason: "缺数据" });
+  assert.equal(blocked.detail, "缺数据");
+  const unchecked = toGoal({ ...base, status: "complete", phase: "done" });
+  assert.match(unchecked.text, /没能做完/, "an unchecked finish never reads as checked");
+  assert.equal(unchecked.action, undefined);
+  assert.match(toGoal({ ...base, status: "complete", phase: "done", checked: true, summary: "成立" }).text, /已通过独立检查/);
 });
 
 const now = Date.parse("2026-10-30T10:00:00Z");

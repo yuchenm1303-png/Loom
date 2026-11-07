@@ -389,6 +389,9 @@ class ProjectRunner:
             for run in self.store.running():
                 self._poll(run)
             # A finished milestone starts the next one of its program.
+            advance_goals = getattr(self.executor, "advance_goals", None)
+            if advance_goals:
+                advance_goals()
             advance_programs = getattr(self.executor, "advance_programs", None)
             if advance_programs and advance_programs():
                 return

@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
-import { raisedBudget, readableError, toConversation, toFlowData, toHistory, toModelChoice, toTurnTasks, type ProjectOverview } from "./projectOverview";
+import { raisedBudget, readableError, toConversation, toFlowData, toHistory, toGoal, toModelChoice, toTurnTasks, type ProjectOverview } from "./projectOverview";
 import { latestTaskPlan } from "./liveTaskProgress";
 import type { ApprovalDecision, ModelSnapshot, TranscriptItem, ProjectRecord } from "../types/loom";
 import { ProjectWorkspacePicker } from "./ProjectWorkspacePicker";
@@ -41,7 +41,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   /** The conversation's transcript and whether its agent is answering now. */
   items?: TranscriptItem[]; chatting?: boolean;
   /** A message to the conversation's agent, as a Weave turn; and stopping its answer. */
-  onChat?(input: string, attachments: { path: string; name: string }[]): Promise<unknown>; onInterrupt?(): Promise<unknown> | void;
+  onChat?(input: string, attachments: { path: string; name: string }[], tokens?: number): Promise<unknown>; onInterrupt?(): Promise<unknown> | void;
   /** Whether the model takes images on a message (the chat composer's gate), and whether that is known. */
   imagesAllowed?: boolean; imageSupport?: boolean | null;
   /** Answering a step the agent asks the person to allow (the chat's approval card). */
@@ -228,6 +228,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
                  history: history ? toHistory(historyRows || history.filter(entry => entry.id === threadId).map(entry => ({ ...entry, workspace: entry.workspace || (entry.id === threadId ? workspace : undefined) })), threadId, now, lang) : undefined,
                  historyError };
   data.taskList = here && !renewal?.cleared ? turnTasks : [];
+  data.goal = here && !renewal?.cleared ? toGoal(shownOverview.goal, lang) : null;
   const proposal = data.phase === "draft" ? shownOverview.proposal : null;
   data.repository.path = run?.repository || workspace;
   if (!run) data.repository.branch = shownOverview.workspace?.branch || "—";
@@ -283,7 +284,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
         maxEpisodes: START_EPISODES, maxWorkers: workers, maxMilestones: 20, permissionMode: fullAccess ? "full-access" : "workspace" })) : undefined,
       onDismiss: proposal ? () => act(() => window.loom.call("projectWeave/dismiss", { threadId, proposalId: proposal.id })) : undefined,
       imagesAllowed, imageSupport,
-      onChat: onChat ? (text, attachments) => { setError(""); void onChat(text, attachments).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
+      onGoal: (action) => act(() => window.loom.call("projectWeave/goal", { threadId, action })),
+      onChat: onChat ? (text, attachments, tokens) => { setError(""); void onChat(text, attachments, tokens).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
       onInterrupt: onInterrupt ? () => { void onInterrupt(); } : undefined,
       onPermissionModeChange,
       onOpenThread: onOpenThread ? (id) => onOpenThread(id) : undefined,

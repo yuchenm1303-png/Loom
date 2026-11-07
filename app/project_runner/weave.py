@@ -22,8 +22,9 @@ from app.agent_runtime.contracts import ToolEffect
 from app.agent_runtime.tools import AgentTool, ToolResult
 from app.ai import AIMessage, MessageRole
 
-from . import program
+from . import goal, program
 from .parallel import MAX_WORKERS
+from .workspace import describe as describe_workspace
 
 PROPOSALS_FILE = "weave-proposals.json"
 # The budgets the hub's chip offers; a proposal's budget is one of them.
@@ -38,17 +39,21 @@ GUIDE = (
     "requests directly and quickly, exactly as in chat, with your normal tools. Weave adds one ability: a "
     "persistent project that plans milestones, runs many agent episodes in its own isolated checkout of this "
     "repository, has every task independently reviewed and merges the result back; it can run for hours or days.\n"
-    "- Propose a project with weave_propose when the person asks for substantial work that needs many sessions, "
-    "agrees when you suggest one, or hands you an open-ended goal with hours or a night to run unattended, with "
-    "several stages and results to inspect later. Never for a greeting, a question, or work you can finish in "
-    "this turn yourself. A proposal waits for their click, so if they said they are going away, propose and then "
-    "start the work yourself in this turn; say so in one line.\n"
+    "- Propose a project with weave_propose when the person asks for substantial code work in a Git repository that "
+    "needs many tasks and sessions, or agrees when you suggest one. Never for a greeting, a question, or work you can "
+    "finish in this turn yourself.\n"
     "- First make sure you know what they want; if the goal is unclear, ask in plain conversation. The objective "
     "you propose is the project's whole brief: what to build, constraints, and what done looks like, self-contained. "
     "A proposal starts nothing: the person reviews it in the hub and starts it there.\n"
     "- While a project runs, keep talking normally. Call weave_status before you answer about its progress. "
     "Pass changes of direction into it with weave_steer, and pause or resume it with weave_control. Do not do "
     "its tasks yourself in this conversation unless the person asks you to.\n"
+    "Long goal: when the person hands you an open-ended objective with hours or a night to run, research included, "
+    "call weave_goal yourself and get on with the work; it needs no repository and no click. The Host then brings "
+    "you back after each turn in this conversation until you call mark_thread_goal, so end a turn freely and keep "
+    "going in the next. Use it instead of a proposal when the person will not be there to start one. Mark complete "
+    "only when the objective is met in substance: an independent agent then checks your claim and its findings come "
+    "back to you. Mark blocked only when you cannot go on without the person.\n"
     "Task list: a turn that uses any tool shows the person a task list; a reply that needs no tool needs no list. "
     "Put update_plan first in the same response as your first tool calls, whatever update_plan's own text says about "
     "simple work: two or more short outcome steps in the person's language, one in_progress, the rest pending. Advance "
@@ -194,7 +199,14 @@ def context_messages(service, session, step):
         proposal = service.weave_proposals.get(session.session_id)
     except (OSError, ValueError):
         owned, run, proposal = None, None, None
-    if run is not None:
+    long_goal = None
+    try:
+        long_goal = goal.view(service, session.session_id)
+    except (OSError, ValueError, RuntimeError):
+        pass
+    if long_goal is not None and long_goal["status"] == "active":
+        line = f"A long goal is running in this conversation: {long_goal['objective']}"
+    elif run is not None:
         state = "paused" if run.get("control") != "active" else "running"
         line = (f"Current project: {state}, milestone {(run.get('milestone') or {}).get('index', 1)}. "
                 f"Objective: {((owned or {}).get('objective') or run['objective'])[:300]}")
@@ -234,6 +246,12 @@ def tools(service):
         if run is not None:
             raise ValueError("A project is already running in this conversation; steer it with weave_steer, "
                              "or the person stops it before a new one")
+        state = describe_workspace(service.store.load(context.session_id).workspace_dir)["status"]
+        if state != "ready":
+            # Better said now than at the person's click, which would only fail.
+            raise ValueError(f"This folder cannot start a project ({state}: it needs the root of a Git repository on a "
+                             "branch with a first commit). Use weave_goal to work here, or tell the person the "
+                             "Repository card can prepare it.")
         workers = arguments.get("max_workers", 1)
         proposal = {"id": str(uuid.uuid4()), "objective": objective, "title": str(arguments.get("title") or "").strip()[:120],
                     "tokenBudget": snap_budget(arguments.get("token_budget")),
@@ -242,6 +260,22 @@ def tools(service):
         service.weave_proposals.put(context.session_id, proposal)
         return ToolResult(ok=True, content="Proposal shown in the hub; the person starts it there. Nothing runs until then.",
                           data={"proposal": proposal})
+
+    def start_goal(context, arguments):
+        weave_session(context)
+        objective = str(arguments.get("objective") or "").strip()
+        if not objective:
+            raise ValueError("objective must not be empty")
+        if len(objective) > MAX_OBJECTIVE:
+            raise ValueError("objective is too long")
+        _, run = current_project(service, context.session_id)
+        if run is not None:
+            raise ValueError("A project is running in this conversation; steer it with weave_steer")
+        budget = snap_budget(getattr(service, "weave_budgets", {}).get(context.session_id, arguments.get("token_budget")))
+        goal.start(service, context.session_id, objective, budget)
+        return ToolResult(ok=True, content=f"Long goal started with a budget of {budget:,} tokens. Carry on working; the "
+                          "Host continues this conversation after each turn until you call mark_thread_goal.",
+                          data={"tokenBudget": budget})
 
     def steer(context, arguments):
         weave_session(context)
@@ -291,6 +325,18 @@ def tools(service):
                                 "small or tightly sequential objective."},
             }, "required": ["objective"], "additionalProperties": False},
             handler=propose, effect=ToolEffect.READ_ONLY),
+        AgentTool(
+            name="weave_goal",
+            description=("Start a long goal in this conversation: the Host keeps it going turn after turn until you "
+                         "call mark_thread_goal and an independent check agrees, or the budget runs out. No repository "
+                         "or click needed, so it fits research and open-ended work with hours or a night to run."),
+            input_schema={"type": "object", "properties": {
+                "objective": {"type": "string", "description": "The complete goal and what done looks like, in the "
+                              "person's language; an agent with no history will check your work against it."},
+                "token_budget": {"type": "integer", "description": "Suggested budget, one of "
+                                 + ", ".join(f"{budget:,}" for budget in BUDGETS) + "; the hub's setting wins."},
+            }, "required": ["objective"], "additionalProperties": False},
+            handler=start_goal, effect=ToolEffect.READ_ONLY),
         AgentTool(
             name="weave_steer",
             description=("Give the running project guidance from the person: a change of direction or an added "

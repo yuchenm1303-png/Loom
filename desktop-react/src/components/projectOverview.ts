@@ -21,6 +21,7 @@ export interface ProjectProgram {
   references?: { name: string; bytes: number }[];
 }
 export interface ProjectOverview {
+  goal?: LongGoal | null;
   run: (ProjectRun & { ledgerPosition?: { chargedTokens: number }; ledgerTokens?: number; ledgerEpisodes?: number;
          createdAt?: number; milestone?: { index: number; programId: string }; completionRef?: string | null;
          baseCommit?: string; guidance?: string[]; objectiveComplete?: boolean }) | null;
@@ -388,6 +389,30 @@ export interface FlowMessage {
 const WORK = new Set(["tool_call", "process", "file_edit"]);
 
 /** The conversation's task list as rows of the hub's plan card. */
+export interface LongGoal {
+  objective: string; status: string; phase: string; tokens: number; tokenBudget: number; turns: number;
+  reason: string; summary: string; checked: boolean;
+}
+
+/** One line for a long goal: what it is doing, what it has spent, and the move the person has. */
+export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {
+  if (!goal) return null;
+  const money = (value: number) => value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M` : `${Math.round(value / 1000)}K`;
+  const spent = `${money(goal.tokens)} / ${money(goal.tokenBudget)}`;
+  const en = lang === "en";
+  const line = (zh: string, english: string) => `${en ? english : zh} · ${spent}`;
+  if (goal.status === "active" && goal.phase === "checking") return { text: line("正在独立检查结果", "Independently checking the result"), detail: goal.objective, live: true, action: "pause", dismiss: false };
+  if (goal.status === "active") return { text: line("长目标进行中", "Long goal running"), detail: goal.objective, live: true, action: "pause", dismiss: false };
+  if (goal.status === "complete") {
+    const text = goal.checked ? line("长目标完成，已通过独立检查", "Long goal finished and independently checked")
+      : line("长目标完成，但独立检查没能做完", "Long goal finished, but the independent check could not be completed");
+    return { text, detail: goal.summary, live: false, dismiss: true };
+  }
+  if (goal.status === "budget_limited") return { text: line("预算用完，长目标已停下", "Budget used up, the long goal stopped"), detail: goal.objective, live: false, action: "resume", dismiss: true };
+  if (goal.status === "paused") return { text: line("长目标已暂停", "Long goal paused"), detail: goal.objective, live: false, action: "resume", dismiss: true };
+  return { text: line("长目标需要你处理", "The long goal needs you"), detail: goal.reason, live: false, action: "resume", dismiss: true };
+}
+
 export function toTurnTasks(steps: TaskMilestone[], lang: "zh" | "en" = "zh"): FlowData["tasks"] {
   const states: Record<TaskMilestone["status"], FlowTaskState> = { pending: "pending", in_progress: "working", completed: "integrated", blocked: "rework" };
   // A step closed without being done is closed, not done: it does not count toward the tick total.

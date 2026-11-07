@@ -14,7 +14,7 @@ FAILURE_KIND = "turn_plan_required"
 MAX_HOLDS = 2
 PLAN_TOOLS = frozenset({"update_plan", "manage_plan"})
 # Not work to list: writing the list, finding a tool, and the mode's own project controls.
-_FREE = PLAN_TOOLS | {"tool_search"}
+_FREE = PLAN_TOOLS | {"tool_search", "get_thread_state", "mark_thread_goal"}
 
 
 def _refusal(previous):

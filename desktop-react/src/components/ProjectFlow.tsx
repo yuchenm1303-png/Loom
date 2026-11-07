@@ -79,6 +79,8 @@ export interface FlowData {
   tasks: { id: string; title: string; state: FlowTaskState; detail?: string; agentId?: string; agentName?: string }[];
   /** The conversation's own task list, kept by its agent; a branch of its own, with or without a project. */
   taskList?: { id: string; title: string; state: FlowTaskState; detail?: string }[];
+  /** A long goal this conversation is pursuing by itself, with no project. */
+  goal?: { text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean } | null;
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
   models?: { current: ModelOption & { reasoning?: ModelReasoningState; vision?: boolean }; recent: ModelOption[];
              groups: { id: string; name: string; options: ModelOption[] }[] };
@@ -125,7 +127,9 @@ export interface FlowActions {
   workspaceControls?: ReactNode;
   onChooseWorkspace?(): void;
   /** A message to the conversation's agent, with the files pasted, dropped or picked into the field. */
-  onChat?(text: string, attachments: { path: string; name: string }[]): void;
+  onChat?(text: string, attachments: { path: string; name: string }[], tokens?: number): void;
+  /** The long goal's stop, resume and dismiss. */
+  onGoal?(action: "pause" | "resume" | "dismiss"): void;
   /** Whether the model can take the images attached to a message, and whether that is known (the chat composer's gate). */
   imagesAllowed?: boolean;
   imageSupport?: boolean | null;
@@ -197,7 +201,7 @@ const zhText = {
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
-  taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
+  goalDismiss: "收起", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
   agentsPending: "当前没有可查看的 agent，任务调度后自动启用", timelinePending: "还没有执行记录，建造开始后自动启用",
   filesUnavailable: "当前没有可查看或添加的参考文件", historyUnavailable: "当前环境未提供对话记录",
 };
@@ -228,7 +232,7 @@ const enText: typeof zhText = {
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The project's total token budget; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
-  taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
+  goalDismiss: "Dismiss", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
   agentsPending: "No agents to inspect yet; available once tasks are dispatched", timelinePending: "No execution records yet; available once the build starts",
   filesUnavailable: "No reference files to view or add here", historyUnavailable: "Conversation history is not available here",
 };
@@ -986,7 +990,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     const value = draft.trim();
     if (!value && !attached.length) return;
     if (imageNotice.blocked) return;
-    if (actions.onChat) actions.onChat(value, attached.map((item) => ({ path: item.path, name: item.name })));
+    if (actions.onChat) actions.onChat(value, attached.map((item) => ({ path: item.path, name: item.name })), tokens);
     else if (!draftMode && value) actions.onSteer?.(value);
     // What the person just said is where they are reading.
     following.current = true;
@@ -1229,6 +1233,14 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
           {data.narration.summary ? <span className="pf-summary">{data.narration.summary}</span> : null}
           {/* Before a project, the hint is for an empty conversation; once people talk it only repeats itself. */}
           {data.narration.text && !(draftMode && data.conversation?.length) ? <p className="pf-narration" key={data.narration.text}>{data.narration.text}</p> : null}
+          {data.goal ? (
+            <div className="pf-attention pf-goal" role="status" data-live={data.goal.live || undefined}>
+              <span className="pf-attention-dot" />
+              <span className="pf-attention-text" title={data.goal.detail || undefined}><Inline text={data.goal.text} /></span>
+              {data.goal.dismiss ? <button type="button" className="pf-attention-quiet" disabled={actions.busy} onClick={() => actions.onGoal?.("dismiss")}>{text.goalDismiss}</button> : null}
+              {data.goal.action ? <button type="button" disabled={actions.busy} onClick={() => actions.onGoal?.(data.goal!.action!)}>{data.goal.action === "pause" ? text.stop : text.resume}</button> : null}
+            </div>
+          ) : null}
           {data.attention ? (
             <div className="pf-attention" role="status">
               <span className="pf-attention-dot" />
