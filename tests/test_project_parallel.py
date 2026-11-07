@@ -23,7 +23,7 @@ PLAN = {"tasks": [
 ]}
 
 
-def setup(tmp_path, *, dependencies=False, barrier=True, outside=False, budget=40, automatic=False, shared=None):
+def setup(tmp_path, *, dependencies=False, barrier=True, outside=False, budget=40, automatic=False, shared=None, review_level=None):
     plan = deepcopy(PLAN)
     if dependencies:
         plan["tasks"][1]["dependsOn"] = ["task-1"]
@@ -84,7 +84,8 @@ def setup(tmp_path, *, dependencies=False, barrier=True, outside=False, budget=4
         return reply({"verdict": "passed", "summary": "Actual file behavior checked", "checks": [{"criterionId": item["id"]} for item in required]})
     platform.execute_chat = execute
     run = create(service, source, maxWorkers=2, reviewPolicy="independent", maxEpisodes=budget,
-                 completionPolicy="local_integrate" if automatic else "manual")
+                 completionPolicy="local_integrate" if automatic else "manual",
+                 **({"reviewLevel": review_level} if review_level else {}))
     control(service, run, "start")
     return service, runtime, platform, root, run["id"], stats
 

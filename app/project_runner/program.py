@@ -132,6 +132,7 @@ def create(service, params):
                "sourceThreadId": service._required_text(params, "threadId"), "tokenBudget": budget,
                "maxEpisodes": episodes, "maxWorkers": params.get("maxWorkers", 1), "maxMilestones": milestones,
                "permissionMode": params.get("permissionMode", "workspace"),
+               "reviewLevel": params.get("reviewLevel", "auto"),
                "state": "running", "reason": "", "milestones": [], "currentRunId": None, "createdAt": time.time()}
     program["references"] = _stage_references(store, program, params.get("attachments"))
     _save(store, program)  # first, so a retried create finds it rather than starting another
@@ -171,7 +172,8 @@ def _start_milestone(service, program, index, budget, episodes):
         "objective": objective_for(program, index), "tokenBudget": max(1, budget), "maxEpisodes": max(1, episodes),
         "maxWorkers": program["maxWorkers"], "reviewPolicy": "independent", "completionPolicy": "local_integrate",
         # Only when chosen: a program from before the choice keeps its milestones' retry fingerprints.
-        **({"permissionMode": program["permissionMode"]} if "permissionMode" in program else {})})
+        **({"permissionMode": program["permissionMode"]} if "permissionMode" in program else {}),
+        **({"reviewLevel": program["reviewLevel"]} if "reviewLevel" in program else {})})
     if run.get("milestone") is None:
         with service.project_store.transaction() as db:
             current = service.project_store._read(db, run["id"])

@@ -14,7 +14,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash, review_progress
-from . import delivery, goal, goal_lines, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
+from . import delivery, escalation, goal, goal_lines, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
 from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
@@ -213,6 +213,12 @@ class ProjectExecutor:
             return {"completionReview": pending, "candidate": candidate(pending, source)}
         if episode["phase"] == "working" and reply.get("action") == "candidate":
             parallel.allowed(self.service.project_store, run, source)
+            if escalation.waivable(run):
+                why = escalation.reason(run, source)
+                if not why:
+                    if run.get("teamOwnerId"):
+                        return {"waived": True, "candidate": candidate(review_target(run), source)}
+                    return {"waived": True}
             return {"candidate": candidate(review_target(run), source)}
         if episode["phase"] == "verifying":
             expected = self.service.project_store.candidate(run)
@@ -456,9 +462,11 @@ class ProjectServiceMixin(WorkspaceMixin):
         permission = params.get("permissionMode", "workspace")
         if permission not in ("workspace", "full-access"):
             raise ValueError("permissionMode must be workspace or full-access")
+        if params.get("reviewLevel", "thorough") not in escalation.LEVELS:
+            raise ValueError("reviewLevel must be auto or thorough")
         request = {"threadId": source.session_id, "objective": objective, "tokenBudget": budget, "maxEpisodes": episodes}
         # Omitted fields preserve retry fingerprints for already-created v1 runs.
-        for key in ("reviewPolicy", "maxReviewCycles", "completionPolicy", "maxWorkers", "permissionMode"):
+        for key in ("reviewPolicy", "maxReviewCycles", "completionPolicy", "maxWorkers", "permissionMode", "reviewLevel"):
             if key in params:
                 request[key] = params[key]
         previous = self.project_store.lookup(params.get("operationId"), {"action": "create", **request})
@@ -485,7 +493,7 @@ class ProjectServiceMixin(WorkspaceMixin):
             "budgetEnforcement": "request_boundary", "delivery": "isolated_candidate_only",
             "reviewPolicy": policy, "maxReviewCycles": cycles, "completionPolicy": completion,
             "workflowControl": "paused", "workflowStatus": "idle", "completionRef": completion_ref, "maxWorkers": workers,
-            "permissionMode": permission}, request=request)
+            "permissionMode": permission, **({"reviewLevel": params["reviewLevel"]} if "reviewLevel" in params else {})}, request=request)
 
     def project_control(self, params, action):
         with self.project_runner.guard:

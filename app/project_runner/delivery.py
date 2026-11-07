@@ -7,9 +7,11 @@ from .review import definition_hash, git, review_workspace, snapshot, StaleCandi
 
 def validate(run, expected, source):
     assessment = run.get("lastAssessment", {})
+    # A waived review counts only for a team task: it reaches the aggregate, which has the real one.
+    accepted = {"passed", "waived"} if run.get("teamOwnerId") else {"passed"}
     if (run["state"] != "ready_for_review" or run["activeEpisode"] or
-            run.get("verificationStatus") != "passed" or expected.get("scope") != "project" or
-            assessment.get("verdict") != "passed" or assessment.get("scope") != "project" or
+            run.get("verificationStatus") not in accepted or expected.get("scope") != "project" or
+            assessment.get("verdict") not in accepted or assessment.get("scope") != "project" or
             assessment.get("candidateId") != expected["id"] or
             run.get("verifiedCandidate", {}).get("digest") != expected["digest"]):
         raise ValueError("Delivery requires a settled, independently passed whole-project candidate")
@@ -31,7 +33,7 @@ def prepare(run, expected, source, home):
     tree = git(target, "write-tree")
     commit = git(target, "-c", "user.name=Loom Project Runner", "-c", "user.email=loom@localhost",
                  "commit-tree", tree, "-p", run["baseCommit"], "-m",
-                 f"Project {run['id']}: independently verified candidate {expected['id']}")
+                 f"Project {run['id']}: candidate {expected['id']}, {run['lastAssessment']['verdict']}")
     # Git filters/line-ending conversion must not silently change tested bytes.
     exported = home / "delivery-checks" / run["id"] / commit[:12]
     git(run["repository"], "-c", "core.autocrlf=false", "worktree", "add", "--detach", str(exported), commit)

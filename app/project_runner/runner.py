@@ -507,6 +507,20 @@ class ProjectRunner:
                 current.update(state="needs_review", control="paused", reason=reason)
                 self.store.save(db, current, "needs_review")
 
+    def _waive(self, db, run, facts):
+        """No review of its own for this task (escalation.py): the whole-project review still covers it."""
+        run["reviewsWaived"] = run.get("reviewsWaived", 0) + 1
+        if not run.get("teamOwnerId"):
+            run["taskIndex"] += 1
+            run.update(feedback=[], verificationStatus="pending")
+            return
+        # A team task's way into the aggregate. Delivery reads "waived" as allowed there and nowhere else.
+        self.store.put_candidate(db, run, facts["candidate"])
+        run["lastAssessment"] = {"verdict": "waived", "scope": "project", "candidateId": facts["candidate"]["id"],
+                                 "summary": "No review of its own; the merged result is reviewed as a whole"}
+        run.update(state="ready_for_review", control="paused", verificationStatus="waived", verifiedCandidate=run["reviewCandidate"],
+                   reason="Low risk: its review is the whole project's")
+
     @staticmethod
     def _rework(run, assessment):
         scope = assessment["scope"]
@@ -647,7 +661,9 @@ class ProjectRunner:
                         raise ValueError(summary[:2000])
                     if action == "candidate":
                         current["plan"][episode["taskIndex"]]["state"] = "candidate"
-                        if current.get("reviewPolicy") == "independent":
+                        if facts.get("waived"):
+                            self._waive(db, current, facts)
+                        elif current.get("reviewPolicy") == "independent":
                             target = review_target(current)
                             current.update(phase="verifying", reviewScope=target["reviewScope"], taskIndex=target["taskIndex"],
                                            verificationStatus="pending")

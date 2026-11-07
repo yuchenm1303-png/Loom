@@ -124,7 +124,7 @@ def spawn(service, root, task, source):
         child = root["parallelSpawn"]
         return _finish_spawn(store, root, child)
     child = {key: copy.deepcopy(root[key]) for key in ("sourceThreadId", "repository", "gitCommonDir", "budgetEnforcement",
-        "tokenBudget", "maxEpisodes", "maxReviewCycles", "permissionMode") if key in root}
+        "tokenBudget", "maxEpisodes", "maxReviewCycles", "permissionMode", "reviewLevel") if key in root}
     child.update(id=str(uuid.uuid4()), revision=0, state="running", control="active", phase="working",
         objective="Implement only this assigned task: " + task["instructions"] + "\nProject context (other tasks are outside this run): " + root["objective"],
         baseCommit=git(source, "rev-parse", "HEAD"), teamOwnerId=root["id"], plan=[{**copy.deepcopy(task), "state": "pending"}],
@@ -189,7 +189,7 @@ def aggregate(service, root, child, source):
         old = git(source, "rev-parse", "HEAD")
         tree = git(source, "merge-tree", "--write-tree", old, child["deliveryReceipt"]["commit"]).splitlines()[0]
         commit = git(source, "-c", "user.name=Loom Project Runner", "-c", "user.email=loom@localhost", "commit-tree", tree,
-            "-p", old, "-p", child["deliveryReceipt"]["commit"], "-m", f"Aggregate independently reviewed task {child['id']}")
+            "-p", old, "-p", child["deliveryReceipt"]["commit"], "-m", f"Aggregate task {child['id']}")
         intent = {"runId": child["id"], "before": old, "commit": commit}
         with store.transaction() as db:
             current = store._read(db, root["id"])
