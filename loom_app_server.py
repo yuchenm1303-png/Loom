@@ -130,7 +130,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     runtime.reasoning = reasoning
     runtime.reasoning_capability = capability
-    permission_mode = _resolve_new_permission_mode(args)
+    # The desktop app starts new conversations with full access: an unattended
+    # long goal must not stop at its first command waiting for a click. The
+    # person can still pick Approval per conversation; a running goal never
+    # changes the mode by itself. --permission-mode / LOOM_PERMISSION_MODE win.
+    permission_mode = _resolve_new_permission_mode(args, default=PermissionMode.FULL_ACCESS)
     return serve_browser_policy_managed_streaming_stdio(
         runtime=runtime,
         store=store,

@@ -178,8 +178,11 @@ def _resolve_workspace(value: str | Path) -> Path:
     return workspace
 
 
-def _resolve_new_permission_mode(args: argparse.Namespace) -> PermissionMode:
-    raw = str(args.permission_mode or _first_env("LOOM_PERMISSION_MODE") or PermissionMode.APPROVAL.value)
+def _resolve_new_permission_mode(
+    args: argparse.Namespace,
+    default: PermissionMode = PermissionMode.APPROVAL,
+) -> PermissionMode:
+    raw = str(args.permission_mode or _first_env("LOOM_PERMISSION_MODE") or default.value)
     try:
         return PermissionMode(raw)
     except ValueError as exc:
