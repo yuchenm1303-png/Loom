@@ -42,9 +42,14 @@ const MAX_ROWS = 8;
  *  pill opens to the card's full height. The surface is opaque all the way: it changes shape, never transparency,
  *  so nothing behind it shows through. Then what it holds fades in, the rows one after another, and the
  *  small marks (counts, clocks, checks) land last, a beat later. */
-const SHELL_LEAD = DUR.fast + STAGGER_MS;
+const SHELL_LEAD = Math.round(DUR.base * 0.7);
 /** How long the shape takes from dot to card. */
 const BIRTH = DUR.flow;
+/** The cable sets off once the cards making room for it are this far through their clock (about 85% of the way on the
+ *  settle spring). At one half they had been standing still for 150 ms when it started: the hub stopped, then went on.
+ *  Its own curve (project-flow.css, the cable body) keeps its speed up to the tip, and the card is born as the tip
+ *  arrives: a cable that crawled its last fifth while a dot waited at its end was a card stopping halfway. */
+const ROOM_SHARE = 0.4;
 /** The dot: a little wider than the cable (9px), as its socket is. */
 const DOT = 12;
 /** The contents wait until the shape is most of the way open: text fades in, it is never seen stretching. It only
@@ -77,6 +82,10 @@ const smooth = (t: number, a: number, b: number) => { const x = clamp01((t - a) 
  *  top speed and nearly stopped before the next: the shape stood still as a pill, shot to 85% of its height in 100 ms and
  *  crawled the rest, and that crawl read as a card that stops halfway. */
 const rise = (t: number, a: number, b: number) => smooth(clamp01((t - a) / (b - a)) ** 0.9, 0, 1);
+/** The opening of the height: it sets off already moving, taking over the speed of the cable that just reached it, and
+ *  comes to rest at the card (half the rest-to-rest curve, half an ease-out). From rest, the pill stood flat for 70 ms
+ *  at the tip of a cable that had itself slowed down, and the card read as one that stopped halfway. */
+const unfurl = (t: number, a: number, b: number) => { const x = clamp01((t - a) / (b - a)); return 0.5 * smooth(x, 0, 1) + 0.5 * (1 - (1 - x) ** 2); };
 
 interface Shape { width: number; height: number; side: string; plugX: number; plugY: number; round: number }
 /** Where a card plugs into its cable, in its own px (ProjectFlow.tsx's cables: 34px down a side, or halfway down
@@ -121,7 +130,7 @@ function births(shape: Shape, reverse: boolean) {
     // Out: it draws in toward the plug, lower first and then narrower (a small block, a pill), into the dot, which goes last.
     const clip = reverse
       ? cut(shape, 1 - phaseIn(t, 0.84, 1), 1 - smooth(t, 0.12, 0.86), 1 - smooth(t, 0, 0.62))
-      : cut(shape, rise(t, 0, 0.18), rise(t, 0.05, 0.55), rise(t, 0.14, 1));
+      : cut(shape, rise(t, 0, 0.12), rise(t, 0.06, 0.45), unfurl(t, 0.12, 1));
     frames.push({ clipPath: clip, offset: t });
   }
   // Whole, whatever size the box has come to, with room around it for the card's drop shadow (a cut at the box
@@ -552,9 +561,8 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     });
     const crowding = [...kindOf].some(([node, kind]) => kind === "arrive" && sizing(columnOf(node)).length > 0);
     const making = staysAndMoves || crowding;
-    // A newcomer's cable sets off when they are nine tenths there (half of their clock, on this curve): the rest of
-    // the way goes with the cable growing.
-    const room = making ? lastDelay + Math.round(glideMs / 2) : hold;
+    // A newcomer's cable sets off as they slow into place: the rest of the way goes with the cable growing.
+    const room = making ? lastDelay + Math.round(glideMs * ROOM_SHARE) : hold;
     root.style.setProperty("--pf-cable-in-delay", `${room}ms`);
     if (making || holding.size) beads(true);
     // The entrances: a card that has a cable waits for it; cards arriving together in one column follow each other

@@ -433,6 +433,10 @@ try {
         const born = frames.find((f) => f.born);
         assert.ok(grows && grows.t >= started + 150, `the model's cable grew at ${grows?.t}, the agents set off at ${started}`);
         assert.ok(born && born.t >= grows.t + 120, `the model card was born at ${born?.t}, its cable grew at ${grows?.t}`);
+        // ...but takes over from it: born while the cable is still on its way, not after it has crawled to a stop at the
+        // card (a cable that spent its last fifth crawling while a dot waited at its end read as a card stopping halfway).
+        const most = frames.find((f) => f.t > grows.t && f.cables.model && f.cables.model.offset > -20);
+        assert.ok(most && born.t - most.t < 40, `the model card was born at ${born.t}, ${born.t - most?.t} ms after its cable was 80% there`);
         assert.ok(frames.some((f) => f.t < grows.t && f.beads), "the beads are off the wire while the hub makes room");
       } else {
         // The dot goes first, then the room closes: the agents wait for the exit.
