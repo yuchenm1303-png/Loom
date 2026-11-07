@@ -1,3 +1,7 @@
+import { BuildBranches, BranchCard, type BuildBranch } from "./BuildBranches";
+import { latestTaskPlan } from "../components/liveTaskProgress";
+import { toTurnTasks } from "../components/projectOverview";
+import type { TranscriptItem } from "../types/loom";
 import {
   useCallback,
   useEffect,
@@ -46,7 +50,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className={`m-card${tone ? ` is-${tone}` : ""}`}>
+    <BranchCard title={title} urgent={tone === "wait"}><section className={`m-card${tone ? ` is-${tone}` : ""}`}>
       <div className="m-card-head">
         {icon ? (
           <span className={`m-tile${tone ? ` is-${tone}` : ""}`} aria-hidden="true">
@@ -58,7 +62,7 @@ function Section({
         </div>
       </div>
       {children}
-    </section>
+    </section></BranchCard>
   );
 }
 
@@ -139,6 +143,7 @@ const initialSettings: BuildSettings = {
 };
 
 export function MobileBuildPanel({
+  dock, branch, onBranch, items,
   threadId,
   workspace,
   online,
@@ -151,6 +156,8 @@ export function MobileBuildPanel({
   onBusy,
   onOpenAgent,
 }: {
+  dock: HTMLElement | null; branch: BuildBranch | null; onBranch(branch: BuildBranch | null): void;
+  items: TranscriptItem[];
   threadId?: string;
   workspace?: string;
   online: boolean;
@@ -374,7 +381,7 @@ export function MobileBuildPanel({
   );
   if (!threadId)
     return (
-      <div className="m-build-panel">
+      <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary="建造准备 · 描述目标后确认方案"><div className="m-build-panel">
         <section className="m-card m-start">
           <span className="m-tile is-accent is-large" aria-hidden="true">
             <Blocks size={24} strokeWidth={1.75} />
@@ -403,7 +410,7 @@ export function MobileBuildPanel({
             </span>
           </div>
         </div>
-      </div>
+      </div></BuildBranches>
     );
   const data = overview
     ? toFlowData(
@@ -536,7 +543,9 @@ export function MobileBuildPanel({
       </Section>
   ) : null;
   return (
-    <div className="m-build-panel" aria-label="建造控制面板">
+    <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"}><div className="m-build-panel" aria-label="建造控制面板">
+      {data?.attention && data.attention.action !== "approval" ? <Section title="建造需要处理" tone="wait"><p>{data.attention.reason}</p><button type="button" className="m-inline-button" onClick={() => onBranch("budget")}>处理预算与运行状态</button></Section> : null}
+      {latestTaskPlan(items).length ? <Section title="对话任务"><ol className="m-build-list">{toTurnTasks(latestTaskPlan(items)).map(task => <li key={task.id}>{STATE[task.state]} · {task.title}{task.detail ? <p>{task.detail}</p> : null}</li>)}</ol></Section> : null}
       <div className="m-build-head">
         <span className={`m-badge${tone ? ` is-${tone}` : ""}`}>
           <span
@@ -556,14 +565,14 @@ export function MobileBuildPanel({
         </button>
       </div>
       {readError ? (
-        <p className="m-alert" role="alert">
+        <BranchCard title="读取错误" urgent><p className="m-alert" role="alert">
           建造状态刷新失败：{readError}。当前显示上次读取的状态。
-        </p>
+        </p></BranchCard>
       ) : null}
       {error ? (
-        <p className="m-alert" role="alert">
+        <BranchCard title="操作错误" urgent><p className="m-alert" role="alert">
           {error}
-        </p>
+        </p></BranchCard>
       ) : null}
       {uncertain ? (
         <Section title="操作结果待确认" tone="wait" icon={<RotateCw {...GLYPH} />}>
@@ -1075,7 +1084,7 @@ export function MobileBuildPanel({
             ) : null}
           </Section>
           {overview.program?.milestones.length || overview.events.length ? (
-            <section className="m-card">
+            <section className="m-card m-branch-history">
               <Disclosure title="阶段历史与运行事件">
               {overview.program?.milestones.map((item) => (
                 <div className="m-event" key={`m${item.index}`}>
@@ -1101,6 +1110,6 @@ export function MobileBuildPanel({
           ) : null}
         </>
       ) : null}
-    </div>
+    </div></BuildBranches>
   );
 }

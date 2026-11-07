@@ -49,6 +49,13 @@ Device acceptance checks (use a real Host; `stack.py` only stubs pairing/thread 
 
 ## Projects, conversations and build controls
 
+The phone build screen now opens on its conversation. Five connected ports above the composer
+open Project, Reference files, Tasks, Agents or Budget, with one branch expanded at a time.
+The composer stays available; tapping the selected port or Android Back returns to the conversation.
+Approvals, uncertain operations and blocked budgets surface directly above the ports.
+Run `node scripts/tests/mobile-build-branches.mjs` against the scripted Vite fixture to verify
+exclusive branches, persistent input, urgent approvals, Back priority and 320/390 px layouts.
+
 Install the updated phone APK **and update the desktop Host**: project configuration and build mutations are explicitly allowed in `electron/mobileAccess.ts`. An older Host refuses these operations; the phone reports that the desktop needs updating. The gateway operation envelope is unchanged.
 
 The Projects tab lists registered computer workspaces, supports registration by computer path, editing names/instructions, and opens each project's own active/archived conversations (latest 200). `thread/list` now filters by `projectId` before applying its limit. A failed project refresh retains the previous list, exposes an error and retry, and refreshes on reconnect/focus.

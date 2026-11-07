@@ -1,3 +1,4 @@
+import type { BuildBranch } from "./BuildBranches";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { AttachmentQueue, MAX_ATTACHMENTS } from "./attachmentQueue";
 import { AttachmentTray } from "./AttachmentTray";
@@ -521,7 +522,10 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
   const offlineNotice = useHeld(!online, OFFLINE_NOTICE_MS);
   const running = Boolean(loom.turnActive || (thread && threadBusy(thread)));
   const [text, setText] = useState("");
-  const [pane, setPane] = useState<"chat" | "build">(space === "build" ? "build" : "chat");
+  const [pane, setPane] = useState<"chat" | "build">("chat");
+  const [branch, setBranch] = useState<BuildBranch | null>(null);
+  const [buildDock, setBuildDock] = useState<HTMLDivElement | null>(null);
+  const chooseBranch = (next: BuildBranch | null) => { setBranch(next); setPane(next ? "build" : "chat"); };
   const [weaveBudget, setWeaveBudget] = useState(1000000);
   const [buildBusy, setBuildBusy] = useState(false);
   const [details, setDetails] = useState(false);
@@ -589,7 +593,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
   }, [text]);
 
   const mode = thread?.permissionMode || loom.draftPermissionMode || "approval";
-  const blank = !thread && !loom.items.length && !opening;
+  const blank = !loom.items.length && !opening;
   return (
     <div className="m-thread">
       <Fold open={offlineNotice}><p className="m-banner" role="status">{connecting ? "正在重新连接…" : "电脑离线，暂时不能操作"}</p></Fold>
@@ -601,16 +605,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
         </div>
         <button type="button" className="m-icon-button" aria-label="对话详情与操作" disabled={opening || sending || buildBusy} onClick={() => setDetails(true)}><Ellipsis size={22} /></button>
       </header>
-      {space === "build" ? (
-        <div className="m-thread-switch">
-          <div className="m-segments is-compact" role="group" aria-label="建造面板与对话" style={{ "--m-count": 2, "--m-index": pane === "build" ? 0 : 1 } as CSSProperties}>
-            <i className="m-glider" aria-hidden="true" />
-            <button type="button" aria-label="建造面板" aria-pressed={pane === "build"} onClick={() => setPane("build")}>面板</button>
-            <button type="button" aria-label="查看对话" aria-pressed={pane === "chat"} onClick={() => setPane("chat")}>对话{loom.active?.pendingApproval ? " · 待批准" : ""}</button>
-          </div>
-        </div>
-      ) : null}
-      {space === "build" && !opening ? <div className="m-stage m-build-stage" hidden={pane !== "build"}><MobileBuildPanel key={thread?.id || "draft"} threadId={thread?.id} workspace={thread?.workspace || draftWorkspace} online={online} chatting={running} visible={pane === "build"} attachments={attachments.filter((item) => item.status === "ready").map((item) => ({ path: item.path!, name: item.file.name }))} attachmentsReady={attachmentsReady && !picking && !sending} onConsumeAttachments={() => queue.clear()} onBudget={setWeaveBudget} onBusy={setBuildBusy} onOpenAgent={onOpenAgent} /></div> : null}
+      {space === "build" && !opening ? <div className="m-stage m-build-stage" hidden={pane !== "build"}><MobileBuildPanel items={loom.items} dock={buildDock} branch={branch} onBranch={chooseBranch} key={thread?.id || "draft"} threadId={thread?.id} workspace={thread?.workspace || draftWorkspace} online={online} chatting={running} visible={true} attachments={attachments.filter((item) => item.status === "ready").map((item) => ({ path: item.path!, name: item.file.name }))} attachmentsReady={attachmentsReady && !picking && !sending} onConsumeAttachments={() => queue.clear()} onBudget={setWeaveBudget} onBusy={setBuildBusy} onOpenAgent={onOpenAgent} /></div> : null}
       {opening ? (
         <div className="m-stage is-opening"><Skeleton rows={4} /></div>
       ) : blank ? (
@@ -645,6 +640,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
           ) : null}
         </div>
       )}
+      {space === "build" ? <div ref={setBuildDock} className="m-build-dock" /> : null}
       <footer className="m-composer">
         {thread?.archived ? <p className="m-alert">此对话已归档，可在详情中恢复后继续。</p> : null}
         <Fold open={Boolean(error)}><p className="m-alert" role="alert"><CircleAlert size={16} strokeWidth={1.75} />{error}</p></Fold>
@@ -674,7 +670,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
         </div>
       </footer>
       <Controls open={controls} loom={loom} online={online} onClose={() => setControls(false)} />
-      <ThreadActions open={details} loom={loom} online={online} running={running} space={space} modeLocked={sending || buildBusy || opening} onMode={(next) => { setDetails(false); onMode(next); setPane(next === "build" ? "build" : "chat"); }} onClose={() => setDetails(false)} onLeave={onBack} />
+      <ThreadActions open={details} loom={loom} online={online} running={running} space={space} modeLocked={sending || buildBusy || opening} onMode={(next) => { setDetails(false); onMode(next); chooseBranch(null); }} onClose={() => setDetails(false)} onLeave={onBack} />
     </div>
   );
 }
@@ -852,7 +848,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
     if (!open) return;
     // The system Back key: cancelling the event tells the shell it was handled.
     const back = (event: Event) => {
-      if (event.defaultPrevented || document.querySelector('.m-sheet-host:not([inert]), .user-message-image-lightbox:not([inert])')) return;
+      if (event.defaultPrevented || document.querySelector('.m-sheet-host:not([inert]), .user-message-image-lightbox:not([inert]), .m-branch-content:not([data-branch=closed])')) return;
       event.preventDefault(); setOpen(null);
     };
     window.addEventListener("loom:mobile-back", back);

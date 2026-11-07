@@ -51,6 +51,7 @@ try {
   await page.getByRole("button", { name: "仅允许这次", exact: true }).waitFor();
   await shot(page, "03-live-build-and-approval");
   await page.getByRole("button", { name: "仅允许这次", exact: true }).click();
+  await page.getByRole("navigation", { name: "建造支路" }).getByRole("button", { name: "预算", exact: true }).click();
   await page.getByRole("button", { name: "暂停建造", exact: true }).waitFor();
   assert.deepEqual((await calls(page, "projectRun/approval")).at(-1), { runId: "run-1", sessionId: "agent-1", decision: "accept" });
   await page.evaluate(() => { window.__shell.loseNextControlReply = true; });
@@ -73,7 +74,7 @@ try {
   const resume = (await calls(page, "projectRun/resume")).at(-1);
   assert.equal(resume.tokenBudget, 1500000); assert.equal(resume.maxEpisodes, 800); assert.equal(resume.expectedRevision, 3);
   await shot(page, "04-edited-stage-budget");
-  await page.getByRole("button", { name: "查看对话", exact: true }).click();
+  await page.getByRole("button", { name: "收起支路，返回对话", exact: true }).click();
   await page.getByRole("button", { name: "对话详情与操作" }).click();
   await page.getByRole("dialog", { name: "对话详情与操作" }).waitFor();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent("loom:mobile-back", { cancelable: true })));
@@ -84,6 +85,7 @@ try {
   const proposal = await open("?proposal=1", 320, 700);
   await proposal.getByRole("navigation").getByRole("button", { name: "建造", exact: true }).click();
   await proposal.getByText("Loom 账号页重做", { exact: true }).click();
+  await proposal.getByRole("navigation", { name: "建造支路" }).getByRole("button", { name: "预算", exact: true }).click();
   await proposal.getByLabel("总 token 预算", { exact: true }).fill("750000");
   await proposal.getByLabel("并发 Agent 数", { exact: true }).fill("3");
   await proposal.getByLabel("执行轮次上限", { exact: true }).fill("600");
@@ -99,7 +101,7 @@ try {
   await proposal.getByRole("button", { name: "暂停建造", exact: true }).waitFor();
   const start = (await calls(proposal, "projectWeave/start")).at(-1);
   assert.deepEqual(start, { threadId: "thread-build", proposalId: "proposal-1", operationId: "weave:proposal-1", tokenBudget: 750000, maxEpisodes: 600, maxWorkers: 3, maxMilestones: 12, permissionMode: "full-access", attachments: [] });
-  await proposal.getByRole("button", { name: "查看对话", exact: true }).click();
+  await proposal.getByRole("button", { name: "收起支路，返回对话", exact: true }).click();
   await proposal.getByRole("textbox", { name: "发消息", exact: true }).fill("确认最新计划");
   await proposal.getByRole("button", { name: "发送", exact: true }).click();
   await proposal.waitForFunction(() => window.__shell.calls.some((call) => call.args[0] === "turn/start"));
