@@ -131,7 +131,7 @@ def test_existing_builtin_thread_migrates_and_rebinds_after_account_change(tmp_p
     cleared, bindings, saved = [], [], []
     service.runtime = NS(has_session_model=lambda value: True, clear_session_model=cleared.append,
         set_session_model=lambda *args, **kwargs: None)
-    service.store = NS(save=saved.append)
+    service.store = NS(save=lambda value, **_: saved.append(value))
     monkeypatch.setattr(module, "build_runtime_model_platform", lambda **kwargs: bindings.append(kwargs) or object())
     monkeypatch.setattr(module, "validate_runtime_reasoning", lambda **kwargs: None)
     service._loom_account_model_credential = "loom_model_account_A"

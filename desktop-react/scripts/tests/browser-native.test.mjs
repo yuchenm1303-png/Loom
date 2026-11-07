@@ -13,18 +13,20 @@ test("native browser keeps its automation HUD inside the consented page and out 
   const directory = mkdtempSync(join(tmpdir(), "loom-browser-native-"));
   try {
     buildSync({ entryPoints: [join(project,"electron/embeddedBrowser.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron"], outfile: join(directory,"native.cjs") });
+    buildSync({ entryPoints: [join(project,"electron/pageActions.ts")], bundle: true, platform: "node", format: "cjs", outfile: join(directory,"page-actions.cjs"), external: ["electron"] });
     writeFileSync(join(directory,"main.cjs"), `
       const {app,BrowserWindow,nativeImage}=require('electron');
       const {readFileSync}=require('node:fs');
       const {createServer}=require('node:http');
       const assert=require('node:assert/strict');
       const {EmbeddedBrowserManager}=require('./native.cjs');
+      const {loadRunPageAction}=require('./page-actions.cjs');
       app.setPath('userData',__dirname+'/profile');
       app.whenReady().then(async()=>{
         const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end('<title>Native preview</title><h1>Preview workspace</h1><p>Preview workspace</p><button style="position:absolute;left:100px;top:180px;width:100px;height:36px" onclick="window.clicked=(window.clicked||0)+1">Test click</button><input style="position:absolute;left:100px;top:240px" />');});
         await new Promise(r=>server.listen(0,'127.0.0.1',r));
         const win=new BrowserWindow({width:900,height:700,show:false});
-        const manager=new EmbeddedBrowserManager(win,()=>readFileSync(${JSON.stringify(resolve(project,"../extensions/browser-current-tab/browser-hud.js"))},'utf8'));
+        const manager=new EmbeddedBrowserManager(win,()=>readFileSync(${JSON.stringify(resolve(project,"../extensions/browser-current-tab/browser-hud.js"))},'utf8'),()=>loadRunPageAction(${JSON.stringify(resolve(project,"../extensions/browser-current-tab/background.js"))}));
         const active=()=>{const state=manager.snapshot();return state.tabs.find(t=>t.id===state.activeId)};
         const waitFor=async(fn)=>{for(let i=0;i<150;i++){if(await fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('native state timed out '+JSON.stringify(active()))};
         try {

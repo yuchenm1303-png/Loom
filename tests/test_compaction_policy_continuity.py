@@ -85,7 +85,7 @@ def test_production_checkpoint_uses_provider_calibration_for_the_capacity_gate(t
                 data={"estimated_input_tokens_after": 10_000})
             runtime._record(session, AgentEventKind.MODEL_RESPONSE,
                 data={"usage": {"input_tokens": 7000}})
-        checkpoint = runtime.compact_context(session.session_id, "evidence " * 6500)
+        checkpoint = runtime.compact_context(session.session_id, "evidence " * 6000)
         record = [event.data["context_after_compaction"] for event in store.events(session.session_id)
             if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED][-1]
         assert record["estimated_input_tokens_after"] > record["resolved_input_budget_tokens"]

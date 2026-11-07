@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronRight, ChevronDown, Globe2, Plus, RotateCcw, Search, Settings, Clock3, UserRound, X } from "./icons";
-import { CalendarDays, MapPin } from "lucide-react";
+import { CalendarDays, MapPin } from "./icons";
+import { useReducedMotion } from "../motion/useReducedMotion";
 import "./home-computer-demo.css";
 import { HomeComputerHud } from "./HomeComputerHud";
 
@@ -15,7 +16,7 @@ export function HomeComputerDemo({ zh }: { zh: boolean }) {
   const [step, setStep] = useState(0);
   const [visible, setVisible] = useState(false);
   const [pageVisible, setPageVisible] = useState(!document.hidden);
-  const [reduced, setReduced] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const reduced = useReducedMotion();
   const [typed, setTyped] = useState(0);
   const [run, setRun] = useState(0);
   const [point, setPoint] = useState({ x: 0, y: 0 });
@@ -34,15 +35,12 @@ export function HomeComputerDemo({ zh }: { zh: boolean }) {
   }, []);
 
   useEffect(() => {
-    const media = matchMedia("(prefers-reduced-motion: reduce)");
-    const motion = () => setReduced(media.matches);
     const page = () => setPageVisible(!document.hidden);
-    media.addEventListener("change", motion);
     document.addEventListener("visibilitychange", page);
     const observer = typeof IntersectionObserver === "function" ? new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: .25 }) : null;
     if (stage.current) observer?.observe(stage.current);
     if (!observer) setVisible(true);
-    return () => { observer?.disconnect(); media.removeEventListener("change", motion); document.removeEventListener("visibilitychange", page); };
+    return () => { observer?.disconnect(); document.removeEventListener("visibilitychange", page); };
   }, []);
 
   useEffect(() => {

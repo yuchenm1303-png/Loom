@@ -1,7 +1,7 @@
 .loom-editorial .computer-demo-section { align-items: center; row-gap: 32px; padding-top: 36px; border-top: 1px solid var(--ed-rule); }
 .computer-demo-copy { grid-column: 1 / span 4; min-width: 0; align-self: start; padding-top: 40px; }
 .computer-demo-eyebrow { margin: 0 0 20px; font: 11px/1.4 "Segoe UI", sans-serif; letter-spacing: .12em; color: var(--ed-ink-faint); }
-.computer-demo-copy > p:not(.computer-demo-eyebrow) { font-size: 19px; line-height: 1.65; margin: 24px 0; }
+.computer-demo-copy > p:not(.computer-demo-eyebrow) { font-size: 20px; line-height: 1.65; margin: 24px 0; }
 .computer-demo-request { font-style: italic; }
 .computer-demo-explanation { display: flex; gap: 18px; border-top: 1px solid var(--ed-rule-soft); padding-top: 22px; margin-top: 30px; min-height: 104px; }
 .computer-demo-explanation > span { font-size: 14px; color: var(--ed-ink-faint); }
@@ -48,7 +48,7 @@
 .computer-demo-calendar-account small { display: block; color: var(--ed-ink-faint); font-size: 10px; margin-top: 2px; }
 .computer-demo-calendar-main { min-width: 0; }
 .computer-demo-calendar-head { height: 88px; display: flex; gap: 24px; align-items: center; padding: 0 30px; }
-.computer-demo-calendar-head > strong { font-weight: 500; font-size: 21px; }
+.computer-demo-calendar-head > strong { font-weight: 500; font-size: 20px; }
 .computer-demo-today { padding: 6px 14px; border: 1px solid var(--ed-rule); border-radius: 7px; font-size: 11px; color: var(--ed-ink-muted); }
 .computer-demo-date-arrows, .computer-demo-calendar-tools, .computer-demo-calendar-tools > span { display: flex; align-items: center; gap: 20px; color: var(--ed-ink-faint); }
 .computer-demo-calendar-tools { margin-left: auto; }
@@ -56,7 +56,7 @@
 .computer-demo-week { display: grid; grid-template-columns: 58px repeat(5, minmax(0, 1fr)); height: 79px; border-bottom: 1px solid var(--ed-rule-soft); align-items: center; }
 .computer-demo-week > span { text-align: center; color: var(--ed-ink-faint); font-size: 10px; }
 .computer-demo-week > span:first-child { align-self: end; padding-bottom: 10px; font-size: 9px; }
-.computer-demo-week b { display: grid; place-items: center; width: 32px; height: 32px; margin: 5px auto 0; font-size: 23px; font-weight: 400; }
+.computer-demo-week b { display: grid; place-items: center; width: 32px; height: 32px; margin: 5px auto 0; font-size: 24px; font-weight: 400; }
 .computer-demo-week .is-today b { color: var(--ed-paper-soft); background: var(--ed-ink-muted); border-radius: 50%; }
 .computer-demo-all-day { height: 32px; display: flex; align-items: center; border-bottom: 1px solid var(--ed-rule-soft); font-size: 10px; color: var(--ed-ink-faint); }
 .computer-demo-all-day > span:first-child { width: 58px; text-align: center; font-size: 9px; }

@@ -147,6 +147,8 @@ def test_the_backlog_scan_is_not_paid_on_the_requests_thread(tmp_path):
     real_last_event = store.last_event
 
     def slow_last_event(session_id, kinds):
+        if Event.VERIFICATION_UPDATED in kinds:
+            return real_last_event(session_id, kinds)  # the turn's own indexed read, not the scan
         scan_threads.append(threading.current_thread().name)
         scanning.set()
         release.wait(timeout=10)

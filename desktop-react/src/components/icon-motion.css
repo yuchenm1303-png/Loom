@@ -579,3 +579,12 @@ img.loom-icon {
   13.21%, 20% { transform: translate(-20px, 20px); animation-timing-function: var(--ic-spring); }
   100% { transform: none; }
 }
+
+/* The build switch's weft thread, while its mode is on. */
+.pf-toggle button[data-on] .li-weft {
+  stroke-dasharray: 1;
+  animation: pf-weft-draw var(--loom-dur-slow) var(--loom-ease-out) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-toggle button[data-on] .li-weft { animation: none; }
+}

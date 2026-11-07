@@ -102,7 +102,8 @@ html[data-loom-theme="light"] .pf-stage {
   transition: opacity var(--loom-dur-base) var(--loom-ease-out);
   /* Stepped: 16 moves of 1.5px a period (~18 a second). Smooth at 165 Hz it cost ~150 ms of main thread a second
      (style + paint every frame); stepped it measures the same as no beads. */
-  animation: pf-flow var(--loom-period-spin) steps(16) infinite, pf-fade var(--loom-dur-base) var(--loom-ease-out) var(--loom-dur-panel) backwards;
+  --pf-dash-period: var(--loom-period-spin);
+  animation: pf-flow var(--pf-dash-period) steps(16) infinite, pf-fade var(--loom-dur-base) var(--loom-ease-out) var(--loom-dur-panel) backwards;
 }
 .pf-cables[data-moving] .pf-flow { opacity: 0; transition: opacity var(--loom-dur-press) var(--loom-ease-exit); }
 @keyframes pf-flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 24; } }
@@ -874,7 +875,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-send[data-stop] > svg { animation: pf-mark-in var(--loom-dur-base) var(--loom-spring-pop) backwards; }
 /* The paperclip sits in the field's lower right corner; the text keeps clear of it. */
 .pf-input { position: relative; }
-.pf-input:has(> .pf-attach) textarea { padding-right: 30px; }
+.pf-input.has-attach textarea { padding-right: 30px; }
 .pf-attach {
   position: absolute;
   right: 7px;
@@ -961,7 +962,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 
 .pf-error { margin: 0; padding: 0 8px; color: var(--semantic-danger-text); font-size: 12px; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 
-.pf-busy { animation: pf-spin var(--loom-period-spin) linear infinite; }
+.pf-busy { animation: li-spin var(--ic-t-spin) linear infinite; }
 
 /* Needs you: one calm line under the narration, with the action that resolves it. */
 .pf-attention {
@@ -1111,7 +1112,6 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
   cursor: pointer;
   transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
 }
-.pf-model-chip > span:not(.cp-mark) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 /* Open: a short rule of the accent under the chip says its card is out, as the head's marks do. */
 .pf-model-chip { position: relative; }
 .pf-model-chip::after,
@@ -1198,7 +1198,6 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 @media (prefers-reduced-motion: reduce) {
   .pf-usage-row, .pf-usage-meter > i { animation: none; transition: none; }
 }
-.pf-model-now .cp-mark { animation: pf-mark-in var(--loom-dur-base) var(--loom-ease-move) backwards; }
 .pf-model-copy { display: grid; min-width: 0; }
 .pf-model-copy strong { overflow: hidden; color: var(--pl-ink); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .pf-model-copy > span { display: flex; align-items: center; gap: 6px; overflow: hidden; color: var(--pl-faint); font-size: 11.5px; white-space: nowrap; }
@@ -1291,7 +1290,6 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
   cursor: pointer;
   transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out);
 }
-.pf-model-option > span:not(.cp-mark) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-model-option > svg { flex: none; color: var(--pl-accent); }
 .pf-model-option:hover:not(:disabled) { background: var(--pf-well); color: var(--pl-ink); }
 .pf-model-option[aria-pressed="true"] { color: var(--pl-ink); cursor: default; }
@@ -1506,7 +1504,7 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 .pf-task[data-state="review"] .pf-task-mark { background: color-mix(in srgb, var(--pf-live) 18%, transparent); color: var(--pf-live); }
 .pf-task[data-state="rework"] .pf-task-mark { color: var(--pf-warn); }
 /* The one loop on a task: a working task's mark turns. */
-.pf-task[data-state="working"] .pf-task-mark svg { animation: pf-spin var(--loom-period-spin) linear infinite; }
+.pf-task[data-state="working"] .pf-task-mark svg { animation: li-spin var(--ic-t-spin) linear infinite; }
 
 /* Agents. */
 .pf-agent { width: 100%; box-sizing: border-box; }
@@ -1641,7 +1639,6 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 /* Out of the model's name (a strip as wide as it, at the card's lower left) to the whole card, and back. */
 /* Both ends are insets: from an inset to `none` a clip does not interpolate, it jumps. */
 @keyframes pf-wash { from { transform: translateX(-100%); } }
-@keyframes pf-spin { to { rotate: 360deg; } }
 @keyframes pf-breathe { 0%, 100% { opacity: .45; scale: .8; } 50% { opacity: 1; scale: 1; } }
 
 /* The 对话 / 建造 switch (modeMorph.ts) carries the chat composer into the hub and back.
@@ -1672,8 +1669,6 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
   .pf-task[data-state="working"] .pf-task-mark svg,
   .pf-task-wash,
   .pf-model-now,
-  .pf-model-now .cp-mark,
-  .pf-model-chip > span:not(.cp-mark),
   .pf-file,
   .pf-dirty-body,
   .pf-loom,

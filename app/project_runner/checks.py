@@ -169,7 +169,7 @@ def _make_portable(script, target, scratch, workspace):
 def _root_pattern(root, *, tail=False):
     """An absolute folder as a script may spell it: either separator, doubled backslashes, any case."""
     parts = [re.escape(part) for part in Path(root).resolve().as_posix().split("/") if part]
-    pattern = r"[\\/]{1,2}".join(parts) + r"(?=[\\/\s\"'`]|$)"
+    pattern = r"[\\/]{0,2}" + r"[\\/]{1,2}".join(parts) + r"(?=[\\/\s\"'`]|$)"
     if tail:
         pattern += r"((?:[\\/]{1,2}[^\\/\s\"'`]+)+)"
     return re.compile(pattern, re.IGNORECASE)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, FolderOpen, FolderSearch, Lock } from "lucide-react";
+import { Check, ChevronDown, FolderOpen, FolderSearch, Lock } from "./icons";
 import type { ProjectRecord } from "../types/loom";
 
 export interface WorkspaceState {

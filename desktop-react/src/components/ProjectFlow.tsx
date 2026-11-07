@@ -21,7 +21,7 @@ import {
   ArrowDown, ArrowUp, Bot, BookMarked, ChartGantt, Check, Circle, CircleDot, Compass, Copy, File, FileCode, FileImage,
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldAlert, ShieldCheck,
   History, ListChecks, Search, Sparkles, Square, X, Gauge, RefreshCw, ExternalLink,
-} from "lucide-react";
+} from "./icons";
 import { BuildHistory, type BuildHistoryEntry } from "./BuildHistory";
 import { NewConversationRow } from "./NewConversationRow";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -1331,7 +1331,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
             {data.controls.resume ? <button type="button" className="pf-control" aria-label={text.resume} title={text.resume} disabled={actions.busy} onClick={actions.onResume}><Play size={12} /></button> : null}
             {data.controls.cancel ? <button type="button" className="pf-control" aria-label={text.stop} title={text.stop} disabled={actions.busy} onClick={actions.onCancel}><Square size={11} /></button> : null}
           </header>
-          <div className="pf-well pf-input">
+          <div className={`pf-well pf-input${attaching && actions.onPickFiles ? " has-attach" : ""}`}>
             <ComposerAttachmentStrip attachments={attached} imagesAllowed={actions.imagesAllowed ?? true} onRemove={unattach} />
             <textarea ref={input} value={draft} rows={draftMode ? 3 : 2}
                       onChange={(event) => setDraft(event.target.value)}

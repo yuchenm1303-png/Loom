@@ -42,7 +42,7 @@ function QrCode({ value, label }: { value: string; label: string }) {
     code.make();
     return code.createSvgTag({ cellSize: 5, margin: 0, scalable: true });
   }, [value]);
-  return <div className="mp-qr" role="img" aria-label={label} dangerouslySetInnerHTML={{ __html: svg }} />;
+  return <div className="dvc-qr" role="img" aria-label={label} dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 export function MobilePairingPanel() {
@@ -123,100 +123,100 @@ export function MobilePairingPanel() {
 
   const when = (seconds: number) => new Date(seconds * 1000).toLocaleString();
 
-  if (!available) return <p className="mp-note">{copy.desktopOnly}</p>;
+  if (!available) return <p className="dvc-note">{copy.desktopOnly}</p>;
 
   return (
-    <div className="mp">
+    <div className="dvc">
       <div className="settings-page-heading"><div><h1>{copy.title}</h1><p>{copy.intro}</p></div></div>
 
       {claim ? (
-        <section className="mp-panel is-confirm" key="confirm" aria-live="polite">
-          <strong className="mp-code" aria-label={claim.confirmCode}>{claim.confirmCode.split("").map((digit, index) => <span aria-hidden="true" key={index}>{digit}</span>)}</strong>
-          <div className="mp-copy">
+        <section className="dvc-panel is-confirm" key="confirm" aria-live="polite">
+          <strong className="dvc-code" aria-label={claim.confirmCode}>{claim.confirmCode.split("").map((digit, index) => <span aria-hidden="true" key={index}>{digit}</span>)}</strong>
+          <div className="dvc-copy">
             <h2>{copy.confirm(claim.phoneName)}</h2>
             <p>{copy.compare}</p>
-            <div className="mp-actions">
-              <button type="button" className="mp-button is-primary" disabled={busy} onClick={() => void decide(true)}>{copy.allow}</button>
-              <button type="button" className="mp-button" disabled={busy} onClick={() => void decide(false)}>{copy.deny}</button>
+            <div className="dvc-actions">
+              <button type="button" className="dvc-button is-primary" disabled={busy} onClick={() => void decide(true)}>{copy.allow}</button>
+              <button type="button" className="dvc-button" disabled={busy} onClick={() => void decide(false)}>{copy.deny}</button>
             </div>
           </div>
         </section>
       ) : pairing && !expired ? (
-        <section className="mp-panel is-code" key="code">
-          <div className="mp-qr-frame">
+        <section className="dvc-panel is-code" key="code">
+          <div className="dvc-qr-frame">
             <QrCode value={pairing.code} label={copy.scan} />
-            <i className="mp-time" aria-hidden="true" style={{ transform: `scaleX(${Math.max(0, (pairing.deadline - now) / (pairing.lifetime))})` }} />
+            <i className="dvc-time" aria-hidden="true" style={{ transform: `scaleX(${Math.max(0, (pairing.deadline - now) / (pairing.lifetime))})` }} />
           </div>
-          <div className="mp-copy">
+          <div className="dvc-copy">
             <h2>{copy.scanTitle}</h2>
             <ol>{copy.steps.map((step) => <li key={step}>{step}</li>)}</ol>
             <small>{copy.expires(Math.max(0, Math.ceil((pairing.deadline - now) / 1000)))}</small>
-            <div className="mp-actions"><button type="button" className="mp-button" onClick={reset}>{copy.cancel}</button></div>
+            <div className="dvc-actions"><button type="button" className="dvc-button" onClick={reset}>{copy.cancel}</button></div>
           </div>
         </section>
       ) : (
-        <section className="mp-panel is-idle" key="idle">
-          <div className="mp-copy">
+        <section className="dvc-panel is-idle" key="idle">
+          <div className="dvc-copy">
             <h2>{pairing ? copy.expired : copy.addTitle}</h2>
             <p>{copy.addHint}</p>
           </div>
-          <button type="button" className="mp-button is-primary" disabled={busy} onClick={() => void start()}>{busy ? copy.adding : pairing ? copy.retry : copy.add}</button>
+          <button type="button" className="dvc-button is-primary" disabled={busy} onClick={() => void start()}>{busy ? copy.adding : pairing ? copy.retry : copy.add}</button>
         </section>
       )}
 
-      {notice ? <p className="mp-note" role="status">{notice}</p> : null}
-      {error ? <p className="mp-note is-error" role="alert">{error}</p> : null}
+      {notice ? <p className="dvc-note" role="status">{notice}</p> : null}
+      {error ? <p className="dvc-note is-error" role="alert">{error}</p> : null}
 
-      <section className="mp-list">
+      <section className="dvc-list">
         <h2>{copy.phones}</h2>
         {devices.phones.length ? (
-          <div className="mp-rows">
+          <div className="dvc-rows">
             {devices.phones.map((phone) => (
-              <div className="mp-phone" key={phone.id}>
-                <i className={`mp-dot${phone.online ? " is-online" : ""}`} aria-hidden="true" />
+              <div className="dvc-phone" key={phone.id}>
+                <i className={`dvc-dot${phone.online ? " is-online" : ""}`} aria-hidden="true" />
                 <div>
                   <strong>{phone.name}</strong>
                   <small>{phone.online ? copy.online : `${copy.lastUsed} · ${when(phone.last_used_at)}`} · {copy.paired} {new Date(phone.created_at * 1000).toLocaleDateString()}</small>
                 </div>
                 {revoking === phone.id ? (
-                  <span className="mp-row-actions">
-                    <button type="button" className="mp-button" onClick={() => setRevoking("")}>{copy.keep}</button>
-                    <button type="button" className="mp-button is-danger" onClick={() => void revoke(phone)}>{copy.confirmRevoke}</button>
+                  <span className="dvc-row-actions">
+                    <button type="button" className="dvc-button" onClick={() => setRevoking("")}>{copy.keep}</button>
+                    <button type="button" className="dvc-button is-danger" onClick={() => void revoke(phone)}>{copy.confirmRevoke}</button>
                   </span>
-                ) : <button type="button" className="mp-button" onClick={() => setRevoking(phone.id)}>{copy.revoke}</button>}
+                ) : <button type="button" className="dvc-button" onClick={() => setRevoking(phone.id)}>{copy.revoke}</button>}
               </div>
             ))}
           </div>
-        ) : <p className="mp-note">{copy.none}</p>}
-        {devices.phones.length ? <p className="mp-note">{copy.trustNote}</p> : null}
+        ) : <p className="dvc-note">{copy.none}</p>}
+        {devices.phones.length ? <p className="dvc-note">{copy.trustNote}</p> : null}
       </section>
 
-      <section className="mp-list">
+      <section className="dvc-list">
         <h2>{copy.computers}</h2>
         {devices.computers.length ? (
-          <div className="mp-rows">
+          <div className="dvc-rows">
             {devices.computers.map((computer) => (
-              <div className="mp-phone" key={computer.id}>
-                <i className={`mp-dot${computer.online ? " is-online" : ""}`} aria-hidden="true" />
+              <div className="dvc-phone" key={computer.id}>
+                <i className={`dvc-dot${computer.online ? " is-online" : ""}`} aria-hidden="true" />
                 <div>
                   <strong>{computer.name || computer.id.slice(0, 8)}{computer.id === devices.thisComputer ? <em>{copy.thisComputer}</em> : null}</strong>
                   <small>{computer.online ? copy.online : `${copy.lastSeen} · ${when(computer.last_seen_at)}`}{computer.version ? ` · Loom ${computer.version}` : ""}</small>
                 </div>
-                {!computer.online && computer.id !== devices.thisComputer ? <button type="button" className="mp-button" onClick={() => void forget("computer", computer.id)}>{copy.forget}</button> : null}
+                {!computer.online && computer.id !== devices.thisComputer ? <button type="button" className="dvc-button" onClick={() => void forget("computer", computer.id)}>{copy.forget}</button> : null}
               </div>
             ))}
           </div>
-        ) : <p className="mp-note">{copy.noComputers}</p>}
+        ) : <p className="dvc-note">{copy.noComputers}</p>}
       </section>
 
       {devices.history.length ? (
-        <section className="mp-list">
+        <section className="dvc-list">
           <h2>{copy.history}</h2>
-          <div className="mp-rows">
+          <div className="dvc-rows">
             {devices.history.map((phone) => (
-              <div className="mp-phone" key={phone.id}>
+              <div className="dvc-phone" key={phone.id}>
                 <div><strong>{phone.name}</strong><small>{copy.removedAt} {when(phone.removed_at)}</small></div>
-                <button type="button" className="mp-button" onClick={() => void forget("phone", phone.id)}>{copy.forget}</button>
+                <button type="button" className="dvc-button" onClick={() => void forget("phone", phone.id)}>{copy.forget}</button>
               </div>
             ))}
           </div>

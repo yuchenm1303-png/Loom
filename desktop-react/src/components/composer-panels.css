@@ -1677,3 +1677,12 @@ html[data-loom-theme="light"] .model-usage-value.is-low {
 :root .composer-wrap.composer-refined .composer-toolbar :is(.composer-chip, .composer-tool)[aria-expanded="true"] svg {
   color: var(--cq-ink);
 }
+
+/* The build hub's model chip and list sit on this sheet's mark. */
+.pf-model-chip > span:not(.cp-mark) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.pf-model-now .cp-mark { animation: pf-mark-in var(--loom-dur-base) var(--loom-ease-move) backwards; }
+.pf-model-option > span:not(.cp-mark) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .pf-model-now .cp-mark,
+  .pf-model-chip > span:not(.cp-mark) { animation: none; }
+}

@@ -281,7 +281,7 @@ def test_thread_model_switch_uses_canonical_server_connection(monkeypatch, tmp_p
             reasoning=reasoning,
         )
     )
-    service.store = SimpleNamespace(save=lambda value: saved.append(value))
+    service.store = SimpleNamespace(save=lambda value, **_: saved.append(value))
     service._record = lambda value, active=False: {
         "id": value.session_id,
         "modelSelection": value.model_selection,
@@ -455,7 +455,7 @@ def test_thread_runtime_rebuild_heals_a_stale_vision_record(monkeypatch, tmp_pat
         clear_session_model=lambda _session_id: None,
         set_session_model=lambda *_args, **_kwargs: None,
     )
-    service.store = SimpleNamespace(save=lambda value: saved.append(value))
+    service.store = SimpleNamespace(save=lambda value, **_: saved.append(value))
 
     monkeypatch.setattr(
         app_server_reasoning,

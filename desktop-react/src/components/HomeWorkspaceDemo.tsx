@@ -1,3 +1,4 @@
+import { useReducedMotion } from "../motion/useReducedMotion";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, FolderOpen, ArrowRight, PanelRight, Search, Pencil, ChevronRight, ChevronDown, Globe2, FileDiff, Terminal, Settings, Paperclip, KeyRound, SlidersHorizontal, Layers, CircleAlert, Archive } from "./icons";
 import { ActivityGlyph } from "./ToolIdentity";
@@ -11,7 +12,7 @@ export function HomeWorkspaceDemo({ zh, ready }: { zh: boolean; ready: boolean }
   const [playing, setPlaying] = useState(true);
   const [visible, setVisible] = useState(false);
   const [pageVisible, setPageVisible] = useState(!document.hidden);
-  const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const reduced = useReducedMotion();
   const [tab, setTab] = useState<"activity" | "diff">("activity");
   const [run, setRun] = useState(0);
   const labels = zh ? ["读取项目", "修改代码", "运行测试", "等待批准", "已完成"] : ["Read project", "Edit code", "Run tests", "Your approval", "Complete"];
@@ -23,17 +24,13 @@ export function HomeWorkspaceDemo({ zh, ready }: { zh: boolean; ready: boolean }
   }, [step, tab, run]);
 
   useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const motion = () => setReduced(media.matches);
     const visibility = () => setPageVisible(!document.hidden);
-    media.addEventListener("change", motion);
     document.addEventListener("visibilitychange", visibility);
     if (typeof IntersectionObserver !== "function") setVisible(true);
     const observer = typeof IntersectionObserver === "function" ? new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: .15 }) : null;
     if (root.current) observer?.observe(root.current);
     return () => {
       observer?.disconnect();
-      media.removeEventListener("change", motion);
       document.removeEventListener("visibilitychange", visibility);
     };
   }, []);

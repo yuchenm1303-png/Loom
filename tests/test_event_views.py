@@ -297,8 +297,8 @@ def test_a_selection_builds_only_the_events_it_keeps(store, monkeypatch):
     _second_turn(store)
     store.context_events(SESSION)  # parse once, as a running session has
     built = []
-    real = storage._build_event
-    monkeypatch.setattr(storage, "_build_event", lambda record, shared: built.append(record["event_id"]) or real(record, shared))
+    real = storage._event_from_payload
+    monkeypatch.setattr(storage, "_event_from_payload", lambda payload: built.append(payload["event_id"]) or real(payload))
     kept = store.context_select(SESSION, turn_id="turn-2", kinds=(E.TOOL_STARTED,))
     assert [e.event_id for e in kept] == ["event-10", "event-13"] and built == ["event-10", "event-13"]
     built.clear()

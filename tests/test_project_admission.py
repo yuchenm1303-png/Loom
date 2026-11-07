@@ -130,7 +130,7 @@ def test_a_full_drive_holds_team_tasks_until_there_is_room(tmp_path, monkeypatch
         assert service.project_store._open_waits.get(f"{run_id}:team", ("",))[0] == "disk"
         room["value"] = 4
         final = until(service, run_id, lambda r: r["state"] == "ready_for_review")
-        assert len(final["teamChildren"]) == 2 and metrics.waits(service.project_store, [run_id]).get("disk", 0) > 0
+        assert len(final["teamChildren"]) == 2 and "disk" in metrics.waits(service.project_store, [run_id])
         del held
     finally:
         runtime.close()

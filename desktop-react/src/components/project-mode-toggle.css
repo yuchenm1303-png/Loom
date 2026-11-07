@@ -53,10 +53,6 @@
 }
 
 /* Choosing 建造 draws the slash of its </> once. */
-.pf-toggle button[data-on] .li-weft {
-  stroke-dasharray: 1;
-  animation: pf-weft-draw var(--loom-dur-slow) var(--loom-ease-out) backwards;
-}
 
 .pf-toggle button:focus-visible {
   outline: 2px solid var(--pl-focus);
@@ -65,9 +61,6 @@
 
 @keyframes pf-weft-draw { from { stroke-dashoffset: 1; } }
 
-@media (prefers-reduced-motion: reduce) {
-  .pf-toggle button[data-on] .li-weft { animation: none; }
-}
 
 /* Where the mode replaces the transcript and composer: rows 2.. of the workspace grid, on the
    conversation's own canvas (the workspace behind it is darker and showed as a frame).

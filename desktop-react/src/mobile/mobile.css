@@ -69,7 +69,6 @@ html[data-loom-surface="mobile"] .m-row {
   display: flex; align-items: center; gap: 12px; text-align: left;
   transition: background-color var(--loom-dur-fast) var(--loom-ease-out);
 }
-.m-row:active:not(:disabled), .m-choice:active:not(:disabled) { background: var(--loom-workspace-hover); }
 .m-row > small { flex: none; font-size: 13px; color: var(--loom-workspace-muted); }
 .m-row-text { min-width: 0; flex: 1; }
 .m-row-text strong { display: block; font-size: 15px; font-weight: 500; line-height: 1.4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -247,9 +246,6 @@ html[data-loom-surface="mobile"] .m-round {
   transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
   animation: m-mark-settle var(--loom-dur-flow) var(--m-soft);
 }
-/* Controls without words may give under the thumb; glyphs answer, labels stay still. */
-.m-round svg, .m-tool svg, .m-icon-button svg, .m-new i svg { transition: transform var(--loom-dur-press) var(--loom-ease-out); }
-.m-round:active:not(:disabled) svg, .m-tool:active:not(:disabled) svg, .m-icon-button:active svg, .m-new button:active i svg { transform: scale(.86); }
 html[data-loom-surface="mobile"] .m-round.is-send { background: var(--m-run); color: var(--m-on-run); }
 html[data-loom-surface="mobile"] .m-round.is-stop { background: var(--loom-workspace-ink); color: var(--loom-workspace-canvas); }
 html[data-loom-surface="mobile"] .m-round:disabled, .m-tool:disabled { opacity: .4; }

@@ -95,8 +95,8 @@ def test_read_only_commands_spawn_no_scans_and_writers_spawn_one_per_side(tmp_pa
     try:
         result = runtime.start_turn(session.session_id, "Look, then write a note")
         assert result.status is AgentStatus.COMPLETED
-        # One baseline at turn start, none for the read, one before and one after the writer.
-        assert len(calls) == 3
+        # The baseline is deferred, so: none at turn start, none for the read, one each side of the writer.
+        assert len(calls) == 2
     finally:
         runtime.close()
 
@@ -112,7 +112,7 @@ def test_every_model_request_reports_host_overhead_by_cause(tmp_path):
     try:
         runtime.start_turn(session.session_id, "Write a note")
         requests = [e.data for e in runtime.store.events(session.session_id) if e.kind is E.MODEL_REQUESTED]
-        assert "attribution_scan_ms" in requests[0]["host_overhead_ms"]  # the turn's baseline scan
+        assert "attribution_scan_ms" not in requests[0]["host_overhead_ms"]  # the baseline is deferred
         after_tool = requests[1]["host_overhead_ms"]
         assert {"attribution_scan_ms", "observe_ms", "result_bookkeeping_ms", "after_tools_ms"} <= set(after_tool)
         assert all(value >= 0 for value in after_tool.values())

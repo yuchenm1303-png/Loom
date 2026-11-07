@@ -443,7 +443,7 @@ def test_mxc_python_gets_the_mkdtemp_hook_and_keeps_its_own_pythonpath(tmp_path,
         argv=("python", "-m", "unittest"), cwd=workspace, workspace=workspace,
         permission_mode=PermissionMode.WORKSPACE, environment={"PYTHONPATH": r"C:\project\src"}).argv)
     env = dict(item.split("=", 1) for item in config["process"]["env"])
-    assert env["PYTHONPATH"].split(os.pathsep) == [str(hook), r"C:\project\src"]
+    assert env["PYTHONPATH"] == os.pathsep.join((str(hook), r"C:\project\src"))
     assert str(hook) in config["filesystem"]["readonlyPaths"]
     assert (hook / "sitecustomize.py").is_file()
     monkeypatch.setenv("LOOM_WINDOWS_SANDBOX_PYTHON_HOOK", "off")

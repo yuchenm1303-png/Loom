@@ -960,7 +960,7 @@ export const Sidebar = memo(function Sidebar({
           {projectSections.map(({ project, threads: projectThreads }) => {
             const collapsed = !expandedProjectIds.has(project.id);
             const selected = activeProjectId === project.id;
-            // The project's own count covers both spaces, so in 建造 only the listed ones are counted.
+            // The project's own count covers both spaces, so in the build space only the listed ones are counted.
             const visibleCount = projectThreads.length || (space === "chat" ? project.threadCount || 0 : 0);
             return (
               <section className={`project-group ${collapsed ? "is-collapsed" : ""} ${selected ? "is-selected" : ""}`} key={project.id}>

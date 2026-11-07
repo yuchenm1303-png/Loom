@@ -47,7 +47,7 @@
 .bh-open:disabled { cursor: default; }
 .bh-row:hover .bh-open, .bh-row[data-current] .bh-open { color: var(--pl-ink); }
 .bh-top, .bh-bottom { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.bh-top strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; }
+.bh-top strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
 .bh-top time, .bh-current { flex: none; font-size: 11.5px; color: var(--pl-faint); font-variant-numeric: tabular-nums; transition: opacity var(--loom-dur-fast) var(--loom-ease-out); }
 .bh-current { color: var(--bh-hue); }
 .bh-bottom { color: var(--pl-faint); font-size: 11.5px; }
@@ -88,7 +88,7 @@
 .bh-list > .bh-rename { display: flex; align-items: center; gap: 2px; padding: 5px 5px 5px 6px; background: var(--pf-raise, var(--pl-hover)); }
 .bh-rename input {
   flex: 1; min-width: 0; height: 28px; padding: 0 6px; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--bh-hue) 55%, transparent);
-  border-radius: 7px; outline: 0; background: transparent; color: var(--pl-ink); font: inherit; font-size: 13px; font-weight: 550;
+  border-radius: 7px; outline: 0; background: transparent; color: var(--pl-ink); font: inherit; font-size: 13px; font-weight: 500;
 }
 .bh-rename button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--pl-muted); cursor: pointer; }
 .bh-rename button:hover { background: color-mix(in srgb, var(--pl-ink) 8%, transparent); color: var(--pl-ink); }

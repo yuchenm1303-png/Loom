@@ -181,7 +181,7 @@ html[data-loom-theme="light"] .lm {
 @keyframes lm-run {
   0% {
     stroke-dashoffset: 30;
-    animation-timing-function: cubic-bezier(.42, 0, .5, 1);
+    animation-timing-function: var(--loom-ease-inout);
   }
   64% {
     stroke-dashoffset: -70;

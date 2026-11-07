@@ -5,7 +5,7 @@ import copy
 import shutil
 import json
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from app.agent_runtime import PermissionMode
 from app.agent_runtime.contracts import AgentEventKind as E
@@ -27,6 +27,18 @@ EPISODE_CARRY_TOKENS = 12000
 PROJECT_WORKING_CONTEXT_TOKENS = 48000
 
 
+def _short_word(word):
+    """An absolute path says where, not what: its file name, before the line is cut to length.
+
+    Runs may be read on another system than they ran on, so both spellings count. A switch
+    like cmd's /c is not a path: it has no folder above its name.
+    """
+    for path in (PureWindowsPath(word), PurePosixPath(word)):
+        if path.is_absolute() and len(path.parts) > 2:
+            return path.name
+    return word
+
+
 def _describe_tool(tool, arguments):
     """One short line for what a tool call is doing, in the words of its arguments."""
     path = arguments.get("path")
@@ -34,11 +46,7 @@ def _describe_tool(tool, arguments):
         return f"{tool} {path.replace('scratch:', '')}"[:120]
     argv = arguments.get("argv")
     if isinstance(argv, list) and argv:
-        # An absolute path says where, not what: its file name, before the line is cut to length.
-        # A switch like cmd's /c is not a path: it has no folder above its name.
-        words = [Path(str(item)).name if Path(str(item)).is_absolute() and len(Path(str(item)).parts) > 2 else str(item)
-                 for item in argv]
-        return " ".join(words)[:120]
+        return " ".join(_short_word(str(item)) for item in argv)[:120]
     return str(tool or "")[:120]
 
 

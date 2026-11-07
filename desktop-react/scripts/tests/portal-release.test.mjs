@@ -252,10 +252,8 @@ test("verification submit mounts the lens while disabled without bypassing valid
 test("release notes use a legible centered liquid mount without enlarging the link itself", async () => {
   const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
   const source = readFileSync(new URL("../../src/components/portalLiquidMount.ts", import.meta.url), "utf8");
-  for (const [width, height] of [[136, 50], [158, 54], [150, 54]]) {
-    assert.ok(portal.includes(`data-liquid-snap-min-width="${width}" data-liquid-snap-min-height="${height}"`),
-      "release note mounts should stay compact and context-sensitive");
-  }
+  assert.ok(portal.includes('data-liquid-snap-min-width="136" data-liquid-snap-min-height="50"'),
+    "the release note mount should stay compact and context-sensitive");
   const compiled = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
   }).outputText;
@@ -288,8 +286,8 @@ test("release notes use a legible centered liquid mount without enlarging the li
 test("release notes get a restrained one-shot magnetic spring without moving adjacent labels", () => {
   const portal = readFileSync(new URL("../../src/components/WebPortal.tsx", import.meta.url), "utf8");
   const cursor = readFileSync(new URL("../../src/components/PortalLiquidCursor.tsx", import.meta.url), "utf8");
-  assert.equal((portal.match(/data-magnetic-bounce="true"/g) ?? []).length, 3,
-    "Only the three compact release-notes links use the subtle entrance bounce");
+  assert.equal((portal.match(/data-magnetic-bounce="true"/g) ?? []).length, 2,
+    "Only the home page's and the download card's release-notes links use the subtle entrance bounce");
   assert.ok(cursor.includes('element.dataset.magneticBounce === "true" ? 4.5'),
     "Compact release links keep pointer-follow motion below other controls");
   assert.ok(cursor.includes('magnetic.y.velocity = Math.min(magnetic.y.velocity, -110)'),

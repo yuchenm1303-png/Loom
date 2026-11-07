@@ -131,7 +131,7 @@ def test_builtin_threads_migrate_to_trusted_gateway_before_reuse(monkeypatch):
     monkeypatch.setattr("app.app_server_reasoning.validate_runtime_reasoning", lambda **kw: None)
     monkeypatch.setattr("app.app_server_reasoning.build_runtime_model_platform", lambda **kw: object())
     service.vision = True
-    service.store = SimpleNamespace(save=lambda session: None)
+    service.store = SimpleNamespace(save=lambda session, **_: None)
     checked = []
     service._assert_model_policy = checked.append
     for url in ("https://account.smirel.com/model/v1", "https://other.example/v1"):
