@@ -629,3 +629,42 @@ html[data-loom-surface="mobile"] .m-branch-track .m-branch-ports button { flex: 
 @media (prefers-reduced-motion: reduce) { .m-branch-capsule { transition: none; } .m-branch-body { animation: none; } }
 html[data-loom-reduced-motion="true"] .m-branch-capsule { transition: none; }
 html[data-loom-reduced-motion="true"] .m-branch-body { animation: none; }
+
+/* Phone reading geometry: reclaim desktop gutters and nested process indents. */
+html[data-loom-surface="mobile"] .m-stage .transcript-scroll { padding-inline: 16px; scrollbar-gutter: auto; }
+html[data-loom-surface="mobile"] .m-stage .transcript { width: 100%; max-width: none; margin-inline: 0; padding: 18px 0 26px; gap: 24px; box-sizing: border-box; }
+html[data-loom-surface="mobile"] .conversation-stage[data-has-entries]::before,
+html[data-loom-surface="mobile"] .conversation-stage[data-has-entries]::after { display: none; }
+html[data-loom-surface="mobile"] .m-stage .assistant-message,
+html[data-loom-surface="mobile"] .m-stage .wv-note .assistant-message,
+html[data-loom-surface="mobile"] .m-stage .user-message { font-size: max(17px, var(--loom-chat-font-size, 17px)) !important; line-height: 1.75; }
+html[data-loom-surface="mobile"] .m-stage .turn-process.is-settled .turn-process-content { margin: 6px 0; padding: 6px 0; border-left: 0; }
+html[data-loom-surface="mobile"] .m-stage .turn-process-content { gap: 16px; }
+html[data-loom-surface="mobile"] .m-stage .wv-note { padding: 6px 0 10px; }
+html[data-loom-surface="mobile"] .m-stage .assistant-message-shell { align-items: stretch; }
+html[data-loom-surface="mobile"] .m-stage .assistant-message p { margin-block: 0 14px; line-height: inherit; }
+html[data-loom-surface="mobile"] .m-stage .assistant-message :is(ul,ol) { padding-left: 22px; line-height: 1.75; }
+html[data-loom-surface="mobile"] .m-stage .assistant-message :is(h1,h2,h3) { line-height: 1.45; margin-block: 22px 12px; }
+html[data-loom-surface="mobile"] .m-stage .assistant-message h1 { font-size: 23px; }
+html[data-loom-surface="mobile"] .m-stage .assistant-message h2 { font-size: 21px; }
+html[data-loom-surface="mobile"] .m-stage .assistant-message h3 { font-size: 19px; }
+html[data-loom-surface="mobile"] .m-stage .assistant-message pre { font-size: 14px; line-height: 1.6; }
+html[data-loom-surface="mobile"] .m-stage .user-message-shell { max-width: 92%; }
+html[data-loom-surface="mobile"] .m-stage .user-message { padding: 11px 14px; }
+html[data-loom-surface="mobile"] .m-stage .reasoning-copy { font-size: 16px !important; line-height: 1.7; }
+html[data-loom-surface="mobile"] .m-stage .turn-process-header { min-height: 44px; padding-left: 0; }
+.m-thread-head { box-sizing: border-box; min-height: 56px; padding-block: 2px; }
+.m-build-dock { padding-inline: 10px; gap: 3px; }
+.m-branches { padding-bottom: 0; }
+.m-branch-scroll-hint { display: none; }
+.m-branch-track .m-branch-ports { padding-block: 3px; }
+.m-branch-capsule { top: 3px; }
+.m-composer { padding: 4px 10px 6px; gap: 4px; }
+html[data-loom-surface="mobile"] .m-composer-box textarea { padding: 10px 14px 2px; }
+.m-composer-tools { padding-bottom: 3px; }
+@media (max-height: 600px) {
+  .m-thread:has(.m-composer textarea:focus) .m-composer-box textarea { max-height: 96px; }
+  .m-thread:has(.m-composer textarea:focus) .m-branch-track { display: none; }
+  .m-thread:has(.m-composer textarea:focus) .m-build-summary { font-size: 12px; }
+  .m-thread:has(.m-composer textarea:focus) .m-attachment-list { max-height: 90px; }
+}

@@ -42,6 +42,7 @@ const threads: ThreadRecord[] = [
 ];
 threads.forEach((thread) => { thread.projectId = "p1"; });
 if (params.has("proposal")) { threads[2].status = "completed"; threads[2].currentTurnId = null; }
+if (params.has("readability")) { threads[0].weave = true; threads[0].status = "completed"; threads[0].active = false; }
 threads.push({ ...threads[0], id: "agent-1", title: "执行 Agent", parentThreadId: "thread-build", status: "waiting_approval" });
 const workspace = { path: "D:/work/Loom", status: "ready" as const, git: true, branch: "main", head: "123abcd", changeCount: 0, changes: [] };
 const projects: ProjectRecord[] = [{ id: "p1", name: "Loom", root: workspace.path, instructions: "", threadCount: 4 }];
@@ -90,6 +91,15 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "thread/read": (args) => {
     const record = threads.find((entry) => entry.id === args.threadId) ?? threads[0];
     if (record.id !== THREAD) return { thread: record, turns: [], hasMoreTurns: false };
+    if (params.has("readability")) {
+      const readableItems = [items[0],
+        { id: "note-1", threadId: THREAD, turnId: "turn-1", type: "assistant_message", phase: "commentary", status: "completed", text: "五个冒烟测试全部通过，8 个源码模块的校验义务清零，报告里的自相矛盾也修掉了。现在把进度收尾。" },
+        { id: "tool-read", threadId: THREAD, turnId: "turn-1", type: "tool_call", toolName: "exec", callId: "read-1", status: "completed", arguments: { command: "npm test" }, result: "All checks passed" },
+        { id: "note-2", threadId: THREAD, turnId: "turn-1", type: "assistant_message", phase: "commentary", status: "completed", text: "这是一段需要展开阅读的过程说明。窄屏上不应该为过程层级反复缩进，消息应当保持同一条清晰的阅读边缘。" },
+        { id: "readable-final", threadId: THREAD, turnId: "turn-1", type: "assistant_message", phase: "final_answer", status: "completed", text: ANSWER },
+      ];
+      return { thread: { ...record, status: "completed", weave: true }, hasMoreTurns: false, pendingApproval: null, turns: [{ id: "turn-1", threadId: THREAD, status: "completed", startedAt: at, completedAt: at, items: readableItems }] };
+    }
     return { thread: record, pendingApproval, hasMoreTurns: false, turns: [{ id: "turn-1", threadId: THREAD, status: "running", startedAt: at, items }] };
   },
   "thread/set_permission_mode": (args) => {

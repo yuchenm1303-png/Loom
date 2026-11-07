@@ -49,6 +49,13 @@ Device acceptance checks (use a real Host; `stack.py` only stubs pairing/thread 
 
 ## Projects, conversations and build controls
 
+Mobile messages use the full reading column with 16 px outer gutters and a 17 px body-size floor.
+Expanded process notes share the final answer's left edge instead of adding desktop nested gutters.
+The bottom rail keeps 44 px touch targets without a separate hint row; at keyboard-sized heights,
+focusing the composer temporarily hides the rail while keeping its status/return control available.
+`scripts/tests/mobile-reading-layout.mjs` checks long Chinese commentary, final Markdown, code/tables,
+reading widths and a simulated keyboard height at 320, 390 and 430 px widths (`?readability=1` fixture).
+
 The phone build screen opens on its conversation. A horizontally scrollable capsule rail above the composer
 exposes Project, Reference files, Tasks, Agents, Run, Model, Quota, Scope, Knowledge, History and Delivery, with one branch expanded at a time.
 Scrolling or moving keyboard focus does not select a branch. Selecting one centers it within the rail where possible;
