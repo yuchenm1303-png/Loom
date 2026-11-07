@@ -31,6 +31,7 @@ interface ThreadHeaderProps {
   modePending?: boolean;
   modeError?: string;
   onModeChange?(mode: "chat" | "project"): void;
+  onModeIntent?(): void;
 }
 
 function workspaceName(workspace: string, fallback: string): string {
@@ -74,6 +75,7 @@ export function ThreadHeader({
   modePending = false,
   modeError,
   onModeChange,
+  onModeIntent,
 }: ThreadHeaderProps) {
   const { language, t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -153,7 +155,7 @@ export function ThreadHeader({
         ) : null}
 
         {/* Last in the row, so the right edge anchors it: neighbours appearing or changing width never move it. */}
-        {mode && onModeChange ? <ProjectModeToggle key={modePending ? "pending" : "ready"} value={mode} disabled={modePending} onChange={onModeChange} lang={language === "zh-CN" ? "zh" : "en"} /> : null}
+        {mode && onModeChange ? <ProjectModeToggle value={mode} disabled={modePending} onChange={onModeChange} onIntent={onModeIntent} lang={language === "zh-CN" ? "zh" : "en"} /> : null}
       </div>
     </header>
   );

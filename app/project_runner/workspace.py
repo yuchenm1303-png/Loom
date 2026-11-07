@@ -1,4 +1,5 @@
 """Explicit source-folder preparation; never commit a person's existing files."""
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app.project_git_workflow import repository_operation_lock
@@ -10,21 +11,21 @@ def describe(root):
     base = {"path": str(root), "git": False, "changes": [], "changeCount": 0}
     if not root.is_dir():
         return {**base, "status": "unavailable"}
+    # Side by side: each git costs ~75 ms to start on Windows, and the hub cannot be drawn before this answers.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        asked = [pool.submit(git, root, "rev-parse", "--show-toplevel"),
+                 pool.submit(git, root, "symbolic-ref", "--quiet", "--short", "HEAD"),
+                 pool.submit(git, root, "rev-parse", "--verify", "HEAD"),
+                 pool.submit(git, root, "--no-optional-locks", "-c", "core.quotepath=false", "status", "--porcelain=v1", raw=True)]
+    answer = lambda ask: "" if isinstance(ask.exception(), ValueError) else ask.result()
     try:
-        top = Path(git(root, "rev-parse", "--show-toplevel")).resolve()
+        top = Path(asked[0].result()).resolve()
     except ValueError:
         return {**base, "status": "invalid" if (root / ".git").exists() else "not_git"}
     if top != root:
         return {**base, "status": "nested", "repositoryRoot": str(top)}
-    try:
-        branch = git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
-    except ValueError:
-        branch = ""
-    try:
-        head = git(root, "rev-parse", "--verify", "HEAD")
-    except ValueError:
-        head = ""
-    lines = git(root, "--no-optional-locks", "-c", "core.quotepath=false", "status", "--porcelain=v1", raw=True).splitlines()
+    branch, head = answer(asked[1]), answer(asked[2])
+    lines = asked[3].result().splitlines()
     lines = [line for line in lines if line.strip()]
     return {**base, "git": True, "branch": branch or "detached HEAD", "head": head[:12],
             "status": "unborn" if not head else "ready" if branch else "detached",

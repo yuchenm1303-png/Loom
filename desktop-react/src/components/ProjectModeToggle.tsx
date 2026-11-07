@@ -20,21 +20,24 @@ const WeaveGlyph = createIcon("mode-weave", "ModeWeave", <>
   <path d="M11.4 4.4 14.2 7l-2.8 2.6" />
 </>);
 
-export function ProjectModeToggle({ value, onChange, lang = "zh", disabled = false }: { value: "chat" | "project"; onChange(value: "chat" | "project"): void; lang?: "zh" | "en"; disabled?: boolean }) {
+export function ProjectModeToggle({ value, onChange, onIntent, lang = "zh", disabled = false }: { value: "chat" | "project"; onChange(value: "chat" | "project"): void; /** The pointer came to the switch: the other space can be read ahead. */ onIntent?(): void; lang?: "zh" | "en"; disabled?: boolean }) {
   const words = lang === "en" ? { chat: "Chat", project: "Weave", label: "Mode", hint: "Weave · pursue one objective over days, task by task" }
                               : { chat: "对话", project: "建造", label: "工作方式", hint: "建造 · 一个目标拆成任务持续推进，独立复审后集成" };
   const items = useRef<Record<string, HTMLButtonElement | null>>({});
   // The choice shows on the click frame; the app mounts the chosen view in the background and catches up.
   const [chosen, setChosen] = useState(value);
-  const [seen, setSeen] = useState(value);
-  if (seen !== value) { setSeen(value); setChosen(value); }
+  // Whenever the app says otherwise or settles: a switch that failed goes back to where the app still is.
+  const said = `${value}:${disabled}`;
+  const [seen, setSeen] = useState(said);
+  if (seen !== said) { setSeen(said); setChosen(value); }
   const [thumb, setThumb] = useState<{ x: number; width: number } | null>(null);
   useLayoutEffect(() => {
     const node = items.current[chosen];
     if (node) setThumb({ x: node.offsetLeft, width: node.offsetWidth });
   }, [chosen, lang]);
   return (
-    <div className="pf-toggle" role="radiogroup" aria-label={words.label} data-at={chosen} aria-busy={disabled || undefined}>
+    <div className="pf-toggle" role="radiogroup" aria-label={words.label} data-at={chosen} aria-busy={disabled || undefined}
+         onPointerEnter={onIntent} onFocus={onIntent}>
       <span className="pf-toggle-thumb" aria-hidden="true" data-ready={thumb ? "" : undefined}
             style={thumb ? { transform: `translateX(${thumb.x}px)`, width: thumb.width } : undefined} />
       {(["chat", "project"] as const).map((option) => {

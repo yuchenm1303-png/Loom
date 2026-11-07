@@ -89,14 +89,30 @@
 /* Each a stacking context of its own, so nothing inside them (the composer raises its parts) comes over the stage. */
 .conversation-stage[data-mode-morph],
 .composer-stage[data-mode-morph] { z-index: 0; }
-.project-mode-stage[data-morph] { z-index: 2; grid-column: 1; }
+/* It is drawn just as the shell hands over: its own fade would show the canvas through the hand-over. */
+.project-mode-stage[data-morph] { z-index: 2; grid-column: 1; animation: none; }
 
-.composer-stage:is([data-mode-morph="lift"], [data-mode-morph="rise"], [data-mode-morph="unplug"], [data-mode-morph="sink"]) .composer > * {
+/* The transcript leaves with the composer's contents and comes back with them: the shell travels over an empty canvas,
+   and the views can swap under it unseen. */
+.conversation-stage:is([data-mode-morph="lift"], [data-mode-morph="rise"], [data-mode-morph="unplug"], [data-mode-morph="sink"]) > * {
+  opacity: 0;
+  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
+}
+.conversation-stage[data-mode-morph="arrive"] > * { transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
+/* The hub is built as the shell lands, so its cards have no entrance behind them: they follow the cables in. */
+.project-mode-stage[data-morph="landed"] .pf-slot { animation: pf-mode-fade var(--loom-dur-base) var(--loom-ease-out) var(--loom-dur-press) backwards; }
+
+/* Everything around the composer too (the project's git bar): the box alone stays for the shell to take. */
+.composer-stage:is([data-mode-morph="lift"], [data-mode-morph="rise"], [data-mode-morph="unplug"], [data-mode-morph="sink"]) .composer > *,
+.composer-stage:is([data-mode-morph="lift"], [data-mode-morph="rise"], [data-mode-morph="unplug"], [data-mode-morph="sink"]) > :not(.composer-mode-crossfade),
+.composer-stage:is([data-mode-morph="lift"], [data-mode-morph="rise"], [data-mode-morph="unplug"], [data-mode-morph="sink"]) .composer-wrap > :not(.composer) {
   opacity: 0;
   transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
 }
 .composer-stage:is([data-mode-morph="rise"], [data-mode-morph="unplug"], [data-mode-morph="sink"]) .composer { visibility: hidden; }
-.composer-stage[data-mode-morph="arrive"] .composer > * { transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
+.composer-stage[data-mode-morph="arrive"] .composer > *,
+.composer-stage[data-mode-morph="arrive"] > :not(.composer-mode-crossfade),
+.composer-stage[data-mode-morph="arrive"] .composer-wrap > :not(.composer) { transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
 
 /* The shell: an empty box of the composer's material; modeMorph.ts lays it over the box it
    carries and animates its place, size, corners, border and shadow into the other's. */

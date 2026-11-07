@@ -8,6 +8,7 @@ import {
   useState,
   lazy,
   Suspense,
+  type ComponentProps,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -59,6 +60,7 @@ import { useMotionPresence } from "./motion/useMotionPresence";
 import { DUR, EASE, RETAIN } from "./motion/tokens";
 import { prefersReducedMotionNow, useReducedMotion } from "./motion/useReducedMotion";
 import { useModeMorph } from "./components/modeMorph";
+import { readOverviewAhead } from "./components/projectOverviewCache";
 import { landingThread, threadSpace, type Space } from "./state/threadSpaces";
 import { RUN_STRIP_EXIT_MS } from "./presentationTiming";
 import {
@@ -127,7 +129,16 @@ type LayoutMotionIntent =
   | "right-swap"
   | "neutral";
 const TerminalPanel = lazy(() => import("./components/TerminalPanel"));
-const ProjectMode = lazy(() => import("./components/ProjectMode").then((module) => ({ default: module.ProjectMode })));
+type ProjectModeModule = typeof import("./components/ProjectMode");
+let projectModeModule: ProjectModeModule | null = null;
+const loadProjectMode = async () => (projectModeModule = await import("./components/ProjectMode"));
+/** Not React.lazy: a lazy component suspends on its first render even with its chunk in hand, and React then holds a
+ *  new boundary's content back ~300 ms after its fallback. That was the longest wait of the first switch to 建造. */
+function ProjectMode(props: ComponentProps<ProjectModeModule["ProjectMode"]>) {
+  const [module, setModule] = useState(projectModeModule);
+  useEffect(() => { if (!module) void loadProjectMode().then(setModule); }, [module]);
+  return module ? <module.ProjectMode {...props} /> : null;
+}
 
 type LayoutMotionAnchorKind =
   | "header-copy"
@@ -665,7 +676,7 @@ export default function App() {
   // 对话 and 建造 are two spaces (threadSpaces.ts): the sidebar lists the current one's conversations and the header's
   // switch moves between them, carrying the composer into the hub and back (modeMorph.ts). The space being moved to
   // holds from the click until its conversation is open.
-  const { carry } = useModeMorph();
+  const { carry, renderedPhase } = useModeMorph();
   const [spaceTarget, setSpaceTarget] = useState<Space | null>(null);
   const space: Space = spaceTarget ?? (projectMode ? "project" : "chat");
   const [modeError, setModeError] = useState("");
@@ -699,24 +710,38 @@ export default function App() {
       setSpaceTarget(null);
     }
   }, []);
+  const openingRef = useRef("");
+  openingRef.current = loom.openingThreadId;
+  // What the other space will show, read before it is asked for: from the moment the pointer comes to the switch.
+  const readSpaceAhead = (mode: Space) => {
+    if (mode === "project") void loadProjectMode();
+    const landing = loom.threadView === "archived" ? undefined : landingThread(loom.threads, spaceOf, mode, lastInSpace.current[mode]);
+    if (landing) {
+      loom.prefetchThread(landing.id);
+      if (mode === "project") readOverviewAhead(landing.id);
+    }
+    return landing;
+  };
   const chooseMode = async (mode: Space) => {
     if (modeStartPending.current) return;
     setModeError("");
-    const { threadView, threads, setThreadView, prefetchThread } = loom;
-    // The list changes on the click; the conversation is read ahead while the composer's contents leave.
+    const { threadView, threads, setThreadView } = loom;
+    // The list changes on the click; the conversation is opened when the shell has arrived (modeMorph.ts).
     modeStartPending.current = true;
     setSpaceTarget(mode);
-    const landing = threadView === "archived" ? undefined : landingThread(threads, spaceOf, mode, lastInSpace.current[mode]);
-    if (landing) prefetchThread(landing.id);
+    const landing = readSpaceAhead(mode);
+    const left = threadRef.current?.id;
     const release = () => { modeStartPending.current = false; setSpaceTarget(null); };
     try {
       await carry(mode, async () => {
         try {
+          // A row of the new list chosen while the shell was in the air: that is where this goes.
+          if (openingRef.current || threadRef.current?.id !== left) return;
           await enterSpace(mode, threadView === "archived" ? await setThreadView("active") : threads);
         } finally {
           release();
         }
-      });
+      }, landing?.id);
     } catch (cause) {
       setModeError(errorMessage(cause));
     } finally {
@@ -1790,6 +1815,7 @@ export default function App() {
           modePending={Boolean(spaceTarget) || threadSwitching || loom.connection !== "ready"}
           modeError={modeError}
           onModeChange={chooseMode}
+          onModeIntent={() => readSpaceAhead(space === "chat" ? "project" : "chat")}
         />
 
         {terminalMounted && <Suspense fallback={null}><TerminalPanel
@@ -1824,8 +1850,7 @@ export default function App() {
         />
 
         {showProject && thread ? (
-          <div className="project-mode-stage" inert={threadSwitching}>
-            <Suspense fallback={null}>
+          <div className="project-mode-stage" data-morph={renderedPhase()} inert={threadSwitching}>
               <ProjectMode threadId={thread.id} opening={loom.openingThreadId} workspace={selectedThread?.workspace || workspace} model={currentModel}
                            projects={loom.projects} onSelectProject={!running ? id => handleMoveProject(thread.id, id) : undefined}
                            onChangeWorkspace={!running ? async (root) => {
@@ -1850,11 +1875,10 @@ export default function App() {
                            onRenameThread={loom.renameThread}
                            onArchiveThread={id => loom.archiveThread(id, true)}
                            onDeleteThread={loom.deleteThread} />
-            </Suspense>
           </div>
         ) : null}
         {showChat ? (<>
-        <div className={`conversation-stage ${running ? "is-running" : ""}`}
+        <div className={`conversation-stage ${running ? "is-running" : ""}`} data-mode-morph={renderedPhase()}
              inert={threadSwitching}>
           {runStripVisible ? <RunProgress {...progressProps} placement="top" motionPhase={runStripPresence.phase} /> : null}
           {thread?.parentThreadId ? (
@@ -1914,7 +1938,7 @@ export default function App() {
           />
         </div>
 
-        <div className="composer-stage" inert={threadSwitching}>
+        <div className="composer-stage" data-mode-morph={renderedPhase()} inert={threadSwitching}>
           {gitBarPresence.mounted && gitBarProject ? (
             <div className="project-git-fold" data-motion-phase={gitBarPresence.phase} inert={!currentProject}>
               <div className="project-git-fold-body">

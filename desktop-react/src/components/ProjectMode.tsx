@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
 import { raisedBudget, readableError, toConversation, toFlowData, toHistory, toGoal, toModelChoice, toTurnTasks, type ProjectOverview } from "./projectOverview";
+import { lastOverview } from "./projectOverviewCache";
 import { latestTaskPlan } from "./liveTaskProgress";
 import type { ApprovalDecision, ModelSnapshot, TranscriptItem, ProjectRecord } from "../types/loom";
 import { ProjectWorkspacePicker } from "./ProjectWorkspacePicker";
@@ -21,9 +22,6 @@ const REST_POLL_MS = 12000;
 const READ_TIMEOUT_MS = 20000;
 /** Episodes for a new program: generous, since tokens are the budget a person chooses. */
 const START_EPISODES = 400;
-/** The last overview of each conversation shown here: switching back to 建造 draws the hub at once
- *  (the composer's morph lands on it) and the first read then refreshes it. */
-const lastOverview = new Map<string, ProjectOverview>();
 /** A new conversation begins: what is written fades this long, then the cards of the old one leave. */
 const RENEW_FADE = DUR.fast;
 /** What a new conversation shows until its own read arrives: nothing but the project it is in. */
