@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { AttachmentQueue, MAX_ATTACHMENTS } from "./attachmentQueue";
+import { AttachmentTray } from "./AttachmentTray";
 import {
   Activity,
   ArrowDown,
@@ -31,6 +33,8 @@ import {
   fetchAccountDevices,
   onPairing,
   onShellState,
+  pickMobileFiles,
+  uploadMobileFile,
   readConnectionLog,
   readShellState,
   reportBusyThreads,
@@ -397,7 +401,14 @@ function ThreadView({ loom, space, online, connecting, onBack }: { loom: Loom; s
   const offlineNotice = useHeld(!online, OFFLINE_NOTICE_MS);
   const running = Boolean(loom.turnActive || (thread && threadBusy(thread)));
   const [text, setText] = useState("");
-  const [attachments, setAttachments] = useState<{ path: string; name: string }[]>([]);
+  const [queue] = useState(() => new AttachmentQueue(uploadMobileFile));
+  const attachments = useSyncExternalStore(queue.subscribe, queue.snapshot);
+  const [picking, setPicking] = useState(false);
+  const [sending, setSending] = useState(false);
+  const sendLock = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; queue.dispose(); }, [queue]);
+  const attachmentsReady = attachments.every((item) => item.status === "ready");
   const [controls, setControls] = useState(false);
   const [error, setError] = useState("");
   const field = useRef<HTMLTextAreaElement>(null);
@@ -416,22 +427,27 @@ function ThreadView({ loom, space, online, connecting, onBack }: { loom: Loom; s
 
   const submit = async () => {
     const body = text.trim();
-    if (!body && !attachments.length) return;
-    const sent = attachments;
-    setError(""); setText(""); setAttachments([]);
+    if (sendLock.current || !online || picking || !attachmentsReady || (!body && !attachments.length)) return;
+    const sent = attachments.map((item) => ({ path: item.path!, name: item.file.name }));
+    sendLock.current = true;
+    setSending(true); setError("");
     try {
       await loom.send(body, sent, undefined, { weave: space === "build" });
+      if (alive.current) { setText(""); queue.clear(); }
     } catch (cause) {
-      setText(body); setAttachments(sent); fail(cause);
-    }
+      if (alive.current) fail(cause);
+    } finally { sendLock.current = false; if (alive.current) setSending(false); }
   };
 
   const attach = async () => {
+    if (picking || sending || !online) return;
+    setPicking(true);
     setError("");
     try {
-      const paths = await window.loom.pickFiles();
-      setAttachments((current) => [...current, ...paths.map((path) => ({ path, name: path.split(/[\\/]/).pop() || "附件" }))]);
-    } catch (cause) { fail(cause); }
+      const files = await pickMobileFiles();
+      if (alive.current) setError(queue.add(files).join("\n"));
+    } catch (cause) { if (alive.current) fail(cause); }
+    finally { if (alive.current) setPicking(false); }
   };
 
   // Measured at auto height with the transition off, then played from the old height to the new one.
@@ -496,20 +512,25 @@ function ThreadView({ loom, space, online, connecting, onBack }: { loom: Loom; s
       )}
       <footer className="m-composer">
         <Fold open={Boolean(error)}><p className="m-alert" role="alert"><CircleAlert size={16} strokeWidth={1.75} />{error}</p></Fold>
-        <Fold open={attachments.length > 0}><p className="m-attachments">{attachments.map((file) => file.name).join("、")}</p></Fold>
+        <AttachmentTray items={attachments} queue={queue} online={online} disabled={sending} />
+        {attachments.length > 0 ? <p className="m-attachment-hint">图片和文件 · 单个最大 10 MB</p> : null}
+        {attachments.some((item) => item.status === "error") ? <p className="m-attachment-hint" role="status">请重试或移除失败的附件后再发送</p> : null}
         <div className="m-composer-box">
-          <textarea ref={field} rows={1} aria-label={running ? "插话" : "发消息"} placeholder={running ? "插话，下个安全点生效" : "发消息"} value={text} onChange={(event) => setText(event.target.value)} />
+          <textarea ref={field} rows={1} disabled={sending} aria-label={running ? "插话" : "发消息"} placeholder={running ? "插话，下个安全点生效" : "发消息"} value={text} onChange={(event) => setText(event.target.value)} onPaste={(event) => {
+            const files = Array.from(event.clipboardData.files);
+            if (files.length && online && !sending) { event.preventDefault(); setError(queue.add(files).join("\n")); }
+          }} />
           <div className="m-composer-tools">
-            <button type="button" className="m-tool" aria-label="添加附件" disabled={!online} onClick={() => void attach()}><Plus {...ICON} /></button>
+            <button type="button" className="m-tool" aria-label={picking ? "正在选择附件" : "添加附件"} title="添加文件或图片 · 单个最大 10 MB，最多 10 个" disabled={!online || picking || sending || attachments.length >= MAX_ATTACHMENTS} onClick={() => void attach()}><Plus {...ICON} /></button>
             <button type="button" className="m-chip" onClick={() => setControls(true)}>
               <ShieldCheck size={15} strokeWidth={1.75} />
               <span key={`${mode}:${loom.models?.current?.selection ?? ""}`}>{MODE_COPY[mode]?.name ?? mode} · {loom.models?.current?.name || loom.models?.current?.model || "模型"}</span>
               <ChevronDown size={14} strokeWidth={1.75} />
             </button>
-            {running && !text.trim() ? (
+            {running && !text.trim() && !attachments.length ? (
               <button type="button" key="stop" className="m-round is-stop" aria-label="停止运行" disabled={!online} onClick={() => void loom.interrupt().catch(fail)}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
             ) : (
-              <button type="button" key="send" className="m-round is-send" aria-label="发送" disabled={!online || (!text.trim() && !attachments.length)} onClick={() => void submit()}><ArrowUp size={19} strokeWidth={2.25} /></button>
+              <button type="button" key="send" className="m-round is-send" aria-label={sending ? "正在发送" : "发送"} disabled={!online || sending || picking || !attachmentsReady || (!text.trim() && !attachments.length)} onClick={() => void submit()}>{sending ? <i className="m-attachment-spinner" /> : <ArrowUp size={19} strokeWidth={2.25} />}</button>
             )}
           </div>
         </div>
@@ -626,6 +647,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   const loom = useLoom();
   const [tab, setTab] = useState<Tab>("now");
   const [open, setOpen] = useState<Space | null>(null);
+  const [viewKey, setViewKey] = useState(0);
   const [choosing, setChoosing] = useState<Space | null>(null);
   const cached = useMemo(readCachedThreads, []);
   const online = shell.socket === "open" && shell.online;
@@ -649,11 +671,13 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   useEffect(() => { if (online && loom.connection === "error") onRestart(); }, [loom.connection, onRestart, online]);
 
   const openThread = (thread: ThreadRecord) => {
+    setViewKey((key) => key + 1);
     setOpen(thread.weave ? "build" : "chat");
     void loom.openThread(thread.id);
   };
 
   const begin = (space: Space, workspace?: string, projectId?: string) => {
+    setViewKey((key) => key + 1);
     setChoosing(null);
     setOpen(space);
     void loom.newThread(workspace, projectId);
@@ -711,7 +735,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
       </div>
       {screen.mounted ? (
         <div className="m-screen" data-phase={screen.phase}>
-          <ThreadView loom={loom} space={space} online={online} connecting={shell.socket === "connecting"} onBack={() => setOpen(null)} />
+          <ThreadView key={viewKey} loom={loom} space={space} online={online} connecting={shell.socket === "connecting"} onBack={() => setOpen(null)} />
         </div>
       ) : null}
       <ProjectChooser open={Boolean(choosing)} loom={loom} onClose={() => setChoosing(null)} onChoose={(workspace, projectId) => begin(chosenSpace, workspace, projectId)} />

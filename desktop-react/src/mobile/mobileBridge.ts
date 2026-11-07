@@ -4,6 +4,7 @@
 // credential and a turn keeps its connection while the page is in the background.
 
 import type { AccountDevices } from "../types/loom";
+import { MAX_ATTACHMENT_BYTES } from "./attachmentQueue";
 
 export type ConnectionEvent = { at: number; event: string; detail: string };
 
@@ -44,6 +45,7 @@ export type LoomShell = {
   unpair(): void;
   confirmBiometric(id: number, reason: string): void;
   openUrl(url: string): void;
+  openAttachment(id: number, name: string, mimeType: string, base64: string): void;
   setBusyThreads(idsJson: string): void;
   fetchDevices(id: number): void;
   connectionLog(): string;
@@ -170,26 +172,46 @@ function connected(): Promise<void> {
   });
 }
 
-async function pickFiles(): Promise<string[]> {
-  const files = await new Promise<File[]>((resolve) => {
+export async function pickMobileFiles(): Promise<File[]> {
+  return new Promise<File[]>((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
     input.multiple = true;
-    input.addEventListener("change", () => resolve(Array.from(input.files ?? [])), { once: true });
-    input.addEventListener("cancel", () => resolve([]), { once: true });
-    input.click();
+    input.hidden = true;
+    const finish = (files: File[]) => { input.remove(); resolve(files); };
+    input.addEventListener("change", () => finish(Array.from(input.files ?? [])), { once: true });
+    input.addEventListener("cancel", () => finish([]), { once: true });
+    document.body.append(input);
+    try { input.click(); } catch (cause) { input.remove(); reject(cause); }
   });
-  const paths: string[] = [];
-  for (const file of files) {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let binary = "";
-    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-    }
-    const path = await invoke<string>("stageTempFile", [file.name || "attachment", btoa(binary)]);
-    if (path) paths.push(path);
+}
+
+export async function uploadMobileFile(file: File, uploading: () => void = () => {}): Promise<string> {
+  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error("单个文件不能超过 10 MB");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
   }
+  uploading();
+  return invoke<string>("stageTempFile", [file.name || "attachment", btoa(binary)]);
+}
+
+async function pickFiles(): Promise<string[]> {
+  const paths: string[] = [];
+  for (const file of await pickMobileFiles()) paths.push(await uploadMobileFile(file));
   return paths;
+}
+
+async function openMobileArtifact(path: string, root: string): Promise<boolean> {
+  const payload = await invoke<{ base64: string; mimeType: string }>("readLocalArtifact", [path, root]);
+  return new Promise<boolean>((resolve, reject) => {
+    const id = nextId++;
+    const timer = window.setTimeout(() => settle(id, undefined, { message: "打开附件超时，请重试" }), CALL_TIMEOUT_MS);
+    pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
+    try { shell().openAttachment(id, path.split(/[\\/]/).pop() || "attachment", payload.mimeType, payload.base64); }
+    catch (cause) { settle(id, undefined, { message: cause instanceof Error ? cause.message : String(cause) }); }
+  });
 }
 
 const computerOnly = () => Promise.reject(new Error("This is only available on the computer."));
@@ -218,7 +240,7 @@ export function installMobileBridge(): void {
     readLocalImage: (path: string, root: string) => invoke("readLocalImage", [path, root]),
     readLocalMedia: (path: string, root: string) => invoke("readLocalMedia", [path, root]),
     localArtifactPreviewUrl: async () => "",
-    openLocalArtifact: async () => false,
+    openLocalArtifact: openMobileArtifact,
     pickFiles,
     filePathFor: () => "",
     openExternal: async (url: string) => { shell().openUrl(url); return true; },

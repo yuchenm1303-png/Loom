@@ -12,11 +12,17 @@ export function ImageLightbox({ open, source, label, path, onClose, onReveal }: 
   label: string;
   path: string;
   onClose(): void;
-  onReveal(): void;
+  onReveal?(): void;
 }) {
   const presence = useMotionPresence(open, RETAIN.base);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (!open || document.documentElement.dataset.loomSurface !== "mobile") return;
+    const back = (event: Event) => { event.preventDefault(); event.stopImmediatePropagation(); onClose(); };
+    window.addEventListener("loom:mobile-back", back, true);
+    return () => window.removeEventListener("loom:mobile-back", back, true);
+  }, [open, onClose]);
   useLayoutEffect(() => {
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -57,9 +63,9 @@ export function ImageLightbox({ open, source, label, path, onClose, onReveal }: 
         <div className="user-message-image-lightbox-toolbar">
           <strong title={path}>{label}</strong>
           <div className="user-message-image-lightbox-actions">
-            <button type="button" onClick={onReveal} title="在文件夹中查看">
+            {onReveal ? <button type="button" onClick={onReveal} title="在文件夹中查看">
               <ExternalLink size={15} strokeWidth={1.8} /><span>原文件</span>
-            </button>
+            </button> : null}
             <button ref={closeRef} type="button" className="icon-only" onClick={onClose}
               title="关闭图片预览" aria-label="关闭图片预览"><X size={17} strokeWidth={1.9} /></button>
           </div>

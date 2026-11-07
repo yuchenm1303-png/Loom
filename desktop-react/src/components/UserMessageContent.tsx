@@ -167,10 +167,23 @@ function viewAttachment(attachment: DisplayAttachment): void {
   void revealAttachment(attachment);
 }
 
-function FileAttachmentCard({ attachment }: { attachment: DisplayAttachment }) {
+function FileAttachmentCard({ attachment, workspace }: { attachment: DisplayAttachment; workspace?: string }) {
   const Icon = iconFor(attachment);
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState("");
+  const mobile = document.documentElement.dataset.loomSurface === "mobile";
   const inlineView = INLINE_VIEW_EXTENSIONS.has(attachment.extension);
-  const actionLabel = inlineView ? "点击查看附件" : "点击在系统中查看附件";
+  const actionLabel = mobile ? "在手机上打开附件" : inlineView ? "点击查看附件" : "点击在系统中查看附件";
+  const open = async () => {
+    if (!mobile) { viewAttachment(attachment); return; }
+    if (opening) return;
+    setOpening(true); setError("");
+    try {
+      if (!workspace) throw new Error("工作区信息尚未就绪，请稍后重试");
+      if (!await window.loom.openLocalArtifact(attachment.path, workspace)) throw new Error("无法打开附件，请重试");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "无法打开附件，请重试"); }
+    finally { setOpening(false); }
+  };
 
   return (
     <button
@@ -178,13 +191,15 @@ function FileAttachmentCard({ attachment }: { attachment: DisplayAttachment }) {
       className="user-message-attachment-card is-clickable"
       data-loom-file-path={attachmentAbsolutePath(attachment)}
       title={`${attachment.name} · ${actionLabel}`}
-      onClick={() => viewAttachment(attachment)}
+      onClick={() => void open()}
+      disabled={opening}
+      aria-busy={opening}
       aria-label={`${actionLabel}：${attachment.name}`}
     >
       <span className="user-message-file-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.65} /></span>
       <span className="user-message-file-copy">
         <strong>{attachment.name}</strong>
-        <span>{attachment.kind === "image" ? "图片" : `${typeLabel(attachment)}${attachment.extractedPath ? " · 已解析" : ""}`}</span>
+        <span role={error ? "alert" : undefined}>{opening ? "正在下载并打开…" : error ? `${error} · 点击重试` : attachment.kind === "image" ? "图片" : `${typeLabel(attachment)}${attachment.extractedPath ? " · 已解析" : ""}`}</span>
       </span>
       <span className="user-message-file-open" aria-hidden="true"><ExternalLink size={14} strokeWidth={1.8} /></span>
     </button>
@@ -216,19 +231,20 @@ function MediaAttachmentPreview({ attachment, workspace }: { attachment: Display
     }
   }
 
+  if (failed && document.documentElement.dataset.loomSurface === "mobile") return <FileAttachmentCard attachment={attachment} workspace={workspace} />;
   if (source) {
     return (
       <div className={`user-message-media-preview ${video ? "is-video" : "is-audio"}`} data-loom-file-path={attachmentAbsolutePath(attachment)}>
         <div className="user-message-media-head">
           {video ? <Video size={14} /> : <Music2 size={14} />}
           <strong title={attachment.name}>{attachment.name}</strong>
-          <button type="button" onClick={() => void revealAttachment(attachment)} title="在文件夹中查看">
+          {document.documentElement.dataset.loomSurface !== "mobile" ? <button type="button" onClick={() => void revealAttachment(attachment)} title="在文件夹中查看">
             <ExternalLink size={13} />
-          </button>
+          </button> : null}
         </div>
         {video
-          ? <video src={source} controls preload="metadata" playsInline />
-          : <audio src={source} controls preload="metadata" />}
+          ? <video src={source} controls preload="metadata" playsInline onError={() => setFailed(true)} />
+          : <audio src={source} controls preload="metadata" onError={() => setFailed(true)} />}
       </div>
     );
   }
@@ -286,10 +302,10 @@ function ImageAttachmentPreview({ attachment, workspace }: { attachment: Display
   }, [attachment.path, workspace]);
 
 
-  if (!source || failed) return <FileAttachmentCard attachment={attachment} />;
+  if (!source || failed) return <FileAttachmentCard attachment={attachment} workspace={workspace} />;
 
   const lightbox = <ImageLightbox open={previewing} source={source} label={attachment.name} path={attachmentAbsolutePath(attachment)}
-    onClose={() => setPreviewing(false)} onReveal={() => { void revealAttachment(attachment); }} />;
+    onClose={() => setPreviewing(false)} onReveal={document.documentElement.dataset.loomSurface === "mobile" ? undefined : () => { void revealAttachment(attachment); }} />;
 
   return (
     <>
@@ -338,7 +354,7 @@ export function UserMessageContent({ parsed, workspace }: { parsed: ParsedUserMe
             if (AUDIO_EXTENSIONS.has(attachment.extension) || VIDEO_EXTENSIONS.has(attachment.extension)) {
               return <MediaAttachmentPreview attachment={attachment} workspace={workspace} key={key} />;
             }
-            return <FileAttachmentCard attachment={attachment} key={key} />;
+            return <FileAttachmentCard attachment={attachment} workspace={workspace} key={key} />;
           })}
         </div>
       ) : null}

@@ -3,12 +3,15 @@ package com.smirel.loom
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
+import android.webkit.MimeTypeMap
 import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -23,6 +26,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.WebViewAssetLoader
@@ -31,6 +35,7 @@ import com.journeyapps.barcodescanner.ScanOptions
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.Executors
+import java.io.File
 
 private const val PAGE_HOST = "appassets.androidplatform.net"
 private const val PAGE_URL = "https://$PAGE_HOST/assets/web/mobile.html"
@@ -76,7 +81,8 @@ class MainActivity : AppCompatActivity(), Relay.Listener {
             javaScriptEnabled = true
             domStorageEnabled = true
             allowFileAccess = false
-            allowContentAccess = false
+            // File inputs read the content URIs explicitly granted by the system picker.
+            allowContentAccess = true
         }
         val assets = WebViewAssetLoader.Builder()
             .setDomain(PAGE_HOST)
@@ -143,6 +149,8 @@ class MainActivity : AppCompatActivity(), Relay.Listener {
 
     override fun onDestroy() {
         if (Relay.listener === this) Relay.listener = null
+        pickerCallback?.onReceiveValue(null)
+        pickerCallback = null
         web.destroy()
         super.onDestroy()
     }
@@ -246,6 +254,45 @@ class MainActivity : AppCompatActivity(), Relay.Listener {
 
     /** Everything the page may ask of the app. Calls arrive on a WebView thread. */
     private inner class Shell {
+        /** Only the dedicated cache directory is shared, with a temporary read grant. */
+        @JavascriptInterface
+        fun openAttachment(id: Int, name: String, mimeType: String, base64: String) {
+            val answer = { error: String? ->
+                val result = JSONObject().put("type", "invoke_result").put("id", id)
+                if (error == null) result.put("result", true)
+                else result.put("error", JSONObject().put("message", error))
+                Relay.emit(result)
+            }
+            worker.execute {
+                try {
+                    require(base64.length <= 64 * 1024 * 1024) { "附件超过 48 MB，无法打开" }
+                    val bytes = Base64.decode(base64, Base64.DEFAULT)
+                    require(bytes.size <= 48 * 1024 * 1024) { "附件超过 48 MB，无法打开" }
+                    val cache = File(cacheDir, "attachments").apply { mkdirs() }
+                    // Keep recent grants usable; discard old copies rather than accumulating downloads.
+                    cache.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 24 * 60 * 60 * 1000L }
+                        ?.forEach { it.deleteRecursively() }
+                    val folder = File(cache, java.util.UUID.randomUUID().toString()).apply { mkdirs() }
+                    val safeName = name.substringAfterLast('/').substringAfterLast('\\')
+                        .replace(Regex("[\\p{Cntrl}]"), "_").take(180).ifBlank { "attachment" }
+                    val file = File(folder, if (safeName == "." || safeName == "..") "attachment" else safeName)
+                    file.writeBytes(bytes)
+                    val uri = FileProvider.getUriForFile(this@MainActivity, "$packageName.attachments", file)
+                    val inferred = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase())
+                    val type = if (mimeType == "application/octet-stream" || mimeType.isBlank()) inferred ?: "application/octet-stream" else mimeType
+                    main.post {
+                        if (isFinishing || isDestroyed) { answer("页面已关闭，请重新打开附件"); return@post }
+                        try {
+                            startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, type)
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                            answer(null)
+                        } catch (_: ActivityNotFoundException) { answer("手机上没有可打开此类文件的应用，请安装后重试") }
+                        catch (_: Exception) { answer("无法打开附件，请重试") }
+                    }
+                } catch (error: Exception) { answer(error.message ?: "保存附件失败，请重试") }
+            }
+        }
+
         @JavascriptInterface
         fun state(): String = Relay.stateJson().toString()
 
