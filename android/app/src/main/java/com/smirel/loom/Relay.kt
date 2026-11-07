@@ -33,6 +33,7 @@ object Relay {
     private var wanted = false
     private var retryMs = RETRY_MIN_MS
     private var generation = 0
+    private var history = JSONArray()
 
     /** Threads the computer is working on, so the service knows when it may rest. */
     val busyThreads: MutableSet<String> = mutableSetOf()
@@ -44,6 +45,34 @@ object Relay {
         appContext = context.applicationContext
         store = SessionStore(appContext)
         session = store.load()
+        history = runCatching { JSONArray(preferences().getString(LOG_KEY, "[]")) }.getOrDefault(JSONArray())
+    }
+
+    private fun preferences() = appContext.getSharedPreferences("loom_connection", Context.MODE_PRIVATE)
+
+    /** Why the connection came and went, kept on the phone so a drop can be explained later. */
+    fun record(event: String, detail: String = "") {
+        val entry = JSONObject().put("at", System.currentTimeMillis()).put("event", event).put("detail", detail.take(LOG_DETAIL_LIMIT))
+        history.put(entry)
+        while (history.length() > LOG_LIMIT) history.remove(0)
+        preferences().edit().putString(LOG_KEY, history.toString()).apply()
+    }
+
+    fun connectionLog(): String = history.toString()
+
+    /** The account's devices, answered as a shell event. Needs a fresh token, so it runs off the main thread. */
+    fun fetchDevices(id: Int) {
+        val current = session
+        worker.execute {
+            val event = JSONObject().put("type", "devices").put("id", id)
+            try {
+                if (current == null) throw IllegalStateException("not paired")
+                event.put("devices", AccountApi.devices(freshSession(current).accessToken))
+            } catch (error: Exception) {
+                event.put("error", error.message ?: "读取设备失败")
+            }
+            emit(event)
+        }
     }
 
     fun paired() = session != null
@@ -84,6 +113,7 @@ object Relay {
     fun rest() {
         main.post {
             wanted = false
+            if (socket != null) record("rest")
             close()
             publishState()
         }
@@ -178,6 +208,7 @@ object Relay {
                     if (attempt != generation) return@post
                     retryMs = RETRY_MIN_MS
                     socketState = "open"
+                    record("connected")
                     publishState()
                 }
             }
@@ -187,11 +218,19 @@ object Relay {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                main.post { if (attempt == generation) onDropped(code == CLOSE_UNAUTHORIZED) }
+                main.post {
+                    if (attempt != generation) return@post
+                    record("closed", "$code $reason".trim())
+                    onDropped(code == CLOSE_UNAUTHORIZED)
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                main.post { if (attempt == generation) onDropped(response?.code in setOf(401, 403)) }
+                main.post {
+                    if (attempt != generation) return@post
+                    record("failed", response?.code?.toString() ?: t.javaClass.simpleName)
+                    onDropped(response?.code in setOf(401, 403))
+                }
             }
         })
     }
@@ -226,7 +265,9 @@ object Relay {
         val frame = runCatching { JSONObject(text) }.getOrNull() ?: return
         when (frame.optString("type")) {
             "device_status" -> {
-                online = frame.optBoolean("online")
+                val next = frame.optBoolean("online")
+                if (next != online) record(if (next) "computer-online" else "computer-offline")
+                online = next
                 devices = frame.optJSONArray("devices") ?: JSONArray()
                 publishState()
             }
@@ -239,6 +280,9 @@ object Relay {
         }
     }
 
+    private const val LOG_KEY = "events"
+    private const val LOG_LIMIT = 40
+    private const val LOG_DETAIL_LIMIT = 80
     private const val RETRY_MIN_MS = 1_500L
     private const val RETRY_MAX_MS = 30_000L
     private const val REFRESH_MARGIN_MS = 60_000L

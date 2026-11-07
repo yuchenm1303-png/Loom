@@ -76,6 +76,7 @@ html[data-loom-surface="mobile"] .m-row {
 .m-row.is-static .m-row-text strong { color: var(--loom-workspace-secondary); }
 .m-row.is-danger strong { color: var(--m-bad); }
 .m-row-icon { flex: none; display: grid; place-items: center; color: var(--loom-workspace-secondary); }
+.m-row-icon.is-dim { opacity: .45; }
 .m-dot { position: relative; display: block; width: 8px; height: 8px; flex: none; box-sizing: border-box; border-radius: 50%; background: var(--loom-workspace-muted); transition: background-color var(--loom-dur-base) var(--loom-ease-out); }
 .m-dot.is-run { background: none; border: 2px solid var(--m-run); }
 /* A live state breathes: the ring grows and fades on the compositor, nothing repaints. */

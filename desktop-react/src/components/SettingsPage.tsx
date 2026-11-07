@@ -337,7 +337,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { key: "computer", label: "Computer Use", icon: Monitor },
       { key: "browser", label: "Browser", icon: Globe2 },
       { key: "websearch", label: "Web Search", icon: Search },
-      { key: "phones", label: "Phone", icon: MonitorSmartphone },
+      { key: "phones", label: "Devices", icon: MonitorSmartphone },
       { key: "terminal", label: "Terminal", icon: Terminal },
       { key: "plugins", label: "Plugins", icon: Plug },
       { key: "connectors", label: "Connectors", icon: Link2 },

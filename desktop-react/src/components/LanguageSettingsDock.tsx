@@ -310,7 +310,7 @@ const STATIC_SETTING_TRANSLATIONS: Record<string, string> = {
   "Useful when comparing renderer state with App Server state.": "用于对比渲染层与 App Server 的状态。",
   "Memory": "记忆",
   "Web Search": "网页搜索",
-  "Phone": "手机",
+  "Devices": "设备",
   "No matching settings": "没有匹配的设置",
   "Tune Loom for long reading sessions, dense agent work, or a wider desktop layout without changing Agent behavior.": "为长时间阅读、高密度 Agent 工作或更宽的桌面布局调整 Loom，不影响 Agent 行为。",
   "Reset appearance": "重置外观",

@@ -24,17 +24,20 @@ import { TranscriptScrollController } from "../components/TranscriptScrollContro
 import { RETAIN } from "../motion/tokens";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useLoom } from "../state/useLoom";
-import type { ApprovalDecision, ThreadRecord, TranscriptItem } from "../types/loom";
+import type { AccountDevices, ApprovalDecision, ThreadRecord, TranscriptItem } from "../types/loom";
 import {
   cancelPairing,
   confirmBiometric,
+  fetchAccountDevices,
   onPairing,
   onShellState,
+  readConnectionLog,
   readShellState,
   reportBusyThreads,
   selectDevice,
   startPairing,
   unpair,
+  type ConnectionEvent,
   type PairingProgress,
   type ShellDevice,
   type ShellState,
@@ -49,6 +52,8 @@ const WEB_URL = "https://loom.smirel.com";
 const THREAD_CACHE_KEY = "loom.mobile.threads";
 const THREAD_CACHE_LIMIT = 30;
 const ICON = { size: 20, strokeWidth: 1.75 } as const;
+/** A blip is not news: the banner waits this long, and a reconnect usually beats it. */
+const OFFLINE_NOTICE_MS = 3000;
 
 const MODE_COPY: Record<string, { name: string; hint: string }> = {
   "read-only": { name: "只读", hint: "只看不改" },
@@ -76,6 +81,34 @@ function ago(value: unknown): string {
 
 function threadBusy(thread: ThreadRecord): boolean {
   return thread.status === "running" || thread.status === "waiting_approval";
+}
+
+/** True once the value has stayed true for a while; false again at once. */
+function useHeld(value: boolean, delayMs: number): boolean {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!value) { setHeld(false); return; }
+    const timer = window.setTimeout(() => setHeld(true), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+  return held;
+}
+
+function connectionEventText(entry: ConnectionEvent): string {
+  const code = entry.detail.split(" ")[0];
+  if (entry.event === "connected") return "已连接";
+  if (entry.event === "computer-online") return "电脑上线";
+  if (entry.event === "computer-offline") return "电脑离线";
+  if (entry.event === "rest") return "切到后台较久，已暂停连接";
+  if (entry.event === "failed") return entry.detail === "401" || entry.detail === "403" ? "登录需要刷新" : "连不上服务器";
+  if (code === "1012" || code === "1001") return "服务器更新，自动重连";
+  if (code === "4401") return "登录需要刷新";
+  if (code === "1013") return "网络太慢，连接被重置";
+  return "连接中断";
+}
+
+function clockTime(at: number): string {
+  return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 function readCachedThreads(): CachedThread[] {
@@ -360,6 +393,7 @@ function ThreadView({ loom, space, online, connecting, onBack }: { loom: Loom; s
   const thread = loom.active?.thread;
   // The screen arrives at once; until the Host answers it must not show the previous conversation.
   const opening = Boolean(loom.openingThreadId && thread?.id !== loom.openingThreadId);
+  const offlineNotice = useHeld(!online, OFFLINE_NOTICE_MS);
   const running = Boolean(loom.turnActive || (thread && threadBusy(thread)));
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<{ path: string; name: string }[]>([]);
@@ -417,7 +451,7 @@ function ThreadView({ loom, space, online, connecting, onBack }: { loom: Loom; s
   const blank = !thread && !loom.items.length && !opening;
   return (
     <div className="m-thread">
-      <Fold open={!online}><p className="m-banner" role="status">{connecting ? "正在重新连接…" : "电脑离线，暂时不能操作"}</p></Fold>
+      <Fold open={offlineNotice}><p className="m-banner" role="status">{connecting ? "正在重新连接…" : "电脑离线，暂时不能操作"}</p></Fold>
       <header className="m-thread-head">
         <button type="button" className="m-icon-button" aria-label="返回" onClick={onBack}><ChevronLeft size={24} strokeWidth={1.75} /></button>
         <div>
@@ -484,20 +518,85 @@ function ThreadView({ loom, space, online, connecting, onBack }: { loom: Loom; s
   );
 }
 
+function ConnectionLog({ open, onClose }: { open: boolean; onClose(): void }) {
+  const events = useMemo(() => (open ? readConnectionLog() : []), [open]);
+  return (
+    <Sheet open={open} label="连接记录" onClose={onClose}>
+      <h2 className="m-sheet-title">连接记录</h2>
+      {events.length ? (
+        <div className="m-rows">
+          {events.map((entry) => (
+            <div className="m-row is-static" key={`${entry.at}:${entry.event}`}>
+              <span className="m-row-text"><strong>{connectionEventText(entry)}</strong></span>
+              <small>{clockTime(entry.at)}</small>
+            </div>
+          ))}
+        </div>
+      ) : <p className="m-note">还没有记录。</p>}
+    </Sheet>
+  );
+}
+
 function More({ shell }: { shell: ShellState }) {
   const [confirming, setConfirming] = useState(false);
+  const [devices, setDevices] = useState<AccountDevices | null>(null);
+  const [log, setLog] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    fetchAccountDevices()
+      .then((next) => { if (live) setDevices(next); })
+      .catch((cause) => { if (live) setError(cause instanceof Error ? cause.message : String(cause)); });
+    return () => { live = false; };
+  }, [shell.socket]);
+
+  // The relay knows who is online right now; the account remembers everyone else.
+  const liveIds = new Set(shell.devices.map((device) => device.id));
+  const known = devices?.computers ?? [];
+  const computers = [
+    ...shell.devices.map((device) => ({ id: device.id ?? "", name: device.name ?? "", platform: device.platform ?? "", online: true, seen: 0 })),
+    ...known.filter((computer) => !liveIds.has(computer.id)).map((computer) => ({ id: computer.id, name: computer.name, platform: computer.platform, online: false, seen: computer.last_seen_at })),
+  ];
+
   return (
     <>
       <Group title="电脑">
-        {shell.devices.length ? shell.devices.map((device) => (
-          <button type="button" className="m-row" key={device.id} disabled={device.id === shell.deviceId} onClick={() => device.id && selectDevice(device.id)}>
-            <span className="m-row-icon" aria-hidden="true">{deviceIcon(device)}</span>
+        {computers.length ? computers.map((device) => (
+          <button type="button" className="m-row" key={device.id} disabled={device.id === shell.deviceId || !device.online} onClick={() => selectDevice(device.id)}>
+            <span className={`m-row-icon${device.online ? "" : " is-dim"}`} aria-hidden="true">{deviceIcon(device)}</span>
             <span className="m-row-text"><strong>{device.name || "Loom 电脑"}</strong></span>
-            {device.id === shell.deviceId ? <Check size={18} strokeWidth={2} /> : <small>切换</small>}
+            {device.id === shell.deviceId ? <Check size={18} strokeWidth={2} /> : <small>{device.online ? "切换" : `最近在线 ${ago(device.seen)}`}</small>}
           </button>
         )) : <p className="m-rows-note">没有在线的电脑。</p>}
       </Group>
+      {devices?.phones.length ? (
+        <Group title="受信任的手机">
+          {devices.phones.map((phone) => (
+            <div className="m-row is-static" key={phone.id}>
+              <span className={`m-dot is-${phone.current || phone.online ? "on" : "idle"}`} aria-hidden="true" />
+              <span className="m-row-text"><strong>{phone.name || "手机"}</strong></span>
+              <small>{phone.current ? "这部手机" : phone.online ? "在线" : `最近使用 ${ago(phone.last_used_at)}`}</small>
+            </div>
+          ))}
+        </Group>
+      ) : null}
+      {devices?.history.length ? (
+        <Group title="历史设备">
+          {devices.history.map((phone) => (
+            <div className="m-row is-static" key={phone.id}>
+              <span className="m-row-text"><strong>{phone.name || "手机"}</strong></span>
+              <small>{ago(phone.removed_at)}移除</small>
+            </div>
+          ))}
+        </Group>
+      ) : null}
+      <Fold open={Boolean(error)}><p className="m-alert" role="alert"><CircleAlert size={16} strokeWidth={1.75} />{error}</p></Fold>
       <Group>
+        <button type="button" className="m-row" onClick={() => setLog(true)}>
+          <span className="m-row-text"><strong>连接记录</strong></span>
+          <small>查看掉线原因</small>
+        </button>
         <button type="button" className="m-row" onClick={() => void window.loom.openExternal(WEB_URL)}>
           <span className="m-row-text"><strong>在网页打开完整版</strong></span>
           <small>loom.smirel.com</small>
@@ -516,7 +615,8 @@ function More({ shell }: { shell: ShellState }) {
           <button type="button" className="m-row is-danger" onClick={() => setConfirming(true)}><span className="m-row-text"><strong>解除配对</strong></span></button>
         )}
       </Group>
-      <p className="m-note">模型密钥和账号只能在电脑上修改。</p>
+      <p className="m-note">移除其他手机、修改模型密钥和账号，都要在电脑上操作。</p>
+      <ConnectionLog open={log} onClose={() => setLog(false)} />
     </>
   );
 }
@@ -528,6 +628,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   const [choosing, setChoosing] = useState<Space | null>(null);
   const cached = useMemo(readCachedThreads, []);
   const online = shell.socket === "open" && shell.online;
+  const offlineNotice = useHeld(!online, OFFLINE_NOTICE_MS);
   const screen = useMotionPresence(Boolean(open), RETAIN.flow);
   const space = useLatchedWhile(Boolean(open), open ?? "chat");
   const chosenSpace = useLatchedWhile(Boolean(choosing), choosing ?? "chat");
@@ -566,7 +667,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   }, [open]);
 
   const list = tab === "chat" ? threads.filter((thread) => !thread.weave) : threads.filter((thread) => thread.weave);
-  const showOffline = !online && !threads.length && tab !== "more";
+  const showOffline = offlineNotice && !threads.length && tab !== "more";
   const loading = online && loom.connection === "connecting" && !threads.length;
   const title = tab === "now" ? shell.deviceName || "Loom" : TABS.find((entry) => entry.key === tab)?.label;
   return (
@@ -576,7 +677,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
           <h1 key={title}>{title}</h1>
           <p><span className={`m-dot is-${online ? "on" : shell.socket === "connecting" ? "run" : "idle"}`} aria-hidden="true" />{online ? "在线" : shell.socket === "connecting" ? "连接中" : "离线"}</p>
         </header>
-        <Fold open={!online && threads.length > 0}><p className="m-banner" role="status">{shell.socket === "connecting" ? "正在重新连接…" : "电脑离线，下面是离线前的内容"}</p></Fold>
+        <Fold open={offlineNotice && threads.length > 0}><p className="m-banner" role="status">{shell.socket === "connecting" ? "正在重新连接…" : "电脑离线，下面是离线前的内容"}</p></Fold>
         <main className="m-body" key={tab}>
           {showOffline ? <Offline shell={shell} cached={cached} /> : null}
           {loading ? <Skeleton rows={5} /> : null}

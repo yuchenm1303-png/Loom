@@ -36,6 +36,8 @@ export interface LoomBridge {
   mobilePairDecide?(pairId: string, approve: boolean): Promise<unknown>;
   mobileDevices?(): Promise<{ devices: Array<{ id: string; name: string; created_at: number; last_used_at: number }> }>;
   mobileDeviceRevoke?(sessionId: string): Promise<unknown>;
+  accountDevices?(): Promise<import("./loom").AccountDevices>;
+  accountDeviceForget?(kind: "phone" | "computer", id: string): Promise<unknown>;
   accountCapabilities(): Promise<LoomAuthCapabilitiesResult>;
   accountLogin(email: string, password: string, turnstileToken?: string): Promise<LoomAccountResult>;
   accountRegister(email: string, password: string, turnstileToken?: string): Promise<LoomAccountResult>;

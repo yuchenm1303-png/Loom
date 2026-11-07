@@ -176,3 +176,14 @@ cd android && ./gradlew assembleDebug
 APK 在 `android/app/build/outputs/apk/debug/`，目前用调试签名。在非 ASCII 路径的机器上构建时，把 `GRADLE_USER_HOME` 设到 ASCII 路径。
 
 调试页面：`scripts/fixtures/mobile.html` 用假的原生壳运行手机界面，可在浏览器里测试。
+
+## 13. 连接稳定性（2026-11-06）
+
+掉线的主要原因是每次推送都会重建网关容器，而中继路由只在内存里。现在：
+
+- 部署按改动范围决定：前端写入挂载目录 `/opt/loom-web-static`，不重启进程；只有 `services/loom_web_gateway` 变化才重建容器。
+- 账号服务超时或 5xx 不再断开连接，宽限 5 分钟；只有明确拒绝才断开。
+- 开发版 Host 默认不连中继，避免和安装版抢同一设备 ID。
+- 手机切到后台后保留连接 5 分钟；断线不足 3 秒不显示横幅；「更多 › 连接记录」保留最近 40 条原因。网关日志记录每次断开的关闭码。
+
+设备信息：`GET /v1/auth/devices` 返回电脑、受信任的手机和历史设备，手机只能读。清除记录只在电脑上做，也不能作用于在线设备。

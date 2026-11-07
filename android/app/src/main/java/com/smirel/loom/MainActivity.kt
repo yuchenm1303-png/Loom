@@ -262,6 +262,12 @@ class MainActivity : AppCompatActivity(), Relay.Listener {
         }
 
         @JavascriptInterface
+        fun fetchDevices(id: Int) = Relay.fetchDevices(id)
+
+        @JavascriptInterface
+        fun connectionLog(): String = Relay.connectionLog()
+
+        @JavascriptInterface
         fun startPairing() {
             main.post {
                 scanner.launch(

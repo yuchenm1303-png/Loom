@@ -466,3 +466,52 @@ def test_gateway_phone_operations_match_the_host_authority():
     source = (gateway.Path(__file__).resolve().parents[1] / "desktop-react" / "electron" / "mobileAccess.ts").read_text(encoding="utf-8")
     block = source.split("MOBILE_OPERATIONS: ReadonlySet<string> = new Set([", 1)[1].split("])", 1)[0]
     assert set(re.findall(r'"([^"]+)"', block)) == set(gateway.MOBILE_OPERATIONS)
+
+
+def test_an_account_outage_does_not_end_a_live_connection(relay, monkeypatch):
+    client, state = relay
+    monkeypatch.setattr(gateway, "AUTH_RECHECK_SECONDS", 0.02)
+    original = gateway._account_request
+
+    async def outage(method, path, *, token="", json_body=None):
+        if path == "/auth/relay-me":
+            return 0, {}
+        return await original(method, path, token=token, json_body=json_body)
+
+    monkeypatch.setattr(gateway, "_account_request", outage)
+    with host(client, "a") as a:
+        online_host(a)
+        with browser(client) as web:
+            web.receive_json()
+            time.sleep(0.2)
+            web.send_json({"type": "ping"})
+            assert web.receive_json()["type"] == "pong"
+
+
+def test_an_account_outage_ends_a_connection_only_after_the_grace(relay, monkeypatch):
+    client, state = relay
+    monkeypatch.setattr(gateway, "AUTH_RECHECK_SECONDS", 0.02)
+    monkeypatch.setattr(gateway, "AUTH_OUTAGE_GRACE_SECONDS", 0.05)
+    original = gateway._account_request
+
+    async def outage(method, path, *, token="", json_body=None):
+        if path == "/auth/relay-me":
+            return 503, {}
+        return await original(method, path, token=token, json_body=json_body)
+
+    monkeypatch.setattr(gateway, "_account_request", outage)
+    with browser(client) as web:
+        web.receive_json()
+        with pytest.raises(WebSocketDisconnect) as closed:
+            while True:
+                web.receive_json()
+        assert closed.value.code == 4401
+
+
+def test_a_published_bundle_reports_its_own_commit(tmp_path, monkeypatch):
+    monkeypatch.setattr(gateway, "STATIC_DIR", tmp_path.resolve())
+    (tmp_path / "index.html").write_text("<html></html>", encoding="utf-8")
+    (tmp_path / "build-sha.txt").write_text("abc123\n", encoding="utf-8")
+    with TestClient(gateway.app) as client:
+        assert client.get("/api/healthz").json()["buildSha"] == "abc123"
+        assert client.get("/").headers["X-Loom-Build"] == "abc123"

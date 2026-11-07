@@ -102,12 +102,23 @@ object AccountApi {
 
     private val JSON_TYPE = "application/json".toMediaType()
 
-    private fun post(path: String, body: JSONObject): JSONObject {
-        val request = Request.Builder()
+    private fun post(path: String, body: JSONObject): JSONObject = execute(
+        Request.Builder()
             .url("$ACCOUNT_URL$path")
             .post(body.toString().toRequestBody(JSON_TYPE))
             .header("Accept", "application/json")
-            .build()
+            .build(),
+    )
+
+    fun devices(accessToken: String): JSONObject = execute(
+        Request.Builder()
+            .url("$ACCOUNT_URL/auth/devices")
+            .header("Accept", "application/json")
+            .header("Authorization", "Bearer $accessToken")
+            .build(),
+    )
+
+    private fun execute(request: Request): JSONObject {
         http.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             val json = runCatching { JSONObject(text) }.getOrDefault(JSONObject())

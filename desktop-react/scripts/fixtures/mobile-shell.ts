@@ -117,6 +117,24 @@ window.LoomShell = {
   confirmBiometric(id, reason) { shell.biometricReasons.push(reason); window.setTimeout(() => emit({ type: "biometric", id, ok: shell.biometric }), 0); },
   openUrl: () => {},
   setBusyThreads: (idsJson) => { Reflect.set(shell, "busy", JSON.parse(idsJson)); },
+  fetchDevices(id) {
+    const hours = (count: number) => Math.floor(Date.now() / 1000) - count * 3600;
+    emit({ type: "devices", id, devices: {
+      computers: [{ id: "tablet", name: "旧工作站", platform: "win32", version: "0.1.150", last_seen_at: hours(72), online: false }],
+      phones: [
+        { id: "s1", name: "HUAWEI Mate 50", created_at: hours(30), last_used_at: hours(0), online: true, current: true },
+        { id: "s2", name: "备用手机", created_at: hours(400), last_used_at: hours(50), online: false, current: false },
+      ],
+      history: [{ id: "s0", name: "HUAWEI P40", created_at: hours(2000), removed_at: hours(300) }],
+    } });
+  },
+  connectionLog: () => JSON.stringify([
+    { at: Date.now() - 600_000, event: "connected", detail: "" },
+    { at: Date.now() - 300_000, event: "closed", detail: "1012 service restart" },
+    { at: Date.now() - 296_000, event: "connected", detail: "" },
+    { at: Date.now() - 60_000, event: "failed", detail: "SocketTimeoutException" },
+    { at: Date.now() - 50_000, event: "connected", detail: "" },
+  ]),
 };
 
 await import("../../src/mobile/main");

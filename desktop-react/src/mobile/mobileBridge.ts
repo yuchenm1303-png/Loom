@@ -3,6 +3,10 @@
 // tokens and the keystore live in the native shell, so the page never holds a
 // credential and a turn keeps its connection while the page is in the background.
 
+import type { AccountDevices } from "../types/loom";
+
+export type ConnectionEvent = { at: number; event: string; detail: string };
+
 export type ShellDevice = { id?: string; name?: string; platform?: string; version?: string; online?: boolean };
 
 export type ShellState = {
@@ -26,7 +30,8 @@ type ShellEvent =
   | { type: "notification"; payload: unknown }
   | { type: "state"; state: ShellState }
   | { type: "pairing"; progress: PairingProgress }
-  | { type: "biometric"; id: number; ok: boolean };
+  | { type: "biometric"; id: number; ok: boolean }
+  | { type: "devices"; id: number; devices?: AccountDevices; error?: string };
 
 export type LoomShell = {
   state(): string;
@@ -38,6 +43,8 @@ export type LoomShell = {
   confirmBiometric(id: number, reason: string): void;
   openUrl(url: string): void;
   setBusyThreads(idsJson: string): void;
+  fetchDevices(id: number): void;
+  connectionLog(): string;
 };
 
 declare global {
@@ -54,6 +61,7 @@ type Pending = { resolve(value: unknown): void; reject(cause: Error): void; time
 
 const pending = new Map<number, Pending>();
 const biometrics = new Map<number, (ok: boolean) => void>();
+const deviceReads = new Map<number, { resolve(devices: AccountDevices): void; reject(cause: Error): void }>();
 const notificationListeners = new Set<(message: never) => void>();
 const stateListeners = new Set<(state: ShellState) => void>();
 const pairingListeners = new Set<(progress: PairingProgress) => void>();
@@ -113,6 +121,11 @@ function receive(json: string): void {
   else if (event.type === "biometric") {
     biometrics.get(event.id)?.(event.ok);
     biometrics.delete(event.id);
+  } else if (event.type === "devices") {
+    const read = deviceReads.get(event.id);
+    deviceReads.delete(event.id);
+    if (event.devices) read?.resolve(event.devices);
+    else read?.reject(new Error(event.error || "读取设备失败"));
   } else if (event.type === "state") {
     const open = event.state.socket === "open" && event.state.online;
     if (wasOpen && !open) failAllPending("The connection to the computer dropped.");
@@ -224,4 +237,12 @@ export const startPairing = () => shell().startPairing();
 export const cancelPairing = () => shell().cancelPairing();
 export const selectDevice = (deviceId: string) => shell().selectDevice(deviceId);
 export const unpair = () => shell().unpair();
+export function fetchAccountDevices(): Promise<AccountDevices> {
+  return new Promise((resolve, reject) => {
+    const id = nextId++;
+    deviceReads.set(id, { resolve, reject });
+    shell().fetchDevices(id);
+  });
+}
+export const readConnectionLog = (): ConnectionEvent[] => (JSON.parse(shell().connectionLog()) as ConnectionEvent[]).reverse();
 export const reportBusyThreads = (ids: string[]) => shell().setBusyThreads(JSON.stringify(ids));

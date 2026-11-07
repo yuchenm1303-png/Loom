@@ -169,3 +169,77 @@ def test_revoke_cannot_touch_a_computer_session_or_another_account(app) -> None:
         app.revoke_mobile_device(host, {"session_id": computer})
     assert app.relay_credential(f"Bearer {session['access_token']}")["relay_token"]
     assert app.me(host)["user"]
+
+
+def _access(bearer: str) -> str:
+    return bearer.split(" ", 1)[1]
+
+
+def test_devices_show_trusted_phones_and_mark_the_one_asking(app) -> None:
+    host = _host(app)
+    session = _paired(app, host)
+
+    from_phone = app.account_devices(f"Bearer {session['access_token']}")
+    assert [(phone["name"], phone["current"]) for phone in from_phone["phones"]] == [("Mate 50", True)]
+    assert app.account_devices(host)["phones"][0]["current"] is False
+    assert from_phone["computers"] == [] and from_phone["history"] == []
+
+
+def test_a_phone_may_read_devices_but_not_clear_them(app) -> None:
+    session = _paired(app, _host(app))
+    bearer = f"Bearer {session['access_token']}"
+    app.assert_session_may_reach(bearer, "/v1/auth/devices")
+    with pytest.raises(AccountError):
+        app.assert_session_may_reach(bearer, "/v1/auth/devices/forget")
+
+
+def test_a_removed_phone_moves_to_history_and_can_be_cleared(app) -> None:
+    host = _host(app)
+    _paired(app, host)
+    phone = app.account_devices(host)["phones"][0]["id"]
+    app.revoke_mobile_device(host, {"session_id": phone})
+
+    devices = app.account_devices(host)
+    assert devices["phones"] == []
+    assert [entry["name"] for entry in devices["history"]] == ["Mate 50"]
+
+    app.forget_device(host, {"kind": "phone", "id": phone})
+    assert app.account_devices(host)["history"] == []
+
+
+def test_unpairing_from_the_phone_lands_in_history_too(app) -> None:
+    host = _host(app)
+    session = _paired(app, host)
+    app.logout({"refresh_token": session["refresh_token"]})
+    assert [entry["name"] for entry in app.account_devices(host)["history"]] == ["Mate 50"]
+
+
+def test_forget_never_ends_a_live_session_or_reaches_another_account(app) -> None:
+    host, other = _host(app), _host(app, "other@example.com")
+    session = _paired(app, host)
+    phone = app.account_devices(host)["phones"][0]["id"]
+
+    with pytest.raises(AccountError):
+        app.forget_device(host, {"kind": "phone", "id": phone})
+    assert app.relay_credential(f"Bearer {session['access_token']}")["relay_token"]
+
+    app.revoke_mobile_device(host, {"session_id": phone})
+    with pytest.raises(AccountError):
+        app.forget_device(other, {"kind": "phone", "id": phone})
+    with pytest.raises(AccountError):
+        app.forget_device(host, {"kind": "anything", "id": phone})
+    assert app.account_devices(host)["history"]
+
+
+def test_relay_use_counts_as_phone_activity(app) -> None:
+    host = _host(app)
+    session = _paired(app, host)
+    relay = app.relay_credential(f"Bearer {session['access_token']}")["relay_token"]
+    phone = app.account_devices(host)["phones"][0]["id"]
+    with app.store._connect() as db:
+        db.execute("UPDATE sessions SET last_used_at = 1 WHERE id = ?", (phone,))
+        db.execute("UPDATE relay_credentials SET last_used_at = 1 WHERE session_id = ?", (phone,))
+    assert app.account_devices(host)["phones"][0]["online"] is False
+
+    app.relay_me(f"Bearer {relay}")
+    assert app.account_devices(host)["phones"][0]["online"] is True

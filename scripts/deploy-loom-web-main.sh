@@ -5,6 +5,11 @@ SRC="${LOOM_WEB_SOURCE_DIR:-/opt/loom-web-main-src}"
 DEPLOY="${LOOM_WEB_DEPLOY_DIR:-/opt/loom-web-deploy}"
 ACCOUNT_DEPLOY="${LOOM_ACCOUNT_DEPLOY_DIR:-/opt/loom-account/services/loom_account/deploy}"
 MARKER="$DEPLOY/deployed-main"
+# The bundle lives outside the image so a UI change can land without restarting the
+# gateway: its relay routes live in memory, and a restart drops every Host and client.
+STATIC_DIR="${LOOM_WEB_STATIC_HOST_DIR:-/opt/loom-web-static}"
+STATIC_MOUNT=/srv/loom-web/live-static
+COMPOSE_STATIC="$DEPLOY/compose.static.yml"
 LOCK_FILE="${LOOM_WEB_LOCK_FILE:-/var/lock/loom-web-autosync.lock}"
 LOG_PREFIX='[loom-web-autosync]'
 
@@ -46,13 +51,31 @@ if [[ -f "$caddy_file" && -f services/loom_model_policy/server.py ]]; then
     -d '{}' https://account.smirel.com/policy/v1/check 2>/dev/null | \
     python3 -c 'import json,sys; assert json.load(sys.stdin)["error"]["code"] == "INVALID_POLICY"'
 fi
+
+# What this push actually touches. Anything unknown (no marker, a rewritten history,
+# the first run after this change) takes the full path.
+relay_changed=1
+bundle_changed=1
+if [[ -n "$deployed" && -f "$COMPOSE_STATIC" ]] && git cat-file -e "$deployed^{commit}" 2>/dev/null; then
+  if git diff --quiet "$deployed" "$remote" -- services/loom_web_gateway; then relay_changed=0; fi
+  if git diff --quiet "$deployed" "$remote" -- desktop-react \
+    ':(exclude)desktop-react/electron' \
+    ':(exclude)desktop-react/src/mobile' \
+    ':(exclude)desktop-react/mobile.html' \
+    ':(exclude)desktop-react/vite.mobile.config.ts' \
+    ':(exclude)desktop-react/scripts/tests' \
+    ':(exclude)desktop-react/scripts/fixtures'; then bundle_changed=0; fi
+fi
+
 candidate="loom-web:autosync-${remote:0:12}"
-echo "$LOG_PREFIX building main=${remote:0:12}"
-docker build -q \
-  --build-arg "LOOM_BUILD_SHA=$remote" \
-  --build-arg "LOOM_BUILD_SOURCE_TIME=$(git show -s --format=%ct "$remote")" \
-  -f services/loom_web_gateway/Dockerfile \
-  -t "$candidate" . >/dev/null
+if [[ "$relay_changed" == 1 || "$bundle_changed" == 1 ]]; then
+  echo "$LOG_PREFIX building main=${remote:0:12} relay=$relay_changed bundle=$bundle_changed"
+  docker build -q \
+    --build-arg "LOOM_BUILD_SHA=$remote" \
+    --build-arg "LOOM_BUILD_SOURCE_TIME=$(git show -s --format=%ct "$remote")" \
+    -f services/loom_web_gateway/Dockerfile \
+    -t "$candidate" . >/dev/null
+fi
 
 # The gateway's relay authentication depends on the account API. Build both
 # from this same main checkout and activate the account service first.
@@ -72,17 +95,68 @@ if [[ "$account_running" != "$account_source" ]]; then
   docker tag "$(docker inspect loom-account --format '{{.Image}}')" loom-account:autosync-rollback
 fi
 
-old_id="$(docker image inspect loom-web:independent --format '{{.Id}}' 2>/dev/null || true)"
-if [[ -n "$old_id" ]]; then
-  docker tag "$old_id" loom-web:autosync-rollback
+if [[ "$relay_changed" == 1 || "$bundle_changed" == 1 ]]; then
+  old_id="$(docker image inspect loom-web:independent --format '{{.Id}}' 2>/dev/null || true)"
+  if [[ -n "$old_id" ]]; then
+    docker tag "$old_id" loom-web:autosync-rollback
+  fi
+  docker tag "$candidate" loom-web:independent
 fi
-docker tag "$candidate" loom-web:independent
+
+web_compose=(docker compose -f compose.prod.yml -f "$COMPOSE_STATIC")
+static_backup=""
+
+write_static_compose() {
+  cat >"$COMPOSE_STATIC" <<COMPOSE
+services:
+  loom-web:
+    environment:
+      LOOM_WEB_STATIC_DIR: $STATIC_MOUNT
+    volumes:
+      - $STATIC_DIR:$STATIC_MOUNT:ro
+COMPOSE
+}
+
+# Old hashed assets stay for the pages still open on them; the entry files flip last.
+publish_static() {
+  local staged container
+  mkdir -p "$STATIC_DIR"
+  chmod 755 "$STATIC_DIR"
+  staged="$(mktemp -d "$STATIC_DIR.staged.XXXXXX")"
+  container="$(docker create "$candidate")"
+  docker cp "$container:/srv/loom-web/static/." "$staged/" >/dev/null
+  docker rm -f "$container" >/dev/null
+  printf '%s\n' "$remote" >"$staged/build-sha.txt"
+  find "$staged" -type f -exec touch {} +
+  chmod -R a+rX "$staged"
+  if [[ -f "$STATIC_DIR/index.html" ]]; then
+    static_backup="$(mktemp -d "$STATIC_DIR.backup.XXXXXX")"
+    cp -p "$STATIC_DIR/index.html" "$static_backup/"
+    if [[ -f "$STATIC_DIR/build-sha.txt" ]]; then cp -p "$STATIC_DIR/build-sha.txt" "$static_backup/"; fi
+  fi
+  tar -C "$staged" --exclude=./index.html --exclude=./build-sha.txt -cf - . | tar -C "$STATIC_DIR" -xf -
+  cp -p "$staged/index.html" "$STATIC_DIR/index.html.next"
+  mv -f "$STATIC_DIR/index.html.next" "$STATIC_DIR/index.html"
+  cp -p "$staged/build-sha.txt" "$STATIC_DIR/build-sha.next"
+  mv -f "$STATIC_DIR/build-sha.next" "$STATIC_DIR/build-sha.txt"
+  rm -rf "$staged"
+  if [[ -d "$STATIC_DIR/assets" ]]; then find "$STATIC_DIR/assets" -type f -mtime +14 -delete || true; fi
+}
+
+restore_static() {
+  if [[ -n "$static_backup" ]]; then
+    cp -pf "$static_backup/." "$STATIC_DIR/" 2>/dev/null || cp -pf "$static_backup"/* "$STATIC_DIR/"
+  fi
+}
 
 rollback() {
   echo "$LOG_PREFIX candidate failed verification; rolling back" >&2
   if docker image inspect loom-web:autosync-rollback >/dev/null 2>&1; then
     docker tag loom-web:autosync-rollback loom-web:independent
-    (cd "$DEPLOY" && docker compose -f compose.prod.yml up -d --force-recreate >/dev/null)
+    restore_static
+    if [[ "$relay_changed" == 1 ]]; then
+      (cd "$DEPLOY" && "${web_compose[@]}" up -d --force-recreate >/dev/null)
+    fi
   fi
   if [[ "$account_changed" == 1 ]]; then
     docker tag loom-account:autosync-rollback loom-account:local
@@ -106,19 +180,30 @@ if [[ "$account_running" != "$account_source" ]]; then
   [[ "$account_healthy" == 1 ]] || rollback
 fi
 
-cd "$DEPLOY"
-docker compose -f compose.prod.yml up -d --force-recreate >/dev/null || rollback
-healthy=0
-for _ in $(seq 1 30); do
-  state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' loom-web 2>/dev/null || true)"
-  if [[ "$state" == healthy ]]; then healthy=1; break; fi
-  if [[ "$state" == unhealthy || "$state" == exited ]]; then break; fi
-  sleep 2
-done
-[[ "$healthy" == 1 ]] || rollback
+if [[ "$relay_changed" == 1 || "$bundle_changed" == 1 ]]; then publish_static; fi
 
-actual="$(docker exec loom-web python -c 'import os; print(os.environ.get("LOOM_BUILD_SHA", ""))' 2>/dev/null || true)"
-[[ "$actual" == "$remote" ]] || rollback
+cd "$DEPLOY"
+if [[ "$relay_changed" == 1 ]]; then
+  write_static_compose
+  "${web_compose[@]}" up -d --force-recreate >/dev/null || rollback
+  healthy=0
+  for _ in $(seq 1 30); do
+    state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' loom-web 2>/dev/null || true)"
+    if [[ "$state" == healthy ]]; then healthy=1; break; fi
+    if [[ "$state" == unhealthy || "$state" == exited ]]; then break; fi
+    sleep 2
+  done
+  [[ "$healthy" == 1 ]] || rollback
+
+  actual="$(docker exec loom-web python -c 'import os; print(os.environ.get("LOOM_BUILD_SHA", ""))' 2>/dev/null || true)"
+  [[ "$actual" == "$remote" ]] || rollback
+fi
+
+# Whichever way it landed, the running gateway must now report this commit's bundle.
+if [[ "$relay_changed" == 1 || "$bundle_changed" == 1 ]]; then
+  served="$(docker exec loom-web python -c 'import json, urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8790/api/healthz", timeout=5))["buildSha"])' 2>/dev/null || true)"
+  [[ "$served" == "$remote" ]] || rollback
+fi
 
 # The marker is written only after the running container proves which Git commit
 # it contains. This prevents a successful-looking deploy marker from hiding a
@@ -129,6 +214,7 @@ mv "$tmp" "$MARKER"
 
 # Keep the stable production tag plus one rollback image; discard the per-build
 # alias so repeated UI deploys do not accumulate tags forever.
-docker image rm "$candidate" >/dev/null 2>&1 || true
+if [[ "$relay_changed" == 1 || "$bundle_changed" == 1 ]]; then docker image rm "$candidate" >/dev/null 2>&1 || true; fi
+if [[ -n "$static_backup" ]]; then rm -rf "$static_backup"; fi
 if [[ "$account_changed" == 1 ]]; then docker image rm "$account_candidate" >/dev/null 2>&1 || true; fi
-echo "$LOG_PREFIX deployed main=${remote:0:12}"
+echo "$LOG_PREFIX deployed main=${remote:0:12} relay=$relay_changed bundle=$bundle_changed"

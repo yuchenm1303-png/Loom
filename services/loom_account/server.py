@@ -45,7 +45,10 @@ SESSION_KIND_MOBILE = "mobile"
 # A phone session is a relay client and nothing else: it can never mint model
 # credentials, pair a Host, change the profile or reach the admin API, whatever
 # later endpoints appear. Deny by default, in one place (_dispatch).
-_MOBILE_SESSION_PATHS = frozenset({"/v1/auth/me", "/v1/auth/relay-credential", "/v1/auth/logout"})
+_MOBILE_SESSION_PATHS = frozenset({"/v1/auth/me", "/v1/auth/relay-credential", "/v1/auth/logout", "/v1/auth/devices"})
+_DEVICE_ONLINE_SECONDS = 90
+_DEVICE_HISTORY_DAYS = 90
+_DEVICE_HISTORY_LIMIT = 30
 _EMAIL_CHALLENGE_TTL_SECONDS = 10 * 60
 _EMAIL_RESEND_SECONDS = 60
 _OAUTH_STATE_TTL_SECONDS = 10 * 60
@@ -841,6 +844,99 @@ class AccountStore:
             }
             for row in rows
         ]
+
+    def session_id_for_access_token(self, token: str) -> str:
+        with self._connect() as db:
+            row = db.execute("SELECT id FROM sessions WHERE access_hash = ?", (_token_hash(str(token or "")),)).fetchone()
+        return str(row["id"]) if row is not None else ""
+
+    def account_devices(self, user_id: int, current_session_id: str = "") -> dict[str, Any]:
+        """Every computer and phone this account has used, for the device pages."""
+        now = _now()
+        with self._connect() as db:
+            phones = db.execute(
+                """
+                SELECT sessions.id, sessions.client_name, sessions.created_at,
+                       MAX(sessions.last_used_at, COALESCE((
+                           SELECT MAX(relay_credentials.last_used_at) FROM relay_credentials
+                           WHERE relay_credentials.session_id = sessions.id), 0)) AS last_used_at
+                FROM sessions
+                WHERE sessions.user_id = ? AND sessions.client_kind = ?
+                  AND sessions.revoked_at IS NULL AND sessions.refresh_expires_at > ?
+                ORDER BY last_used_at DESC
+                """,
+                (int(user_id), SESSION_KIND_MOBILE, now),
+            ).fetchall()
+            removed = db.execute(
+                """
+                SELECT id, client_name, created_at, revoked_at FROM sessions
+                WHERE user_id = ? AND client_kind = ? AND revoked_at IS NOT NULL AND revoked_at > ?
+                ORDER BY revoked_at DESC LIMIT ?
+                """,
+                (int(user_id), SESSION_KIND_MOBILE, now - _DEVICE_HISTORY_DAYS * 86400, _DEVICE_HISTORY_LIMIT),
+            ).fetchall()
+            known = db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_devices'").fetchone()
+            computers = db.execute(
+                """
+                SELECT device_id, name, platform, app_version, last_seen_at, disconnected_at FROM agent_devices
+                WHERE user_id = ? ORDER BY last_seen_at DESC LIMIT 50
+                """,
+                (int(user_id),),
+            ).fetchall() if known else []
+        return {
+            "computers": [
+                {
+                    "id": str(row["device_id"]),
+                    "name": str(row["name"]),
+                    "platform": str(row["platform"]),
+                    "version": str(row["app_version"]),
+                    "last_seen_at": int(row["last_seen_at"] or 0),
+                    "online": int(row["last_seen_at"] or 0) >= now - _DEVICE_ONLINE_SECONDS
+                    and int(row["disconnected_at"] or 0) < int(row["last_seen_at"] or 0),
+                }
+                for row in computers
+            ],
+            "phones": [
+                {
+                    "id": str(row["id"]),
+                    "name": str(row["client_name"]),
+                    "created_at": int(row["created_at"]),
+                    "last_used_at": int(row["last_used_at"]),
+                    "online": int(row["last_used_at"]) >= now - _DEVICE_ONLINE_SECONDS,
+                    "current": str(row["id"]) == current_session_id,
+                }
+                for row in phones
+            ],
+            "history": [
+                {
+                    "id": str(row["id"]),
+                    "name": str(row["client_name"]),
+                    "created_at": int(row["created_at"]),
+                    "removed_at": int(row["revoked_at"]),
+                }
+                for row in removed
+            ],
+        }
+
+    def forget_device(self, user_id: int, kind: str, device_id: str) -> bool:
+        """Clears a record. It can never end a live session or hide a computer that is online."""
+        with self._guard, self._connect() as db:
+            if kind == "phone":
+                removed = db.execute(
+                    "DELETE FROM sessions WHERE id = ? AND user_id = ? AND client_kind = ? AND revoked_at IS NOT NULL",
+                    (str(device_id), int(user_id), SESSION_KIND_MOBILE),
+                )
+            elif kind == "computer":
+                removed = db.execute(
+                    """
+                    DELETE FROM agent_devices WHERE user_id = ? AND device_id = ?
+                      AND (last_seen_at < ? OR disconnected_at >= last_seen_at)
+                    """,
+                    (int(user_id), str(device_id), _now() - _DEVICE_ONLINE_SECONDS),
+                )
+            else:
+                return False
+        return removed.rowcount == 1
 
     def revoke_mobile_session(self, user_id: int, session_id: str) -> bool:
         """Only ever touches this user's phone sessions, never a computer's."""
@@ -1994,6 +2090,16 @@ class AccountApplication:
             raise AccountError(HTTPStatus.NOT_FOUND, "MOBILE_DEVICE_NOT_FOUND", "This phone is no longer paired.")
         return {"ok": True}
 
+    def account_devices(self, authorization: str) -> dict[str, Any]:
+        user_id = int(self.me(authorization)["user"]["id"])
+        return self.store.account_devices(user_id, self.store.session_id_for_access_token(self._bearer_token(authorization)))
+
+    def forget_device(self, authorization: str, body: dict[str, Any]) -> dict[str, Any]:
+        user_id = int(self.me(authorization)["user"]["id"])
+        if not self.store.forget_device(user_id, str(body.get("kind") or ""), str(body.get("id") or "")):
+            raise AccountError(HTTPStatus.CONFLICT, "DEVICE_NOT_FORGETTABLE", "Only a removed phone or an offline computer can be cleared.")
+        return {"ok": True}
+
     def assert_session_may_reach(self, authorization: str, path: str) -> None:
         scheme, _, token = str(authorization or "").partition(" ")
         if scheme.casefold() != "bearer" or not token.strip():
@@ -2194,6 +2300,7 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         self.application.assert_session_may_reach(authorization, path)
         if self.command == "GET" and path == "/v1/auth/relay-me": return self.application.relay_me(authorization)
         if self.command == "GET" and path == "/v1/auth/mobile-devices": return self.application.mobile_devices(authorization)
+        if self.command == "GET" and path == "/v1/auth/devices": return self.application.account_devices(authorization)
         if self.command == "GET" and path == "/v1/auth/capabilities": return self.application.capabilities()
         if self.command == "GET" and path == "/v1/auth/me": return self.application.me(authorization)
         if self.command == "GET" and path == "/v1/admin/me": return self.application.admin_me(authorization)
@@ -2256,6 +2363,7 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if path == "/v1/auth/mobile-pair/decide": return self.application.decide_mobile_pair(authorization, body)
         if path == "/v1/auth/mobile-pair/poll": return self.application.poll_mobile_pair(body, self._client_key())
         if path == "/v1/auth/mobile-devices/revoke": return self.application.revoke_mobile_device(authorization, body)
+        if path == "/v1/auth/devices/forget": return self.application.forget_device(authorization, body)
         if path == "/v1/admin/users/status": return self.application.admin_set_user_status(body, authorization)
         if path == "/v1/admin/users/role": return self.application.admin_set_user_role(body, authorization)
         if path == "/v1/admin/users/revoke-sessions": return self.application.admin_revoke_user_sessions(body, authorization)

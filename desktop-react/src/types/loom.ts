@@ -483,3 +483,12 @@ export interface InitializeResult {
     taskErrors?: Record<string, string>;
   };
 }
+
+/** Everything this account has connected with, for the device pages. */
+export interface AccountDevices {
+  computers: Array<{ id: string; name: string; platform: string; version: string; last_seen_at: number; online: boolean }>;
+  phones: Array<{ id: string; name: string; created_at: number; last_used_at: number; online: boolean; current: boolean }>;
+  history: Array<{ id: string; name: string; created_at: number; removed_at: number }>;
+  /** Set by the computer's own Host. */
+  thisComputer?: string;
+}

@@ -24,7 +24,17 @@ WEB_ORIGINS = tuple(
     for item in os.environ.get("LOOM_WEB_ORIGINS", "").split(",")
     if item.strip()
 )
-BUILD_SHA = os.environ.get("LOOM_BUILD_SHA", "unknown")
+IMAGE_BUILD_SHA = os.environ.get("LOOM_BUILD_SHA", "unknown")
+
+
+def _current_build() -> str:
+    """The published bundle's commit: a UI deploy replaces it without restarting this process."""
+    try:
+        return (STATIC_DIR / "build-sha.txt").read_text(encoding="utf-8").strip() or IMAGE_BUILD_SHA
+    except OSError:
+        return IMAGE_BUILD_SHA
+
+
 TELEMETRY_SECRET = str(os.environ.get("LOOM_TELEMETRY_SECRET", "") or "").strip()
 # Both keys must be configured before enforcement is enabled. Never expose
 # the secret key to browsers or browser-readable capability responses.
@@ -399,7 +409,7 @@ async def _browser_identity(request: Request) -> tuple[dict[str, Any] | None, di
 
 @app.get("/api/healthz")
 async def healthz() -> dict[str, Any]:
-    return {"ok": True, "buildSha": BUILD_SHA}
+    return {"ok": True, "buildSha": _current_build()}
 
 
 @app.get("/setup")
@@ -681,6 +691,9 @@ async def auth_device_pair(request: Request) -> Response:
 
 
 AUTH_RECHECK_SECONDS = 30.0
+# Only the account service saying no ends a session. A timeout or a restart of that
+# service says nothing about this user, so a live relay rides it out this long.
+AUTH_OUTAGE_GRACE_SECONDS = 300.0
 MOBILE_CLIENT_KIND = "mobile"
 # A Host older than this ignores clientKind and would treat a phone as a browser.
 MOBILE_PROTOCOL = 1
@@ -711,6 +724,7 @@ class RelayIdentity:
     user_id: int
     valid_until: float
     client_kind: str = "full"
+    last_confirmed: float = field(default_factory=time.monotonic)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def valid(self) -> bool:
@@ -719,9 +733,17 @@ class RelayIdentity:
                 return True
             status, payload = await _account_request("GET", "/auth/relay-me", token=self.token)
             user = payload.get("user")
-            if status != 200 or not isinstance(user, dict) or user.get("id") != self.user_id:
+            now = time.monotonic()
+            if status == 200 and isinstance(user, dict) and user.get("id") == self.user_id:
+                self.last_confirmed = now
+                self.valid_until = now + AUTH_RECHECK_SECONDS
+                return True
+            if status == 200 or 400 <= status < 500:
                 return False
-            self.valid_until = time.monotonic() + AUTH_RECHECK_SECONDS
+            if now - self.last_confirmed > AUTH_OUTAGE_GRACE_SECONDS:
+                return False
+            logger.warning("relay identity recheck unavailable status=%s; keeping the connection", status)
+            self.valid_until = now + AUTH_RECHECK_SECONDS
             return True
 
 
@@ -1006,6 +1028,8 @@ async def _serve_client(websocket: WebSocket, user_id: int, identity: RelayIdent
         hub.browsers[peer.id] = peer
     tasks: set[asyncio.Task] = set()
     watcher = asyncio.create_task(_watch_identity(peer))
+    opened_at = time.monotonic()
+    close_code: Any = "server"
     try:
         await hub.browser_status(peer)
         while not peer.closed:
@@ -1034,9 +1058,15 @@ async def _serve_client(websocket: WebSocket, user_id: int, identity: RelayIdent
             task = asyncio.create_task(_run_device_invoke(peer, request_id, operation, args))
             tasks.add(task)
             task.add_done_callback(tasks.discard)
-    except (WebSocketDisconnect, OSError, RuntimeError, ValueError):
+    except WebSocketDisconnect as closed:
+        close_code = closed.code
+    except (OSError, RuntimeError, ValueError):
         pass
     finally:
+        logger.info(
+            "relay client closed kind=%s device=%s code=%s seconds=%d",
+            identity.client_kind, selected[:8], close_code, time.monotonic() - opened_at,
+        )
         peer.closed = True
         await _cancel_tasks([watcher, *tasks])
         peer.pending.clear()
@@ -1158,7 +1188,7 @@ async def device_socket(websocket: WebSocket) -> None:
         await hub.broadcast_device_status(user_id, peer.device_id)
 
 def _static_headers(path: Path) -> dict[str, str]:
-    headers = {"X-Loom-Build": BUILD_SHA}
+    headers = {"X-Loom-Build": _current_build()}
     if path.name == "index.html":
         headers["Cache-Control"] = "no-store, max-age=0"
         return headers

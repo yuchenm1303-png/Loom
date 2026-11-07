@@ -1831,6 +1831,15 @@ handleHostChannel("loom:mobile-pair-status", async (_event, pairId: string) => {
 handleHostChannel("loom:mobile-pair-decide", (_event, pairId: string, approve: boolean) =>
   accountClient.mobileAccount("/auth/mobile-pair/decide", { pair_id: pairId, approve: approve === true }));
 handleHostChannel("loom:mobile-devices", () => accountClient.mobileAccount("/auth/mobile-devices"));
+handleHostChannel("loom:account-devices", async () => {
+  const [devices, identity] = await Promise.all([
+    accountClient.mobileAccount<Record<string, unknown>>("/auth/devices"),
+    webRelayDeviceIdentity(),
+  ]);
+  return { ...devices, thisComputer: identity.deviceId };
+});
+handleHostChannel("loom:account-device-forget", (_event, kind: string, id: string) =>
+  accountClient.mobileAccount("/auth/devices/forget", { kind, id }));
 handleHostChannel("loom:mobile-device-revoke", (_event, sessionId: string) =>
   accountClient.mobileAccount("/auth/mobile-devices/revoke", { session_id: sessionId }));
 handleHostChannel("loom:account-capabilities", () => runAccountCapabilities(() => accountClient.capabilities()));
@@ -1943,7 +1952,11 @@ app.whenReady().then(async () => {
   createHudOverlayWindow();
   // The relay owns its own reconnect loop; it stays idle until an account
   // session exists, and a failed auth lookup just schedules a retry.
-  startWebRelay({ auth: webRelayAuthPayload, operations: desktopOperations });
+  // A checkout shares this computer's profile and device id. On the relay it would take
+  // the installed Host's place and rotate its session, so it joins only when pointed at one.
+  if (app.isPackaged || process.env.LOOM_WEB_RELAY_URL) {
+    startWebRelay({ auth: webRelayAuthPayload, operations: desktopOperations });
+  }
 }).catch(async (error) => {
   console.error("Loom startup failed", error);
   dialog.showErrorBox("Loom startup failed", error instanceof Error ? error.message : String(error));

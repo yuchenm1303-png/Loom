@@ -43,8 +43,14 @@
 .mp-rows { border: 1px solid var(--loom-workspace-line); border-radius: var(--loom-workspace-radius); background: var(--loom-workspace-panel); }
 .mp-phone { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; color: var(--loom-workspace-ink); }
 .mp-phone + .mp-phone { border-top: 1px solid var(--loom-workspace-line); }
-.mp-phone div { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; }
+.mp-phone > div { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; }
 .mp-phone strong { font-weight: 500; }
+.mp-phone em { margin-left: 8px; font-style: normal; font-size: 12px; color: var(--loom-workspace-accent); }
+.mp-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--loom-workspace-muted); opacity: .5; transition: background-color var(--loom-dur-base) var(--loom-ease-out); }
+.mp-dot.is-online { background: #7fd1ae; opacity: 1; }
+.mp-row-actions { flex: none; display: flex; gap: 6px; animation: mp-fade var(--loom-dur-base) var(--loom-ease-out); }
+.mp-button.is-danger { border-color: transparent; background: #e8826f; color: var(--loom-workspace-canvas); }
+.mp-button.is-danger:hover:not(:disabled) { background: #e8826f; }
 .mp-phone small { color: var(--loom-workspace-muted); font-size: 12px; }
 @media (max-width: 560px) {
   .mp-panel, .mp-panel.is-code, .mp-panel.is-confirm { flex-direction: column; align-items: stretch; }

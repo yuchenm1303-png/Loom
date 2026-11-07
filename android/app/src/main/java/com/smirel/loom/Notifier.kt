@@ -10,7 +10,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -157,15 +159,30 @@ class RelayService : Service() {
     }
 
     companion object {
+        private const val BACKGROUND_GRACE_MS = 5 * 60 * 1000L
+        private val main = Handler(Looper.getMainLooper())
+        private var resting: Runnable? = null
+
         fun keepAlive(context: Context) {
+            resting?.let(main::removeCallbacks)
+            resting = null
             runCatching { context.startForegroundService(Intent(context, RelayService::class.java)) }
         }
 
-        /** Nothing to watch and nobody looking: drop the connection until the app opens. */
+        /**
+         * Nothing to watch and nobody looking. Stepping out for a moment must not cost a
+         * reconnect on return, so the connection is only given up after a while.
+         */
         fun settle(context: Context) {
             if (Relay.visible || Relay.busyThreads.isNotEmpty()) return
-            context.stopService(Intent(context, RelayService::class.java))
-            Relay.rest()
+            resting?.let(main::removeCallbacks)
+            val app = context.applicationContext
+            resting = Runnable {
+                resting = null
+                if (Relay.visible || Relay.busyThreads.isNotEmpty()) return@Runnable
+                app.stopService(Intent(app, RelayService::class.java))
+                Relay.rest()
+            }.also { main.postDelayed(it, BACKGROUND_GRACE_MS) }
         }
     }
 }

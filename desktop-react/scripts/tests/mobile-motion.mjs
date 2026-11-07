@@ -84,7 +84,14 @@ await page.waitForTimeout(400);
 check(await page.locator(".m-sheet-host").count() === 0, "and is removed after its exit");
 
 // The offline banner makes its own room
-const banner = await sample(page, ".m-fold", "(element) => Math.round(element.getBoundingClientRect().height)", `() => window.__shell.state({ socket: "closed", online: false })`, 25);
+await page.evaluate(() => window.__shell.state({ socket: "closed", online: false }));
+await page.waitForTimeout(800);
+check(await page.locator(".m-thread > .m-fold").count() === 0, "a short blip shows no banner");
+await page.evaluate(() => window.__shell.state({ socket: "open", online: true }));
+await page.waitForTimeout(100);
+await page.evaluate(() => window.__shell.state({ socket: "closed", online: false }));
+await page.waitForTimeout(2850);
+const banner = await sample(page, ".m-thread > .m-fold", "(element) => Math.round(element.getBoundingClientRect().height)", "() => {}", 90);
 check(distinct(banner) > 4, "the offline banner folds open", `${present(banner)[0]} -> ${present(banner).at(-1)}`);
 const closing = await sample(page, ".m-thread > .m-fold", "(element) => Math.round(element.getBoundingClientRect().height)", `() => window.__shell.state({ socket: "open", online: true })`, 30);
 check(distinct(closing) > 4, "and folds shut", `${present(closing)[0]} -> ${present(closing).at(-1)}`);

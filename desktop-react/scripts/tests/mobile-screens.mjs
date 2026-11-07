@@ -70,7 +70,11 @@ await home.locator(".m-choice").first().click();
 await shot(home, "14-new-thread");
 await home.locator(".m-icon-button").click();
 await home.locator(".m-nav button").nth(3).click();
+await home.waitForTimeout(300);
 await shot(home, "05-more");
+await home.getByText("连接记录").first().click();
+await shot(home, "15-connection-log");
+await home.locator(".m-scrim").click();
 await home.locator(".m-nav button").nth(0).click();
 await home.locator(".m-wait-card").click();
 await home.waitForTimeout(1200);
@@ -85,6 +89,7 @@ await shot(home, "09-composing");
 await home.context().close();
 
 const offline = await open("?offline=1");
+await offline.waitForTimeout(2400);
 await shot(offline, "10-offline");
 await offline.context().close();
 
