@@ -70,7 +70,7 @@ html[data-loom-theme="light"] .pf-stage {
      past its card, and retracts back into the hub. It keeps its speed nearly to the tip, where the card takes over
      (projectArrange.ts SHELL_LEAD is 70% of this step): on the glide curve it covered 80% in 40% of its time and
      crawled the rest while the card waited at its end, which read as the card stopping halfway. */
-  transition: stroke var(--loom-dur-fast) var(--loom-ease-out), stroke-dashoffset var(--loom-dur-base) cubic-bezier(.35, 0, .45, 1) var(--pf-cable-in-delay, 0ms);
+  transition: stroke var(--loom-dur-fast) var(--loom-ease-out), stroke-dashoffset var(--loom-dur-base) var(--loom-ease-even) var(--pf-cable-in-delay, 0ms);
 }
 @starting-style { .pf-cable-body { stroke-dashoffset: -100; } }
 

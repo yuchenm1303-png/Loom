@@ -131,6 +131,18 @@
   scale: var(--loom-press-glyph);
 }
 
+/* A chevron on the clock of the fold it heads: a settling spring opening, a short ease closing, whatever the host is
+   doing (a finger leaves a touch screen's host hovered, and the hover's clock would outlast the fold). */
+.loom-icon[data-ic-clock="fold"] {
+  --ic-dur: var(--ic-t-rest);
+  --ic-curve: var(--ic-ease);
+  transition: color var(--loom-dur-base) var(--loom-ease-out), scale var(--ic-dur) var(--ic-curve);
+}
+[aria-expanded="true"] .loom-icon[data-ic-clock="fold"] {
+  --ic-dur: var(--ic-t-lift);
+  --ic-curve: var(--loom-spring-settle);
+}
+
 /* Parts that move share one transition; each rule below only sets the pose. */
 .loom-icon .li {
   transition:

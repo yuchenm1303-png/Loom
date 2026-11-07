@@ -31,6 +31,7 @@ CURVES = {
     "exit": "cubic-bezier(.3, .3, .55, 1)",
     "inout": "cubic-bezier(.4, 0, .2, 1)",
     "glide": "cubic-bezier(.2, 0, 0, 1)",
+    "even": "cubic-bezier(.35, 0, .45, 1)",
 }
 
 # Files whose numbers are physics, not interaction timings. Each has its own tests: the send hand-off
@@ -249,14 +250,15 @@ def test_the_only_curve_a_stylesheet_may_declare_is_the_send_hand_offs() -> None
 
 def test_a_fold_takes_a_fold_s_time() -> None:
     # Height is made by layout, so what is below glides. A fold of a few lines takes `base`, a block or a list `flow`,
-    # the completion of a turn `panel`; nothing that changes the size of a thing is as quick as a hover.
+    # the completion of a turn `panel`; nothing that changes the size of a thing is as quick as a hover. The first time in a
+    # transition is how long it takes; a later one is only how long it waits.
     quick = []
     for file, header, prop, value in motion_declarations():
         if prop != "transition":
             continue
         for item in split_top(value):
             parts = tokens(item)
-            if parts and parts[0] in ("grid-template-rows", "grid-template-columns") and re.search(r"var\(--loom-dur-(press|fast)", item):
+            if parts and parts[0] in ("grid-template-rows", "grid-template-columns") and re.match(r"\S+\s+var\(--loom-dur-(press|fast)", item):
                 quick.append(f"{file}: {header[:50]}: {item[:80]}")
     assert not quick, "\n".join(quick)
 

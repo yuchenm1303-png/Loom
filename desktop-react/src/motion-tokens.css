@@ -51,6 +51,8 @@
   --loom-ease-exit: cubic-bezier(.3, .3, .55, 1);
   --loom-ease-inout: cubic-bezier(.4, 0, .2, 1);
   --loom-ease-glide: cubic-bezier(.2, 0, 0, 1);
+  /* Keeps its speed nearly to the end, for a stroke whose tip hands over to what grows there (the hub's cables). */
+  --loom-ease-even: cubic-bezier(.35, 0, .45, 1);
 
   /* zeta .86, half a percent of overshoot: a mark that slides to a new place and stops there (the dock's glider) */
   --loom-spring-settle: linear(0, 0.028 3.8%, 0.097 7.7%, 0.189 11.5%, 0.291 15.4%, 0.393 19.2%, 0.491 23.1%, 0.581 26.9%, 0.661 30.8%, 0.73 34.6%, 0.789 38.5%, 0.838 42.3%, 0.878 46.2%, 0.91 50%, 0.936 53.8%, 0.956 57.7%, 0.971 61.5%, 0.982 65.4%, 0.99 69.2%, 0.996 73.1%, 1 76.9%, 1.002 80.8%, 1.004 84.6%, 1.005 88.5%, 1.005 92.3%, 1.005 96.2%, 1);

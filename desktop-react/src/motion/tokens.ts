@@ -58,6 +58,7 @@ export const EASE = {
   exit: "cubic-bezier(.3, .3, .55, 1)",
   inout: "cubic-bezier(.4, 0, .2, 1)",
   glide: "cubic-bezier(.2, 0, 0, 1)",
+  even: "cubic-bezier(.35, 0, .45, 1)",
 } as const;
 
 /** The springs, for a Web Animations call that needs one (a text-free mark landing). */

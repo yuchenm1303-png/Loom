@@ -163,8 +163,9 @@ def test_a_starting_style_is_not_outranked_by_the_rule_it_starts_from() -> None:
 # ---- press and hover -----------------------------------------------------------------------------------------------
 
 # What may still move under a press: a switch's knob stretches (a text-free mark), the window draws its own pressed
-# button, the avatar crop shows a grabbing hand, and icon-motion.css gives the glyph.
-PRESS_EXCEPTIONS = re.compile(r"settings-switch|loom-window-controls|avatar-crop|-webkit-autofill")
+# button, the avatar crop shows a grabbing hand, and icon-motion.css gives the glyph. The phone's tab cell is no surface
+# (data-press="none"): the pill in it takes press.css's wash token instead.
+PRESS_EXCEPTIONS = re.compile(r"settings-switch|loom-window-controls|avatar-crop|-webkit-autofill|\.m-nav button:active i\b")
 
 
 def test_a_press_moves_no_words() -> None:

@@ -40,7 +40,7 @@ export function Disclosure({
       <button type="button" className="m-disclosure-head" aria-expanded={open} aria-controls={id} onClick={toggle}>
         <span className="m-disclosure-title">{title}</span>
         {aside}
-        <ChevronDown className="m-disclosure-chevron" size={18} strokeWidth={1.75} aria-hidden="true" />
+        <ChevronDown className="m-disclosure-chevron" data-ic-clock="fold" size={18} strokeWidth={1.75} aria-hidden="true" />
       </button>
       <div className="m-disclosure-body" id={id} role="region" aria-hidden={!open} inert={!open}>
         <div>
