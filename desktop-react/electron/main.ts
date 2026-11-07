@@ -39,7 +39,7 @@ import {
   stopWebRelay,
   type WebRelayOperations,
 } from "./remoteRelay.js";
-import { webRelayAuthPayload } from "./webRelayAuth.js";
+import { webRelayAuthPayload, webRelayDeviceIdentity } from "./webRelayAuth.js";
 import { hostAccount } from "./hostAccount.js";
 import { createSearchRelay } from "./searchRelay.js";
 import { broadcastHostEvent, desktopPidFile, handleHostChannel, isHostProcess, launchDesktop, launchDesktopAfterUpdate, onDesktopClientsChanged, openDesktopAfterUpdate, prepareDesktopHost, startHostTransport } from "./hostProcess.js";
@@ -1812,6 +1812,27 @@ async function runAccountChallenge(
 }
 
 handleHostChannel("loom:account-status", () => runAccountAction(() => accountClient.status()));
+handleHostChannel("loom:mobile-pair-start", async () => {
+  const device = await webRelayDeviceIdentity();
+  const issued = await accountClient.mobileAccount<{ pair_id: string; pairing_ticket: string; expires_in: number }>(
+    "/auth/mobile-pair/issue",
+    { device_id: device.deviceId, device_name: device.deviceName },
+  );
+  const code = new URLSearchParams({ v: "1", t: issued.pairing_ticket, d: device.deviceId, n: device.deviceName });
+  return { pairId: issued.pair_id, expiresIn: issued.expires_in, code: `loom://pair?${code}` };
+});
+handleHostChannel("loom:mobile-pair-status", async (_event, pairId: string) => {
+  const status = await accountClient.mobileAccount<{ state: string; phone_name: string; confirm_code: string }>(
+    "/auth/mobile-pair/status",
+    { pair_id: pairId },
+  );
+  return { state: status.state, phoneName: status.phone_name, confirmCode: status.confirm_code };
+});
+handleHostChannel("loom:mobile-pair-decide", (_event, pairId: string, approve: boolean) =>
+  accountClient.mobileAccount("/auth/mobile-pair/decide", { pair_id: pairId, approve: approve === true }));
+handleHostChannel("loom:mobile-devices", () => accountClient.mobileAccount("/auth/mobile-devices"));
+handleHostChannel("loom:mobile-device-revoke", (_event, sessionId: string) =>
+  accountClient.mobileAccount("/auth/mobile-devices/revoke", { session_id: sessionId }));
 handleHostChannel("loom:account-capabilities", () => runAccountCapabilities(() => accountClient.capabilities()));
 ipcMain.handle("loom:account-oauth-start", fromLoomRenderer(async (_event, provider: string) => {
   try {

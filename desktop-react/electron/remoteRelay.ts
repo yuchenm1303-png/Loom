@@ -12,6 +12,7 @@ import { currentHostRuntimeProtocol, currentHostRuntimeVersion } from "./hostRun
 import { collectHostHealthSnapshot } from "./hostHealth.js";
 import { ensureHostRuntimeUpdate, hostRuntimeUpdateState } from "./hostRuntimeUpdater.js";
 import { lastDialogFolder, rememberDialogChoice } from "./dialogLocations.js";
+import { MOBILE_PROTOCOL, mobileInvokeAllowed } from "./mobileAccess.js";
 
 // Only the independent Host process owns discovery, relay and Agent Runtime.
 // Desktop and browser are clients; neither owns the Host's lifetime.
@@ -56,6 +57,8 @@ type InvokeFrame = {
   id: number;
   operation: string;
   args?: unknown[];
+  /** Set by the gateway from the session kind the account service issued. */
+  clientKind?: string;
 };
 
 let ws: WebSocket | null = null;
@@ -368,6 +371,9 @@ async function handleInvoke(frame: InvokeFrame): Promise<void> {
   const args = Array.isArray(frame.args) ? frame.args : [];
   const operation = options?.operations[frame.operation];
   try {
+    if (frame.clientKind !== undefined && !(frame.clientKind === "mobile" && mobileInvokeAllowed(frame.operation, args))) {
+      throw new Error("This action is only available on the computer.");
+    }
     let result: unknown;
     if (operation) {
       result = await operation(args);
@@ -450,6 +456,7 @@ async function connectRelay(): Promise<void> {
         hostMode: auth.hostMode,
         hostProtocol: auth.hostProtocol,
         bootstrapProtocol: auth.bootstrapProtocol,
+        mobileProtocol: MOBILE_PROTOCOL,
       },
       health: collectHostHealthSnapshot(relayRttMs),
     });
@@ -458,7 +465,7 @@ async function connectRelay(): Promise<void> {
     heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_MS);
   });
   candidate.on("message", (data) => {
-    let frame: { type?: string; browserId?: string; id?: number; operation?: string; args?: unknown[] };
+    let frame: { type?: string; browserId?: string; id?: number; operation?: string; args?: unknown[]; clientKind?: string };
     try { frame = JSON.parse(data.toString()) as typeof frame; } catch { return; }
     if (frame.type === "pong") {
       if (heartbeatSentAt > 0) relayRttMs = Math.max(0, Date.now() - heartbeatSentAt);

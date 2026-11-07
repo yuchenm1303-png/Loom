@@ -29,6 +29,7 @@
     "dev:ready:ufo": "node scripts/dev-ready-ufo.mjs",
     "predev": "npm run prepare:stickers",
     "prebuild:renderer": "npm run prepare:stickers",
+    "build:mobile": "vite build --config vite.mobile.config.ts",
     "build:renderer": "tsc --noEmit && vite build && node scripts/ui-build-baseline.mjs",
     "build:electron": "tsc -p tsconfig.electron.json && node scripts/configure-update-source.mjs",
     "build:runtime:win": "node scripts/build-windows-runtime.mjs",
@@ -50,6 +51,7 @@
     "electron-updater": "^6.8.10",
     "katex": "^0.16.22",
     "lucide-react": "^0.468.0",
+    "qrcode-generator": "^1.4.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
@@ -64,13 +66,13 @@
     "@types/node": "^24.9.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
+    "@types/ws": "^8.18.1",
     "concurrently": "^9.2.1",
     "electron": "^44.9.3",
     "electron-builder": "^26.15.3",
     "typescript": "^5.9.2",
     "vite": "^7.1.0",
-    "wait-on": "^8.0.4",
-    "@types/ws": "^8.18.1"
+    "wait-on": "^8.0.4"
   },
   "build": {
     "appId": "com.loom.agent",

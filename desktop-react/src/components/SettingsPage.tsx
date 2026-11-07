@@ -40,6 +40,7 @@ import {
   Type,
   Wrench,
   type LucideIcon,
+  MonitorSmartphone,
 } from "./icons";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
@@ -67,6 +68,7 @@ import { ModelsSettingsPanel } from "./ModelsSettingsPanel";
 import { MemoryPanel } from "./SettingsMemoryBridge";
 import { SettingsWebSearchPanel } from "./SettingsWebSearchPanel";
 import { ConnectorsSettings } from "./ConnectorsSettings";
+import { MobilePairingPanel } from "./MobilePairingPanel";
 import { ConnectorLifecycleStatus } from "./ConnectorLifecycleStatus";
 import { translateSettingsText } from "./LanguageSettingsDock";
 import "./settings-connectors.css";
@@ -100,6 +102,7 @@ type PageKey =
   | "skills"
   | "memory"
   | "permissions"
+  | "phones"
   | "shortcuts"
   | "privacy"
   | "developer";
@@ -334,6 +337,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { key: "computer", label: "Computer Use", icon: Monitor },
       { key: "browser", label: "Browser", icon: Globe2 },
       { key: "websearch", label: "Web Search", icon: Search },
+      { key: "phones", label: "Phone", icon: MonitorSmartphone },
       { key: "terminal", label: "Terminal", icon: Terminal },
       { key: "plugins", label: "Plugins", icon: Plug },
       { key: "connectors", label: "Connectors", icon: Link2 },
@@ -1531,6 +1535,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     if (page === "skills") return renderSkills();
     if (page === "memory") return <MemoryPanel threadId={threadId} running={running} />;
     if (page === "permissions") return renderPermissions();
+    if (page === "phones") return <MobilePairingPanel />;
     if (page === "shortcuts") return renderShortcuts();
     if (page === "privacy") return renderPrivacy();
     return renderDeveloper();

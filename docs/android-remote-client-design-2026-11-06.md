@@ -1,8 +1,8 @@
 # Loom 手机客户端设计
 
-日期：2026-11-06（同日第二版）。状态：设计稿，尚未实现。
+日期：2026-11-06（第三版）。状态：阶段 0、1 已实现，见第 11 节。
 界面稿：<https://claude.ai/artifact/XwnVUgNLoVd9cHSgALzg4C>
-测试机：华为 Mate 50，系统版本待确认。
+测试机：华为 Mate 50，用户确认可装 APK，按安卓开发。
 
 第二版的变化：目标从「窄权限遥控器」改为**界面不同、功能尽量与电脑端一致**。第一版的三个结论因此作废：手机专用的精简操作表、Host 投影后的缩略内容、手机只能「允许一次」。技术选型也从纯原生改为共享逻辑层 + 薄原生壳。
 
@@ -40,7 +40,7 @@
 ├ 共享逻辑            useLoomCore、approvalProtocol、MarkdownMessage 等
 ├ installMobileBridge 实现 window.loom
 └ 原生壳              android/，持有 socket、token、私钥
-     │ WSS /api/ws/client?device=<id>，Bearer + 帧签名
+     │ WSS /api/ws/client?device=<id>，Bearer
      ▼
 loom_web_gateway（转发 + 方法白名单）
      ▲ WSS 外连，已有
@@ -49,7 +49,7 @@ Loom Host（方法分级 + 验签）── App Server
 
 ### 为什么改成共享逻辑层
 
-纯原生意味着用 Kotlin 重写 62 个 RPC 的调用逻辑、Markdown 渲染和审批协议，电脑端每加一个功能手机就落后一次，这正是用户要避免的。如果系统是 HarmonyOS NEXT，还要用 ArkTS 再写一遍。
+纯原生意味着用 Kotlin 重写 62 个 RPC 的调用逻辑、Markdown 渲染和审批协议，电脑端每加一个功能手机就落后一次，这正是用户要避免的。
 
 已核实可行：`useLoomCore.ts` 只依赖 React 和 `state/` 下的小模块，通信全部经过 `window.loom`。手机只需实现这个桥并写新界面。`App.tsx` 不复用，桌面布局不搬到手机上。
 
@@ -58,18 +58,18 @@ Loom Host（方法分级 + 验签）── App Server
 壳只做 WebView 做不好的事，内容从 App 内打包资源加载，不加载远程代码：
 
 1. WSS 连接：放在前台服务，token 不进 JS，界面被回收时连接还在。
-2. 帧签名和 Keystore。
+2. Keystore 加密保存 session。
 3. 指纹确认。
 4. 通知和推送。
 5. 扫码、文件选择、相机、麦克风。
 
-所以 HarmonyOS 原生壳的工作量可控，界面和逻辑不用重写。
+所以换一种外壳的工作量可控，界面和逻辑不用重写。
 
 ### 改动点
 
 - **Account**：新增 `mobile` session，单独列出、可吊销，不能换模型凭据。
 - **Gateway**：新增 `/api/ws/client`，Bearer 认证，不校验 Origin。其余沿用 32 并发、120 秒超时和 30 秒身份复查。
-- **Host**：手机走 `call`，但按第 2 节分级过滤，并校验帧签名。
+- **Host**：手机走 `call`，由 `electron/mobileAccess.ts` 按白名单过滤。网关只接受协议版本够新的 Host，旧 Host 收不到手机请求。
 - **不用 `RemoteControlPolicy`**：它只允许控制只读和需确认模式，且不支持长期授权，与功能对齐冲突。陈旧审批由 App Server 拒绝（`staleResponses: rejected`）。
 
 ## 4. 安全模型
@@ -77,8 +77,8 @@ Loom Host（方法分级 + 验签）── App Server
 功能放开后，手机丢失的风险随之上升，所以用三层控制，尽量不增加点击：
 
 - **配对**：电脑显示二维码，手机扫码并生成密钥，双方核对 6 位数字，**在电脑上点允许**后才发 session。
-- **帧签名**：手机对所有写操作签名（含时间戳和计数器），Host 用配对时的公钥验证。gateway 被攻破也无法代批或下指令。
-- **指纹分级**：只有第 2 节「需指纹」的操作需要验证，验证后 15 分钟内不再问。「允许一次」「本次对话都允许」不要求指纹。
+- **session 类型**：`mobile` 由账号服务签发，网关和 Host 据此限制操作，手机自己声明不算数。账号服务对手机 token 默认拒绝，只放行 3 个路径。
+- **指纹分级**：只有第 2 节「需指纹」的操作需要验证，「允许一次」「本次对话都允许」不要求指纹。
 
 此外：电脑端可吊销手机，30 秒内断开；App 可选启动解锁；审批页设 `FLAG_SECURE`。
 
@@ -97,15 +97,6 @@ v1 内容明文经过中继，与现有网页端相同，隐私说明要写清�
 ## 6. Mate 50 与通知
 
 这台手机的前提：没有 Google 服务，FCM 不可用。
-
-先确认系统版本（设置 › 关于手机）。这是当前唯一影响壳实现的未知项：
-
-| 系统 | 影响 |
-| --- | --- |
-| HarmonyOS 4.x 及以前 | 能装 APK，走 Android 壳 |
-| HarmonyOS 5 及以后（纯鸿蒙） | 不兼容 APK，需要 ArkWeb 壳，或先用兼容层验证 |
-
-公开信息不能确定 Mate 50 的升级资格：HarmonyOS 5 只查到华为曾表示在考虑，HarmonyOS 6 的名单里没有它。「纯鸿蒙不兼容 APK」是常识判断，开工前在真机核实。
 
 通知分两步：
 
@@ -133,7 +124,7 @@ v1 内容明文经过中继，与现有网页端相同，隐私说明要写清�
 
 | 阶段 | 内容 | 完成标准 |
 | --- | --- | --- |
-| 0 通道 | `mobile` session、`/api/ws/client`、方法分级、帧签名、电脑端配对页 | 契约测试：越级调用、伪造和重放全部被 Host 拒绝 |
+| 0 通道 | `mobile` session、`/api/ws/client`、方法白名单、电脑端配对页 | 测试：越级操作、手机 token 冒充 Host 或浏览器全部被拒 |
 | 1 对话 | 壳、`installMobileBridge`、现在页、完整对话、四种审批、权限和模型切换、停止、插话 | Mate 50 上：长消息完整显示，切网后状态恢复 |
 | 2 全功能 | 建造、文件、改动与 Git、终端、连接器、设置 | 第 2 节表格逐项打勾 |
 | 3 通知 | 前台服务和常驻通知，然后接 Push Kit | 锁屏 1 小时后仍能收到审批提醒 |
@@ -143,14 +134,45 @@ v1 内容明文经过中继，与现有网页端相同，隐私说明要写清�
 
 ## 9. 开放决定
 
-1. **Mate 50 的系统版本**：决定第一个壳。
-2. **发行方式**：先在 GitHub Release 发 APK 自用；上架要先定 Push Kit 和资质。
-3. **v1 明文经过中继**：建议接受，与网页端相同，签名已防代批。
+1. **发行方式**：先在 GitHub Release 发 APK 自用；上架要先定 Push Kit 和资质。
+2. **v1 明文经过中继**：与网页端相同。
 
 ## 10. 验证要点
 
-- 权限：越级方法、无签名帧、重放帧、直连 `/api/ws/browser` 全部失败。
-- 中继被攻破模拟：gateway 改写载荷，Host 必须拒绝。
+- 权限：越级方法、手机 token 直连 `/api/ws/browser` 或 `/api/ws/device` 全部失败。
 - 完整性：用真实长对话对比手机和电脑的消息内容，不允许丢失；含超长代码行、宽表格、图片。
 - 网络：弱网、切 Wi-Fi/蜂窝、gateway 重启、Host 重启。
 - 延迟和性能都在 Mate 50 上实测，电脑走代理的数字不能代替。
+
+## 11. 实现状态（2026-11-06）
+
+为什么去掉第二版的帧签名：网页通道本身没有签名，被攻破的网关可以直接伪装成浏览器，手机签名挡不住这条路。要防中继，需要所有客户端一起做端到端方案，放在阶段 4。
+
+| 部分 | 位置 | 状态 |
+| --- | --- | --- |
+| 配对与 `mobile` session | `services/loom_account/server.py` | 已实现，有测试 |
+| 手机通道 | `services/loom_web_gateway/app.py` | 已实现，有测试 |
+| Host 白名单 | `desktop-react/electron/mobileAccess.ts`、`remoteRelay.ts` | 已实现，有测试 |
+| 电脑端配对页 | 设置 › 手机，`MobilePairingPanel.tsx` | 已实现 |
+| 手机界面 | `desktop-react/src/mobile/` | 用假壳在浏览器验证 |
+| Android 壳 | `android/` | 已写，尚未编译，构建见第 12 节 |
+
+当前白名单比第 2 节窄，只含对话、审批、模型和只读项目信息。终端、设置修改、MCP 和插件管理还没开放，随阶段 2 的界面一起加。
+
+指纹是手机本地的确认，防的是别人拿到解锁的手机，不防 token 被盗。
+
+配对码目前是一次性内存票据，账号服务重启后需要重新生成二维码。
+
+## 12. 构建
+
+```bash
+cd desktop-react && npm run build:mobile
+```
+
+```bash
+cd android && ./gradlew assembleDebug
+```
+
+APK 在 `android/app/build/outputs/apk/debug/`，目前用调试签名。在非 ASCII 路径的机器上构建时，把 `GRADLE_USER_HOME` 设到 ASCII 路径。
+
+调试页面：`scripts/fixtures/mobile.html` 用假的原生壳运行手机界面，可在浏览器里测试。

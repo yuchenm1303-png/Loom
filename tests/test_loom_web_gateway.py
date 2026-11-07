@@ -1,4 +1,5 @@
 import asyncio
+import re
 import queue
 import threading
 import time
@@ -96,7 +97,7 @@ def relay(monkeypatch):
         if not state["active"]:
             return 401, {}
         if path == "/auth/relay-credential":
-            return 200, {"relay_token": "relay-proof"}
+            return 200, {"relay_token": "relay-proof", "client_kind": "mobile" if token == "phone" else "full"}
         if path in {"/auth/me", "/auth/relay-me"}:
             return 200, {"user": {"id": 7}}
         raise AssertionError(path)
@@ -380,3 +381,88 @@ def test_turnstile_verification_requires_action_hostname_and_success(monkeypatch
         assert await gateway._verify_turnstile(None, "valid-proof")
         assert len(recorded) == 1 and recorded[0]["secret"] == "private-secret"
     asyncio.run(run())
+
+
+def phone(client, device="a", token="phone"):
+    return client.websocket_connect(f"/api/ws/client?device={device}", headers={"authorization": f"Bearer {token}"})
+
+
+def online_host(socket, device="a", mobile_protocol=1):
+    socket.send_json({"type": "device_hello", "device": {"id": device, "mobileProtocol": mobile_protocol}})
+    socket.send_json({"type": "ping"})
+    socket.receive_json()
+
+
+def test_phone_reaches_its_host_marked_as_mobile(relay):
+    client, _ = relay
+    with host(client, "a") as a:
+        online_host(a)
+        with phone(client) as mobile:
+            assert mobile.receive_json()["online"] is True
+            mobile.send_json({"type": "invoke", "id": 1, "operation": "call", "args": ["thread/list", {}]})
+            frame = a.receive_json()
+            assert frame["clientKind"] == "mobile"
+            a.send_json({"type": "invoke_result", "browserId": frame["browserId"], "id": 1, "result": "ok"})
+            assert mobile.receive_json()["result"] == "ok"
+
+
+def test_browser_frames_stay_unmarked(relay):
+    client, _ = relay
+    with host(client, "a") as a:
+        online_host(a)
+        with browser(client) as web:
+            web.receive_json()
+            web.send_json({"type": "invoke", "id": 1, "operation": "call", "args": []})
+            assert "clientKind" not in a.receive_json()
+
+
+@pytest.mark.parametrize("operation", ["setModelProviderKey", "readClipboardText", "deleteModel", "openExternal", "future"])
+def test_gateway_refuses_operations_outside_the_phone_list(relay, operation):
+    client, _ = relay
+    with host(client, "a") as a:
+        online_host(a)
+        with phone(client) as mobile:
+            mobile.receive_json()
+            mobile.send_json({"type": "invoke", "id": 1, "operation": operation, "args": []})
+            assert mobile.receive_json()["error"]["code"] == "MOBILE_OPERATION_FORBIDDEN"
+            a.send_json({"type": "ping"})
+            assert a.receive_json()["type"] == "pong"
+
+
+def test_host_without_mobile_support_never_receives_phone_calls(relay):
+    client, _ = relay
+    with host(client, "a") as a:
+        online_host(a, mobile_protocol=0)
+        with phone(client) as mobile:
+            mobile.receive_json()
+            mobile.send_json({"type": "invoke", "id": 1, "operation": "call", "args": ["thread/list", {}]})
+            assert mobile.receive_json()["error"]["code"] == "HOST_UPDATE_REQUIRED"
+            a.send_json({"type": "ping"})
+            assert a.receive_json()["type"] == "pong"
+
+
+def test_a_computer_session_cannot_open_the_phone_socket(relay):
+    client, _ = relay
+    with pytest.raises(WebSocketDisconnect) as closed:
+        with phone(client, token="access"):
+            pass
+    assert closed.value.code == 4401
+
+
+def test_a_phone_session_cannot_pose_as_host_or_browser(relay):
+    client, _ = relay
+    with pytest.raises(WebSocketDisconnect) as closed:
+        with client.websocket_connect("/api/ws/device", headers={"authorization": "Bearer phone"}):
+            pass
+    assert closed.value.code == 4401
+    with pytest.raises(WebSocketDisconnect) as closed:
+        with client.websocket_connect("/api/ws/browser?device=a", headers={
+            "origin": "https://testserver", "cookie": "loom_web_access=phone"}):
+            pass
+    assert closed.value.code == 4401
+
+
+def test_gateway_phone_operations_match_the_host_authority():
+    source = (gateway.Path(__file__).resolve().parents[1] / "desktop-react" / "electron" / "mobileAccess.ts").read_text(encoding="utf-8")
+    block = source.split("MOBILE_OPERATIONS: ReadonlySet<string> = new Set([", 1)[1].split("])", 1)[0]
+    assert set(re.findall(r'"([^"]+)"', block)) == set(gateway.MOBILE_OPERATIONS)

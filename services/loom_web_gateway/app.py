@@ -681,6 +681,26 @@ async def auth_device_pair(request: Request) -> Response:
 
 
 AUTH_RECHECK_SECONDS = 30.0
+MOBILE_CLIENT_KIND = "mobile"
+# A Host older than this ignores clientKind and would treat a phone as a browser.
+MOBILE_PROTOCOL = 1
+# Mirrors MOBILE_OPERATIONS in desktop-react/electron/mobileAccess.ts, which is
+# the authority and also filters RPC methods. tests/test_loom_web_gateway_mobile.py
+# keeps the two identical.
+MOBILE_OPERATIONS = frozenset({
+    "connect",
+    "call",
+    "listModels",
+    "switchCurrentModel",
+    "switchModelProfile",
+    "setReasoning",
+    "queryModelUsage",
+    "readLocalImage",
+    "readLocalMedia",
+    "readLocalArtifact",
+    "stageTempFile",
+    "hostUpdateStatus",
+})
 SEND_TIMEOUT_SECONDS = 10.0
 MAX_INFLIGHT_INVOKES = 32
 
@@ -690,6 +710,7 @@ class RelayIdentity:
     token: str = field(repr=False)
     user_id: int
     valid_until: float
+    client_kind: str = "full"
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def valid(self) -> bool:
@@ -709,7 +730,12 @@ async def _relay_identity(access: str, user_id: int) -> RelayIdentity | None:
     token = str(payload.get("relay_token") or "")
     if status != 200 or not token:
         return None
-    return RelayIdentity(token, user_id, time.monotonic() + AUTH_RECHECK_SECONDS)
+    return RelayIdentity(
+        token,
+        user_id,
+        time.monotonic() + AUTH_RECHECK_SECONDS,
+        str(payload.get("client_kind") or "full"),
+    )
 
 
 async def _watch_identity(peer) -> None:
@@ -908,11 +934,25 @@ async def _run_device_invoke(peer: BrowserPeer, request_id: int, operation: str,
         await peer.send({"type": "invoke_result", "id": request_id,
                          "error": {"code": "HOST_OFFLINE", "message": "The selected Loom Host is offline. Start Loom on that computer; another Host will not be used."}})
         return
+    mobile = peer.identity.client_kind == MOBILE_CLIENT_KIND
+    if mobile:
+        refusal = None
+        if operation not in MOBILE_OPERATIONS:
+            refusal = {"code": "MOBILE_OPERATION_FORBIDDEN", "message": "This action is only available on the computer."}
+        elif int(device.device.get("mobileProtocol") or 0) < MOBILE_PROTOCOL:
+            refusal = {"code": "HOST_UPDATE_REQUIRED", "message": "Update Loom on the computer to use it from a phone."}
+        if refusal:
+            peer.pending.pop(request_id, None)
+            peer.deadlines.pop(request_id, None)
+            await peer.send({"type": "invoke_result", "id": request_id, "error": refusal})
+            return
     if operation == "call" and len(args) >= 2 and args[0] == "thread/read":
         peer.pending_invokes[request_id] = (operation, args)
     peer.pending[request_id] = device
-    sent = await device.send({"type": "invoke", "browserId": peer.id, "id": request_id,
-                              "operation": operation, "args": args})
+    invoke = {"type": "invoke", "browserId": peer.id, "id": request_id, "operation": operation, "args": args}
+    if mobile:
+        invoke["clientKind"] = MOBILE_CLIENT_KIND
+    sent = await device.send(invoke)
     if not sent:
         peer.pending.pop(request_id, None)
         peer.deadlines.pop(request_id, None)
@@ -938,9 +978,27 @@ async def browser_socket(websocket: WebSocket) -> None:
     _, user = await _authenticated_user(access)
     user_id = int(user.get("id") or 0) if user else 0
     identity = await _relay_identity(access, user_id) if user_id > 0 else None
-    if identity is None:
+    if identity is None or identity.client_kind == MOBILE_CLIENT_KIND:
         await websocket.close(code=4401, reason="authentication required")
         return
+    await _serve_client(websocket, user_id, identity)
+
+
+@app.websocket("/api/ws/client")
+async def mobile_socket(websocket: WebSocket) -> None:
+    """A paired phone. Native apps have no Origin or cookies; only a phone session gets in."""
+    authorization = str(websocket.headers.get("authorization") or "")
+    access = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    _, user = await _authenticated_user(access)
+    user_id = int(user.get("id") or 0) if user else 0
+    identity = await _relay_identity(access, user_id) if user_id > 0 else None
+    if identity is None or identity.client_kind != MOBILE_CLIENT_KIND:
+        await websocket.close(code=4401, reason="authentication required")
+        return
+    await _serve_client(websocket, user_id, identity)
+
+
+async def _serve_client(websocket: WebSocket, user_id: int, identity: RelayIdentity) -> None:
     selected = _device_id(websocket.query_params.get("device"))
     await websocket.accept()
     peer = BrowserPeer(uuid.uuid4().hex, user_id, websocket, selected, identity)
@@ -994,7 +1052,7 @@ async def device_socket(websocket: WebSocket) -> None:
     _, user = await _authenticated_user(access)
     user_id = int(user.get("id") or 0) if user else 0
     identity = await _relay_identity(access, user_id) if user_id > 0 else None
-    if identity is None:
+    if identity is None or identity.client_kind == MOBILE_CLIENT_KIND:
         await websocket.close(code=4401, reason="authentication required")
         return
     await websocket.accept()

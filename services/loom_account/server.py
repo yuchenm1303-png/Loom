@@ -39,6 +39,13 @@ _DEFAULT_BUILTIN_MODEL_IDS = (
     "Ling-2.6-flash",
 )
 _PAIR_TTL_SECONDS = 120
+_MOBILE_PAIR_TTL_SECONDS = 180
+SESSION_KIND_FULL = "full"
+SESSION_KIND_MOBILE = "mobile"
+# A phone session is a relay client and nothing else: it can never mint model
+# credentials, pair a Host, change the profile or reach the admin API, whatever
+# later endpoints appear. Deny by default, in one place (_dispatch).
+_MOBILE_SESSION_PATHS = frozenset({"/v1/auth/me", "/v1/auth/relay-credential", "/v1/auth/logout"})
 _EMAIL_CHALLENGE_TTL_SECONDS = 10 * 60
 _EMAIL_RESEND_SECONDS = 60
 _OAUTH_STATE_TTL_SECONDS = 10 * 60
@@ -381,6 +388,11 @@ class AccountStore:
                 CREATE INDEX IF NOT EXISTS idx_relay_credentials_expiry ON relay_credentials(expires_at);
                 """
             )
+            session_columns = {str(row[1]) for row in db.execute("PRAGMA table_info(sessions)")}
+            if "client_kind" not in session_columns:
+                db.execute(f"ALTER TABLE sessions ADD COLUMN client_kind TEXT NOT NULL DEFAULT '{SESSION_KIND_FULL}'")
+            if "client_name" not in session_columns:
+                db.execute("ALTER TABLE sessions ADD COLUMN client_name TEXT NOT NULL DEFAULT ''")
             columns = {str(row[1]) for row in db.execute("PRAGMA table_info(users)")}
             if "role" not in columns:
                 db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
@@ -727,7 +739,14 @@ class AccountStore:
         self._assert_active_user(row)
         return self._safe_user(row)
 
-    def _issue_session(self, user_id: int, *, session_id: str | None = None) -> dict[str, Any]:
+    def _issue_session(
+        self,
+        user_id: int,
+        *,
+        session_id: str | None = None,
+        client_kind: str = SESSION_KIND_FULL,
+        client_name: str = "",
+    ) -> dict[str, Any]:
         now = _now()
         access_token = _new_token("loom_access")
         refresh_token = _new_token("loom_refresh")
@@ -763,8 +782,9 @@ class AccountStore:
                     """
                     INSERT INTO sessions(
                         id, user_id, access_hash, access_expires_at,
-                        refresh_hash, refresh_expires_at, created_at, last_used_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        refresh_hash, refresh_expires_at, created_at, last_used_at,
+                        client_kind, client_name
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         sid,
@@ -775,6 +795,8 @@ class AccountStore:
                         refresh_expires_at,
                         now,
                         now,
+                        client_kind,
+                        client_name,
                     ),
                 )
 
@@ -787,6 +809,47 @@ class AccountStore:
 
     def create_session(self, user_id: int) -> dict[str, Any]:
         return self._issue_session(user_id)
+
+    def create_mobile_session(self, user_id: int, client_name: str) -> dict[str, Any]:
+        return self._issue_session(user_id, client_kind=SESSION_KIND_MOBILE, client_name=client_name)
+
+    def session_kind_for_access_token(self, token: str) -> str:
+        """The kind of a live access token, or "" when no such token exists."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT client_kind FROM sessions WHERE access_hash = ? AND revoked_at IS NULL",
+                (_token_hash(str(token or "")),),
+            ).fetchone()
+        return str(row["client_kind"]) if row is not None else ""
+
+    def mobile_sessions(self, user_id: int) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT id, client_name, created_at, last_used_at FROM sessions
+                WHERE user_id = ? AND client_kind = ? AND revoked_at IS NULL AND refresh_expires_at > ?
+                ORDER BY created_at DESC
+                """,
+                (int(user_id), SESSION_KIND_MOBILE, _now()),
+            ).fetchall()
+        return [
+            {
+                "id": str(row["id"]),
+                "name": str(row["client_name"]),
+                "created_at": int(row["created_at"]),
+                "last_used_at": int(row["last_used_at"]),
+            }
+            for row in rows
+        ]
+
+    def revoke_mobile_session(self, user_id: int, session_id: str) -> bool:
+        """Only ever touches this user's phone sessions, never a computer's."""
+        with self._guard, self._connect() as db:
+            updated = db.execute(
+                "UPDATE sessions SET revoked_at = ? WHERE id = ? AND user_id = ? AND client_kind = ? AND revoked_at IS NULL",
+                (_now(), str(session_id), int(user_id), SESSION_KIND_MOBILE),
+            )
+        return updated.rowcount == 1
 
     def user_for_access_token(self, token: str) -> dict[str, Any]:
         hashed = _token_hash(str(token or ""))
@@ -868,7 +931,8 @@ class AccountStore:
         now = _now()
         with self._guard, self._connect() as db:
             row = db.execute(
-                """SELECT sessions.id AS session_id, sessions.user_id, sessions.refresh_expires_at, users.status
+                """SELECT sessions.id AS session_id, sessions.user_id, sessions.refresh_expires_at,
+                          sessions.client_kind, users.status
                 FROM sessions JOIN users ON users.id = sessions.user_id
                 WHERE sessions.access_hash = ? AND sessions.revoked_at IS NULL
                   AND sessions.access_expires_at > ? AND sessions.refresh_expires_at > ?""",
@@ -884,7 +948,12 @@ class AccountStore:
                 (_token_hash(token), str(row["session_id"]), int(row["user_id"]), expires_at, now, now),
             )
             db.execute("DELETE FROM relay_credentials WHERE expires_at <= ?", (now,))
-        return {"relay_token": token, "expires_in": max(1, expires_at - now), "token_type": "Bearer"}
+        return {
+            "relay_token": token,
+            "expires_in": max(1, expires_at - now),
+            "token_type": "Bearer",
+            "client_kind": str(row["client_kind"]),
+        }
 
     def user_for_relay_token(self, token: str) -> dict[str, Any]:
         hashed = _token_hash(str(token or ""))
@@ -1448,6 +1517,7 @@ class AccountApplication:
         self.limiter = SlidingWindowLimiter()
         self._pairing_guard = threading.Lock()
         self._pairing_tickets: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._mobile_pairs: dict[str, dict[str, Any]] = {}
 
     def _email_configured(self) -> bool:
         cfg = self.store.config
@@ -1824,6 +1894,113 @@ class AccountApplication:
         user = entry[1]
         return {**self.store.create_session(int(user["id"])), "user": user}
 
+    def _prune_mobile_pairs(self, now: float) -> None:
+        self._mobile_pairs = {key: value for key, value in self._mobile_pairs.items() if value["expires_at"] > now}
+
+    def _mobile_pair(self, pair_id: str, user_id: int, now: float) -> dict[str, Any]:
+        self._prune_mobile_pairs(now)
+        entry = self._mobile_pairs.get(str(pair_id or ""))
+        if entry is None or int(entry["user_id"]) != user_id:
+            raise AccountError(HTTPStatus.NOT_FOUND, "MOBILE_PAIR_EXPIRED", "This pairing code has expired. Show a new one.")
+        return entry
+
+    def _mobile_claim(self, claim_token: str, now: float) -> dict[str, Any]:
+        self._prune_mobile_pairs(now)
+        wanted = str(claim_token or "")
+        for entry in self._mobile_pairs.values():
+            if wanted and hmac.compare_digest(str(entry.get("claim_token") or ""), wanted):
+                return entry
+        raise AccountError(HTTPStatus.UNAUTHORIZED, "MOBILE_PAIR_EXPIRED", "This pairing has expired. Scan a new code.")
+
+    def issue_mobile_pair(self, authorization: str, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        user = self.me(authorization)["user"]
+        user_id = int(user["id"])
+        self.limiter.check(f"mobile-pair-issue:{user_id}:{client_key}", 20, 60)
+        now = time.monotonic()
+        pair_id, ticket = uuid.uuid4().hex, _new_token("loom_mpair")
+        with self._pairing_guard:
+            self._prune_mobile_pairs(now)
+            self._mobile_pairs[pair_id] = {
+                "user_id": user_id,
+                "ticket": ticket,
+                "expires_at": now + _MOBILE_PAIR_TTL_SECONDS,
+                "device_id": str(body.get("device_id") or "")[:128],
+                "device_name": str(body.get("device_name") or "")[:80],
+                "state": "waiting",
+            }
+        return {"pair_id": pair_id, "pairing_ticket": ticket, "expires_in": _MOBILE_PAIR_TTL_SECONDS}
+
+    def claim_mobile_pair(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        """The phone scanned the code. Nothing is granted until the computer agrees."""
+        self.limiter.check(f"mobile-pair-claim:{client_key}", 30, 60)
+        ticket = str(body.get("pairing_ticket") or "").strip()
+        phone_name = str(body.get("phone_name") or "").strip()[:80] or "Android"
+        now = time.monotonic()
+        with self._pairing_guard:
+            self._prune_mobile_pairs(now)
+            entry = next((value for value in self._mobile_pairs.values() if ticket and hmac.compare_digest(value["ticket"], ticket)), None)
+            if entry is None or entry["state"] != "waiting":
+                raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_PAIRING_TICKET", "This pairing code is no longer valid.")
+            entry.update(
+                state="claimed",
+                phone_name=phone_name,
+                confirm_code=f"{secrets.randbelow(1_000_000):06d}",
+                claim_token=_new_token("loom_mclaim"),
+            )
+            return {
+                "claim_token": entry["claim_token"],
+                "confirm_code": entry["confirm_code"],
+                "device_id": entry["device_id"],
+                "device_name": entry["device_name"],
+            }
+
+    def mobile_pair_status(self, authorization: str, body: dict[str, Any]) -> dict[str, Any]:
+        user_id = int(self.me(authorization)["user"]["id"])
+        with self._pairing_guard:
+            entry = self._mobile_pair(str(body.get("pair_id") or ""), user_id, time.monotonic())
+            return {
+                "state": entry["state"],
+                "phone_name": str(entry.get("phone_name") or ""),
+                "confirm_code": str(entry.get("confirm_code") or ""),
+            }
+
+    def decide_mobile_pair(self, authorization: str, body: dict[str, Any]) -> dict[str, Any]:
+        user_id = int(self.me(authorization)["user"]["id"])
+        with self._pairing_guard:
+            entry = self._mobile_pair(str(body.get("pair_id") or ""), user_id, time.monotonic())
+            if entry["state"] != "claimed":
+                raise AccountError(HTTPStatus.CONFLICT, "MOBILE_PAIR_NOT_CLAIMED", "No phone is waiting for this pairing.")
+            entry["state"] = "approved" if body.get("approve") is True else "denied"
+            return {"state": entry["state"]}
+
+    def poll_mobile_pair(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        self.limiter.check(f"mobile-pair-poll:{client_key}", 120, 60)
+        with self._pairing_guard:
+            entry = self._mobile_claim(str(body.get("claim_token") or ""), time.monotonic())
+            if entry["state"] != "approved":
+                return {"state": entry["state"]}
+            # Taken out before the session exists: one approval, one phone.
+            self._mobile_pairs = {key: value for key, value in self._mobile_pairs.items() if value is not entry}
+        tokens = self.store.create_mobile_session(int(entry["user_id"]), str(entry["phone_name"]))
+        return {"state": "approved", **tokens, "device_id": entry["device_id"], "device_name": entry["device_name"]}
+
+    def mobile_devices(self, authorization: str) -> dict[str, Any]:
+        user_id = int(self.me(authorization)["user"]["id"])
+        return {"devices": self.store.mobile_sessions(user_id)}
+
+    def revoke_mobile_device(self, authorization: str, body: dict[str, Any]) -> dict[str, Any]:
+        user_id = int(self.me(authorization)["user"]["id"])
+        if not self.store.revoke_mobile_session(user_id, str(body.get("session_id") or "")):
+            raise AccountError(HTTPStatus.NOT_FOUND, "MOBILE_DEVICE_NOT_FOUND", "This phone is no longer paired.")
+        return {"ok": True}
+
+    def assert_session_may_reach(self, authorization: str, path: str) -> None:
+        scheme, _, token = str(authorization or "").partition(" ")
+        if scheme.casefold() != "bearer" or not token.strip():
+            return
+        if self.store.session_kind_for_access_token(token.strip()) == SESSION_KIND_MOBILE and path not in _MOBILE_SESSION_PATHS:
+            raise AccountError(HTTPStatus.FORBIDDEN, "MOBILE_SESSION_FORBIDDEN", "A paired phone cannot use this account feature.")
+
     @staticmethod
     def _bearer_token(authorization: str) -> str:
         scheme, _, token = str(authorization or "").partition(" ")
@@ -2014,7 +2191,9 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         if self.command == "GET" and path == "/healthz":
             return {"ok": True}
         authorization = self.headers.get("Authorization") or ""
+        self.application.assert_session_may_reach(authorization, path)
         if self.command == "GET" and path == "/v1/auth/relay-me": return self.application.relay_me(authorization)
+        if self.command == "GET" and path == "/v1/auth/mobile-devices": return self.application.mobile_devices(authorization)
         if self.command == "GET" and path == "/v1/auth/capabilities": return self.application.capabilities()
         if self.command == "GET" and path == "/v1/auth/me": return self.application.me(authorization)
         if self.command == "GET" and path == "/v1/admin/me": return self.application.admin_me(authorization)
@@ -2071,6 +2250,12 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
             return self.application.admin_revoke_session(match.group(1), authorization)
         if path == "/v1/auth/device-pair/issue": return self.application.issue_device_pair(authorization, self._client_key())
         if path == "/v1/auth/device-pair/exchange": return self.application.exchange_device_pair(body, self._client_key())
+        if path == "/v1/auth/mobile-pair/issue": return self.application.issue_mobile_pair(authorization, body, self._client_key())
+        if path == "/v1/auth/mobile-pair/claim": return self.application.claim_mobile_pair(body, self._client_key())
+        if path == "/v1/auth/mobile-pair/status": return self.application.mobile_pair_status(authorization, body)
+        if path == "/v1/auth/mobile-pair/decide": return self.application.decide_mobile_pair(authorization, body)
+        if path == "/v1/auth/mobile-pair/poll": return self.application.poll_mobile_pair(body, self._client_key())
+        if path == "/v1/auth/mobile-devices/revoke": return self.application.revoke_mobile_device(authorization, body)
         if path == "/v1/admin/users/status": return self.application.admin_set_user_status(body, authorization)
         if path == "/v1/admin/users/role": return self.application.admin_set_user_role(body, authorization)
         if path == "/v1/admin/users/revoke-sessions": return self.application.admin_revoke_user_sessions(body, authorization)

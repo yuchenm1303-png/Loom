@@ -1,0 +1,100 @@
+/* The phone's own layout. The transcript itself keeps the desktop renderer's rules
+   (so nothing is lost or truncated); only its frame is reset for a narrow screen. */
+html[data-loom-surface="mobile"], html[data-loom-surface="mobile"] body, html[data-loom-surface="mobile"] #root {
+  height: 100%; margin: 0; overflow: hidden; background: var(--loom-workspace-canvas);
+  color: var(--loom-workspace-ink); -webkit-tap-highlight-color: transparent;
+}
+html[data-loom-surface="mobile"] { --m-wait: #e8b45a; --m-wait-soft: #2a2418; --m-run: var(--loom-workspace-accent); --m-on: #7fd1ae; --m-bad: #f0a090; }
+html[data-loom-surface="mobile"] button, html[data-loom-surface="mobile"] textarea, html[data-loom-surface="mobile"] select { font: inherit; color: inherit; }
+html[data-loom-surface="mobile"] #root { display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }
+
+.m-shell { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.m-head { padding: 18px 16px 10px; }
+.m-head h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.m-head p { margin: 3px 0 0; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--loom-workspace-muted); }
+.m-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 12px; display: flex; flex-direction: column; gap: 20px; }
+.m-group { display: flex; flex-direction: column; gap: 2px; }
+.m-group h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--loom-workspace-muted); }
+.m-group h2.is-wait { color: var(--m-wait); }
+.m-group h2.is-run { color: var(--m-run); }
+.m-row { min-height: 60px; width: 100%; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: none; text-align: left; }
+.m-row:disabled { opacity: 1; }
+.m-row-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.m-row-text strong { font-size: 15.5px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.m-row-text small { font-size: 13px; color: var(--loom-workspace-muted); }
+.m-dot { width: 9px; height: 9px; flex: none; box-sizing: border-box; border-radius: 50%; background: var(--loom-workspace-muted); }
+.m-dot.is-run { background: none; border: 2px solid var(--m-run); }
+.m-dot.is-wait { background: var(--m-wait); }
+.m-dot.is-on { background: var(--m-on); }
+.m-wait-card { width: 100%; display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 14px; border: 1px solid rgba(232,180,90,.34); background: var(--m-wait-soft); text-align: left; }
+.m-wait-card strong { font-size: 15.5px; font-weight: 600; }
+.m-wait-card span { font-size: 13.5px; font-weight: 500; color: var(--m-wait); }
+.m-empty { margin: 0; font-size: 14px; color: var(--loom-workspace-muted); }
+.m-banner { margin: 0; padding: 10px 16px; background: var(--m-wait-soft); color: #f4d9a4; font-size: 13.5px; line-height: 1.5; }
+.m-error { margin: 0; color: var(--m-bad); font-size: 13.5px; line-height: 1.5; }
+.m-new { padding: 10px 16px; }
+.m-new button { width: 100%; min-height: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px; border-radius: 25px; border: 1px solid var(--loom-workspace-line); background: var(--loom-workspace-panel); color: var(--loom-workspace-muted); font-size: 14.5px; }
+.m-new i { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: var(--m-run); color: #191530; font-style: normal; }
+.m-nav { flex: none; height: 56px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--loom-workspace-line); background: var(--loom-workspace-navigation); }
+.m-nav button { border: 0; background: none; font-size: 14px; color: var(--loom-workspace-muted); }
+.m-nav button[aria-current="page"] { color: var(--m-run); font-weight: 600; }
+
+.m-button { min-height: 48px; padding: 0 18px; border-radius: 12px; border: 0; background: #262a32; font-size: 15px; font-weight: 600; }
+.m-button.is-primary { background: var(--m-run); color: #191530; }
+.m-button.is-danger { color: var(--m-bad); }
+.m-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 14px; background: var(--loom-workspace-panel); }
+.m-card h2 { margin: 0; font-size: 15.5px; font-weight: 600; color: var(--loom-workspace-ink); }
+.m-card p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--loom-workspace-secondary); }
+.m-pair { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 28px 16px; box-sizing: border-box; }
+.m-pair h1 { margin: 0; font-size: 26px; font-weight: 600; }
+.m-pair > p { margin: 0; font-size: 15px; line-height: 1.6; color: var(--loom-workspace-secondary); }
+.m-confirm-code { font-family: "JetBrains Mono", "Cascadia Code", monospace; font-size: 34px; font-weight: 500; letter-spacing: 3px; text-align: center; }
+.m-pair-actions { display: flex; gap: 8px; }
+.m-pair-actions .m-button { flex: 1; }
+
+.m-thread { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.m-thread-head { flex: none; display: flex; align-items: center; gap: 4px; padding: 8px; border-bottom: 1px solid var(--loom-workspace-line); }
+.m-thread-head div { min-width: 0; flex: 1; }
+.m-thread-head h1 { margin: 0; font-size: 16px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.m-thread-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--loom-workspace-muted); }
+.m-icon-button { width: 48px; height: 48px; flex: none; display: grid; place-items: center; padding: 0; border: 0; background: none; }
+
+/* The stage and transcript were sized for a desktop column. */
+.m-stage { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+html[data-loom-surface="mobile"] .m-stage .transcript-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-inline: 16px; }
+html[data-loom-surface="mobile"] .m-stage .transcript-scroll > * { max-width: none; }
+/* Long code and wide tables scroll inside themselves; nothing is cut and the page never scrolls sideways. */
+html[data-loom-surface="mobile"] .m-stage pre, html[data-loom-surface="mobile"] .m-stage table { max-width: 100%; }
+html[data-loom-surface="mobile"] .m-stage pre { overflow-x: auto; }
+html[data-loom-surface="mobile"] .m-stage table { display: block; overflow-x: auto; }
+html[data-loom-surface="mobile"] .m-stage .approval-card { flex-wrap: wrap; }
+html[data-loom-surface="mobile"] .m-stage .approval-actions { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+html[data-loom-surface="mobile"] .m-stage .approval-actions .button { min-height: 48px; font-size: 15px; }
+html[data-loom-surface="mobile"] .m-stage .approval-more { width: 100%; display: flex; flex-direction: column; align-items: stretch; }
+html[data-loom-surface="mobile"] .m-stage .approval-link { min-height: 46px; text-align: left; font-size: 14.5px; white-space: normal; }
+
+.m-composer { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 12px; border-top: 1px solid var(--loom-workspace-line); background: var(--loom-workspace-canvas); }
+.m-chip { align-self: flex-start; max-width: 100%; min-height: 36px; padding: 0 4px; border: 0; background: none; font-size: 13px; color: var(--loom-workspace-secondary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.m-attachments { margin: 0; padding: 0 4px; font-size: 13px; color: var(--loom-workspace-muted); }
+.m-composer-row { display: flex; align-items: flex-end; gap: 8px; }
+.m-composer-row textarea { flex: 1; min-width: 0; min-height: 48px; max-height: 132px; box-sizing: border-box; padding: 12px 16px; resize: none; border-radius: 24px; border: 1px solid var(--loom-workspace-line); background: var(--loom-workspace-panel); outline: 0; font-size: 16px; line-height: 1.4; }
+.m-round { width: 48px; height: 48px; flex: none; display: grid; place-items: center; padding: 0; border-radius: 50%; border: 1px solid var(--loom-workspace-line); background: var(--loom-workspace-panel); }
+.m-round.is-send { border: 0; background: var(--m-run); color: #191530; }
+.m-round.is-stop { border: 0; background: var(--loom-workspace-ink); }
+.m-round.is-stop span { width: 15px; height: 15px; border-radius: 3px; background: var(--loom-workspace-canvas); }
+.m-round:disabled { opacity: .45; }
+
+.m-sheet-host { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; justify-content: flex-end; }
+.m-scrim { flex: 1; min-height: 60px; border: 0; background: rgba(4,5,8,.62); }
+.m-sheet { max-height: 86%; overflow-y: auto; padding: 10px 16px calc(18px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; border-radius: 20px 20px 0 0; background: var(--loom-workspace-panel); margin-top: -20px; }
+.m-grip { align-self: center; width: 36px; height: 4px; border-radius: 2px; background: rgba(224,230,242,.22); }
+.m-sheet-title { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--loom-workspace-muted); }
+.m-options { display: flex; flex-direction: column; }
+.m-option { min-height: 58px; display: flex; align-items: center; gap: 12px; }
+.m-option.is-button { width: 100%; padding: 0; border: 0; background: none; text-align: left; }
+.m-option input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--m-run); }
+.m-option span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.m-option strong { font-size: 15.5px; font-weight: 500; }
+.m-option small { font-size: 13px; color: var(--loom-workspace-muted); overflow-wrap: anywhere; }
+.m-option em { font-style: normal; font-size: 12.5px; color: var(--loom-workspace-muted); }
+.m-select { min-height: 48px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--loom-workspace-line); background: #20242c; font-size: 15px; }

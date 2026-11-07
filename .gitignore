@@ -92,3 +92,4 @@ venv/
 # Staged immutable UI release objects (generated locally and in CI).
 desktop-react/ui-publish/
 desktop-react/application-publish/
+dist-mobile/

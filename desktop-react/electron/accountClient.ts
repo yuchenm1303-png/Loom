@@ -870,6 +870,24 @@ export class LoomAccountClient {
     return this.exchangeSession("/auth/device-pair/exchange", { pairing_ticket: ticket });
   }
 
+  /** Pairing and managing phones. Every call needs this computer's own session. */
+  async mobileAccount<T>(endpoint: string, body?: Record<string, unknown>): Promise<T> {
+    let session = await this.loadSession();
+    if (!session) throw new AccountHttpError(401, "AUTH_REQUIRED", "Sign in to Loom first.");
+    if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
+    const issue = (active: TokenSession) => this.request<T>(
+      endpoint,
+      body ? { method: "POST", body: JSON.stringify(body) } : {},
+      active.accessToken,
+    );
+    try {
+      return await issue(session);
+    } catch (error) {
+      if (!(error instanceof AccountHttpError) || error.status !== 401) throw error;
+      return await issue(await this.refresh(session));
+    }
+  }
+
   async updateProfile(displayName: string, avatarDataUrl: string): Promise<LoomAccountSnapshot> {
     let session = await this.loadSession();
     if (!session) throw new AccountHttpError(401, "MISSING_TOKEN", "Sign in to update your Loom profile.");

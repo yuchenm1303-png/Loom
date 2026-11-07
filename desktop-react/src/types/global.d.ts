@@ -30,6 +30,12 @@ export interface LoomBridge {
   /** Account calls resolve with a result union instead of rejecting, so the
       service's error code reaches the renderer intact. */
   accountStatus(): Promise<LoomAccountResult>;
+  /** Desktop only: the phone pairing flow in Settings. */
+  mobilePairStart?(): Promise<{ pairId: string; expiresIn: number; code: string }>;
+  mobilePairStatus?(pairId: string): Promise<{ state: string; phoneName: string; confirmCode: string }>;
+  mobilePairDecide?(pairId: string, approve: boolean): Promise<unknown>;
+  mobileDevices?(): Promise<{ devices: Array<{ id: string; name: string; created_at: number; last_used_at: number }> }>;
+  mobileDeviceRevoke?(sessionId: string): Promise<unknown>;
   accountCapabilities(): Promise<LoomAuthCapabilitiesResult>;
   accountLogin(email: string, password: string, turnstileToken?: string): Promise<LoomAccountResult>;
   accountRegister(email: string, password: string, turnstileToken?: string): Promise<LoomAccountResult>;
