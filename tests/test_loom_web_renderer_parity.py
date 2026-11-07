@@ -46,7 +46,9 @@ def test_web_build_identity_and_cache_contract_are_explicit() -> None:
 
     assert "ARG LOOM_BUILD_SHA=unknown" in dockerfile
     assert "LOOM_BUILD_SHA=${LOOM_BUILD_SHA}" in dockerfile
-    assert '"buildSha": BUILD_SHA' in gateway
-    assert '"X-Loom-Build": BUILD_SHA' in gateway
+    # A UI deploy swaps the bundle under a running gateway, so the identity follows the bundle.
+    assert '(STATIC_DIR / "build-sha.txt")' in gateway
+    assert '"buildSha": _current_build()' in gateway
+    assert '"X-Loom-Build": _current_build()' in gateway
     assert '"no-store, max-age=0"' in gateway
     assert '"public, max-age=31536000, immutable"' in gateway
