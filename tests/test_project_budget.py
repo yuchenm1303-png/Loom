@@ -307,10 +307,10 @@ def test_a_request_whose_connection_never_opened_costs_nothing(tmp_path, cause, 
 
 def test_cached_input_counts_at_a_tenth_like_a_long_goals(tmp_path):
     # An episode re-sends its history on every step; a 98%-cached run ate a budget sized for real work.
-    from app.project_runner import goal
+    from app.project_runner import goal_common
     from app.project_runner.budget import event_tokens, weighted
     assert weighted(1000, 900) == 190 and weighted(1000) == 1000 and weighted(100, 500) == 10
-    assert goal.CACHED_WEIGHT == budget_module.CACHED_WEIGHT, "one rule for goals and projects"
+    assert goal_common.CACHED_WEIGHT == budget_module.CACHED_WEIGHT, "one rule for goals and projects"
     store, run, budget = ledger(tmp_path, budget=10_000)
     item = episode(store, run)
     event = SimpleNamespace(event_id=str(uuid.uuid4()), session_id="s1", turn_id=item["turnId"], kind=E.MODEL_RESPONSE,
