@@ -1,3 +1,5 @@
+import { BuildBranchDetails } from "./BuildBranchDetails";
+import type { CurrentModel } from "../types/loom";
 import { BuildBranches, BranchCard, type BuildBranch } from "./BuildBranches";
 import { latestTaskPlan } from "../components/liveTaskProgress";
 import { toTurnTasks } from "../components/projectOverview";
@@ -42,15 +44,17 @@ function Section({
   title,
   icon,
   tone,
+  category,
   children,
 }: {
   title: string;
   icon?: ReactNode;
   tone?: "wait";
+  category?: BuildBranch;
   children: ReactNode;
 }) {
   return (
-    <BranchCard title={title} urgent={tone === "wait"}><section className={`m-card${tone ? ` is-${tone}` : ""}`}>
+    <BranchCard title={title} category={category} urgent={tone === "wait"}><section className={`m-card${tone ? ` is-${tone}` : ""}`}>
       <div className="m-card-head">
         {icon ? (
           <span className={`m-tile${tone ? ` is-${tone}` : ""}`} aria-hidden="true">
@@ -143,7 +147,7 @@ const initialSettings: BuildSettings = {
 };
 
 export function MobileBuildPanel({
-  dock, branch, onBranch, items,
+  dock, branch, onBranch, items, model, onModelSettings,
   threadId,
   workspace,
   online,
@@ -157,7 +161,7 @@ export function MobileBuildPanel({
   onOpenAgent,
 }: {
   dock: HTMLElement | null; branch: BuildBranch | null; onBranch(branch: BuildBranch | null): void;
-  items: TranscriptItem[];
+  items: TranscriptItem[]; model?: CurrentModel | null; onModelSettings(): void;
   threadId?: string;
   workspace?: string;
   online: boolean;
@@ -381,7 +385,7 @@ export function MobileBuildPanel({
   );
   if (!threadId)
     return (
-      <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary="建造准备 · 描述目标后确认方案"><div className="m-build-panel">
+      <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary="建造准备 · 描述目标后确认方案"><div className="m-build-panel"><BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
         <section className="m-card m-start">
           <span className="m-tile is-accent is-large" aria-hidden="true">
             <Blocks size={24} strokeWidth={1.75} />
@@ -543,7 +547,7 @@ export function MobileBuildPanel({
       </Section>
   ) : null;
   return (
-    <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"}><div className="m-build-panel" aria-label="建造控制面板">
+    <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"}><div className="m-build-panel" aria-label="建造控制面板"><BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
       {data?.attention && data.attention.action !== "approval" ? <Section title="建造需要处理" tone="wait"><p>{data.attention.reason}</p><button type="button" className="m-inline-button" onClick={() => onBranch("budget")}>处理预算与运行状态</button></Section> : null}
       {latestTaskPlan(items).length ? <Section title="对话任务"><ol className="m-build-list">{toTurnTasks(latestTaskPlan(items)).map(task => <li key={task.id}>{STATE[task.state]} · {task.title}{task.detail ? <p>{task.detail}</p> : null}</li>)}</ol></Section> : null}
       <div className="m-build-head">
@@ -701,7 +705,7 @@ export function MobileBuildPanel({
           ) : null}
           {data?.phase !== "live" ? workspaceCard : null}
           {proposal ? (
-            <Section title={proposal.title || "确认建造方案"} icon={<Blocks {...GLYPH} />}>
+            <Section category="budget" title={proposal.title || "确认建造方案"} icon={<Blocks {...GLYPH} />}>
               <p className="m-prewrap">{proposal.objective}</p>
               {fields}
               <label className="m-check">
@@ -1083,31 +1087,7 @@ export function MobileBuildPanel({
               </button>
             ) : null}
           </Section>
-          {overview.program?.milestones.length || overview.events.length ? (
-            <section className="m-card m-branch-history">
-              <Disclosure title="阶段历史与运行事件">
-              {overview.program?.milestones.map((item) => (
-                <div className="m-event" key={`m${item.index}`}>
-                  <span>
-                    阶段 {item.index} · {item.complete ? "完成" : "未完成"}
-                  </span>
-                  <span>
-                    {readableCount(item.tokens) || 0} token · {item.episodes} 轮
-                  </span>
-                </div>
-              ))}
-              {overview.events
-                .slice(-20)
-                .reverse()
-                .map((event) => (
-                  <div className="m-event" key={event.sequence}>
-                    <span>{event.kind}</span>
-                    {event.reason ? <span>{event.reason}</span> : null}
-                  </div>
-                ))}
-              </Disclosure>
-            </section>
-          ) : null}
+
         </>
       ) : null}
     </div></BuildBranches>

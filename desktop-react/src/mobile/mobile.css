@@ -607,3 +607,25 @@ html[data-loom-surface="mobile"] .m-branch-ports button[aria-expanded="true"] { 
 .m-branch-close { position: sticky; top: 0; z-index: 2; width: 100%; background: var(--loom-workspace-canvas) !important; }
 .m-branch-content:not([data-branch="budget"]) .m-start, .m-branch-content:not([data-branch="tasks"]) .m-branch-history { display: none; }
 .m-branch-intro { margin: 4px 16px; font-size: 13px; color: var(--loom-workspace-muted); line-height: 1.6; }
+
+/* Scrollable branch rail: swiping explores, only activation selects. */
+.m-branch-track { position: relative; border-radius: 18px; background: var(--m-surface, var(--loom-workspace-panel)); }
+.m-branch-track::before, .m-branch-track::after { position: absolute; top: 0; bottom: 0; width: 18px; z-index: 3; pointer-events: none; content: ""; opacity: 0; transition: opacity 160ms ease; }
+.m-branch-track::before { left: 0; border-radius: 18px 0 0 18px; background: linear-gradient(90deg,var(--loom-workspace-canvas),transparent); }
+.m-branch-track::after { right: 0; border-radius: 0 18px 18px 0; background: linear-gradient(270deg,var(--loom-workspace-canvas),transparent); }
+.m-branch-track[data-left]::before, .m-branch-track[data-right]::after { opacity: 1; }
+.m-branch-track .m-branch-ports { position: relative; display: flex; gap: 6px; padding: 5px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x; scroll-padding-inline: 16px; border-radius: 18px; }
+.m-branch-track .m-branch-ports::-webkit-scrollbar { display: none; }
+.m-branch-track .m-branch-ports::before, .m-branch-track .m-branch-ports::after, .m-branch-track .m-branch-ports button::before { content: none; }
+html[data-loom-surface="mobile"] .m-branch-track .m-branch-ports button { flex: 0 0 76px; min-height: 44px; z-index: 1; background: transparent !important; box-shadow: none; transition: color 160ms ease; }
+.m-branch-capsule { position: absolute; left: 0; top: 5px; height: 44px; pointer-events: none; transition: transform 420ms cubic-bezier(.22,.8,.25,1), width 420ms cubic-bezier(.22,.8,.25,1), opacity 140ms ease; }
+.m-branch-capsule > span { display: block; width: 100%; height: 100%; border-radius: 999px; background: var(--loom-workspace-selection); box-shadow: inset 0 1px 0 rgba(220,210,255,.08); }
+.m-branch-scroll-hint { display: block; text-align: center; height: 16px; padding-top: 3px; color: var(--loom-workspace-muted); font-size: 12px; line-height: 16px; }
+.m-branch-body { animation: m-branch-arrive 220ms cubic-bezier(.2,.7,.2,1); }
+@keyframes m-branch-arrive { from { opacity: .35; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+.m-branch-history.is-legacy { display: none !important; }
+.m-quota-window { display: grid; gap: 8px; margin-block: 14px; }
+.m-quota-window meter { width: 100%; height: 12px; accent-color: var(--m-run); }
+@media (prefers-reduced-motion: reduce) { .m-branch-capsule { transition: none; } .m-branch-body { animation: none; } }
+html[data-loom-reduced-motion="true"] .m-branch-capsule { transition: none; }
+html[data-loom-reduced-motion="true"] .m-branch-body { animation: none; }

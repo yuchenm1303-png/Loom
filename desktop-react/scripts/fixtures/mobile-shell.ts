@@ -131,6 +131,7 @@ window.LoomShell = {
       let result: unknown = {};
       if (operation === "connect") result = { protocolVersion: 1, serverInfo: { name: "fixture", version: "0" }, capabilities: {}, runtime: { model: "MiniMax-M3", defaultWorkspace: "D:/work/Loom", defaultPermissionMode: "approval", permissionModes: ["read-only", "approval", "workspace", "full-access"] } };
       else if (operation === "listModels") result = models;
+      else if (operation === "queryModelUsage") result = { status: "ok", provider: "模拟供应商", checkedAt: Date.now(), windows: [{ label: "Weekly", remainingPercent: 68 }], balances: [], scope: "api-key" };
       else if (operation === "setReasoning") {
         const value = String(args.at(-1));
         const record = threads.find((entry) => entry.id === args[0]) ?? threads[0];

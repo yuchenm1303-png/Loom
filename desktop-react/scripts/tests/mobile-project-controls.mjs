@@ -51,7 +51,7 @@ try {
   await page.getByRole("button", { name: "仅允许这次", exact: true }).waitFor();
   await shot(page, "03-live-build-and-approval");
   await page.getByRole("button", { name: "仅允许这次", exact: true }).click();
-  await page.getByRole("navigation", { name: "建造支路" }).getByRole("button", { name: "预算", exact: true }).click();
+  await page.getByRole("navigation", { name: "建造支路" }).getByRole("button", { name: "运行", exact: true }).click();
   await page.getByRole("button", { name: "暂停建造", exact: true }).waitFor();
   assert.deepEqual((await calls(page, "projectRun/approval")).at(-1), { runId: "run-1", sessionId: "agent-1", decision: "accept" });
   await page.evaluate(() => { window.__shell.loseNextControlReply = true; });
@@ -85,7 +85,7 @@ try {
   const proposal = await open("?proposal=1", 320, 700);
   await proposal.getByRole("navigation").getByRole("button", { name: "建造", exact: true }).click();
   await proposal.getByText("Loom 账号页重做", { exact: true }).click();
-  await proposal.getByRole("navigation", { name: "建造支路" }).getByRole("button", { name: "预算", exact: true }).click();
+  await proposal.getByRole("navigation", { name: "建造支路" }).getByRole("button", { name: "运行", exact: true }).click();
   await proposal.getByLabel("总 token 预算", { exact: true }).fill("750000");
   await proposal.getByLabel("并发 Agent 数", { exact: true }).fill("3");
   await proposal.getByLabel("执行轮次上限", { exact: true }).fill("600");

@@ -49,8 +49,11 @@ Device acceptance checks (use a real Host; `stack.py` only stubs pairing/thread 
 
 ## Projects, conversations and build controls
 
-The phone build screen now opens on its conversation. Five connected ports above the composer
-open Project, Reference files, Tasks, Agents or Budget, with one branch expanded at a time.
+The phone build screen opens on its conversation. A horizontally scrollable capsule rail above the composer
+exposes Project, Reference files, Tasks, Agents, Run, Model, Quota, Scope, Knowledge, History and Delivery, with one branch expanded at a time.
+Scrolling or moving keyboard focus does not select a branch. Selecting one centers it within the rail where possible;
+one elastic capsule follows it. Edge fades and a short hint expose the remaining content. Reduced-motion settings suppress the animation.
+Model opens the existing conversation settings, Quota queries the provider, and Scope/Knowledge/Delivery show Host records with explicit empty states.
 The composer stays available; tapping the selected port or Android Back returns to the conversation.
 Approvals, uncertain operations and blocked budgets surface directly above the ports.
 Run `node scripts/tests/mobile-build-branches.mjs` against the scripted Vite fixture to verify
