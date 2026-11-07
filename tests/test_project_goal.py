@@ -319,3 +319,162 @@ def test_the_overview_carries_the_goal_and_the_scheduler_drives_it(tmp_path):
             goal.control(service, {"threadId": source, "action": "pause"})
     finally:
         runtime.close()
+
+
+def failing(platform, *errors):
+    """The provider raises each error in turn before the scripted answers resume."""
+    pending, original = list(errors), platform.execute_chat
+
+    def execute(profile, request):
+        if pending:
+            platform.requests.append(request)
+            raise pending.pop(0)
+        return original(profile, request)
+    platform.execute_chat = execute
+
+
+def busy():
+    from app.ai.errors import AITransportError
+    return AITransportError("Error code: 429 - upstream out of capacity", retryable=True, status_code=429)
+
+
+def fresh(tmp_path, responses):
+    from app.agent_runtime.contracts import AgentLimits
+    service, runtime, platform, _, source = build(tmp_path, responses)
+    runtime.limits = AgentLimits(transport_retries=0)
+    return service, runtime, platform, source
+
+
+def test_a_first_turn_the_provider_refused_runs_again_and_starts_the_goal(tmp_path):
+    # Real Electron, real model: a 429 on the first turn ended it, and no goal ever started.
+    service, runtime, platform, source = fresh(tmp_path, [START, answer("开始了")])
+    failing(platform, busy())
+    try:
+        service.turn_start({"threadId": source, "input": "你有一整晚", "weave": True})
+        settle(service, source)
+        record = service.weave_retries.get(source)
+        assert record and record["attempts"] == 1 and record["retryAt"] > time.time()
+        before = len(platform.requests)
+        tick(service, source)
+        assert len(platform.requests) == before, "it waits before trying again"
+        record["retryAt"] = 0
+        service.weave_retries.put(source, record)
+        tick(service, source)
+        assert state(service, source)["status"] == "active", "the retried turn started the goal"
+        said = [event for event in runtime.store.events(source) if event.kind.value == "user_message"]
+        assert len(said) == 1, "the same message is tried again, not sent twice"
+        tick(service, source)
+        assert service.weave_retries.get(source) is None, "a turn that went through ends the retries"
+    finally:
+        runtime.close()
+
+
+def test_a_provider_that_keeps_refusing_is_tried_again_with_a_longer_wait(tmp_path):
+    service, runtime, platform, source = fresh(tmp_path, [answer("好了")])
+    failing(platform, busy(), busy(), busy())
+    try:
+        service.turn_start({"threadId": source, "input": "你有一整晚", "weave": True})
+        settle(service, source)
+        first = service.weave_retries.get(source)
+        service.weave_retries.put(source, {**first, "retryAt": 0})
+        tick(service, source)
+        second = service.weave_retries.get(source)
+        assert second["attempts"] == 2 and second["since"] == first["since"]
+        assert second["retryAt"] - time.time() > goal.RETRY_BASE * 1.5, "the wait doubles"
+        service.weave_retries.put(source, {**second, "since": time.time() - goal.RETRY_WINDOW - 1, "retryAt": 0})
+        tick(service, source)
+        assert service.weave_retries.get(source) is None, "after a whole night of refusals it is the person's call"
+        before = len(platform.requests)
+        tick(service, source)
+        assert len(platform.requests) == before
+        service.turn_start({"threadId": source, "input": "再试一次", "weave": True})
+        settle(service, source)
+        assert service.store.load(source).final_text == "好了" and service.weave_retries.get(source) is None
+    finally:
+        runtime.close()
+
+
+def test_a_new_message_after_a_retry_went_through_gets_its_own_wait(tmp_path):
+    service, runtime, platform, source = fresh(tmp_path, [answer("第一条好了")])
+    failing(platform, busy())
+    try:
+        service.turn_start({"threadId": source, "input": "第一条", "weave": True})
+        settle(service, source)
+        record = service.weave_retries.get(source)
+        service.weave_retries.put(source, {**record, "since": time.time() - goal.RETRY_WINDOW + 5, "retryAt": 0})
+        tick(service, source)
+        assert service.weave_retries.get(source) is None, "a turn that went through ends the retries"
+        failing(platform, busy())
+        service.turn_start({"threadId": source, "input": "第二条", "weave": True})
+        settle(service, source)
+        fresh_wait = service.weave_retries.get(source)
+        assert fresh_wait and fresh_wait["attempts"] == 1 and time.time() - fresh_wait["since"] < 60
+    finally:
+        runtime.close()
+
+
+def test_a_refusal_that_waiting_cannot_fix_is_not_retried(tmp_path):
+    from app.ai.errors import AIQuotaExceeded
+    service, runtime, platform, source = fresh(tmp_path, [])
+    failing(platform, AIQuotaExceeded(status_code=429))
+    try:
+        service.turn_start({"threadId": source, "input": "你有一整晚", "weave": True})
+        settle(service, source)
+        assert service.weave_retries.get(source) is None, "an exhausted quota needs the person"
+    finally:
+        runtime.close()
+
+
+def test_a_chat_turn_or_a_person_who_moved_on_is_not_retried(tmp_path):
+    service, runtime, platform, source = fresh(tmp_path, [answer("聊天回复")])
+    failing(platform, busy())
+    try:
+        service.turn_start({"threadId": source, "input": "你好", "weave": True})
+        settle(service, source)
+        record = service.weave_retries.get(source)
+        service.weave_retries.put(source, {**record, "turn": "an-older-turn", "retryAt": 0})
+        before = len(platform.requests)
+        tick(service, source)
+        assert len(platform.requests) == before and service.weave_retries.get(source) is None
+    finally:
+        runtime.close()
+
+
+def test_a_goal_waits_out_a_provider_outage_instead_of_counting_it_as_failures(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [START, answer("恢复了")])
+    from app.agent_runtime.contracts import AgentLimits
+    runtime.limits = AgentLimits(transport_retries=0)
+    failing(platform, *[busy() for _ in range(goal.MAX_FAILURES + 2)])
+    try:
+        for _ in range(2 * (goal.MAX_FAILURES + 2)):  # each failure: launch, then settle
+            record = service.weave_goals.get(source)
+            service.weave_goals.put(source, {**record, "retryAt": 0})
+            tick(service, source)
+        record = service.weave_goals.get(source)
+        assert state(service, source)["status"] == "active", record["reason"]
+        assert record["failures"] > goal.MAX_FAILURES and state(service, source)["retryAt"] > time.time()
+        failing(platform, busy())
+        service.weave_goals.put(source, {**record, "retryAt": 0, "failingSince": time.time() - goal.RETRY_WINDOW - 1})
+        tick(service, source, 2)
+        assert state(service, source)["status"] == "blocked", "a whole night without a provider goes to the person"
+    finally:
+        runtime.close()
+
+
+def test_the_person_sending_again_while_a_retry_waits_restarts_the_wait(tmp_path):
+    service, runtime, platform, source = fresh(tmp_path, [])
+    failing(platform, busy(), busy(), busy())
+    try:
+        service.turn_start({"threadId": source, "input": "第一条", "weave": True})
+        settle(service, source)
+        first = service.weave_retries.get(source)
+        service.weave_retries.put(source, {**first, "retryAt": 0})
+        tick(service, source)  # the Host's retry fails too: the same wait goes on
+        assert service.weave_retries.get(source)["attempts"] == 2
+        service.turn_start({"threadId": source, "input": "第二条", "weave": True})
+        settle(service, source)
+        mine = service.weave_retries.get(source)
+        assert mine["attempts"] == 1 and mine["turn"] == service.store.load(source).current_turn_id, \
+            "the person's own message is not the Host's third attempt"
+    finally:
+        runtime.close()

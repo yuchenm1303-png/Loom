@@ -21,10 +21,12 @@ import time
 import uuid
 
 from app.agent_runtime.contracts import AgentEventKind, AgentStatus
+from app.ai.contracts import MessageRole
 from app.agent_runtime.durable_state import GoalStatus
 from app.agent_runtime.turn_plan import PLAN_TOOLS
 
 GOALS_FILE = "weave-goals.json"
+RETRIES_FILE = "weave-start-retries.json"
 CACHED_WEIGHT = 0.1
 MAX_TURNS = 300
 MAX_CHECKS = 3  # rejected checks before the person decides
@@ -33,6 +35,9 @@ MAX_FAILURES = 8
 MAX_STALLS = 2  # goal turns in a row with no tool call that worked
 EVENTS_READ = 500  # the end of a turn; any success in a longer one is in there too
 RETRY_BASE, RETRY_MAX = 60, 1800
+# A provider out of capacity (429, 5xx, overloaded) is waited out, not counted against the work: the
+# person sent the message and left, and one bad hour must not cost the whole night.
+RETRY_WINDOW = 8 * 3600
 USAGE_EVERY, CHECK_EVERY = 30, 5
 _BUSY = {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}
 
@@ -45,6 +50,9 @@ CHECK_PROMPT = (
     '"issues":["a concrete problem and what would settle it"]}. needs_changes requires issues; blocked means you '
     "could not check it here.\nObjective:\n"
 )
+RETRY_NOTE = ("LOOM_PROVIDER_RETRY\nThe previous attempt at the person's last request stopped because the model provider "
+              "was unavailable, not because of the work. Carry on with that request from where it stopped; do not "
+              "redo what is already done. Runtime note, not a user instruction.")
 CHECK_NOW = ("Your limit stopped you. Do not start anything new: give your verdict now from what you have already "
              "seen, as that JSON only, and say in the summary what you did not get to check.")
 
@@ -52,8 +60,8 @@ CHECK_NOW = ("Your limit stopped you. Do not start anything new: give your verdi
 class Goals:
     """The driver's record of each conversation's goal, beside the project store; survives a Host restart."""
 
-    def __init__(self, home):
-        self.path = home / GOALS_FILE
+    def __init__(self, home, name=GOALS_FILE):
+        self.path = home / name
         self.lock = threading.Lock()
 
     def _read(self):
@@ -207,6 +215,23 @@ def _made_progress(service, thread_id, turn):
                for event in service.store.events(thread_id, limit=EVENTS_READ))
 
 
+def _failure(service, thread_id, turn):
+    """What the runtime said about a failed turn."""
+    for event in reversed(service.store.turn_events(thread_id, turn) if turn else ()):
+        if event.kind is AgentEventKind.TURN_FAILED:
+            return event.data
+    return {}
+
+
+def _transient(data):
+    """The provider failed and said trying again may work: capacity, not credentials or the request."""
+    return bool(data.get("provider_failure") and data.get("retryable"))
+
+
+def _delay(failures):
+    return min(RETRY_BASE * 2 ** (max(1, failures) - 1), RETRY_MAX)
+
+
 def _settle_turn(service, thread_id, record, session):
     """Account for the turn that just ended; returns True when the goal stopped because of it."""
     turn = session.current_turn_id
@@ -216,12 +241,15 @@ def _settle_turn(service, thread_id, record, session):
     if session.status is AgentStatus.CANCELLED:
         return _stop(service, thread_id, record, GoalStatus.PAUSED, "Stopped by the person")
     if session.status is AgentStatus.FAILED:
+        now = time.time()
         record["failures"] += 1
-        if record["failures"] > MAX_FAILURES:
+        record["failingSince"] = record.get("failingSince") or now
+        transient = _transient(_failure(service, thread_id, turn))
+        if (now - record["failingSince"] > RETRY_WINDOW) if transient else record["failures"] > MAX_FAILURES:
             return _stop(service, thread_id, record, GoalStatus.BLOCKED, str(session.error or "The turn failed"))
-        record["retryAt"] = time.time() + min(RETRY_BASE * 2 ** (record["failures"] - 1), RETRY_MAX)
+        record["retryAt"] = now + _delay(record["failures"])
         return False
-    record["failures"] = 0
+    record.update(failures=0, failingSince=0)
     if turn == record.get("goalTurn"):
         record["stalls"] = 0 if _made_progress(service, thread_id, turn) else record["stalls"] + 1
         if record["stalls"] >= MAX_STALLS:
@@ -284,10 +312,71 @@ def _advance(service, thread_id, record, polled):
     return _continue(service, thread_id, record, session)
 
 
+def observe_failure(service, event):
+    """Runtime listener: a Weave turn the provider failed before any goal existed is tried again later.
+
+    The goal's own retries only begin once weave_goal has run; a first turn that met a provider out of
+    capacity used to end there, and the person who sent it and went to bed found nothing in the morning.
+    Only the facts are written here; the scheduler decides, with the session at rest.
+    """
+    if event.kind in {AgentEventKind.TURN_COMPLETED, AgentEventKind.TURN_CANCELLED}:
+        if service.weave_retries.get(event.session_id):
+            service.weave_retries.take(event.session_id)  # it went through, or the person stopped it
+        return
+    if event.kind is not AgentEventKind.TURN_FAILED or not _transient(event.data):
+        return
+    thread_id, now = event.session_id, time.time()
+    if thread_id in service._project_session_ids or service.weave_goals.get(thread_id):
+        return  # a project's own agents and a goal's turns have their own retries
+    earlier = service.weave_retries.get(thread_id) or {}
+    if earlier.get("retrying") != event.turn_id:
+        earlier = {}  # the person's own new message starts its own wait
+    since = earlier.get("since") or now
+    if now - since > RETRY_WINDOW:
+        service.weave_retries.take(thread_id)
+        return
+    attempts = int(earlier.get("attempts", 0)) + 1
+    service.weave_retries.put(thread_id, {"turn": event.turn_id, "attempts": attempts, "since": since,
+                                          "retryAt": now + _delay(attempts)})
+
+
+def _retry_start(service, thread_id, record):
+    """Run a failed Weave turn again once its wait is over; anything the person did since cancels it."""
+    if service._is_active(thread_id):
+        return False
+    session = service.store.load(thread_id)
+    if (not getattr(session, "weave", False) or session.status is not AgentStatus.FAILED
+            or session.current_turn_id != record.get("turn") or service.weave_goals.get(thread_id)):
+        service.weave_retries.take(thread_id)
+        return False
+    if time.time() < record.get("retryAt", 0):
+        return False
+    turn_id, last = str(uuid.uuid4()), session.messages[-1] if session.messages else None
+    # Until the attempt reports back, never twice at once; its failure continues this wait.
+    record.update(retryAt=time.time() + RETRY_MAX, retrying=turn_id)
+    service.weave_retries.put(thread_id, record)
+    unanswered = last is not None and last.role is MessageRole.USER and not last.name
+
+    def run():
+        service._prepare_turn(session)
+        if unanswered:  # the same input again: the runtime treats it as a retry, not a second message
+            return service.runtime.start_turn(thread_id, last.content, turn_id=turn_id)
+        return service.runtime._start_turn_once(thread_id, RETRY_NOTE, source="goal", turn_id=turn_id)
+
+    service._launch(thread_id, run)
+    return True
+
+
 def advance(service):
     """One scheduler tick: bring each long goal one move forward; returns whether anything moved."""
     polled = service.__dict__.setdefault("_goal_polled", {})
     moved = False
+    retries = getattr(service, "weave_retries", None)
+    for thread_id, record in (retries.all().items() if retries else ()):
+        try:
+            moved = _retry_start(service, thread_id, record) or moved
+        except (OSError, ValueError, RuntimeError) as exc:
+            service.__dict__.setdefault("_goal_errors", {})[thread_id] = f"{type(exc).__name__}: {exc}"
     for thread_id, record in service.weave_goals.all().items():
         try:
             moved = _advance(service, thread_id, record, polled) or moved
@@ -312,7 +401,7 @@ def control(service, params):
             raise ValueError("This goal is finished")
         if record["tokens"] >= record["tokenBudget"]:
             record["tokenBudget"] += record["tokenBudget"]  # resuming a spent goal means spending more
-        record.update(reason="", stalls=0, failures=0, retryAt=0, handledTurn=service.store.load(thread_id).current_turn_id)
+        record.update(reason="", stalls=0, failures=0, failingSince=0, retryAt=0, handledTurn=service.store.load(thread_id).current_turn_id)
         service.weave_goals.put(thread_id, record)
         service.runtime.set_goal_status(thread_id, GoalStatus.ACTIVE)
     elif action == "dismiss":
@@ -335,4 +424,5 @@ def view(service, thread_id):
     return {"objective": goal.objective[:300], "status": "active" if claimed else goal.status.value,
             "phase": phase,
             "tokens": record["tokens"], "tokenBudget": record["tokenBudget"], "turns": record["turns"],
-            "reason": record["reason"], "summary": record["summary"], "checked": record["checked"]}
+            "reason": record["reason"], "summary": record["summary"], "checked": record["checked"],
+            "retryAt": record["retryAt"] if record.get("failures") and phase == "working" else 0}

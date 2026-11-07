@@ -34,6 +34,10 @@ test("a long goal reads as one line with the move the person has", () => {
   assert.deepEqual(toGoal(base), { text: "长目标进行中 · 1.2M / 8M", detail: "研究 AI-RAN", live: true, action: "pause", dismiss: false });
   assert.match(toGoal({ ...base, phase: "checking" }).text, /独立检查/);
   assert.match(toGoal({ ...base, phase: "approval" }).text, /等你批准/, "nothing moves until it is answered, so it never reads as running");
+  const waiting = toGoal({ ...base, retryAt: Date.now() / 1000 + 600 });
+  assert.match(waiting.text, /模型服务暂时不可用，\d\d:\d\d 自动重试/, "a night of 429s never reads as running");
+  assert.equal(waiting.live, false);
+  assert.match(toGoal({ ...base, retryAt: Date.now() / 1000 - 5 }).text, /长目标进行中/, "a retry already due is running again");
   assert.equal(toGoal({ ...base, status: "paused" }).action, "resume");
   assert.equal(toGoal({ ...base, status: "budget_limited" }).action, "resume");
   const blocked = toGoal({ ...base, status: "blocked", reason: "缺数据" });

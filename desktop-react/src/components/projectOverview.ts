@@ -392,6 +392,8 @@ const WORK = new Set(["tool_call", "process", "file_edit"]);
 export interface LongGoal {
   objective: string; status: string; phase: string; tokens: number; tokenBudget: number; turns: number;
   reason: string; summary: string; checked: boolean;
+  /** Seconds since the epoch: the model provider failed and the Host tries again then; 0 when nothing waits. */
+  retryAt?: number;
 }
 
 /** One line for a long goal: what it is doing, what it has spent, and the move the person has. */
@@ -403,6 +405,10 @@ export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "z
   const line = (zh: string, english: string) => `${en ? english : zh} · ${spent}`;
   if (goal.status === "active" && goal.phase === "approval") return { text: line("长目标在等你批准", "The long goal is waiting for your approval"), detail: goal.objective, live: false, action: "pause", dismiss: false };
   if (goal.status === "active" && goal.phase === "checking") return { text: line("正在独立检查结果", "Independently checking the result"), detail: goal.objective, live: true, action: "pause", dismiss: false };
+  if (goal.status === "active" && (goal.retryAt ?? 0) * 1000 > Date.now()) {
+    const at = new Date((goal.retryAt as number) * 1000).toLocaleTimeString(en ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    return { text: line(`模型服务暂时不可用，${at} 自动重试`, `The model provider is unavailable; retrying at ${at}`), detail: goal.objective, live: false, action: "pause", dismiss: false };
+  }
   if (goal.status === "active") return { text: line("长目标进行中", "Long goal running"), detail: goal.objective, live: true, action: "pause", dismiss: false };
   if (goal.status === "complete") {
     const text = goal.checked ? line("长目标完成，已通过独立检查", "Long goal finished and independently checked")

@@ -417,6 +417,8 @@ class ProjectServiceMixin(WorkspaceMixin):
         # Weave mode: the conversation's own agent proposes, reads and steers its project.
         self.weave_proposals = weave.Proposals(home)
         self.weave_goals = goal.Goals(home)
+        self.weave_retries = goal.Goals(home, goal.RETRIES_FILE)
+        self.runtime.subscribe(lambda event: goal.observe_failure(self, event))
         for tool in weave.tools(self):
             if self.runtime.tools.get(tool.name) is None:
                 self.runtime.tools.register(tool)
