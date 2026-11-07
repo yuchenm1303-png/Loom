@@ -77,9 +77,11 @@ test("image cards render direct PNGs and immediately load their page in the side
             window.__imgErr = ''; document.querySelector('.browser-activity-visual img')?.addEventListener('error', () => { window.__imgErr = 'error-event'; });
             const probe = () => { const i = document.querySelector('.browser-activity-visual img'); return i ? 'complete=' + i.complete + ' w=' + i.naturalWidth + ' ' + window.__imgErr + ' rect=' + JSON.stringify(i.getBoundingClientRect()) + ' vis=' + document.visibilityState : 'no img'; };
             // Lazy loading starts from a rendered frame, and a window under xvfb can go without them for seconds.
-            // This test is about the preview showing the PNG, so it does not wait on that.
+            // This test is about what a preview shows, so no image here waits on that, however late it mounts.
+            const eager = () => document.querySelectorAll('img[loading="lazy"]').forEach(image => { image.loading = 'eager'; });
+            new MutationObserver(eager).observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['src']});
+            eager();
             await waitFor(() => document.querySelector('.browser-activity-visual img'), 'Direct PNG preview never mounted');
-            document.querySelector('.browser-activity-visual img').loading = 'eager';
             const fetched = await fetch(location.origin + '/artifacts/check.png').then(r => r.status + ' ' + r.headers.get('content-type'), e => String(e));
             await waitFor(() => document.querySelector('.browser-activity-visual img')?.naturalWidth > 0, 'Direct PNG preview failed: ' + fetched + ' | ' + probe() + ' | ' + (document.querySelector('.browser-activity-visual')?.outerHTML || document.body.innerHTML).slice(0, 600));
             if(document.querySelectorAll('.browser-activity-card').length !== 1) throw new Error('External automation created a browser card');
