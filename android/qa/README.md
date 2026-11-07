@@ -46,3 +46,23 @@ Device acceptance checks (use a real Host; `stack.py` only stubs pairing/thread 
 - Open an image, then press Android Back: only the preview closes. Test keyboard-visible layout, large font settings, and a narrow phone screen.
 - Open a sent PDF/document through a compatible installed viewer. Without a matching app, show an error on the file card and allow retry. Unsupported audio/video previews fall back to system opening.
 - Verify the file provider is unexported, exposes only `cache/attachments/`, and grants read access only. Downloaded copies older than 24 hours are removed on the next open.
+
+## Projects, conversations and build controls
+
+Install the updated phone APK **and update the desktop Host**: project configuration and build mutations are explicitly allowed in `electron/mobileAccess.ts`. An older Host refuses these operations; the phone reports that the desktop needs updating. The gateway operation envelope is unchanged.
+
+The Projects tab lists registered computer workspaces, supports registration by computer path, editing names/instructions, and opens each project's own active/archived conversations (latest 200). `thread/list` now filters by `projectId` before applying its limit. A failed project refresh retains the previous list, exposes an error and retry, and refreshes on reconnect/focus.
+
+Build mode has separate transcript and control views sharing one attachment composer. Controls include proposal budgets, 1–8 workers, episode and milestone limits, fingerprint confirmation for full access, Git preparation/commit review, pause/resume/stop, stage budget changes, one-call agent approvals, additional guidance, reference files, tasks/acceptance and milestone history. Worker count and run permissions stay fixed after start, matching the Host's contract. Conversation controls include mode/model/reasoning, rename, archive/restore, fork, pause and context compaction.
+
+Browser tests use only the scripted Host at `scripts/fixtures/mobile.html`, with `?proposal=1` for a pending proposal. They change no real workspace:
+
+```bash
+# From desktop-react, with Vite listening on 5199 and playwright-core installed:
+node scripts/tests/mobile-project-controls.mjs /tmp/mobile-controls
+node scripts/tests/mobile-screens.mjs /tmp/mobile-screens
+node scripts/tests/mobile-motion.mjs /tmp/mobile-motion
+node --test scripts/tests/mobile-project-state.test.mjs scripts/tests/project-overview.test.mjs
+```
+
+The control test checks cached project errors/recovery, project-scoped conversation requests, edited start/budget payloads, approvals, biometric refusal, Android Back priority, build-mode persistence while viewing its transcript, and narrow 320 px layout. Screenshot/font/touch-size checks cover the shared screens; motion checks include interrupting navigation and reduced motion. A real phone/Host smoke test is still required before release.

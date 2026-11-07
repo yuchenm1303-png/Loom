@@ -1089,6 +1089,16 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         else:
             records = all_records
 
+        project_id = str(params.get("projectId") or "").strip()
+        if project_id:
+            try:
+                project_id = self.projects.get(project_id).project_id
+            except KeyError as exc:
+                raise JsonRpcError(-32004, "project not found") from exc
+            # Filter before applying the limit: a quiet project's conversations must not
+            # disappear behind the newest conversations of other projects.
+            records = [record for record in records if record.get("projectId") == project_id]
+
         if query_folded:
             records = [
                 record

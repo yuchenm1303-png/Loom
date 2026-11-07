@@ -10,6 +10,15 @@ test("a phone reaches the conversation features", () => {
   assert.equal(mobileInvokeAllowed("switchCurrentModel", ["model"]), true);
 });
 
+test("a phone reaches project settings and the complete build control path", () => {
+  for (const method of ["project/list", "project/create", "project/rename", "project/set_instructions", "thread/compact",
+    "projectRun/overview", "projectRun/prepareWorkspace", "projectRun/commitWorkspace", "projectRun/pause",
+    "projectRun/resume", "projectRun/cancel", "projectRun/recover", "projectRun/steer", "projectRun/approval",
+    "projectWeave/start", "projectWeave/dismiss", "projectWeave/goal", "projectProgram/attach"]) {
+    assert.equal(mobileInvokeAllowed("call", [method, {}]), true, method);
+  }
+});
+
 test("keys, clipboard and account features stay on the computer", () => {
   for (const operation of [
     "setModelProviderKey", "addModel", "updateModel", "deleteModel", "discoverModels",

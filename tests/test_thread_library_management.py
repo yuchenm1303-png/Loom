@@ -23,6 +23,28 @@ class RecordingPlatform:
         raise AssertionError("model execution is not expected in thread-library tests")
 
 
+def test_project_thread_filter_runs_before_limit_and_respects_archive_view(tmp_path):
+    service, runtime, _store, workspace = _build_service(tmp_path)
+    try:
+        first = service.project_create({"root": str(workspace)})["project"]
+        older = service.thread_start({"projectId": first["id"]})["thread"]
+        other_root = tmp_path / "other-project"
+        other_root.mkdir()
+        other = service.project_create({"root": str(other_root)})["project"]
+        service.thread_start({"projectId": other["id"]})
+        result = service.thread_list({"projectId": first["id"], "limit": 1})
+        assert [item["id"] for item in result["threads"]] == [older["id"]]
+        assert service.thread_list({"projectId": first["id"].upper(), "limit": 1})["threads"] == result["threads"]
+        service.thread_archive({"threadId": older["id"]})
+        assert service.thread_list({"projectId": first["id"], "view": "active"})["threads"] == []
+        archived = service.thread_list({"projectId": first["id"], "view": "archived"})
+        assert [item["id"] for item in archived["threads"]] == [older["id"]]
+        with pytest.raises(JsonRpcError, match="project not found"):
+            service.thread_list({"projectId": "missing-project"})
+    finally:
+        runtime.close()
+
+
 def _build_service(tmp_path: Path):
     home = tmp_path / "home"
     workspace = tmp_path / "workspace"

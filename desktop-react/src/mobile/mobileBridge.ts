@@ -105,7 +105,9 @@ function settle(id: number, result: unknown, error?: { code?: string; message?: 
   pending.delete(id);
   window.clearTimeout(call.timer);
   if (error) {
-    const failure = new Error(String(error.message || "The computer could not finish this.")) as Error & { code?: string };
+    const message = String(error.message || "电脑未能完成此操作，请重试");
+    const failure = new Error(message.includes("This action is only available on the computer")
+      ? "电脑端尚未支持此手机操作，请更新电脑端 Loom 后重试" : message) as Error & { code?: string };
     failure.code = error.code;
     call.reject(failure);
   } else {

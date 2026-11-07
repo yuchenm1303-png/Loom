@@ -56,7 +56,7 @@ const glider = await sample(page, ".m-nav > .m-glider", left, `() => document.qu
 check(distinct(glider) > 4, "the tab selection travels", `${present(glider)[0]} -> ${present(glider).at(-1)} in ${distinct(glider)} steps`);
 await page.waitForTimeout(500);
 const landed = await page.locator(".m-nav > .m-glider").evaluate((element) => element.getBoundingClientRect().left);
-check(Math.abs(landed - 195) < 1, "and lands on its tab", String(landed));
+check(Math.abs(landed - 156) < 1, "and lands on its tab", String(landed));
 await page.locator(".m-nav button").nth(0).click();
 await page.waitForTimeout(600);
 
@@ -75,8 +75,8 @@ await page.waitForTimeout(1000);
 const rising = await sample(page, ".m-sheet", top, `() => document.querySelector(".m-chip").click()`);
 check(distinct(rising) > 5, "a sheet rises", `in ${distinct(rising)} steps`);
 if (film) await page.screenshot({ path: path.join(film, "sheet.png") });
-const segments = await sample(page, ".m-segments > .m-glider", left, `() => document.querySelectorAll(".m-segments button")[2].click()`, 30);
-check(distinct(segments) > 3, "the reasoning selection travels", `in ${distinct(segments)} steps`);
+const segments = await sample(page, ".m-reasoning-options button:nth-of-type(3)", "(element) => getComputedStyle(element).color", `() => document.querySelectorAll(".m-segments button")[2].click()`, 30);
+check(distinct(segments) > 2, "the reasoning choice fades to its selected state", `in ${distinct(segments)} steps`);
 await page.waitForTimeout(300);
 const falling = await sample(page, ".m-sheet", top, `() => document.querySelector(".m-scrim").click()`, 45);
 check(distinct(falling) > 5, "a sheet falls instead of vanishing", `in ${distinct(falling)} steps`);

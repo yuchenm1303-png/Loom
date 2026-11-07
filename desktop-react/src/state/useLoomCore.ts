@@ -25,6 +25,7 @@ import { afterNextPaint } from "./afterNextPaint";
 import { RetainedBudgetMap } from "./retainedBudgetMap";
 import { runStartup, type StartupStage } from "./startupSequence";
 import { withThreadReadTimeout } from "./threadReadTimeout";
+import { withProjectReadTimeout } from "./projectRead";
 import { reconcileThreadCompletion, settleCompletedTurnItems, terminalStatus, type TerminalTurn } from "./turnCompletion";
 
 type ThreadView = "active" | "archived";
@@ -250,6 +251,9 @@ export function useLoom() {
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [projectsSupported, setProjectsSupported] = useState(false);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState("");
+  const projectReadRevision = useRef(0);
   const [threadView, setThreadViewState] = useState<ThreadView>("active");
   const [threadCounts, setThreadCounts] = useState<ThreadCounts>({ active: 0, archived: 0, all: 0 });
   const [active, setActive] = useState<ThreadReadResult | null>(null);
@@ -416,16 +420,21 @@ export function useLoom() {
   }, []);
 
   const refreshProjects = useCallback(async () => {
+    const revision = ++projectReadRevision.current;
+    setProjectsLoading(true);
     try {
-      const result = await requireBridge().call<ProjectListResult>("project/list", {});
-      setProjects(result.projects ?? []);
-      setProjectsSupported(true);
+      const result = await withProjectReadTimeout(requireBridge().call<ProjectListResult>("project/list", {}));
+      if (!Array.isArray(result.projects)) throw new Error("电脑返回的项目列表不完整，请刷新重试");
+      if (revision === projectReadRevision.current) {
+        setProjects(result.projects);
+        setProjectsSupported(true);
+        setProjectsError("");
+      }
       return result.projects ?? [];
-    } catch {
-      setProjectsSupported(false);
-      setProjects([]);
+    } catch (cause) {
+      if (revision === projectReadRevision.current) setProjectsError(cause instanceof Error ? cause.message : String(cause));
       return [];
-    }
+    } finally { if (revision === projectReadRevision.current) setProjectsLoading(false); }
   }, []);
 
   const createProject = useCallback(async (root: string, name?: string) => {
@@ -1393,6 +1402,8 @@ export function useLoom() {
     if (!isLoomWebRuntime()) return;
     let disposed = false;
     const recovered = () => {
+      void refreshThreads().catch(() => {});
+      void refreshProjects();
       const threadId = activeIdRef.current;
       if (!threadId) return;
       // Notifications may have been missed while the relay was disconnected.
@@ -1403,14 +1414,13 @@ export function useLoom() {
         setConnection("ready");
         setError("");
       }).catch(() => { /* A subsequent reconnect will retry reconciliation. */ });
-      void refreshThreads().catch(() => {});
     };
     window.addEventListener("loom:web-host-reconnected", recovered);
     return () => {
       disposed = true;
       window.removeEventListener("loom:web-host-reconnected", recovered);
     };
-  }, [applyThreadRead, readThread, refreshThreads]);
+  }, [applyThreadRead, readThread, refreshThreads, refreshProjects]);
 
   useEffect(() => {
     let disposed = false;
@@ -1487,6 +1497,8 @@ export function useLoom() {
     threads,
     projects,
     projectsSupported,
+    projectsLoading,
+    projectsError,
     threadView,
     threadCounts,
     active,
@@ -1513,6 +1525,7 @@ export function useLoom() {
     forkThread,
     setThreadView,
     refreshProjects,
+    refreshThreads,
     refreshModels,
     refreshActiveThreadState,
     createProject,
@@ -1559,11 +1572,14 @@ export function useLoom() {
     loadOlderTurns,
     projects,
     projectsSupported,
+    projectsLoading,
+    projectsError,
     createProject,
     refreshContext,
     refreshModels,
     refreshActiveThreadState,
     refreshProjects,
+    refreshThreads,
     removeProject,
     renameProject,
     setProjectInstructions,
