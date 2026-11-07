@@ -197,7 +197,9 @@ html[data-loom-surface="mobile"] .m-nav button:focus-visible { outline: 0; }
 html[data-loom-surface="mobile"] .m-nav button:focus-visible i { box-shadow: 0 0 0 2px var(--m-run); }
 .m-nav button i { position: relative; width: 60px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 16px; font-style: normal; color: rgba(187, 193, 204, .78); transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-base) var(--loom-ease-out); }
 /* Words never move; the glyph gives a little under the finger (icon-motion.css) and the pill takes the wash. */
-html[data-loom-surface="mobile"] .m-nav button:active i { background-color: var(--loom-press-wash, rgba(255, 255, 255, .055)); }
+html[data-loom-surface="mobile"] .m-nav button:is(:hover, :active, :focus) { background: transparent !important; box-shadow: none; }
+html[data-loom-surface="mobile"] .m-nav button i,
+html[data-loom-surface="mobile"] .m-nav button:is(:hover, :active, :focus) i { background: transparent !important; }
 .m-nav button span { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .02em; }
 html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] { color: var(--loom-workspace-ink); }
 html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] span { font-weight: 600; }
@@ -216,7 +218,8 @@ html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] i { color: v
   transform: translateX(calc(var(--m-index) * 100%));
   transition: transform var(--loom-dur-flow) var(--m-settle);
 }
-.m-nav > .m-glider::before { content: ""; position: absolute; left: 50%; top: 0; width: 60px; height: 32px; margin-left: -30px; border-radius: 16px; background: var(--m-run-soft); }
+.m-nav > .m-glider::before { content: none; }
+.m-nav-pill { position: absolute; left: 50%; top: 0; width: 60px; height: 32px; margin-left: -30px; border-radius: 999px; background: var(--m-run-soft); transform-origin: center; box-shadow: inset 0 1px 0 rgba(220,210,255,.08); }
 html[data-loom-reduced-motion] .m-nav > .m-glider { transition: none; }
 @media (prefers-reduced-motion: reduce) { .m-nav > .m-glider { transition: none; } }
 

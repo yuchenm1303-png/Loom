@@ -1,4 +1,5 @@
 import type { BuildBranch } from "./BuildBranches";
+import { NavCapsule } from "./NavCapsule";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { AttachmentQueue, MAX_ATTACHMENTS } from "./attachmentQueue";
 import { AttachmentTray } from "./AttachmentTray";
@@ -906,7 +907,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
           </div>
         </Fold>
         <nav className="m-nav" aria-label="主导航" style={{ "--m-index": TABS.findIndex((entry) => entry.key === tab) } as CSSProperties}>
-          <i className="m-glider" aria-hidden="true" />
+          <NavCapsule index={TABS.findIndex((entry) => entry.key === tab)} />
           {TABS.map(({ key, label, icon: Icon }) => (
             <button type="button" key={key} data-press="none" aria-label={key === "now" && waitingCount ? `${label}，${waitingCount} 项等你批准` : undefined} aria-current={tab === key ? "page" : undefined} onClick={() => { setTab(key); setQuery(""); if ((key === "now" || key === "projects") && loom.threadView === "archived") void loom.setThreadView("active").catch((cause) => setNavigationError(String(cause))); }}>
               <i aria-hidden="true">
