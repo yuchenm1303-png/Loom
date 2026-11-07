@@ -511,34 +511,51 @@ html[data-loom-surface="mobile"] .m-back { margin-left: -8px; padding-right: 12p
 .m-meter { display: block; height: 4px; margin-top: 8px; border-radius: 2px; background: var(--m-fill-strong); overflow: hidden; }
 .m-meter > i { display: block; height: 100%; border-radius: 2px; background: var(--m-run); transform-origin: left; transition: transform var(--loom-dur-slow) var(--loom-ease-out); }
 .m-meter.is-high > i { background: var(--m-wait); }
-/* Disclosures: a row with a chevron that turns, never the browser's triangle. */
-.m-card details, details.m-card { min-width: 0; }
-.m-build-panel summary, .m-project-library summary {
-  min-height: 44px; box-sizing: border-box; padding-block: 11px; display: flex; align-items: center; gap: 10px;
-  list-style: none; font-size: 15px; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; cursor: pointer;
+/* Disclosure (Disclosure.tsx). Opening: the room grows on one flow clock while the words fade in
+   a beat behind it. Closing: the words go first, quickly, then the room folds on the shorter exit
+   clock, so no line is ever seen being cut in half. The row itself is the only surface: its press
+   wash and focus ring are a rounded inset, never a square box around the card's edge. */
+.m-disclosure { min-width: 0; }
+html[data-loom-surface="mobile"] .m-disclosure-head {
+  width: calc(100% + 16px); min-height: 48px; box-sizing: border-box; margin: 0 -8px; padding: 10px 8px;
+  display: flex; align-items: center; gap: 10px; border-radius: 12px; text-align: left;
+  font-size: 15px; font-weight: 500; line-height: 1.45; color: var(--loom-workspace-secondary);
+  transition: color var(--loom-dur-base) var(--loom-ease-out);
 }
-.m-build-panel summary::-webkit-details-marker, .m-project-library summary::-webkit-details-marker { display: none; }
-.m-build-panel summary::after, .m-project-library summary::after {
-  content: ""; flex: none; width: 7px; height: 7px; margin: 0 4px 3px auto;
-  border-right: 1.75px solid var(--loom-workspace-muted); border-bottom: 1.75px solid var(--loom-workspace-muted);
-  transform: rotate(45deg); transition: transform var(--loom-dur-base) var(--m-settle);
+html[data-loom-surface="mobile"] .m-disclosure-head:focus-visible { outline: 0; box-shadow: 0 0 0 2px var(--m-run) inset; }
+html[data-loom-surface="mobile"] .m-disclosure[data-open] > .m-disclosure-head { color: var(--loom-workspace-ink); }
+.m-disclosure-title { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+/* The turn itself belongs to the icon system (icon-motion.css turns a chevron whose host is
+   aria-expanded); here it only gets the disclosure clock: a settling spring opening, a short ease closing. */
+.m-disclosure-chevron { flex: none; color: var(--loom-workspace-muted); --ic-dur: var(--loom-dur-flow-out); --ic-curve: var(--loom-ease-out); transition: color var(--loom-dur-base) var(--loom-ease-out), scale var(--ic-dur) var(--ic-curve); }
+.m-disclosure[data-open] > .m-disclosure-head .m-disclosure-chevron { color: var(--loom-workspace-secondary); --ic-dur: var(--loom-dur-slow); --ic-curve: var(--m-settle); }
+.m-disclosure-body {
+  display: grid; grid-template-rows: 0fr; visibility: hidden;
+  transition: grid-template-rows var(--loom-dur-flow-out) var(--loom-ease-exit) var(--loom-dur-fast-out), visibility 0s linear calc(var(--loom-dur-flow-out) + var(--loom-dur-fast-out));
 }
-.m-build-panel details[open] > summary::after, .m-project-library details[open] > summary::after { transform: translateY(3px) rotate(-135deg); }
-.m-card details + details, .m-card > .m-disclosures > details + details { border-top: 1px solid var(--loom-workspace-line); }
-.m-card details > :not(summary) { margin: 0 0 12px; }
-.m-card details > .m-field + * { margin-top: 0; }
-.m-card details[open] { padding-bottom: 2px; }
-details.m-card > summary { margin: -11px 0; }
-details.m-card[open] > summary { margin-bottom: 8px; }
+.m-disclosure-body > div { min-height: 0; overflow: hidden; }
+.m-disclosure-inner {
+  display: flex; flex-direction: column; gap: 12px; padding: 2px 0 14px; opacity: 0;
+  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
+}
+.m-disclosure[data-open] > .m-disclosure-body { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-out), visibility 0s; }
+.m-disclosure[data-open] > .m-disclosure-body .m-disclosure-inner { opacity: 1; transition: opacity var(--loom-dur-base) var(--loom-ease-out) calc(var(--loom-dur-flow) * .3); }
+.m-disclosure-inner > * { margin: 0; }
+.m-disclosure-inner p { font-size: 14px; line-height: 1.6; color: var(--loom-workspace-secondary); overflow-wrap: anywhere; }
+.m-disclosure-inner .m-field + .m-button { margin-top: 2px; }
+/* A stack of disclosures under a card's main content shares hairlines, as a list does. */
 .m-disclosures { margin-top: 6px !important; border-top: 1px solid var(--loom-workspace-line); }
+.m-disclosures > .m-disclosure + .m-disclosure { border-top: 1px solid var(--loom-workspace-line); }
+.m-card > .m-disclosure:only-child > .m-disclosure-head { margin-block: -6px; }
+.m-card > .m-disclosure:only-child[data-open] > .m-disclosure-head { margin-bottom: 4px; }
+.m-card > .m-disclosure:only-child .m-disclosure-inner { padding-bottom: 0; gap: 0; }
 .m-build-list { margin: 0; padding: 0; list-style: none; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .m-build-list > li + li { border-top: 1px solid var(--loom-workspace-line); }
 .m-build-list > li.m-path { padding: 6px 0; }
-.m-task summary { padding-block: 10px; }
-.m-task summary .m-badge { height: 22px; padding: 0 8px; font-size: 12px; }
-.m-task summary > span:first-child { min-width: 0; flex: 1; }
+.m-task .m-disclosure-head { min-height: 46px; padding-block: 9px; }
+.m-task .m-disclosure-head .m-badge { height: 22px; padding: 0 8px; font-size: 12px; }
 .m-start > .m-field { align-self: stretch; }
-.m-task p { margin: 0 0 8px; font-size: 14px; line-height: 1.6; color: var(--loom-workspace-secondary); }
+.m-task p { font-size: 14px; line-height: 1.6; color: var(--loom-workspace-secondary); }
 .m-agent-card { display: flex; align-items: center; gap: 12px; padding: 12px 0; }
 .m-agent-card + .m-agent-card { border-top: 1px solid var(--loom-workspace-line); }
 .m-agent-card > div { min-width: 0; flex: 1; }

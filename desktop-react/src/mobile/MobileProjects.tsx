@@ -13,6 +13,7 @@ import type { useLoom } from "../state/useLoom";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import { inProject, searchThreads } from "./mobileProjectState";
 import { withProjectReadTimeout } from "../state/projectRead";
+import { Disclosure } from "./Disclosure";
 
 type Loom = ReturnType<typeof useLoom>;
 
@@ -212,13 +213,11 @@ export function MobileProjects({
           </div>
           <div className="m-disclosures">
             {project.instructions ? (
-              <details>
-                <summary>项目说明</summary>
+              <Disclosure title="项目说明">
                 <p className="m-prewrap">{project.instructions}</p>
-              </details>
+              </Disclosure>
             ) : null}
-            <details>
-              <summary>编辑项目名称和说明</summary>
+            <Disclosure title="编辑项目名称和说明">
               <label className="m-field">
                 项目名称
                 <input
@@ -238,7 +237,7 @@ export function MobileProjects({
               </label>
               <button
                 type="button"
-                className="m-button is-block"
+                className="m-button is-tint is-block"
                 disabled={!online || busy || !projectName.trim()}
                 onClick={() => {
                   setBusy(true);
@@ -258,7 +257,7 @@ export function MobileProjects({
               >
                 保存项目设置
               </button>
-            </details>
+            </Disclosure>
           </div>
           {error ? (
             <p className="m-alert" role="alert">

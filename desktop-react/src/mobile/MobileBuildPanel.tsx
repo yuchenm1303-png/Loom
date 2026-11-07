@@ -25,6 +25,7 @@ import {
 } from "../components/projectOverview";
 import { withProjectReadTimeout } from "../state/projectRead";
 import { confirmBiometric } from "./mobileBridge";
+import { Disclosure } from "./Disclosure";
 import {
   buildStartParams,
   resumeBudgetParams,
@@ -173,7 +174,8 @@ export function MobileBuildPanel({
   const [guidance, setGuidance] = useState("");
   const [commit, setCommit] = useState("");
   const [confirmStop, setConfirmStop] = useState(false);
-  const budgetForm = useRef<HTMLDetailsElement>(null);
+  const budgetForm = useRef<HTMLDivElement>(null);
+  const [budgetOpen, setBudgetOpen] = useState(false);
   const serial = useRef(0);
   const alive = useRef(true);
   const inFlight = useRef(false);
@@ -448,8 +450,7 @@ export function MobileBuildPanel({
         (!workspaceLocked && Boolean(overview.workspace?.changeCount)) ? (
           <div className="m-disclosures">
             {overview.workspace?.changes?.length ? (
-              <details>
-                <summary>查看工作区改动</summary>
+              <Disclosure title="查看工作区改动">
                 <ul className="m-build-list">
                   {overview.workspace.changes.map((change) => (
                     <li
@@ -460,14 +461,13 @@ export function MobileBuildPanel({
                     </li>
                   ))}
                 </ul>
-              </details>
+              </Disclosure>
             ) : null}
             {!workspaceLocked &&
             ["not_git", "unborn", "detached"].includes(
               overview.workspace?.status || "",
             ) ? (
-              <details>
-                <summary>准备建造仓库</summary>
+              <Disclosure title="准备建造仓库">
                 <p>
                   初始化会创建 Git
                   仓库和空提交，不提交现有文件；创建分支会保留当前文件。
@@ -496,11 +496,10 @@ export function MobileBuildPanel({
                     ? "创建工作分支"
                     : "初始化 Git"}
                 </button>
-              </details>
+              </Disclosure>
             ) : null}
             {!workspaceLocked && Boolean(overview.workspace?.changeCount) ? (
-              <details>
-                <summary>检查后提交全部工作区改动</summary>
+              <Disclosure title="检查后提交全部工作区改动">
                 <p>
                   会提交上面列出的全部改动，作为建造起点。请先确认文件内容。
                 </p>
@@ -530,7 +529,7 @@ export function MobileBuildPanel({
                 >
                   确认提交全部改动
                 </button>
-              </details>
+              </Disclosure>
             ) : null}
           </div>
         ) : null}
@@ -854,12 +853,12 @@ export function MobileBuildPanel({
                         const next = raisedBudget(run, overview.program);
                         setTokens(String(next.tokenBudget));
                         setEpisodes(String(next.maxEpisodes));
-                        if (budgetForm.current) {
-                          budgetForm.current.open = true;
-                          budgetForm.current.scrollIntoView({
-                            block: "nearest",
-                          });
-                        }
+                        setBudgetOpen(true);
+                        // Bring the form into view once its room has opened, not while it is still growing.
+                        const settled = budgetForm.current?.querySelector(".m-disclosure-body");
+                        const reveal = () => budgetForm.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                        if (settled && !budgetOpen) settled.addEventListener("transitionend", reveal, { once: true });
+                        else reveal();
                       }}
                     >
                       填入建议追加预算
@@ -892,8 +891,7 @@ export function MobileBuildPanel({
                 ) : null}
                 {data.controls.cancel ? (
                   <div className="m-disclosures">
-                    <details ref={budgetForm}>
-                      <summary>调整当前阶段总预算并继续</summary>
+                    <Disclosure title="调整当前阶段总预算并继续" anchor={budgetForm} open={budgetOpen} onOpenChange={setBudgetOpen}>
                       <div className="m-build-fields">
                         <NumberField
                           label="当前阶段总 token 上限"
@@ -939,7 +937,7 @@ export function MobileBuildPanel({
                       >
                         应用预算并继续
                       </button>
-                    </details>
+                    </Disclosure>
                   </div>
                 ) : null}
               </Section>
@@ -986,13 +984,14 @@ export function MobileBuildPanel({
                 <ol className="m-build-list">
                   {data.tasks.map((task) => (
                     <li key={task.id} className="m-task">
-                      <details>
-                        <summary>
-                          <span>{task.title}</span>
+                      <Disclosure
+                        title={task.title}
+                        aside={
                           <span className={`m-badge${TONE[task.state] ? ` is-${TONE[task.state]}` : ""}`}>
                             {STATE[task.state] ?? task.state}
                           </span>
-                        </summary>
+                        }
+                      >
                         {task.detail ? <p className="m-prewrap">{task.detail}</p> : null}
                         {run.plan
                           .find((item) => item.id === task.id)
@@ -1002,7 +1001,7 @@ export function MobileBuildPanel({
                         {task.agentName ? (
                           <p>执行者：{task.agentName}</p>
                         ) : null}
-                      </details>
+                      </Disclosure>
                     </li>
                   ))}
                 </ol>
@@ -1075,8 +1074,8 @@ export function MobileBuildPanel({
             ) : null}
           </Section>
           {overview.program?.milestones.length || overview.events.length ? (
-            <details className="m-card">
-              <summary>阶段历史与运行事件</summary>
+            <section className="m-card">
+              <Disclosure title="阶段历史与运行事件">
               {overview.program?.milestones.map((item) => (
                 <div className="m-event" key={`m${item.index}`}>
                   <span>
@@ -1096,7 +1095,8 @@ export function MobileBuildPanel({
                     {event.reason ? <span>{event.reason}</span> : null}
                   </div>
                 ))}
-            </details>
+              </Disclosure>
+            </section>
           ) : null}
         </>
       ) : null}
