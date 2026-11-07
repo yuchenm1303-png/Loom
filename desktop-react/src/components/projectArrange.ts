@@ -100,7 +100,7 @@ const rise = (t: number, a: number, b: number) => smooth(clamp01((t - a) / (b - 
  *  at the tip of a cable that had itself slowed down, and the card read as one that stopped halfway. */
 const unfurl = (t: number, a: number, b: number) => { const x = clamp01((t - a) / (b - a)); return 0.5 * smooth(x, 0, 1) + 0.5 * (1 - (1 - x) ** 2); };
 
-interface Shape { width: number; height: number; side: string; plugX: number; plugY: number; round: number }
+interface Shape { width: number; height: number; side: string; round: number }
 /** Where a card plugs into its cable, in its own px (ProjectFlow.tsx's cables: 34px down a side, or halfway down
  *  a short card; a card below plugs at its top, 72px in). */
 function shapeOf(surface: HTMLElement, arriving: boolean): Shape {
@@ -109,29 +109,25 @@ function shapeOf(surface: HTMLElement, arriving: boolean): Shape {
   const width = surface.offsetWidth, side = surface.dataset.side ?? "right";
   const height = arriving ? Math.max(surface.offsetHeight, surface.scrollHeight) : surface.offsetHeight;
   const round = parseFloat(getComputedStyle(surface).borderTopLeftRadius) || 0;
-  return { width, height, side, round,
-           plugX: side === "left" ? width : side === "below" ? Math.min(72, width / 2) : 0,
-           plugY: side === "below" ? 0 : Math.min(34, height / 2) };
+  return { width, height, side, round };
 }
 /** The surface cut to a shape `s` (0 nothing, 1 the dot) `w` (0 the dot, 1 full width) `h` (0 the dot, 1 full height)
  *  of the way from the cable's tip: a dot, a pill along the card, then the card. Corners stay round, never stretched. */
-function cut({ width, height, side, plugX, plugY, round }: Shape, s: number, w: number, h: number) {
+function cut({ width, height, side, round }: Shape, s: number, w: number, h: number) {
   const dot = Math.min(DOT, width, height) * s;
   const cw = dot + (width - dot) * w, ch = dot + (height - dot) * h;
-  const x0 = side === "left" ? width - cw : side === "below" ? Math.min(width - cw, Math.max(0, plugX - cw / 2)) : 0;
-  const y0 = side === "below" ? 0 : Math.min(height - ch, Math.max(0, plugY - ch / 2));
   const r = Math.min(Math.max(round, DOT / 2), ch / 2, cw / 2);
   const f = (value: number) => `${Math.max(0, value).toFixed(1)}px`;
-  // Measured from the top left corner only: the far edges are "the box less the shape", so a box that is still
-  // growing (or shrinking) shows the same shape in the same place instead of a slab cut from both of its edges.
-  const far = (start: number, size: number) => `calc(100% - ${(start + size).toFixed(1)}px)`;
-  // Along a side card the shape is a share of the card's live width: the column can widen as the card's contents
-  // mount (the model card's tabs come a render late), and a shape sized to the first width stood short of the right
-  // edge until its last frame, then snapped out to it.
-  const open = (1 - w).toFixed(4);
-  const along = `calc((100% - ${dot.toFixed(1)}px) * ${open})`;
-  const [right, left] = side === "right" ? [along, "0px"] : side === "left" ? ["0px", along] : [far(x0, cw), f(x0)];
-  return `inset(${f(y0)} ${right} ${far(y0, ch)} ${left} round ${f(r)})`;
+  // Every inset follows the live box, including the plan's width and every card's height.
+  // Pixel-sized cuts froze at the first layout size until the last keyframe uncovered the rest at once.
+  const remaining = (progress: number) => `calc((100% - ${dot.toFixed(1)}px) * ${(1 - progress).toFixed(4)})`;
+  const anchored = (plug: number, progress: number) =>
+    `clamp(0px, calc(min(${plug}px, 50%) - ${(dot / 2).toFixed(2)}px - (100% - ${dot.toFixed(1)}px) * ${(progress / 2).toFixed(4)}), ${remaining(progress)})`;
+  const left = side === "left" ? remaining(w) : side === "below" ? anchored(72, w) : "0px";
+  const right = side === "right" ? remaining(w) : side === "below" ? `calc(${remaining(w)} - ${left})` : "0px";
+  const top = side === "below" ? "0px" : anchored(34, h);
+  const bottom = side === "below" ? remaining(h) : `calc(${remaining(h)} - ${top})`;
+  return `inset(${top} ${right} ${bottom} ${left} round ${f(r)})`;
 }
 /** The birth as keyframes, sampled finely (each phase has its own curve) and played linearly. */
 function births(shape: Shape, reverse: boolean) {

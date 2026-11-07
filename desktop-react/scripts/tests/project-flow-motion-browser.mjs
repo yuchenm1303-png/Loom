@@ -21,8 +21,8 @@ const CUT_OF = `
   }
   if (token) parts.push(token);
   const box = card.getBoundingClientRect();
-  const value = (length, size) => Function("return " + length.replace(/calc/g, "")
-    .replace(/(-?[\\d.]+)%/g, (_, n) => "(" + n + "*" + size + "/100)").replace(/px/g, ""))();
+  const value = (length, size) => Function("clamp", "return " + length.replace(/calc/g, "").replaceAll("min(", "Math.min(").replaceAll("max(", "Math.max(")
+    .replace(/(-?[\\d.]+)%/g, (_, n) => "(" + n + "*" + size + "/100)").replace(/px/g, ""))((low, value, high) => Math.max(low, Math.min(value, high)));
   const [t, r = t, b = t, l = r] = parts;
   return { box, t: value(t, box.height), r: value(r, box.width), b: value(b, box.height), l: value(l, box.width) };
 `;
@@ -83,6 +83,36 @@ try {
     await page.locator('[data-glide="repo"]').waitFor();
     await settle(page);
 
+    // A plan may grow after its birth was measured. Its late opening frames must fill the live box.
+    await toggle(page, "plan").click();
+    await settle(page);
+    const resizedBirth = await page.evaluate(async ({ CUT_OF }) => {
+      const cutOf = new Function("card", CUT_OF);
+      document.querySelector('[data-branch="plan"]').click();
+      await new Promise(requestAnimationFrame);
+      const card = document.querySelector('[data-glide="plan"] > .pf-card');
+      const shell = card.getAnimations().find(animation => animation.id === "pf-shell"
+        && "clipPath" in animation.effect.getKeyframes()[0]);
+      shell.pause();
+      const { delay, duration } = shell.effect.getTiming();
+      shell.currentTime = delay + duration * 0.5;
+      await new Promise(requestAnimationFrame);
+      card.style.width = card.offsetWidth * 1.5 + "px";
+      card.style.minHeight = card.offsetHeight * 1.5 + "px";
+      shell.currentTime = delay + duration * 0.94;
+      await new Promise(requestAnimationFrame);
+      const cut = cutOf(card);
+      const result = { width: cut.box.width, height: cut.box.height,
+        visibleWidth: cut.box.width - Math.max(0, cut.l) - Math.max(0, cut.r),
+        visibleHeight: cut.box.height - Math.max(0, cut.t) - Math.max(0, cut.b) };
+      card.style.width = "";
+      card.style.minHeight = "";
+      shell.finish();
+      return result;
+    }, { CUT_OF });
+    assert.ok(resizedBirth.visibleWidth > resizedBirth.width * 0.98 && resizedBirth.visibleHeight > resizedBirth.height * 0.98,
+      `plan fills its resized box before the animation ends: ${JSON.stringify(resizedBirth)}`);
+    await settle(page);
     // Exit stays at its visible location even though the centred column immediately shrinks.
     const continuity = await page.evaluate(async () => {
       const card = document.querySelector('[data-glide="scope"]');
@@ -532,20 +562,11 @@ try {
     await page.goto(`${origin}/scripts/fixtures/project-flow.html?at=0&draft=1&proposal=1&theme=dark`);
     await page.locator('[data-glide="plan-draft"]').waitFor();
     await page.waitForTimeout(1200);
-    const seen = await page.evaluate(async () => {
-      const length = (value, size) => {
-        let m;
-        if ((m = value.match(/^calc\(\(100% - ([-\d.]+)px\) \* ([-\d.]+)\)$/))) return (size - +m[1]) * +m[2];
-        if ((m = value.match(/^calc\(([-\d.]+)% - ([-\d.]+)px\)$/))) return size * +m[1] / 100 - +m[2];
-        if ((m = value.match(/^calc\(100% - ([-\d.]+)px\)$/))) return size - +m[1];
-        return value.endsWith("%") ? size * parseFloat(value) / 100 : parseFloat(value);
-      };
-      const insets = (node) => {
-        const clip = getComputedStyle(node).clipPath;
-        if (!clip || clip === "none") return [0, 0, 0, 0];
-        const [t, r = t, b = t, l = r] = clip.replace(/^inset\(/, "").replace(/ round .*$|\)$/g, "").match(/calc\((?:[^()]|\([^()]*\))*\)|[^ ]+/g);
-        const w = node.offsetWidth, h = node.offsetHeight;
-        return [length(t, h), length(r, w), length(b, h), length(l, w)].map((value) => Math.max(0, value));
+    const seen = await page.evaluate(async ({ CUT_OF }) => {
+      const cutOf = new Function("card", CUT_OF);
+      const insets = node => {
+        const cut = cutOf(node);
+        return cut ? [cut.t, cut.r, cut.b, cut.l].map(value => Math.max(0, value)) : [0, 0, 0, 0];
       };
       const shown = (node) => { const box = node.getBoundingClientRect(), [t, r, b, l] = insets(node); return { x0: box.left + l, y0: box.top + t, x1: box.right - r, y1: box.bottom - b }; };
       const frames = [];
@@ -558,7 +579,7 @@ try {
         frames.push(Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0)));
       }
       return frames;
-    });
+    }, { CUT_OF });
     const whole = seen.at(-1);
     const pops = seen.filter((area, index) => index && seen[index - 1] < whole * 0.05 && area > whole * 0.3);
     assert.ok(whole > 10000 && pops.length === 0, `the run's plan card is born in sight: ${JSON.stringify({ whole, pops, seen: seen.map(Math.round) })}`);
