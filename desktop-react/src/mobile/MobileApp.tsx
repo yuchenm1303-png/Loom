@@ -440,8 +440,8 @@ function ThreadActions({ open, loom, online, running, space, modeLocked, onMode,
   return <Sheet open={open} label="对话详情与操作" title="对话详情" onClose={onClose}>
     <p className="m-path">{thread?.workspace || "发送第一条消息后创建对话"}</p>
     <h2 className="m-sheet-title">模式</h2>
-    <div className="m-segments" role="radiogroup" aria-label="对话与建造模式" style={{ "--m-count": 2, "--m-index": space === "build" ? 1 : 0 } as CSSProperties}>
-      <i className="m-glider" aria-hidden="true" />
+    <div className="m-segments is-capsule" role="radiogroup" aria-label="对话与建造模式" style={{ "--m-count": 2, "--m-index": space === "build" ? 1 : 0 } as CSSProperties}>
+      <NavCapsule index={space === "build" ? 1 : 0} variant="segment" />
       {modes.map(([value, name]) => (
         <button type="button" role="radio" key={value} aria-checked={space === value} disabled={modeLocked || (value === "build" && thread?.archived)} onClick={() => onMode(value)}>{name}模式</button>
       ))}
@@ -883,8 +883,8 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
                 <SearchField value={query} onChange={setQuery} label={`搜索${tab === "build" ? "建造" : "对话"}`} placeholder="搜索标题或工作目录" />
                 <button type="button" className="m-round-tool" aria-label="刷新列表" disabled={!online || refreshing} onClick={() => { setRefreshing(true); void loom.refreshThreads().catch((cause) => setNavigationError(String(cause))).finally(() => setRefreshing(false)); }}><RotateCw size={18} strokeWidth={1.75} spinning={refreshing} /></button>
               </div>
-              <div className="m-segments is-compact" role="radiogroup" aria-label="列表范围" style={{ "--m-count": 2, "--m-index": loom.threadView === "archived" ? 1 : 0 } as CSSProperties}>
-                <i className="m-glider" aria-hidden="true" />
+              <div className="m-segments is-compact is-capsule" role="radiogroup" aria-label="列表范围" style={{ "--m-count": 2, "--m-index": loom.threadView === "archived" ? 1 : 0 } as CSSProperties}>
+                <NavCapsule index={loom.threadView === "archived" ? 1 : 0} variant="segment" />
                 {(["active", "archived"] as const).map((view) => (
                   <button type="button" role="radio" key={view} aria-checked={(loom.threadView === "archived") === (view === "archived")} disabled={!online} onClick={() => { if ((loom.threadView === "archived") !== (view === "archived")) void loom.setThreadView(view).catch((cause) => setNavigationError(String(cause))); }}>{view === "archived" ? "已归档" : "进行中"}</button>
                 ))}

@@ -28,6 +28,23 @@ try {
     await page.locator(".m-nav button").nth(1).click();
     await page.locator(".m-nav-pill").evaluate(async (pill) => { await Promise.allSettled(pill.getAnimations().map((a) => a.finished)); });
     await page.screenshot({ path: `${out}/${reducedMotion}.png`, animations: "disabled" });
+    const range = page.getByRole("radiogroup", { name: "列表范围" });
+    await range.waitFor();
+    await range.getByRole("radio", { name: "已归档", exact: true }).hover();
+    assert.ok(await range.getByRole("radio").evaluateAll((buttons) => buttons.every((button) => getComputedStyle(button).backgroundColor === "rgba(0, 0, 0, 0)")), "hover paints no second segment");
+    const segmentFrames = await page.evaluate(async () => {
+      document.querySelector('[aria-label="列表范围"] button:last-child').click();
+      const values = [];
+      for (let i = 0; i < 40; i++) { await new Promise(requestAnimationFrame); values.push(getComputedStyle(document.querySelector('[aria-label="列表范围"] .m-segment-pill')).transform); }
+      return values;
+    });
+    assert.equal(await range.locator(".m-segment-pill").count(), 1);
+    assert.equal(await range.getByRole("radio", { name: "已归档", exact: true }).getAttribute("aria-checked"), "true");
+    if (reducedMotion === "reduce") assert.equal(new Set(segmentFrames).size, 1);
+    else assert.ok(new Set(segmentFrames).size > 5, "segmented capsule stretches and settles");
+    await range.getByRole("radio", { name: "进行中", exact: true }).hover();
+    assert.ok(await range.getByRole("radio").evaluateAll((buttons) => buttons.every((button) => getComputedStyle(button).backgroundColor === "rgba(0, 0, 0, 0)")));
+    await page.screenshot({ path: `${out}/segments-${reducedMotion}.png`, animations: "disabled" });
     await page.close();
   }
   console.log("Single capsule, hover without duplicate surface, elastic motion, interrupted taps and reduced motion passed");

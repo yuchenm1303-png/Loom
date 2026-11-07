@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { useReducedMotion } from "../motion/useReducedMotion";
 
 /** One travelling surface; a press never paints a second pill under the destination. */
-export function NavCapsule({ index }: { index: number }) {
+export function NavCapsule({ index, variant = "navigation" }: { index: number; variant?: "navigation" | "segment" }) {
   const pill = useRef<HTMLSpanElement>(null);
   const animation = useRef<Animation | null>(null);
   const previous = useRef(index);
@@ -17,11 +17,11 @@ export function NavCapsule({ index }: { index: number }) {
     if (reduced || !distance) return;
     animation.current = element.animate([
       { transform: from === "none" ? "scale(1)" : from, offset: 0 },
-      { transform: `scale(${1.18 + Math.min(distance, 3) * .045}, .86)`, offset: .27 },
+      { transform: variant === "segment" ? "scale(1.08, .91)" : `scale(${1.18 + Math.min(distance, 3) * .045}, .86)`, offset: .27 },
       { transform: "scale(.95, 1.045)", offset: .76 },
       { transform: "scale(1)", offset: 1 },
     ], { duration: 480, easing: "cubic-bezier(.22,.7,.22,1)" });
-  }, [index, reduced]);
+  }, [index, reduced, variant]);
   useLayoutEffect(() => () => { animation.current?.cancel(); }, []);
-  return <i className="m-glider" aria-hidden="true"><span className="m-nav-pill" ref={pill} /></i>;
+  return <i className="m-glider" aria-hidden="true"><span className={variant === "segment" ? "m-segment-pill" : "m-nav-pill"} ref={pill} /></i>;
 }
