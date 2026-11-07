@@ -80,7 +80,7 @@ export interface FlowData {
   /** The conversation's own task list, kept by its agent; a branch of its own, with or without a project. */
   taskList?: { id: string; title: string; state: FlowTaskState; detail?: string }[];
   /** A long goal this conversation is pursuing by itself, with no project. */
-  goal?: { text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean } | null;
+  goal?: { text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean; lines?: { title: string; state: string; label: string; why?: string }[] } | null;
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
   models?: { current: ModelOption & { reasoning?: ModelReasoningState; vision?: boolean }; recent: ModelOption[];
              groups: { id: string; name: string; options: ModelOption[] }[] };
@@ -1243,6 +1243,17 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
               <span className="pf-attention-text" title={data.goal.detail || undefined}><Inline text={data.goal.text} /></span>
               {data.goal.dismiss ? <button type="button" className="pf-attention-quiet" disabled={actions.busy} onClick={() => actions.onGoal?.("dismiss")}>{text.goalDismiss}</button> : null}
               {data.goal.action ? <button type="button" disabled={actions.busy} onClick={() => actions.onGoal?.(data.goal!.action!)}>{data.goal.action === "pause" ? text.stop : text.resume}</button> : null}
+              {data.goal.lines?.length ? (
+                <ul className="pf-goal-lines">
+                  {data.goal.lines.map((line) => (
+                    <li key={line.title} data-state={line.state} title={line.why || undefined}>
+                      <i aria-hidden="true" />
+                      <span>{line.title}</span>
+                      <small>{line.label}</small>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           ) : null}
           {data.attention ? (

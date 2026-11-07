@@ -14,7 +14,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash, review_progress
-from . import delivery, goal, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
+from . import delivery, goal, goal_lines, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
 from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
@@ -419,6 +419,7 @@ class ProjectServiceMixin(WorkspaceMixin):
         self.weave_goals = goal.Goals(home)
         self.weave_retries = goal.Goals(home, goal.RETRIES_FILE)
         self.runtime.subscribe(lambda event: goal.observe_failure(self, event))
+        self.runtime.tool_batch_gate = lambda session, step, calls: goal_lines.hold(self, session, step, calls)
         for tool in weave.tools(self):
             if self.runtime.tools.get(tool.name) is None:
                 self.runtime.tools.register(tool)

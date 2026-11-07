@@ -22,7 +22,7 @@ from app.agent_runtime.contracts import ToolEffect
 from app.agent_runtime.tools import AgentTool, ToolResult
 from app.ai import AIMessage, MessageRole
 
-from . import goal, program
+from . import goal, goal_lines, program
 from .parallel import MAX_WORKERS
 from .workspace import describe as describe_workspace
 
@@ -66,8 +66,8 @@ GUIDE = (
     "call_id), and finish it before your final answer.\n"
     "Sub-agents: in an ordinary turn each one costs many times what the same reading costs you, so do the work "
     "yourself by default, a scan or an investigation of an ordinary repository included. In a long goal the default "
-    "flips: you lead and delegate independent lines, because your history is re-sent on every step for hours (each "
-    "goal turn says so). Use spawn_agent when the person asks for it, or "
+    "flips: you lead and split off independent lines, because your history is re-sent on every step for hours (each "
+    "goal turn says how). Use spawn_agent when the person asks for it, or "
     "when the work has lines that do not depend on each other and can run at the same time, each worth many steps of "
     "its own: subsystems of hundreds of files too large to read well in this turn, a literature survey beside an "
     "experiment, a separate experiment, a fresh review of a finished result. Check this when you write the list. "
@@ -287,8 +287,12 @@ def tools(service):
         given = f" and {hours:g} h of the person's time" if hours else ""
         return ToolResult(ok=True, content=f"Long goal started with a budget of {budget:,} tokens{given}. Carry on "
                           "working; the Host continues this conversation after each turn until you call "
-                          "mark_thread_goal.\n" + goal.DELEGATION,
+                          "mark_thread_goal.\n" + goal_lines.guide(),
                           data={"tokenBudget": budget, "hours": hours})
+
+    def lines(context, arguments):
+        weave_session(context)
+        return goal_lines.start(service, context.session_id, arguments)
 
     def steer(context, arguments):
         weave_session(context)
@@ -315,7 +319,26 @@ def tools(service):
                                                                        "state": updated.get("state")})
 
     empty = {"type": "object", "properties": {}, "additionalProperties": False}
-    return (
+    line_tools = () if goal_lines.mode() != "lines" else (
+        AgentTool(
+            name="weave_lines",
+            description=("Decide how a long goal splits. Give the lines that can run at the same time: the Host runs each "
+                         "in its own sub-agent, holds you at no cost, and brings you back with their reports. Or give "
+                         "solo_reason when nothing is worth splitting. Lines that write the same paths or need the same "
+                         "resource are refused: keep those for yourself or for a later round."),
+            input_schema={"type": "object", "properties": {
+                "lines": {"type": "array", "maxItems": goal_lines.MAX_LINES, "items": {"type": "object", "properties": {
+                    "title": {"type": "string", "description": "A few words, in the person's language; the person sees it."},
+                    "brief": {"type": "string", "description": "Self-contained: what to do, where, how to run it, what to "
+                              "report. The line sees none of this conversation."},
+                    "writes": {"type": "array", "items": {"type": "string"}, "description": "Files or folders only this "
+                               "line changes, relative to the workspace; [] when it only reads."},
+                    "resource": {"type": "string", "description": "Something only one line can use at a time, such as gpu."},
+                }, "required": ["title", "brief", "writes"], "additionalProperties": False}},
+                "solo_reason": {"type": "string", "description": "Why you do this yourself, when lines is empty."},
+            }, "additionalProperties": False},
+            handler=lines, effect=ToolEffect.READ_ONLY),)
+    return line_tools + (
         AgentTool(
             name="weave_status",
             description=("Read this conversation's persistent project: its objective, state, milestone, plan with each "

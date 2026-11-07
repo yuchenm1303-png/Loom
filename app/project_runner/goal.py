@@ -24,7 +24,8 @@ from app.agent_runtime.contracts import AgentEventKind, AgentStatus
 from app.ai.contracts import MessageRole
 from app.agent_runtime.durable_state import GoalStatus
 from app.agent_runtime.turn_plan import PLAN_TOOLS
-from .budget import CACHED_WEIGHT
+from . import goal_lines
+from .goal_common import RETRY_BASE, RETRY_MAX, charged, delay as _delay, span as _span, time_left as _left, transient as _transient
 
 GOALS_FILE = "weave-goals.json"
 RETRIES_FILE = "weave-start-retries.json"
@@ -34,26 +35,17 @@ MAX_CHECK_FAULTS = 2  # a checker that died or gave no verdict is run again, not
 MAX_FAILURES = 8
 MAX_STALLS = 2  # goal turns in a row with no tool call that worked
 EVENTS_READ = 500  # the end of a turn; any success in a longer one is in there too
-RETRY_BASE, RETRY_MAX = 60, 1800
 # A provider out of capacity (429, 5xx, overloaded) is waited out, not counted against the work: the
 # person sent the message and left, and one bad hour must not cost the whole night.
 RETRY_WINDOW = 8 * 3600
 USAGE_EVERY, CHECK_EVERY = 30, 5
+LINES_EVERY = 10  # reading each line's session is not free, and a line does not change in a second
 # Depth: a goal the person gave a night is not done in an hour because the result is correct. After a passed
 # check, while a quarter of the time and of the budget is left and the checker names what would make it
 # substantially better, the work goes on; at most this many times, so a checker with ideas cannot run forever.
 MAX_DEEPENS = 3
 DEEPEN_TIME_LEFT, DEEPEN_BUDGET_LEFT = 0.25, 0.25
 MAX_HOURS = 72
-DELEGATION = (
-    "Sub-agents: in a long goal you are the lead, and delegating is the default. Split what is left into lines "
-    "that do not depend on each other, and give each line worth many steps of its own (a survey, an experiment, "
-    "building a data set, a review of a finished part) to a sub-agent with spawn_agent, up to four at once, "
-    "history_mode none and a self-contained brief: what to do, where, what to report. Your history is re-sent on "
-    "every step for the rest of the goal, so reading handed to a sub-agent is paid once instead of all night. "
-    "Meanwhile you integrate, decide and keep the list; collect reports with wait_agent (a timeout lets you "
-    "keep working), then close_agent. Keep for yourself only steps that feed each other in order and runs that "
-    "compete for one GPU or one set of files.")
 _BUSY = {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}
 
 CHECK_PROMPT = (
@@ -116,11 +108,6 @@ class Goals:
                 self._write(value)
 
 
-def charged(usage):
-    """What a usage record costs against a goal's budget."""
-    return (usage.total_tokens - usage.cached_input_tokens) + usage.cached_input_tokens * CACHED_WEIGHT
-
-
 def _children(service, thread_id):
     control = getattr(service.runtime, "agent_control", None)
     return control.list_tree(thread_id) if control else ()
@@ -136,17 +123,6 @@ def _charge(service, thread_id, record):
             spent += charged(service.store.load(snapshot.node.session_id).usage)
     record["tokens"] = int(max(0, spent))
     return session
-
-
-def _span(seconds):
-    seconds = max(0, int(seconds))
-    hours, minutes = divmod(seconds // 60, 60)
-    return f"{hours} h {minutes:02d} min" if hours else f"{minutes} min"
-
-
-def _left(record):
-    hours = record.get("hours") or 0
-    return hours * 3600 - (time.time() - record["startedAt"]) if hours else 0
 
 
 def _time_line(record):
@@ -165,8 +141,8 @@ def _agents_line(service, thread_id, record):
     running, finished = [], []
     for snapshot in _children(service, thread_id):
         node = snapshot.node
-        if node.session_id == record.get("checkerId") or node.relation_status.value != "active":
-            continue
+        if node.session_id == record.get("checkerId") or node.role == "goal-line" or node.relation_status.value != "active":
+            continue  # lines are the Host's to collect and close
         (running if snapshot.execution_running else finished).append(f"{node.role} {node.session_id}")
     parts = []
     if running:
@@ -189,7 +165,9 @@ def _context(service, thread_id, record):
     lines = [_time_line(record)]
     if record.get("deepen"):
         lines.append(record["deepen"])
-    lines += [_agents_line(service, thread_id, record), DELEGATION]
+    if record.get("reports"):
+        lines.append(record["reports"])
+    lines += [_agents_line(service, thread_id, record), goal_lines.guide()]
     return "\n".join(lines)
 
 
@@ -205,11 +183,13 @@ def start(service, thread_id, objective, token_budget, hours=0):
         "phase": "working", "turns": 0, "stalls": 0, "failures": 0, "checks": 0, "checkFaults": 0, "retryAt": 0,
         "feedback": "", "checkerId": "", "reason": "", "summary": "", "checked": False,
         "goalTurn": "", "handledTurn": session.current_turn_id, "startedAt": time.time(),
-        "hours": max(0.0, min(float(hours or 0), MAX_HOURS)), "deepens": 0, "deepen": ""})
+        "hours": max(0.0, min(float(hours or 0), MAX_HOURS)), "deepens": 0, "deepen": "",
+        "linesDecision": "pending" if goal_lines.mode() == "lines" else "", "linesHolds": 0, "lines": [], "reports": ""})
 
 
 def _stop(service, thread_id, record, status, reason):
     record["reason"] = reason[:1000]
+    goal_lines.stop_all(service, thread_id, record, reason[:300], keep=record.get("checkerId"))
     service.weave_goals.put(thread_id, record)
     service.runtime.set_goal_status(thread_id, status)
     return True
@@ -217,6 +197,7 @@ def _stop(service, thread_id, record, status, reason):
 
 def _finish(service, thread_id, record, summary, checked):
     record.update(phase="done", summary=summary[:2000], checked=checked, reason="")
+    goal_lines.stop_all(service, thread_id, record, "the goal finished")
     service.weave_goals.put(thread_id, record)
     service.runtime.set_goal_status(thread_id, GoalStatus.COMPLETE)
     return True
@@ -283,6 +264,8 @@ def _collect(service, thread_id, record, objective):
                 f"An independent check found the work correct so far ({summary[:600]}), and the person's time is "
                 f"not used up: {_span(_left(record))} left. Use it to make the result substantially better, most "
                 "valuable first:\n" + "\n".join(f"- {item}" for item in deeper[:8]))[:6000])
+            if goal_lines.mode() == "lines":  # these are often independent: the split is decided again
+                record.update(linesDecision="pending", linesHolds=0)
             service.weave_goals.put(thread_id, record)
             return True
         return _finish(service, thread_id, record, summary, True)
@@ -318,15 +301,6 @@ def _failure(service, thread_id, turn):
     return {}
 
 
-def _transient(data):
-    """The provider failed and said trying again may work: capacity, not credentials or the request."""
-    return bool(data.get("provider_failure") and data.get("retryable"))
-
-
-def _delay(failures):
-    return min(RETRY_BASE * 2 ** (max(1, failures) - 1), RETRY_MAX)
-
-
 def _settle_turn(service, thread_id, record, session):
     """Account for the turn that just ended; returns True when the goal stopped because of it."""
     turn = session.current_turn_id
@@ -358,7 +332,7 @@ def _continue(service, thread_id, record, session):
         return _stop(service, thread_id, record, GoalStatus.BLOCKED, f"Reached {MAX_TURNS} turns")
     note, turn_id = record["feedback"], str(uuid.uuid4())
     context = _context(service, thread_id, record)
-    record.update(turns=record["turns"] + 1, feedback="", deepen="", goalTurn=turn_id)
+    record.update(turns=record["turns"] + 1, feedback="", deepen="", reports="", goalTurn=turn_id)
     service.weave_goals.put(thread_id, record)
 
     def run():
@@ -377,9 +351,15 @@ def _advance(service, thread_id, record, polled):
     if goal.status not in {GoalStatus.ACTIVE, GoalStatus.COMPLETE} or record["phase"] == "done":
         return False
     now = time.time()
+    if goal_lines.live(record) and now - polled.get((thread_id, "lines"), 0) >= LINES_EVERY:
+        polled[(thread_id, "lines")] = now
+        if goal_lines.advance(service, thread_id, record):
+            service.weave_goals.put(thread_id, record)
     if service._is_active(thread_id):
         if now - polled.get(thread_id, 0) < USAGE_EVERY:
             return False
+    elif goal_lines.live(record) and now - polled.get(thread_id, 0) < CHECK_EVERY:
+        return False
     elif record["phase"] == "checking" and now - polled.get(thread_id, 0) < CHECK_EVERY:
         return False
     elif now < record["retryAt"]:
@@ -396,14 +376,16 @@ def _advance(service, thread_id, record, polled):
         return False
     if goal.status is GoalStatus.COMPLETE:  # the agent's claim, not yet a fact
         service.runtime.set_goal_status(thread_id, GoalStatus.ACTIVE)
-        _spawn_checker(service, thread_id, record, goal.objective)
-        return True
+        if not (goal_lines.live(record) or record.get("reports")):
+            _spawn_checker(service, thread_id, record, goal.objective)
+            return True
+        # Claimed with reports unread: nothing is checked until the lead has integrated them.
     if record["phase"] == "checking":
         return _collect(service, thread_id, record, goal.objective)
     if _settle_turn(service, thread_id, record, session):
         return True
     service.weave_goals.put(thread_id, record)
-    if now < record["retryAt"]:
+    if now < record["retryAt"] or goal_lines.live(record):  # the lead costs nothing while it waits for its lines
         return False
     return _continue(service, thread_id, record, session)
 
@@ -501,6 +483,7 @@ def control(service, params):
         service.weave_goals.put(thread_id, record)
         service.runtime.set_goal_status(thread_id, GoalStatus.ACTIVE)
     elif action == "dismiss":
+        goal_lines.stop_all(service, thread_id, record, "the person dismissed the goal")
         service.runtime.clear_goal(thread_id)
         service.weave_goals.take(thread_id)
     else:
@@ -523,4 +506,4 @@ def view(service, thread_id):
             "reason": record["reason"], "summary": record["summary"], "checked": record["checked"],
             "retryAt": record["retryAt"] if record.get("failures") and phase == "working" else 0,
             "hours": record.get("hours") or 0, "deepens": record.get("deepens", 0),
-            "agents": _working_agents(service, thread_id, record)}
+            "agents": _working_agents(service, thread_id, record), "lines": goal_lines.view(record)}

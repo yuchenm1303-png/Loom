@@ -649,6 +649,7 @@ export function MobileBuildPanel({
             <Section title="长目标" icon={<Compass {...GLYPH} />}>
               <p>{goal.text}</p>
               {goal.detail ? <p className="m-prewrap">{goal.detail}</p> : null}
+              {goal.lines?.map((line) => <p key={line.title}>{line.title} · {line.label}</p>)}
               {goal.action || goal.dismiss ? (
                 <div className="m-actions">
                   {goal.action ? (

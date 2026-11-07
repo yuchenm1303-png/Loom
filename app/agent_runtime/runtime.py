@@ -1053,7 +1053,8 @@ class AgentRuntime:
         """
         step = self._resolve_batch_step(session, step, calls)
         from .turn_plan import held_calls
-        held = held_calls(self, session, step, calls)
+        gate = getattr(self, "tool_batch_gate", None)
+        held = held_calls(self, session, step, calls) or (gate(session, step, calls) if gate else None)
         if held:
             return ToolBatchPlan(runnable=(), immediate=held, blocked=True, execution_step=step)
         faults: dict[str, ToolResult] = {}

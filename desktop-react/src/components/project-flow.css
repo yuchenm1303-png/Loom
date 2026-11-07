@@ -992,6 +992,16 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-attention-text { flex: 1; min-width: 0; }
 .pf-goal:not([data-live]) .pf-attention-dot { animation: none; }
 .pf-goal[data-live] .pf-attention-dot { background: var(--pf-live); }
+.pf-goal:has(.pf-goal-lines) { flex-wrap: wrap; }
+.pf-goal-lines { flex-basis: 100%; display: grid; gap: 4px; margin: 2px 0 0; padding: 0 0 0 16px; list-style: none; }
+.pf-goal-lines li { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--pl-secondary); font-size: 11.5px; }
+.pf-goal-lines i { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--pf-live); }
+.pf-goal-lines li[data-state="done"] i { background: var(--pl-muted); }
+.pf-goal-lines li[data-state="waiting"] i,
+.pf-goal-lines li[data-state="reporting"] i,
+.pf-goal-lines li[data-state="failed"] i { background: var(--pf-warn); }
+.pf-goal-lines span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-goal-lines small { flex: none; color: var(--pl-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 /* Uncommitted changes before a start: the attention line, opened into the files and one commit. */
 .pf-dirty { display: grid; gap: 4px; align-items: stretch; }

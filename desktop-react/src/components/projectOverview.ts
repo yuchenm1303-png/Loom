@@ -398,7 +398,11 @@ export interface LongGoal {
   hours?: number; deepens?: number;
   /** Sub-agents working for the goal right now. */
   agents?: number;
+  /** The Host's round of parallel lines: the lead waits for them, and the person sees each one. */
+  lines?: GoalLine[];
 }
+
+export interface GoalLine { title: string; state: "running" | "waiting" | "reporting" | "done" | "failed"; tokens?: number; cap?: number; retryAt?: number; why?: string }
 
 /** One line for a long goal: what it is doing, what it has spent, and the move the person has. */
 export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {
@@ -415,6 +419,25 @@ export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "z
   }
   if (goal.status === "active" && goal.phase === "working" && (goal.deepens ?? 0) > 0) {
     return { text: line(`检查已通过，正用剩余时间加深（第 ${goal.deepens} 轮）`, `Checked and correct; going deeper with the time left (pass ${goal.deepens})`), detail: goal.objective, live: true, action: "pause", dismiss: false };
+  }
+  const round = goal.lines ?? [];
+  const open = round.filter((item) => item.state !== "done" && item.state !== "failed").length;
+  if (goal.status === "active" && open) {
+    const finished = round.length - open;
+    const at = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString(en ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const label = (item: GoalLine) => {
+      const used = item.tokens ? ` · ${money(item.tokens)}` : "";
+      if (item.state === "waiting") return en ? `Provider unavailable, retrying at ${at(item.retryAt ?? 0)}` : `模型服务不可用，${at(item.retryAt ?? 0)} 重试`;
+      if (item.state === "reporting") return (en ? "At its limit, wrapping up" : "到上限，正在收尾") + used;
+      if (item.state === "done") return (en ? "Done" : "完成") + used;
+      if (item.state === "failed") return (en ? "Not finished" : "没做完") + used;
+      return (en ? "Working" : "在做") + used;
+    };
+    return {
+      text: line(`${round.length} 条线并行，${finished} 条完成`, `${round.length} lines side by side, ${finished} finished`),
+      detail: goal.objective, live: true, action: "pause", dismiss: false,
+      lines: round.map((item) => ({ title: item.title, state: item.state, label: label(item), why: item.why })),
+    };
   }
   const agents = goal.agents ?? 0;
   if (goal.status === "active") return { text: line(agents ? `长目标进行中，${agents} 个子代理在工作` : "长目标进行中", agents ? `Long goal running, ${agents} sub-agent${agents > 1 ? "s" : ""} working` : "Long goal running"), detail: goal.objective, live: true, action: "pause", dismiss: false };

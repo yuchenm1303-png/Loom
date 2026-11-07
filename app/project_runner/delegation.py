@@ -4,6 +4,7 @@ General chat delegation stays available. Inside a project, only the durable DAG
 scheduler may create execution branches; a generic child would share a checkout
 and bypass both episode admission and independent task review.
 """
+from . import goal_lines
 from .budget import event_tokens
 
 
@@ -27,6 +28,8 @@ def install(service):
             raise ValueError("Build tasks must be assigned by the persistent project scheduler. "
                              "Do not spawn or wake generic sub-agents inside a project episode; "
                              "use the project's dependency plan and worker limit.")
+        if goal_lines.is_line(service, caller):
+            raise ValueError("A line of a long goal works by itself: its limits would not hold over sub-agents of its own.")
 
     service.runtime.agent_delegation_guard = guard
 

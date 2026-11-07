@@ -536,7 +536,7 @@ def test_a_goal_turn_tells_the_lead_to_delegate_and_names_its_open_sub_agents(tm
         NIGHT, answer("开始了"), answer("文献调研完成"), answer("在整合")])
     try:
         tool_result = [m for m in service.store.load(source).messages if m.role.value == "tool"]
-        assert any("delegating is the default" in str(m.content) for m in tool_result), "weave_goal says so at once"
+        assert any("weave_lines" in str(m.content) for m in tool_result), "weave_goal says so at once"
         control = service.runtime.agent_control
         child = control.spawn(source, "调研文献", role="survey", history_mode="none", background=True)
         control.wait(source, child.node.session_id, timeout_seconds=10)
@@ -546,7 +546,7 @@ def test_a_goal_turn_tells_the_lead_to_delegate_and_names_its_open_sub_agents(tm
         prompts = [str(m.content) for m in platform.requests[before].messages
                    if m.role.value == "user" and "Continue pursuing this durable Loom goal" in str(m.content)]
         text = prompts[-1]
-        assert "delegating is the default" in text and f"survey {child.node.session_id}" in text
+        assert "weave_lines" in text and f"survey {child.node.session_id}" in text
         assert "report not yet closed" in text and "h the person gave" in text
         control.close_agent(source, child.node.session_id)
         assert goal._agents_line(service, source, service.weave_goals.get(source)) == "No sub-agent is open."
