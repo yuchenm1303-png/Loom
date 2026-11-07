@@ -242,6 +242,15 @@ def test_the_guide_asks_for_the_list_and_for_sub_agents():
     assert "update_plan first" in weave.GUIDE and "spawn_agent" in weave.GUIDE and "disjoint files" in weave.GUIDE
 
 
+def test_the_guide_reaches_past_reading_a_repository():
+    # An overnight research goal in an empty folder met neither old condition: nothing to read, nobody asked.
+    assert "lines that do not depend on each other" in weave.GUIDE and "one GPU" in weave.GUIDE
+    assert "not without sub-agents" in weave.GUIDE
+    # A proposal waits for a click, so one left behind overnight must not be all that happens.
+    assert "open-ended goal" in weave.GUIDE and "start the work yourself in this turn" in weave.GUIDE
+    assert "ordinary repository" in weave.GUIDE, "a scan stays with the agent"
+
+
 def test_budget_suggestions_snap_to_the_hubs_choices():
     assert weave.snap_budget(3_000_000) in (2_000_000, 4_000_000)
     assert weave.snap_budget(50_000_000) == 16_000_000

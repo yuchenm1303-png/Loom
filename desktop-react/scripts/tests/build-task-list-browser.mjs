@@ -40,6 +40,13 @@ try {
     await page.waitForFunction(() => document.querySelector('[data-glide="tasks"] .pf-count')?.textContent === "2/3");
     assert.equal(await page.evaluate(() => window.tasksCard === document.querySelector('[data-glide="tasks"]')), true);
 
+    // A step closed without being done stays visibly apart and is not counted as ticked.
+    await page.evaluate(() => window.taskListFixture.uncovered());
+    await page.waitForFunction(() => document.querySelector('[data-glide="tasks"] .pf-count')?.textContent === "2/3");
+    assert.deepEqual(await card.locator(".pf-task").evaluateAll(rows => rows.map(row => row.dataset.state)), ["integrated", "rework", "integrated"]);
+    assert.equal(await card.locator(".pf-task").nth(1).getAttribute("title"), "未覆盖");
+    if (await page.locator('.pf-stepper[data-editable]').count()) assert.match(await page.locator('.pf-stepper').getAttribute("title"), /普通对话不受它影响/);
+
     // Folded, it unplugs; unfolded, it is back. The person's choice survives the next update of the list.
     await button.click();
     await page.waitForFunction(() => !document.querySelector('[data-glide="tasks"]'));

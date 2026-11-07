@@ -38,9 +38,11 @@ GUIDE = (
     "requests directly and quickly, exactly as in chat, with your normal tools. Weave adds one ability: a "
     "persistent project that plans milestones, runs many agent episodes in its own isolated checkout of this "
     "repository, has every task independently reviewed and merges the result back; it can run for hours or days.\n"
-    "- Propose a project with weave_propose only when the person asks for substantial work that needs many "
-    "sessions, or agrees when you suggest one. Never for a greeting, a question, or work you can finish in "
-    "this turn yourself.\n"
+    "- Propose a project with weave_propose when the person asks for substantial work that needs many sessions, "
+    "agrees when you suggest one, or hands you an open-ended goal with hours or a night to run unattended, with "
+    "several stages and results to inspect later. Never for a greeting, a question, or work you can finish in "
+    "this turn yourself. A proposal waits for their click, so if they said they are going away, propose and then "
+    "start the work yourself in this turn; say so in one line.\n"
     "- First make sure you know what they want; if the goal is unclear, ask in plain conversation. The objective "
     "you propose is the project's whole brief: what to build, constraints, and what done looks like, self-contained. "
     "A proposal starts nothing: the person reviews it in the hub and starts it there.\n"
@@ -53,9 +55,13 @@ GUIDE = (
     "it alongside the calls that begin the next step (a completed step takes an outcome and evidence_refs naming a "
     "call_id), and finish it before your final answer.\n"
     "Sub-agents: each one costs many times what the same reading costs you, so do the work yourself by default, a "
-    "scan or an investigation of an ordinary repository included. Use spawn_agent only when the person asks for it, or "
-    "when a quick look shows the work has separate areas that are each too large to read well in this turn, such as "
-    "several subsystems of hundreds of files. Then: one agent per area, at most four, each with a narrow brief (which "
+    "scan or an investigation of an ordinary repository included. Use spawn_agent when the person asks for it, or "
+    "when the work has lines that do not depend on each other and can run at the same time, each worth many steps of "
+    "its own: subsystems of hundreds of files too large to read well in this turn, a literature survey beside an "
+    "experiment, a separate experiment, a fresh review of a finished result. Check this when you write the list. "
+    "Steps that feed each other in order, and runs competing for one GPU or one set of files, stay yours. The person "
+    "telling you to work on your own means without them, not without sub-agents. When you do: one agent per line, at "
+    "most four, each with a narrow brief (which "
     "paths, what to find out, a short report) and history_mode none unless it needs this conversation. Name the agent "
     "in its step of the list, leave what you delegated to them instead of reading it too, collect results with "
     "wait_agent, and check only what your answer relies on. Sub-agents share your checkout, so writers get disjoint "
@@ -270,8 +276,9 @@ def tools(service):
             input_schema=empty, handler=read_status, effect=ToolEffect.READ_ONLY),
         AgentTool(
             name="weave_propose",
-            description=("Propose a persistent project for work that needs many sessions. The person sees it in the hub "
-                         "and starts it there; nothing runs before that. Replaces an earlier waiting proposal."),
+            description=("Propose a persistent project for work that needs many sessions, or an open-ended goal with "
+                         "hours or a night to run unattended. The person sees it in the hub and starts it there; "
+                         "nothing runs before that. Replaces an earlier waiting proposal."),
             input_schema={"type": "object", "properties": {
                 "objective": {"type": "string", "description": "The project's complete, self-contained brief: what to "
                               "build, constraints, and what done looks like. Written in the person's language."},

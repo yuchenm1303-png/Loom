@@ -19,6 +19,15 @@ test("a conversation's task list becomes the plan card's rows, each status its s
   assert.equal(new Set(rows.map((row) => row.id)).size, 4);
 });
 
+test("a step closed without being done is not a tick on the list", () => {
+  const steps = [{ step: "训练", status: "completed", outcome: "passed" }, { step: "（可选）RT 实验", status: "completed", outcome: "not_covered" },
+                 { step: "复核", status: "completed", outcome: "failed" }, { step: "旧记录", status: "completed" }, { step: "待评", status: "completed", outcome: "not_assessed" }];
+  const rows = toTurnTasks(steps);
+  assert.deepEqual(rows.map((row) => row.state), ["integrated", "rework", "rework", "integrated", "integrated"]);
+  assert.deepEqual(rows.map((row) => row.detail), [undefined, "未覆盖", "验收失败", undefined, undefined]);
+  assert.equal(toTurnTasks(steps, "en")[1].detail, "Not covered");
+});
+
 const now = Date.parse("2026-10-30T10:00:00Z");
 const run = (extra = {}) => ({
   id: "root", revision: 3, objective: "Build ledger\n\nThis is milestone 1 of a long-running program", repository: "C:/work/ledger",

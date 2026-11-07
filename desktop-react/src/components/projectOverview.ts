@@ -388,9 +388,16 @@ export interface FlowMessage {
 const WORK = new Set(["tool_call", "process", "file_edit"]);
 
 /** The conversation's task list as rows of the hub's plan card. */
-export function toTurnTasks(steps: TaskMilestone[]): FlowData["tasks"] {
+export function toTurnTasks(steps: TaskMilestone[], lang: "zh" | "en" = "zh"): FlowData["tasks"] {
   const states: Record<TaskMilestone["status"], FlowTaskState> = { pending: "pending", in_progress: "working", completed: "integrated", blocked: "rework" };
-  return steps.map((step, index) => ({ id: `turn-${index}`, title: step.step, state: states[step.status], detail: step.blocker }));
+  // A step closed without being done is closed, not done: it does not count toward the tick total.
+  const unmet: Partial<Record<NonNullable<TaskMilestone["outcome"]>, string>> = lang === "en"
+    ? { failed: "Acceptance failed", interrupted: "Test interrupted", not_covered: "Not covered" }
+    : { failed: "验收失败", interrupted: "测试中断", not_covered: "未覆盖" };
+  return steps.map((step, index) => {
+    const miss = step.status === "completed" && step.outcome ? unmet[step.outcome] : undefined;
+    return { id: `turn-${index}`, title: step.step, state: miss ? "rework" : states[step.status], detail: miss ?? step.blocker };
+  });
 }
 
 /** The conversation as the hub reads it: what the person said, what the agent said and the work between them, newest last.

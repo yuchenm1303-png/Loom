@@ -194,7 +194,7 @@ const zhText = {
   review: "沙箱", reviewHint: "开发和复审 agent 只能改写自己的独立检出，读不到你的其他文件夹；每个任务合入前都由另一个 agent 独立复审",
   fullAccess: "完全访问", fullAccessHint: "开发和复审 agent 不受沙箱限制，可以联网、安装依赖、读写你电脑上的任何文件；每个任务合入前仍由另一个 agent 独立复审", accessToggle: "点击切换沙箱 / 完全访问", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "建造",
-  attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "总 token 预算：点击或滚轮切换，↑↓ 也可以", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
+  attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
   taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
@@ -225,7 +225,7 @@ const enText: typeof zhText = {
   review: "Sandbox", reviewHint: "Builders and reviewers can change only their own isolated checkout and cannot read your other folders; every task is reviewed by a separate agent before it is integrated",
   fullAccess: "Full access", fullAccessHint: "Builders and reviewers run outside the sandbox: they can use the network, install dependencies and read or change any file on this computer; every task is still reviewed by a separate agent before it is integrated", accessToggle: "Click to switch between sandbox and full access", settings: "Run settings", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
-  attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "Total token budget: click or scroll to change, or use ↑↓", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
+  attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The project's total token budget; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
   taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
@@ -1377,7 +1377,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                   </span>
                 </button>
               ) : null}
-              <span className="pf-stepper" role="group" aria-label={text.agents} title={text.agents} data-editable={settingUp || undefined}>
+              <span className="pf-stepper" role="group" aria-label={text.agents} title={settingUp ? text.agentsHint : text.agents} data-editable={settingUp || undefined}>
                 {settingUp ? (
                   <button type="button" aria-label={text.fewer} disabled={shownWorkers <= 1}
                           onClick={() => { settingsTouched.current.workers = true; setWorkers((count) => Math.max(1, count - 1)); }}><Minus size={10} strokeWidth={2.4} /></button>

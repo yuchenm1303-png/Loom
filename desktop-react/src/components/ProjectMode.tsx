@@ -164,8 +164,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
   useEffect(() => { if (!chatting) void load(true); }, [chatting, load]);
   const liveConversation = useMemo(() => toConversation(items.filter((item) => item.threadId === threadId), chatting),
                                    [items, threadId, chatting]);
-  const turnTasks = useMemo(() => toTurnTasks(latestTaskPlan(items.filter((item) => item.threadId === threadId))),
-                            [items, threadId]);
+  const turnTasks = useMemo(() => toTurnTasks(latestTaskPlan(items.filter((item) => item.threadId === threadId)), lang),
+                            [items, threadId, lang]);
   // Opening another conversation: what is written fades at once, while its overview is read ahead. The hub goes over to
   // it when the fade is done and its overview is known, not before: the conversation it was showing stays until then.
   const [fading, setFading] = useState(false);
