@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { RETAIN } from "./tokens";
+import { DUR, RETAIN } from "./tokens";
 import { useReducedMotion } from "./useReducedMotion";
 
 /**
@@ -8,6 +8,12 @@ import { useReducedMotion } from "./useReducedMotion";
  * so the browser starts the entrance on the very frame the surface first appears instead of two frames later.
  * ("entering" is kept in the type for stylesheets and callers that still name it; the hook never reports it.)
  */
+/**
+ * How much later than its own exit a surface is released if no frame ever came. An occluded or stalled window can
+ * stop producing frames while it is still reported as visible, and nothing may wait on the next frame forever.
+ */
+const FRAME_STALL_MS = DUR.slow * 2;
+
 export type MotionPresencePhase = "entering" | "entered" | "exiting";
 
 /**
@@ -42,6 +48,7 @@ export function useMotionPresence(open: boolean, exitMs: number = RETAIN.base, _
   }
   const frameRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
+  const stallRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     if (open || !retained) return;
@@ -50,8 +57,11 @@ export function useMotionPresence(open: boolean, exitMs: number = RETAIN.base, _
       return;
     }
     // The exit transition starts with the style of the next frame; so does the clock.
+    stallRef.current = window.setTimeout(() => setRetained(false), exitMs + FRAME_STALL_MS);
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;
+      if (stallRef.current !== null) window.clearTimeout(stallRef.current);
+      stallRef.current = null;
       timerRef.current = window.setTimeout(() => {
         timerRef.current = null;
         setRetained(false);
@@ -60,8 +70,10 @@ export function useMotionPresence(open: boolean, exitMs: number = RETAIN.base, _
     return () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      if (stallRef.current !== null) window.clearTimeout(stallRef.current);
       frameRef.current = null;
       timerRef.current = null;
+      stallRef.current = null;
     };
   }, [exitMs, open, reduce, retained]);
 

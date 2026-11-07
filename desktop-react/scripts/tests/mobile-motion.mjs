@@ -83,6 +83,19 @@ check(distinct(falling) > 5, "a sheet falls instead of vanishing", `in ${distinc
 await page.waitForTimeout(400);
 check(await page.locator(".m-sheet-host").count() === 0, "and is removed after its exit");
 
+// A stalled window produces no frames; a closing surface must not wait for one forever.
+await page.evaluate(() => document.querySelector(".m-chip").click());
+await page.waitForTimeout(500);
+await page.evaluate(() => {
+  window.__raf = window.requestAnimationFrame;
+  window.requestAnimationFrame = () => 0;
+  document.querySelector(".m-scrim").click();
+});
+await page.waitForTimeout(1600);
+const stuck = await page.locator(".m-sheet-host").count();
+await page.evaluate(() => { window.requestAnimationFrame = window.__raf; });
+check(stuck === 0, "a surface still closes when no frame ever comes");
+
 // The offline banner makes its own room
 await page.evaluate(() => window.__shell.state({ socket: "closed", online: false }));
 await page.waitForTimeout(800);
