@@ -25,7 +25,11 @@ object Relay {
     private lateinit var store: SessionStore
     private lateinit var appContext: Context
 
-    private var session: Session? = null
+    /** Every change goes through [sessionLock]: a refresh token is good for one use. */
+    private val sessionLock = Any()
+    @Volatile private var session: Session? = null
+    private var rejections = 0
+    private var removed = false
     private var socket: WebSocket? = null
     private var socketState = "closed"
     private var online = false
@@ -62,12 +66,10 @@ object Relay {
 
     /** The account's devices, answered as a shell event. Needs a fresh token, so it runs off the main thread. */
     fun fetchDevices(id: Int) {
-        val current = session
         worker.execute {
             val event = JSONObject().put("type", "devices").put("id", id)
             try {
-                if (current == null) throw IllegalStateException("not paired")
-                event.put("devices", AccountApi.devices(freshSession(current).accessToken))
+                event.put("devices", AccountApi.devices(freshSession().accessToken))
             } catch (error: Exception) {
                 event.put("error", error.message ?: "读取设备失败")
             }
@@ -79,6 +81,7 @@ object Relay {
 
     fun stateJson(): JSONObject = JSONObject()
         .put("paired", session != null)
+        .put("removed", removed)
         .put("deviceId", session?.deviceId.orEmpty())
         .put("deviceName", session?.deviceName.orEmpty())
         .put("socket", socketState)
@@ -95,8 +98,12 @@ object Relay {
     }
 
     fun adopt(next: Session) {
-        store.save(next)
-        session = next
+        synchronized(sessionLock) {
+            store.save(next)
+            session = next
+        }
+        rejections = 0
+        removed = false
         devices = JSONArray()
         online = false
         retryMs = RETRY_MIN_MS
@@ -119,25 +126,36 @@ object Relay {
         }
     }
 
+    /** The person unpaired this phone: end it here and on the server. */
     fun forget() {
-        val ending = session
-        session = null
-        store.clear()
-        rest()
-        busyThreads.clear()
+        val ending = clearSession()
         if (ending != null) worker.execute { AccountApi.logout(ending) }
     }
 
-    fun selectDevice(deviceId: String) {
-        val current = session ?: return
-        var name = current.deviceName
-        for (index in 0 until devices.length()) {
-            val device = devices.optJSONObject(index) ?: continue
-            if (device.optString("id") == deviceId) name = device.optString("name", name)
+    private fun clearSession(): Session? {
+        val ending = synchronized(sessionLock) {
+            val current = session
+            session = null
+            store.clear()
+            current
         }
-        val next = current.copy(deviceId = deviceId, deviceName = name)
-        store.save(next)
-        session = next
+        rest()
+        busyThreads.clear()
+        return ending
+    }
+
+    fun selectDevice(deviceId: String) {
+        synchronized(sessionLock) {
+            val current = session ?: return
+            var name = current.deviceName
+            for (index in 0 until devices.length()) {
+                val device = devices.optJSONObject(index) ?: continue
+                if (device.optString("id") == deviceId) name = device.optString("name", name)
+            }
+            val next = current.copy(deviceId = deviceId, deviceName = name)
+            store.save(next)
+            session = next
+        }
         main.post {
             close()
             busyThreads.clear()
@@ -170,31 +188,41 @@ object Relay {
     }
 
     private fun open() {
-        val current = session ?: return
+        // The activity and the service both ask for the connection; one attempt answers both.
+        if (session == null || socketState == "connecting") return
         generation += 1
         val attempt = generation
         socketState = "connecting"
         publishState()
         worker.execute {
             val fresh = try {
-                freshSession(current)
+                freshSession()
             } catch (error: AccountError) {
                 main.post { if (attempt == generation) onAuthFailure(error) }
                 return@execute
-            } catch (_: Exception) {
-                main.post { if (attempt == generation) retry() }
+            } catch (error: Exception) {
+                main.post {
+                    if (attempt == generation) {
+                        record("failed", error.javaClass.simpleName)
+                        socketState = "closed"
+                        publishState()
+                        retry()
+                    }
+                }
                 return@execute
             }
             main.post { if (attempt == generation) dial(fresh, attempt) }
         }
     }
 
-    private fun freshSession(current: Session): Session {
-        if (current.accessExpiresAt > System.currentTimeMillis() + REFRESH_MARGIN_MS) return current
+    /** Whoever asks second gets what the first one refreshed, not a second use of the same token. */
+    private fun freshSession(): Session = synchronized(sessionLock) {
+        val current = session ?: throw IllegalStateException("not paired")
+        if (current.accessExpiresAt > System.currentTimeMillis() + REFRESH_MARGIN_MS) return@synchronized current
         val next = AccountApi.refresh(current)
         store.save(next)
         session = next
-        return next
+        next
     }
 
     private fun dial(current: Session, attempt: Int) {
@@ -207,6 +235,7 @@ object Relay {
                 main.post {
                     if (attempt != generation) return@post
                     retryMs = RETRY_MIN_MS
+                    rejections = 0
                     socketState = "open"
                     record("connected")
                     publishState()
@@ -240,17 +269,33 @@ object Relay {
         socketState = "closed"
         online = false
         publishState()
-        val current = session
-        if (unauthorized && current != null) {
-            // The access token may simply have expired; only a failed refresh ends pairing.
-            val forced = current.copy(accessExpiresAt = 0)
-            session = forced
+        if (unauthorized) {
+            // The access token may simply have expired; only the account service can end a pairing.
+            synchronized(sessionLock) { session = session?.copy(accessExpiresAt = 0) }
         }
         retry()
     }
 
+    /**
+     * The one way a phone stops being paired on its own: the account service keeps refusing it,
+     * which means it was removed. A single refusal never does, and nothing here ends the session
+     * on the server: a client that misjudged this must not be able to destroy its own pairing.
+     */
     private fun onAuthFailure(error: AccountError) {
-        if (error.status == 401 || error.status == 403) forget() else retry()
+        record("refused", "${error.status} ${error.code}")
+        socketState = "closed"
+        publishState()
+        if (error.status != 401 && error.status != 403) {
+            retry()
+            return
+        }
+        rejections += 1
+        if (rejections < REJECTIONS_BEFORE_REMOVED) {
+            retry()
+            return
+        }
+        removed = true
+        clearSession()
     }
 
     private fun retry() {
@@ -280,6 +325,7 @@ object Relay {
         }
     }
 
+    private const val REJECTIONS_BEFORE_REMOVED = 3
     private const val LOG_KEY = "events"
     private const val LOG_LIMIT = 40
     private const val LOG_DETAIL_LIMIT = 80

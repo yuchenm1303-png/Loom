@@ -11,8 +11,26 @@ android {
         applicationId = "com.smirel.loom"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
+    }
+
+    buildFeatures { buildConfig = true }
+
+    buildTypes {
+        all {
+            buildConfigField("String", "ACCOUNT_URL", "\"https://account.smirel.com/v1\"")
+            buildConfigField("String", "RELAY_URL", "\"wss://loom.smirel.com/api/ws/client\"")
+            buildConfigField("boolean", "QA", "false")
+        }
+        // Runs the real app against android/qa/stack.py on the host; see android/qa/README.md.
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa"
+            buildConfigField("String", "ACCOUNT_URL", "\"http://10.0.2.2:18787/v1\"")
+            buildConfigField("String", "RELAY_URL", "\"ws://10.0.2.2:18790/api/ws/client\"")
+            buildConfigField("boolean", "QA", "true")
+        }
     }
 
     compileOptions {

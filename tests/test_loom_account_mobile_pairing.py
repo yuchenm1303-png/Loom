@@ -243,3 +243,62 @@ def test_relay_use_counts_as_phone_activity(app) -> None:
 
     app.relay_me(f"Bearer {relay}")
     assert app.account_devices(host)["phones"][0]["online"] is True
+
+
+def test_a_phone_that_lost_a_refresh_answer_stays_paired(app) -> None:
+    host = _host(app)
+    session = _paired(app, host)
+    # The answer to this one never reached the phone: it still holds the token it sent.
+    answered = app.refresh({"refresh_token": session["refresh_token"]}, "phone")
+
+    again = app.refresh({"refresh_token": session["refresh_token"]}, "phone")
+    assert app.relay_credential(f"Bearer {again['access_token']}")["client_kind"] == "mobile"
+    assert app.account_devices(host)["phones"]
+    # The token issued in between is not stranded either.
+    assert app.refresh({"refresh_token": answered["refresh_token"]}, "phone")["access_token"]
+
+
+def test_a_computer_session_keeps_strict_rotation(app) -> None:
+    host = app.register({"email": "strict@example.com", "password": "correct-horse-battery-staple"}, "register")
+    app.refresh({"refresh_token": host["refresh_token"]}, "host")
+    with pytest.raises(AccountError):
+        app.refresh({"refresh_token": host["refresh_token"]}, "host")
+
+
+def test_two_refreshes_racing_do_not_revoke_anything(app) -> None:
+    host = _host(app)
+    session = _paired(app, host)
+    first = app.refresh({"refresh_token": session["refresh_token"]}, "one")
+    second = app.refresh({"refresh_token": session["refresh_token"]}, "two")
+    assert first["refresh_token"] != second["refresh_token"]
+    assert [phone["name"] for phone in app.account_devices(host)["phones"]] == ["Mate 50"]
+    assert app.account_devices(host)["history"] == []
+
+
+def test_a_revoked_phone_cannot_come_back_with_any_token(app) -> None:
+    host = _host(app)
+    session = _paired(app, host)
+    rotated = app.refresh({"refresh_token": session["refresh_token"]}, "phone")
+    app.revoke_mobile_device(host, {"session_id": app.account_devices(host)["phones"][0]["id"]})
+    for token in (session["refresh_token"], rotated["refresh_token"]):
+        with pytest.raises(AccountError):
+            app.refresh({"refresh_token": token}, "phone")
+
+
+def test_a_phone_stays_paired_for_a_year_and_renews_with_use(app) -> None:
+    session = _paired(app, _host(app))
+    with app.store._connect() as db:
+        expires = db.execute("SELECT refresh_expires_at, created_at FROM sessions WHERE client_kind = 'mobile'").fetchone()
+    assert expires["refresh_expires_at"] - expires["created_at"] >= 360 * 86400
+    app.refresh({"refresh_token": session["refresh_token"]}, "phone")
+    with app.store._connect() as db:
+        renewed = db.execute("SELECT refresh_expires_at FROM sessions WHERE client_kind = 'mobile'").fetchone()
+    assert renewed["refresh_expires_at"] >= expires["refresh_expires_at"]
+
+
+def test_a_phone_that_pairs_again_replaces_itself(app) -> None:
+    host = _host(app)
+    _paired(app, host)
+    _paired(app, host)
+    devices = app.account_devices(host)
+    assert len(devices["phones"]) == 1 and len(devices["history"]) == 1

@@ -100,6 +100,7 @@ function connectionEventText(entry: ConnectionEvent): string {
   if (entry.event === "computer-online") return "电脑上线";
   if (entry.event === "computer-offline") return "电脑离线";
   if (entry.event === "rest") return "切到后台较久，已暂停连接";
+  if (entry.event === "refused") return "服务器拒绝了这次登录刷新";
   if (entry.event === "failed") return entry.detail === "401" || entry.detail === "403" ? "登录需要刷新" : "连不上服务器";
   if (code === "1012" || code === "1001") return "服务器更新，自动重连";
   if (code === "4401") return "登录需要刷新";
@@ -159,7 +160,7 @@ function Skeleton({ rows }: { rows: number }) {
   return <div className="m-skeleton" aria-hidden="true">{Array.from({ length: rows }, (_, index) => <i key={index} />)}</div>;
 }
 
-function Pair() {
+function Pair({ removed }: { removed: boolean }) {
   const [progress, setProgress] = useState<PairingProgress | null>(null);
   useEffect(() => onPairing(setProgress), []);
   const claimed = progress?.state === "claimed" ? progress : null;
@@ -184,10 +185,10 @@ function Pair() {
       <div className="m-pair-center">
         <img className="m-logo" src={`${import.meta.env.BASE_URL}loom-icon.png`} alt="" />
         <h1>连接你的电脑</h1>
-        <p>手机发消息，电脑照常工作。</p>
+        <p>{removed ? "这部手机已在电脑上被移除，重新配对后才能继续使用。" : "手机发消息，电脑照常工作。"}</p>
         <ol className="m-steps">
           <li>在电脑上打开 Loom</li>
-          <li>进入「设置 › 手机」，点「添加手机」</li>
+          <li>进入「设置 › 设备」，点「添加手机」</li>
           <li>扫描电脑上的二维码</li>
         </ol>
       </div>
@@ -729,6 +730,6 @@ export function MobileApp() {
     wasPaired.current = shell.paired;
   }, [restart, shell.paired]);
   useEffect(() => { document.documentElement.dataset.loomTheme = "dark"; }, []);
-  if (!shell.paired) return <Pair />;
+  if (!shell.paired) return <Pair removed={Boolean(shell.removed)} />;
   return <Session key={`${session}:${shell.deviceId}`} shell={shell} onRestart={restart} />;
 }

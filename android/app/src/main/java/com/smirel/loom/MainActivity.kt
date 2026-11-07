@@ -115,6 +115,9 @@ class MainActivity : AppCompatActivity(), Relay.Listener {
             }
         })
 
+        // An emulator has no camera to scan with; only the qa build reads this.
+        if (BuildConfig.QA) intent.getStringExtra("qa_pair")?.let(::claim)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {

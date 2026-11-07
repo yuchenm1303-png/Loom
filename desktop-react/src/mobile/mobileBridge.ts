@@ -11,6 +11,8 @@ export type ShellDevice = { id?: string; name?: string; platform?: string; versi
 
 export type ShellState = {
   paired: boolean;
+  /** The account service refused this phone: someone removed it on a computer. */
+  removed?: boolean;
   deviceId: string;
   deviceName: string;
   socket: "open" | "connecting" | "closed";

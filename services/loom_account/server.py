@@ -46,6 +46,8 @@ SESSION_KIND_MOBILE = "mobile"
 # credentials, pair a Host, change the profile or reach the admin API, whatever
 # later endpoints appear. Deny by default, in one place (_dispatch).
 _MOBILE_SESSION_PATHS = frozenset({"/v1/auth/me", "/v1/auth/relay-credential", "/v1/auth/logout", "/v1/auth/devices"})
+# Pairing is meant to last until someone removes the phone: it renews with every use.
+_MOBILE_REFRESH_TTL_SECONDS = 365 * 24 * 60 * 60
 _DEVICE_ONLINE_SECONDS = 90
 _DEVICE_HISTORY_DAYS = 90
 _DEVICE_HISTORY_LIMIT = 30
@@ -396,6 +398,8 @@ class AccountStore:
                 db.execute(f"ALTER TABLE sessions ADD COLUMN client_kind TEXT NOT NULL DEFAULT '{SESSION_KIND_FULL}'")
             if "client_name" not in session_columns:
                 db.execute("ALTER TABLE sessions ADD COLUMN client_name TEXT NOT NULL DEFAULT ''")
+            if "previous_refresh_hash" not in session_columns:
+                db.execute("ALTER TABLE sessions ADD COLUMN previous_refresh_hash TEXT")
             columns = {str(row[1]) for row in db.execute("PRAGMA table_info(users)")}
             if "role" not in columns:
                 db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
@@ -742,6 +746,11 @@ class AccountStore:
         self._assert_active_user(row)
         return self._safe_user(row)
 
+    def _refresh_ttl(self, client_kind: str) -> int:
+        if client_kind == SESSION_KIND_MOBILE:
+            return max(self.config.refresh_ttl_seconds, _MOBILE_REFRESH_TTL_SECONDS)
+        return self.config.refresh_ttl_seconds
+
     def _issue_session(
         self,
         user_id: int,
@@ -755,7 +764,7 @@ class AccountStore:
         refresh_token = _new_token("loom_refresh")
         sid = session_id or str(uuid.uuid4())
         access_expires_at = now + self.config.access_ttl_seconds
-        refresh_expires_at = now + self.config.refresh_ttl_seconds
+        refresh_expires_at = now + self._refresh_ttl(client_kind)
 
         with self._guard, self._connect() as db:
             user_row = db.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
@@ -814,6 +823,12 @@ class AccountStore:
         return self._issue_session(user_id)
 
     def create_mobile_session(self, user_id: int, client_name: str) -> dict[str, Any]:
+        """A phone that pairs again replaces its old session, so one phone is one trusted device."""
+        with self._guard, self._connect() as db:
+            db.execute(
+                "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND client_kind = ? AND client_name = ? AND revoked_at IS NULL",
+                (_now(), int(user_id), SESSION_KIND_MOBILE, client_name),
+            )
         return self._issue_session(user_id, client_kind=SESSION_KIND_MOBILE, client_name=client_name)
 
     def session_kind_for_access_token(self, token: str) -> str:
@@ -1080,14 +1095,18 @@ class AccountStore:
         with self._guard, self._connect() as db:
             row = db.execute(
                 """
-                SELECT sessions.id AS session_id, sessions.user_id, users.*
+                SELECT sessions.id AS session_id, sessions.user_id, sessions.client_kind,
+                       sessions.refresh_hash AS stored_refresh_hash, users.*
                 FROM sessions
                 JOIN users ON users.id = sessions.user_id
-                WHERE sessions.refresh_hash = ?
+                WHERE (sessions.refresh_hash = ?
+                       OR (sessions.previous_refresh_hash = ? AND sessions.client_kind = ?))
                   AND sessions.revoked_at IS NULL
                   AND sessions.refresh_expires_at > ?
                 """,
-                (hashed, now),
+                # A phone can lose the answer to a refresh (a dropped link, a killed process) and is
+                # left holding the token before: that must not cost it its pairing.
+                (hashed, hashed, SESSION_KIND_MOBILE, now),
             ).fetchone()
             if row is None:
                 raise AccountError(
@@ -1102,7 +1121,7 @@ class AccountStore:
             updated = db.execute(
                 """
                 UPDATE sessions
-                SET access_hash = ?, access_expires_at = ?, refresh_hash = ?,
+                SET access_hash = ?, access_expires_at = ?, refresh_hash = ?, previous_refresh_hash = ?,
                     refresh_expires_at = ?, last_used_at = ?
                 WHERE id = ?
                   AND refresh_hash = ?
@@ -1113,10 +1132,11 @@ class AccountStore:
                     _token_hash(access_token),
                     now + self.config.access_ttl_seconds,
                     _token_hash(next_refresh),
-                    now + self.config.refresh_ttl_seconds,
+                    str(row["stored_refresh_hash"]),
+                    now + self._refresh_ttl(str(row["client_kind"])),
                     now,
                     str(row["session_id"]),
-                    hashed,
+                    str(row["stored_refresh_hash"]),
                     now,
                 ),
             )
@@ -1139,8 +1159,8 @@ class AccountStore:
         hashed = _token_hash(str(refresh_token or ""))
         with self._guard, self._connect() as db:
             db.execute(
-                "UPDATE sessions SET revoked_at = ? WHERE refresh_hash = ? AND revoked_at IS NULL",
-                (_now(), hashed),
+                "UPDATE sessions SET revoked_at = ? WHERE (refresh_hash = ? OR previous_refresh_hash = ?) AND revoked_at IS NULL",
+                (_now(), hashed, hashed),
             )
 
     def _audit(self, db: sqlite3.Connection, actor_user_id: int | None, action: str, *, target_type: str = "", target_id: str = "", metadata: dict[str, Any] | None = None) -> None:

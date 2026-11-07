@@ -16,8 +16,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-const val ACCOUNT_URL = "https://account.smirel.com/v1"
-const val RELAY_URL = "wss://loom.smirel.com/api/ws/client"
+val ACCOUNT_URL: String = BuildConfig.ACCOUNT_URL
+val RELAY_URL: String = BuildConfig.RELAY_URL
 
 data class Session(
     val accessToken: String,
@@ -61,7 +61,7 @@ class SessionStore(context: Context) {
                 json.getString("deviceName"),
             )
         } catch (_: Exception) {
-            clear()
+            // A Keystore hiccup is no reason to forget the phone's pairing for good.
             null
         }
     }
@@ -78,7 +78,8 @@ class SessionStore(context: Context) {
         val cipher = Cipher.getInstance(TRANSFORM)
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val sealed = cipher.iv + cipher.doFinal(plain)
-        preferences.edit().putString("session", Base64.encodeToString(sealed, Base64.NO_WRAP)).apply()
+        // Synchronously: a rotated token that dies with the process leaves the phone behind the server.
+        preferences.edit().putString("session", Base64.encodeToString(sealed, Base64.NO_WRAP)).commit()
     }
 
     fun clear() {
