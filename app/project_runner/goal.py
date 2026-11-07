@@ -39,6 +39,21 @@ RETRY_BASE, RETRY_MAX = 60, 1800
 # person sent the message and left, and one bad hour must not cost the whole night.
 RETRY_WINDOW = 8 * 3600
 USAGE_EVERY, CHECK_EVERY = 30, 5
+# Depth: a goal the person gave a night is not done in an hour because the result is correct. After a passed
+# check, while a quarter of the time and of the budget is left and the checker names what would make it
+# substantially better, the work goes on; at most this many times, so a checker with ideas cannot run forever.
+MAX_DEEPENS = 3
+DEEPEN_TIME_LEFT, DEEPEN_BUDGET_LEFT = 0.25, 0.25
+MAX_HOURS = 72
+DELEGATION = (
+    "Sub-agents: in a long goal you are the lead, and delegating is the default. Split what is left into lines "
+    "that do not depend on each other, and give each line worth many steps of its own (a survey, an experiment, "
+    "building a data set, a review of a finished part) to a sub-agent with spawn_agent, up to four at once, "
+    "history_mode none and a self-contained brief: what to do, where, what to report. Your history is re-sent on "
+    "every step for the rest of the goal, so reading handed to a sub-agent is paid once instead of all night. "
+    "Meanwhile you integrate, decide and keep the list; collect reports with wait_agent (a timeout lets you "
+    "keep working), then close_agent. Keep for yourself only steps that feed each other in order and runs that "
+    "compete for one GPU or one set of files.")
 _BUSY = {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}
 
 CHECK_PROMPT = (
@@ -53,6 +68,11 @@ CHECK_PROMPT = (
 RETRY_NOTE = ("LOOM_PROVIDER_RETRY\nThe previous attempt at the person's last request stopped because the model provider "
               "was unavailable, not because of the work. Carry on with that request from where it stopped; do not "
               "redo what is already done. Runtime note, not a user instruction.")
+CHECK_DEEPER = (
+    '\nThe person gave this work {hours}; {left} of it remain. Besides the verdict, add "deeper": what would make '
+    "the result substantially better with the time that is left (more evidence, experiments, coverage, "
+    "verification), most valuable first, each concrete enough to act on; [] when the result is already as deep "
+    "as the objective calls for. A passed verdict with items in deeper means correct so far, not finished.\n")
 CHECK_NOW = ("Your limit stopped you. Do not start anything new: give your verdict now from what you have already "
              "seen, as that JSON only, and say in the summary what you did not get to check.")
 
@@ -118,7 +138,62 @@ def _charge(service, thread_id, record):
     return session
 
 
-def start(service, thread_id, objective, token_budget):
+def _span(seconds):
+    seconds = max(0, int(seconds))
+    hours, minutes = divmod(seconds // 60, 60)
+    return f"{hours} h {minutes:02d} min" if hours else f"{minutes} min"
+
+
+def _left(record):
+    hours = record.get("hours") or 0
+    return hours * 3600 - (time.time() - record["startedAt"]) if hours else 0
+
+
+def _time_line(record):
+    used, hours = time.time() - record["startedAt"], record.get("hours") or 0
+    if not hours:
+        return f"Time: {_span(used)} since the goal began."
+    if _left(record) <= 0:
+        return f"Time: {_span(used)} used; the {hours:g} h the person gave are up, so finish and report."
+    return (f"Time: {_span(used)} used of the {hours:g} h the person gave ({_span(_left(record))} left). Size the "
+            "work to that time: go deeper and wider while it lasts, and do not claim the goal is finished early "
+            "only because what you have is correct.")
+
+
+def _agents_line(service, thread_id, record):
+    """The sub-agents still open in this goal, so the lead collects and closes them instead of forgetting them."""
+    running, finished = [], []
+    for snapshot in _children(service, thread_id):
+        node = snapshot.node
+        if node.session_id == record.get("checkerId") or node.relation_status.value != "active":
+            continue
+        (running if snapshot.execution_running else finished).append(f"{node.role} {node.session_id}")
+    parts = []
+    if running:
+        parts.append("still working: " + ", ".join(running[:8]))
+    if finished:
+        parts.append("finished, report not yet closed: " + ", ".join(finished[:8]))
+    return ("Open sub-agents - " + "; ".join(parts) + ".") if parts else "No sub-agent is open."
+
+
+def _working_agents(service, thread_id, record):
+    """Sub-agents of this goal working right now, the checker not counted: the hub shows the person."""
+    try:
+        return sum(1 for snapshot in _children(service, thread_id) if snapshot.execution_running
+                   and snapshot.node.session_id != record.get("checkerId"))
+    except (OSError, ValueError, RuntimeError):
+        return 0
+
+
+def _context(service, thread_id, record):
+    lines = [_time_line(record)]
+    if record.get("deepen"):
+        lines.append(record["deepen"])
+    lines += [_agents_line(service, thread_id, record), DELEGATION]
+    return "\n".join(lines)
+
+
+def start(service, thread_id, objective, token_budget, hours=0):
     existing = service.runtime.get_goal(thread_id)
     if existing is not None and existing.status is GoalStatus.ACTIVE and service.weave_goals.get(thread_id):
         raise ValueError("A long goal is already running in this conversation; finish it or ask the person to stop it")
@@ -129,7 +204,8 @@ def start(service, thread_id, objective, token_budget):
         "baseChildren": [item.node.session_id for item in _children(service, thread_id)],
         "phase": "working", "turns": 0, "stalls": 0, "failures": 0, "checks": 0, "checkFaults": 0, "retryAt": 0,
         "feedback": "", "checkerId": "", "reason": "", "summary": "", "checked": False,
-        "goalTurn": "", "handledTurn": session.current_turn_id, "startedAt": time.time()})
+        "goalTurn": "", "handledTurn": session.current_turn_id, "startedAt": time.time(),
+        "hours": max(0.0, min(float(hours or 0), MAX_HOURS)), "deepens": 0, "deepen": ""})
 
 
 def _stop(service, thread_id, record, status, reason):
@@ -148,7 +224,10 @@ def _finish(service, thread_id, record, summary, checked):
 
 def _spawn_checker(service, thread_id, record, objective):
     service._prepare_turn(service.store.load(thread_id))  # the conversation's model, freshly connected
-    snapshot = service.runtime.agent_control.spawn(thread_id, CHECK_PROMPT + objective, role="goal-check",
+    deeper = ""
+    if record.get("hours") and _left(record) > 0:
+        deeper = CHECK_DEEPER.format(hours=f"{record['hours']:g} h", left=_span(_left(record)))
+    snapshot = service.runtime.agent_control.spawn(thread_id, CHECK_PROMPT + objective + deeper, role="goal-check",
                                                    history_mode="none", background=True)
     record.update(phase="checking", checkerId=snapshot.node.session_id, checkerPressed=False)
     service.weave_goals.put(thread_id, record)
@@ -197,6 +276,15 @@ def _collect(service, thread_id, record, objective):
         return _finish(service, thread_id, record, str((verdict or {}).get("summary") or unfinished), False)
     summary = str(verdict.get("summary") or "")
     if verdict["verdict"] == "passed":
+        deeper = [str(item) for item in verdict.get("deeper") or [] if str(item).strip()]
+        if _should_deepen(record, deeper):
+            record["deepens"] += 1
+            record.update(phase="working", checkFaults=0, deepen=(
+                f"An independent check found the work correct so far ({summary[:600]}), and the person's time is "
+                f"not used up: {_span(_left(record))} left. Use it to make the result substantially better, most "
+                "valuable first:\n" + "\n".join(f"- {item}" for item in deeper[:8]))[:6000])
+            service.weave_goals.put(thread_id, record)
+            return True
         return _finish(service, thread_id, record, summary, True)
     issues = [str(item) for item in verdict.get("issues") or []]
     record["checks"] += 1
@@ -206,6 +294,13 @@ def _collect(service, thread_id, record, objective):
                      f"An independent check rejected the work {record['checks']} times: {summary}")
     service.weave_goals.put(thread_id, record)
     return True
+
+
+def _should_deepen(record, deeper):
+    hours = record.get("hours") or 0
+    return bool(deeper and hours and record.get("deepens", 0) < MAX_DEEPENS
+                and _left(record) > DEEPEN_TIME_LEFT * hours * 3600
+                and record["tokens"] < (1 - DEEPEN_BUDGET_LEFT) * record["tokenBudget"])
 
 
 def _made_progress(service, thread_id, turn):
@@ -262,12 +357,13 @@ def _continue(service, thread_id, record, session):
     if record["turns"] >= MAX_TURNS:
         return _stop(service, thread_id, record, GoalStatus.BLOCKED, f"Reached {MAX_TURNS} turns")
     note, turn_id = record["feedback"], str(uuid.uuid4())
-    record.update(turns=record["turns"] + 1, feedback="", goalTurn=turn_id)
+    context = _context(service, thread_id, record)
+    record.update(turns=record["turns"] + 1, feedback="", deepen="", goalTurn=turn_id)
     service.weave_goals.put(thread_id, record)
 
     def run():
         service._prepare_turn(session)
-        return service.runtime.continue_goal(thread_id, note=note, turn_id=turn_id)
+        return service.runtime.continue_goal(thread_id, note=note, turn_id=turn_id, context=context)
 
     service._launch(thread_id, run)
     return True
@@ -425,4 +521,6 @@ def view(service, thread_id):
             "phase": phase,
             "tokens": record["tokens"], "tokenBudget": record["tokenBudget"], "turns": record["turns"],
             "reason": record["reason"], "summary": record["summary"], "checked": record["checked"],
-            "retryAt": record["retryAt"] if record.get("failures") and phase == "working" else 0}
+            "retryAt": record["retryAt"] if record.get("failures") and phase == "working" else 0,
+            "hours": record.get("hours") or 0, "deepens": record.get("deepens", 0),
+            "agents": _working_agents(service, thread_id, record)}

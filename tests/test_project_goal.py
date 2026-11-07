@@ -478,3 +478,105 @@ def test_the_person_sending_again_while_a_retry_waits_restarts_the_wait(tmp_path
             "the person's own message is not the Host's third attempt"
     finally:
         runtime.close()
+
+
+NIGHT = calling("weave_goal", {"objective": "研究一晚", "hours": 8})
+DEEPER = answer(json.dumps({"verdict": "passed", "summary": "结论成立", "issues": [], "deeper": ["再加一组消融实验"]}))
+
+
+def said_in(platform, start=0):
+    return [json.dumps([message.content for message in request.messages], ensure_ascii=False, default=str)
+            for request in platform.requests[start:]]
+
+
+def test_a_correct_result_with_most_of_the_night_left_goes_deeper(tmp_path):
+    # Real run: given a whole night, the model declared the goal done after about an hour.
+    service, runtime, platform, source = conversation(tmp_path, [
+        NIGHT, DONE, answer("做完了"), DEEPER, answer("加了消融"), DONE, answer("这次做深了"), PASSED])
+    try:
+        assert service.weave_goals.get(source)["hours"] == 8
+        tick(service, source, 2)
+        record = service.weave_goals.get(source)
+        assert record["deepens"] == 1 and record["phase"] == "working", "a pass with time left is not the end"
+        assert state(service, source)["status"] == "active"
+        checker = [text for text in said_in(platform) if "You are an independent checker" in text]
+        assert checker and "Besides the verdict" in checker[0] and "8 h" in checker[0], "the checker is told the time"
+        before = len(platform.requests)
+        tick(service, source)
+        assert any("再加一组消融实验" in text and "h the person gave" in text for text in said_in(platform, before))
+        tick(service, source, 4)
+        final = state(service, source)
+        assert final["status"] == "complete" and final["checked"] is True and final["deepens"] == 1
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize("change", ["no time given", "time nearly up", "budget nearly used", "deepened enough"])
+def test_a_pass_finishes_when_there_is_no_room_to_go_deeper(tmp_path, change):
+    start = START if change == "no time given" else NIGHT
+    service, runtime, _, source = conversation(tmp_path, [start, DONE, answer("做完了"), DEEPER])
+    try:
+        record = service.weave_goals.get(source)
+        if change == "time nearly up":
+            record["startedAt"] -= 7 * 3600
+        elif change == "budget nearly used":
+            record["baseCharged"] -= 0.8 * record["tokenBudget"]
+        elif change == "deepened enough":
+            record["deepens"] = goal.MAX_DEEPENS
+        service.weave_goals.put(source, record)
+        tick(service, source, 3)
+        final = state(service, source)
+        assert final["status"] == "complete" and final["checked"] is True, change
+    finally:
+        runtime.close()
+
+
+def test_a_goal_turn_tells_the_lead_to_delegate_and_names_its_open_sub_agents(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [
+        NIGHT, answer("开始了"), answer("文献调研完成"), answer("在整合")])
+    try:
+        tool_result = [m for m in service.store.load(source).messages if m.role.value == "tool"]
+        assert any("delegating is the default" in str(m.content) for m in tool_result), "weave_goal says so at once"
+        control = service.runtime.agent_control
+        child = control.spawn(source, "调研文献", role="survey", history_mode="none", background=True)
+        control.wait(source, child.node.session_id, timeout_seconds=10)
+        assert state(service, source)["agents"] == 0, "a finished sub-agent is not working"
+        before = len(platform.requests)
+        tick(service, source)
+        prompts = [str(m.content) for m in platform.requests[before].messages
+                   if m.role.value == "user" and "Continue pursuing this durable Loom goal" in str(m.content)]
+        text = prompts[-1]
+        assert "delegating is the default" in text and f"survey {child.node.session_id}" in text
+        assert "report not yet closed" in text and "h the person gave" in text
+        control.close_agent(source, child.node.session_id)
+        assert goal._agents_line(service, source, service.weave_goals.get(source)) == "No sub-agent is open."
+    finally:
+        runtime.close()
+
+
+def test_the_guide_keeps_ordinary_turns_frugal_and_flips_in_a_goal():
+    assert "in an ordinary turn" in weave.GUIDE and "In a long goal the default flips" in weave.GUIDE
+    hours = next(tool for tool in weave.tools(type("S", (), {})()) if tool.name == "weave_goal").input_schema
+    assert "hours" in hours["properties"]
+
+
+def test_the_hub_counts_the_sub_agents_working_for_a_goal(tmp_path):
+    import threading
+    service, runtime, platform, source = conversation(tmp_path, [NIGHT, answer("开始了"), answer("调研完了")])
+    release, original = threading.Event(), platform.execute_chat
+
+    def execute(profile, request):
+        if "慢慢调研" in json.dumps([m.content for m in request.messages], ensure_ascii=False, default=str):
+            release.wait(10)
+        return original(profile, request)
+    platform.execute_chat = execute
+    try:
+        control = service.runtime.agent_control
+        child = control.spawn(source, "慢慢调研", role="survey", history_mode="none", background=True)
+        _wait_until(lambda: state(service, source)["agents"] == 1, timeout=10)
+        release.set()
+        control.wait(source, child.node.session_id, timeout_seconds=10)
+        assert state(service, source)["agents"] == 0
+    finally:
+        release.set()
+        runtime.close()

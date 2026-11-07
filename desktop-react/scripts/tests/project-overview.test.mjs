@@ -38,6 +38,9 @@ test("a long goal reads as one line with the move the person has", () => {
   assert.match(waiting.text, /模型服务暂时不可用，\d\d:\d\d 自动重试/, "a night of 429s never reads as running");
   assert.equal(waiting.live, false);
   assert.match(toGoal({ ...base, retryAt: Date.now() / 1000 - 5 }).text, /长目标进行中/, "a retry already due is running again");
+  assert.match(toGoal({ ...base, deepens: 2 }).text, /检查已通过，正用剩余时间加深（第 2 轮）/, "a pass that went on says why it is still running");
+  assert.match(toGoal({ ...base, deepens: 1, phase: "checking" }).text, /独立检查/);
+  assert.match(toGoal({ ...base, agents: 3 }).text, /长目标进行中，3 个子代理在工作/, "the person sees the goal is delegating");
   assert.equal(toGoal({ ...base, status: "paused" }).action, "resume");
   assert.equal(toGoal({ ...base, status: "budget_limited" }).action, "resume");
   const blocked = toGoal({ ...base, status: "blocked", reason: "缺数据" });

@@ -394,6 +394,10 @@ export interface LongGoal {
   reason: string; summary: string; checked: boolean;
   /** Seconds since the epoch: the model provider failed and the Host tries again then; 0 when nothing waits. */
   retryAt?: number;
+  /** Hours the person gave; passes where a correct result went on because time was left. */
+  hours?: number; deepens?: number;
+  /** Sub-agents working for the goal right now. */
+  agents?: number;
 }
 
 /** One line for a long goal: what it is doing, what it has spent, and the move the person has. */
@@ -409,7 +413,11 @@ export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "z
     const at = new Date((goal.retryAt as number) * 1000).toLocaleTimeString(en ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
     return { text: line(`模型服务暂时不可用，${at} 自动重试`, `The model provider is unavailable; retrying at ${at}`), detail: goal.objective, live: false, action: "pause", dismiss: false };
   }
-  if (goal.status === "active") return { text: line("长目标进行中", "Long goal running"), detail: goal.objective, live: true, action: "pause", dismiss: false };
+  if (goal.status === "active" && goal.phase === "working" && (goal.deepens ?? 0) > 0) {
+    return { text: line(`检查已通过，正用剩余时间加深（第 ${goal.deepens} 轮）`, `Checked and correct; going deeper with the time left (pass ${goal.deepens})`), detail: goal.objective, live: true, action: "pause", dismiss: false };
+  }
+  const agents = goal.agents ?? 0;
+  if (goal.status === "active") return { text: line(agents ? `长目标进行中，${agents} 个子代理在工作` : "长目标进行中", agents ? `Long goal running, ${agents} sub-agent${agents > 1 ? "s" : ""} working` : "Long goal running"), detail: goal.objective, live: true, action: "pause", dismiss: false };
   if (goal.status === "complete") {
     const text = goal.checked ? line("长目标完成，已通过独立检查", "Long goal finished and independently checked")
       : line("长目标完成，但独立检查没能做完", "Long goal finished, but the independent check could not be completed");

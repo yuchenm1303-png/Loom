@@ -185,6 +185,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
         max_turns: int = 1,
         note: str = "",
         turn_id: str | None = None,
+        context: str = "",
     ) -> AgentRunResult:
         session = self.store.load(session_id)
         if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
@@ -215,6 +216,8 @@ class DurableAgentRuntime(CoreAgentRuntime):
             )
             if note:
                 prompt += f"\n\nAn independent check rejected the claim that this is finished:\n{note}"
+            if context:
+                prompt += f"\n\n{context}"
             result = self._start_turn_once(session_id, prompt, source="goal", turn_id=turn_id)
             turn_id = None  # a further round is a new turn
             result = self._track_goal_usage(result)

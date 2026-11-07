@@ -53,14 +53,18 @@ GUIDE = (
     "you back after each turn in this conversation until you call mark_thread_goal, so end a turn freely and keep "
     "going in the next. Use it instead of a proposal when the person will not be there to start one. Mark complete "
     "only when the objective is met in substance: an independent agent then checks your claim and its findings come "
-    "back to you. Mark blocked only when you cannot go on without the person.\n"
+    "back to you. Pass hours when the person gave you a time: a night asks for a night's depth, and with much of "
+    "it left a correct result is a reason to go further, not to stop. Mark blocked only when you cannot go on "
+    "without the person.\n"
     "Task list: a turn that uses any tool shows the person a task list; a reply that needs no tool needs no list. "
     "Put update_plan first in the same response as your first tool calls, whatever update_plan's own text says about "
     "simple work: two or more short outcome steps in the person's language, one in_progress, the rest pending. Advance "
     "it alongside the calls that begin the next step (a completed step takes an outcome and evidence_refs naming a "
     "call_id), and finish it before your final answer.\n"
-    "Sub-agents: each one costs many times what the same reading costs you, so do the work yourself by default, a "
-    "scan or an investigation of an ordinary repository included. Use spawn_agent when the person asks for it, or "
+    "Sub-agents: in an ordinary turn each one costs many times what the same reading costs you, so do the work "
+    "yourself by default, a scan or an investigation of an ordinary repository included. In a long goal the default "
+    "flips: you lead and delegate independent lines, because your history is re-sent on every step for hours (each "
+    "goal turn says so). Use spawn_agent when the person asks for it, or "
     "when the work has lines that do not depend on each other and can run at the same time, each worth many steps of "
     "its own: subsystems of hundreds of files too large to read well in this turn, a literature survey beside an "
     "experiment, a separate experiment, a fresh review of a finished result. Check this when you write the list. "
@@ -272,10 +276,16 @@ def tools(service):
         if run is not None:
             raise ValueError("A project is running in this conversation; steer it with weave_steer")
         budget = snap_budget(getattr(service, "weave_budgets", {}).get(context.session_id, arguments.get("token_budget")))
-        goal.start(service, context.session_id, objective, budget)
-        return ToolResult(ok=True, content=f"Long goal started with a budget of {budget:,} tokens. Carry on working; the "
-                          "Host continues this conversation after each turn until you call mark_thread_goal.",
-                          data={"tokenBudget": budget})
+        try:
+            hours = max(0.0, min(float(arguments.get("hours") or 0), goal.MAX_HOURS))
+        except (TypeError, ValueError):
+            hours = 0.0
+        goal.start(service, context.session_id, objective, budget, hours)
+        given = f" and {hours:g} h of the person's time" if hours else ""
+        return ToolResult(ok=True, content=f"Long goal started with a budget of {budget:,} tokens{given}. Carry on "
+                          "working; the Host continues this conversation after each turn until you call "
+                          "mark_thread_goal.\n" + goal.DELEGATION,
+                          data={"tokenBudget": budget, "hours": hours})
 
     def steer(context, arguments):
         weave_session(context)
@@ -335,6 +345,9 @@ def tools(service):
                               "person's language; an agent with no history will check your work against it."},
                 "token_budget": {"type": "integer", "description": "Suggested budget, one of "
                                  + ", ".join(f"{budget:,}" for budget in BUDGETS) + "; the hub's setting wins."},
+                "hours": {"type": "number", "description": "How long the person gave you, from their words "
+                          "('一整晚' or 'overnight' is about 8, 'this afternoon' about 4); omit when they gave no time. "
+                          "The work is sized to it and is not finished early only because it is correct."},
             }, "required": ["objective"], "additionalProperties": False},
             handler=start_goal, effect=ToolEffect.READ_ONLY),
         AgentTool(
