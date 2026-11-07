@@ -48,8 +48,11 @@ GUIDE = (
     "- While a project runs, keep talking normally. Call weave_status before you answer about its progress. "
     "Pass changes of direction into it with weave_steer, and pause or resume it with weave_control. Do not do "
     "its tasks yourself in this conversation unless the person asks you to.\n"
-    "Long goal: when the person hands you an open-ended objective with hours or a night to run, research included, "
-    "call weave_goal yourself and get on with the work; it needs no repository and no click. The Host then brings "
+    "Long goal: when the person gives you time (two hours, an afternoon, a night) or says they will be away or not "
+    "watching, call weave_goal in your first response, before the work, with hours, even when the task looks small "
+    "enough for one turn: only a goal keeps you going, gets the result independently checked and uses the time they "
+    "gave. The same for an open-ended objective with hours to run, research included. It needs no repository and "
+    "no click. The Host then brings "
     "you back after each turn in this conversation until you call mark_thread_goal, so end a turn freely and keep "
     "going in the next. Use it instead of a proposal when the person will not be there to start one. Mark complete "
     "only when the objective is met in substance: an independent agent then checks your claim and its findings come "
@@ -339,7 +342,8 @@ def tools(service):
             name="weave_goal",
             description=("Start a long goal in this conversation: the Host keeps it going turn after turn until you "
                          "call mark_thread_goal and an independent check agrees, or the budget runs out. No repository "
-                         "or click needed, so it fits research and open-ended work with hours or a night to run."),
+                         "or click needed. Call it first whenever the person gives you time or will not be watching, "
+                         "and for research or open-ended work with hours or a night to run."),
             input_schema={"type": "object", "properties": {
                 "objective": {"type": "string", "description": "The complete goal and what done looks like, in the "
                               "person's language; an agent with no history will check your work against it."},

@@ -580,3 +580,11 @@ def test_the_hub_counts_the_sub_agents_working_for_a_goal(tmp_path):
     finally:
         release.set()
         runtime.close()
+
+
+def test_time_from_the_person_starts_a_goal_first():
+    # Live run 2026-11-07: told "you have two hours, I'm out", the model did it all in one turn in 30 minutes,
+    # no goal, no check, no sub-agents: the guide only asked for a goal for "open-ended" work.
+    assert "gives you time" in weave.GUIDE and "in your first response" in weave.GUIDE
+    tool = next(tool for tool in weave.tools(type("S", (), {})()) if tool.name == "weave_goal")
+    assert "Call it first whenever the person gives you time" in tool.description
