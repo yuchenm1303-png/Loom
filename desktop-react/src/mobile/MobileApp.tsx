@@ -859,6 +859,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
     return () => window.removeEventListener("loom:mobile-back", back);
   }, [open]);
 
+  const waitingCount = threads.filter((thread) => thread.status === "waiting_approval").length;
   const list = searchThreads(threads.filter((thread) => modeOf(thread) === (tab === "build" ? "build" : "chat")), query);
   const showOffline = offlineNotice && !threads.length && tab !== "more";
   const loading = online && loom.connection === "connecting" && !threads.length;
@@ -911,8 +912,12 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
         <nav className="m-nav" aria-label="主导航" style={{ "--m-index": TABS.findIndex((entry) => entry.key === tab) } as CSSProperties}>
           <i className="m-glider" aria-hidden="true" />
           {TABS.map(({ key, label, icon: Icon }) => (
-            <button type="button" key={key} aria-current={tab === key ? "page" : undefined} onClick={() => { setTab(key); setQuery(""); if ((key === "now" || key === "projects") && loom.threadView === "archived") void loom.setThreadView("active").catch((cause) => setNavigationError(String(cause))); }}>
-              <i aria-hidden="true"><Icon {...ICON} /></i>{label}
+            <button type="button" key={key} data-press="none" aria-label={key === "now" && waitingCount ? `${label}，${waitingCount} 项等你批准` : undefined} aria-current={tab === key ? "page" : undefined} onClick={() => { setTab(key); setQuery(""); if ((key === "now" || key === "projects") && loom.threadView === "archived") void loom.setThreadView("active").catch((cause) => setNavigationError(String(cause))); }}>
+              <i aria-hidden="true">
+                <Icon size={21} strokeWidth={tab === key ? 2 : 1.75} />
+                {key === "now" && waitingCount ? <b className="m-nav-badge">{waitingCount > 9 ? "9+" : waitingCount}</b> : null}
+              </i>
+              <span>{label}</span>
             </button>
           ))}
         </nav>

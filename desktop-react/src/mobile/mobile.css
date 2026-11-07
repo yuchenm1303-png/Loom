@@ -182,23 +182,45 @@ html[data-loom-surface="mobile"] .m-new button {
 }
 .m-new span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .m-new i { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--m-run); color: var(--m-on-run); font-style: normal; }
-.m-nav { position: relative; flex: none; height: 62px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--loom-workspace-line); background: var(--loom-workspace-navigation); }
-html[data-loom-surface="mobile"] .m-nav button {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  font-size: 12px; font-weight: 500; color: var(--loom-workspace-muted);
-  transition: color var(--loom-dur-fast) var(--loom-ease-out);
+/* The tab bar. The pill under the icon is the only surface here: a press washes the pill, never the
+   whole cell (a cell-wide wash read as a grey slab), and the selection is that same pill, travelling. */
+.m-nav {
+  position: relative; flex: none; height: 64px; padding: 0 6px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  background: var(--loom-workspace-navigation); box-shadow: 0 -1px 0 rgba(224, 230, 242, .06);
 }
-.m-nav button i { position: relative; width: 56px; height: 28px; display: grid; place-items: center; font-style: normal; }
-html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] { color: var(--loom-workspace-ink); font-weight: 600; }
-html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] svg { color: var(--m-run); }
-.m-nav button[aria-current="page"] svg { animation: m-glyph-spring var(--loom-dur-slow) var(--m-lively); }
+html[data-loom-surface="mobile"] .m-nav button {
+  position: relative; z-index: 1; min-width: 0; padding: 8px 0 7px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px;
+  color: var(--loom-workspace-muted);
+  transition: color var(--loom-dur-base) var(--loom-ease-out);
+}
+html[data-loom-surface="mobile"] .m-nav button:focus-visible { outline: 0; }
+html[data-loom-surface="mobile"] .m-nav button:focus-visible i { box-shadow: 0 0 0 2px var(--m-run); }
+.m-nav button i { position: relative; width: 60px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 16px; font-style: normal; color: rgba(187, 193, 204, .78); transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-base) var(--loom-ease-out); }
+.m-nav button i svg { transition: transform var(--loom-dur-fast) var(--m-lively); }
+/* Words never move; the glyph gives a little under the finger and the pill takes the wash. */
+html[data-loom-surface="mobile"] .m-nav button:active i { background-color: var(--loom-press-wash, rgba(255, 255, 255, .055)); }
+html[data-loom-surface="mobile"] .m-nav button:active i svg { transform: scale(.88); }
+.m-nav button span { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .02em; }
+html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] { color: var(--loom-workspace-ink); }
+html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] span { font-weight: 600; }
+html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] i { color: var(--m-run); }
+.m-nav button[aria-current="page"] i svg { animation: m-glyph-spring var(--loom-dur-slow) var(--m-lively); }
+/* Waiting approvals ride on the 现在 icon, so they are seen from every tab. */
+.m-nav-badge {
+  position: absolute; top: 0; left: calc(50% + 5px); min-width: 17px; height: 17px; box-sizing: border-box; padding: 0 4px;
+  display: grid; place-items: center; border-radius: 9px; box-shadow: 0 0 0 2px var(--loom-workspace-navigation);
+  background: var(--m-wait); color: #241a06; font-size: 12px; font-weight: 700; line-height: 17px; font-variant-numeric: tabular-nums;
+  animation: m-mark-settle var(--loom-dur-slow) var(--m-soft);
+}
 /* One selection that travels, rather than one that blinks out here and in there. */
 .m-nav > .m-glider {
-  position: absolute; left: 0; top: 7px; width: 20%; height: 28px; pointer-events: none;
+  position: absolute; left: 6px; top: 8px; width: calc((100% - 12px) / 5); height: 32px; pointer-events: none;
   transform: translateX(calc(var(--m-index) * 100%));
   transition: transform var(--loom-dur-flow) var(--m-settle);
 }
-.m-nav > .m-glider::before { content: ""; position: absolute; left: 50%; top: 0; width: 56px; height: 28px; margin-left: -28px; border-radius: 14px; background: var(--m-run-soft); }
+.m-nav > .m-glider::before { content: ""; position: absolute; left: 50%; top: 0; width: 60px; height: 32px; margin-left: -30px; border-radius: 16px; background: var(--m-run-soft); }
+html[data-loom-reduced-motion] .m-nav > .m-glider { transition: none; }
+@media (prefers-reduced-motion: reduce) { .m-nav > .m-glider { transition: none; } }
 
 /* Buttons: one shape, three weights. Icons sit beside the words, never on top of them. */
 html[data-loom-surface="mobile"] .m-button {

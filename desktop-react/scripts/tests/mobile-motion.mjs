@@ -56,7 +56,8 @@ const glider = await sample(page, ".m-nav > .m-glider", left, `() => document.qu
 check(distinct(glider) > 4, "the tab selection travels", `${present(glider)[0]} -> ${present(glider).at(-1)} in ${distinct(glider)} steps`);
 await page.waitForTimeout(500);
 const landed = await page.locator(".m-nav > .m-glider").evaluate((element) => element.getBoundingClientRect().left);
-check(Math.abs(landed - 156) < 1, "and lands on its tab", String(landed));
+const tabLeft = await page.locator(".m-nav button").nth(2).evaluate((element) => element.getBoundingClientRect().left);
+check(Math.abs(landed - tabLeft) < 1, "and lands on its tab", `${landed} vs ${tabLeft}`);
 await page.locator(".m-nav button").nth(0).click();
 await page.waitForTimeout(600);
 
