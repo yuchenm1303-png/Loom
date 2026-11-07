@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, createContext, useContext, useId, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, FolderOpen, FolderSearch, Lock } from "./icons";
+import { Check, ChevronLeft, FolderOpen, FolderSearch, Lock, X } from "./icons";
 import type { ProjectRecord } from "../types/loom";
 
 export interface WorkspaceState {
@@ -13,10 +13,14 @@ export function shortPath(path = "") {
   return path.replace(/^[a-z]:[\\/]users[\\/][^\\/]+(?=[\\/]|$)/i, "~");
 }
 
+// The host belongs to the canvas: project choices grow beside their repository card.
+export const WorkspaceBranchContext = createContext<{
+  target: HTMLDivElement | null; setOpen(open: boolean): void;
+} | null>(null);
+
 const normalize = (path = "") => path.replace(/\\/g, "/").replace(/\/$/, "").toLowerCase();
 
-/** The repository card's one switch: existing projects, then "browse" for any other folder. A menu of our own
- *  (not a native select) so a long path never sets the width and each project reads as name over path. */
+/** Existing projects grow into a child branch, followed by browsing for another folder. */
 export function ProjectWorkspacePicker({ projects, workspace, locked, lang, branch, onSelect, onBrowse, onPrepare }: {
   projects: ProjectRecord[]; workspace?: WorkspaceState; locked: boolean; lang: "zh" | "en"; branch: string;
   onSelect?(id: string): void; onBrowse?(): void; onPrepare?(action: "initialize" | "branch"): void;
@@ -52,7 +56,8 @@ function ProjectSwitch({ projects, selected, zh, disabled, lockedNote, onSelect,
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const [place, setPlace] = useState<{ left: number; top: number; width: number; maxHeight: number; up: boolean } | null>(null);
+  const branch = useContext(WorkspaceBranchContext);
+  const listId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const entries: Entry[] = [
@@ -65,18 +70,12 @@ function ProjectSwitch({ projects, selected, zh, disabled, lockedNote, onSelect,
     if (refocus) trigger.current?.focus();
   }, []);
 
-  const measure = useCallback(() => {
-    const box = trigger.current?.getBoundingClientRect();
-    if (!box) return;
-    const width = Math.min(Math.max(box.width, 300), 380, window.innerWidth - 16);
-    const left = Math.max(8, Math.min(box.left, window.innerWidth - width - 8));
-    const below = window.innerHeight - box.bottom - 12;
-    const above = box.top - 12;
-    const up = below < 200 && above > below;
-    setPlace({ left, width, up, top: up ? box.top - 6 : box.bottom + 6, maxHeight: Math.min(340, up ? above : below) });
-  }, []);
+  useEffect(() => {
+    branch?.setOpen(open);
+    return () => branch?.setOpen(false);
+  }, [open, branch?.setOpen]);
 
-  useLayoutEffect(() => { if (open) measure(); }, [open, measure]);
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
 
   useEffect(() => {
     if (!open) return;
@@ -84,19 +83,23 @@ function ProjectSwitch({ projects, selected, zh, disabled, lockedNote, onSelect,
       const target = event.target as Node;
       if (!menu.current?.contains(target) && !trigger.current?.contains(target)) close(false);
     };
-    const shut = () => close(false);
     document.addEventListener("pointerdown", away, true);
-    window.addEventListener("resize", shut);
-    window.addEventListener("blur", shut);
     return () => {
       document.removeEventListener("pointerdown", away, true);
-      window.removeEventListener("resize", shut);
-      window.removeEventListener("blur", shut);
     };
   }, [open, close]);
 
   useEffect(() => {
-    if (open) menu.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      const list = menu.current?.querySelector<HTMLElement>(".pf-switch-menu");
+      const row = list?.querySelector<HTMLElement>(`[data-index="${active}"]`);
+      if (!list || !row) return;
+      const offset = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+      if (offset < 0) list.scrollTop += offset;
+      else if (offset + row.offsetHeight > list.clientHeight) list.scrollTop += offset + row.offsetHeight - list.clientHeight;
+    });
+    return () => cancelAnimationFrame(frame);
   }, [open, active]);
 
   const choose = (entry: Entry | undefined) => {
@@ -130,21 +133,23 @@ function ProjectSwitch({ projects, selected, zh, disabled, lockedNote, onSelect,
   const label = zh ? "切换项目" : "Switch project";
   return <>
     <button ref={trigger} type="button" className="pf-switch" disabled={disabled} data-open={open || undefined}
-            aria-haspopup="listbox" aria-expanded={open} aria-label={zh ? "选择项目或文件夹" : "Choose a project or folder"}
-            aria-activedescendant={open ? `pf-switch-${active}` : undefined}
+            aria-haspopup="listbox" aria-controls={open ? listId : undefined} aria-expanded={open} aria-label={zh ? "选择项目或文件夹" : "Choose a project or folder"}
+            aria-activedescendant={open ? `${listId}-${active}` : undefined}
             title={lockedNote} onClick={() => (open ? close(false) : show())} onKeyDown={keys}>
       {lockedNote ? <Lock size={13} /> : <FolderOpen size={14} />}
       <span>{lockedNote ? (zh ? "项目已锁定" : "Project locked") : label}</span>
-      {lockedNote ? null : <ChevronDown size={14} className="pf-switch-chevron" />}
+      {lockedNote ? null : <ChevronLeft size={14} className="pf-switch-chevron" />}
     </button>
-    {open && place ? createPortal(
-      <div ref={menu} className="pf-switch-menu" role="listbox" aria-label={label} data-up={place.up || undefined}
-           style={{ left: place.left, width: place.width, maxHeight: place.maxHeight,
-                    ...(place.up ? { bottom: window.innerHeight - place.top } : { top: place.top }) }}
-           onMouseDown={event => event.preventDefault()}>
-        {onSelect && projects.length ? <div className="pf-switch-caption">{zh ? "已有项目" : "Projects"}</div> : null}
+    {open ? (() => {
+      const panel = <div ref={menu} className="pf-workspace-branch" onKeyDown={keys}>
+        <header className="pf-workspace-branch-head">
+          <FolderOpen size={13} /><span>{zh ? "已有项目" : "Projects"}</span>
+          <button type="button" onClick={() => close(true)} onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }} aria-label={zh ? "收起项目支路" : "Close project branch"}><X size={13} /></button>
+        </header>
+        <div id={listId} className="pf-switch-menu" role="listbox" aria-label={label}
+             onMouseDown={event => event.preventDefault()}>
         {entries.map((entry, index) => entry.kind === "project"
-          ? <div key={entry.project.id} id={`pf-switch-${index}`} data-index={index} role="option"
+          ? <div key={entry.project.id} id={`${listId}-${index}`} data-index={index} role="option"
                  aria-selected={entry.project.id === selected} data-active={index === active || undefined}
                  className="pf-switch-option" title={entry.project.root}
                  onMouseMove={() => setActive(index)} onClick={() => choose(entry)}>
@@ -155,12 +160,15 @@ function ProjectSwitch({ projects, selected, zh, disabled, lockedNote, onSelect,
               </span>
               {entry.project.id === selected ? <Check size={14} className="pf-switch-check" /> : null}
             </div>
-          : <div key="browse" id={`pf-switch-${index}`} data-index={index} role="option" aria-selected={false}
+          : <div key="browse" id={`${listId}-${index}`} data-index={index} role="option" aria-selected={false}
                  data-active={index === active || undefined} className="pf-switch-option pf-switch-browse"
                  onMouseMove={() => setActive(index)} onClick={() => choose(entry)}>
               <span className="pf-switch-mark"><FolderSearch size={13} /></span>
               <span className="pf-switch-text"><span className="pf-switch-name">{zh ? "选择其他文件夹…" : "Choose another folder…"}</span></span>
             </div>)}
-      </div>, document.body) : null}
+        </div>
+      </div>;
+      return branch?.target ? createPortal(panel, branch.target) : panel;
+    })() : null}
   </>;
 }

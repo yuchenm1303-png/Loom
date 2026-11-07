@@ -43,7 +43,7 @@ import {
 import { imageAttachmentState } from "./modelInput";
 import { UserMessageContent, optimisticUserMessageContent } from "./UserMessageContent";
 import type { ApprovalDecision, Attachment, ModelReasoningState, TranscriptItem } from "../types/loom";
-import { shortPath } from "./ProjectWorkspacePicker";
+import { shortPath, WorkspaceBranchContext } from "./ProjectWorkspacePicker";
 import { prefersReducedMotionNow, useReducedMotion } from "../motion/useReducedMotion";
 import "./composer.css";
 import "./composer-attachment-polish.css";
@@ -342,7 +342,7 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
     const root = stage.current, center = hub.current;
     if (!root || !center) return null;
     const base = root.getBoundingClientRect();
-    const box = (r: DOMRect) => ({ left: r.left - base.left, right: r.right - base.left, top: r.top - base.top,
+    const box = (r: DOMRect) => ({ left: r.left - base.left + root.scrollLeft, right: r.right - base.left + root.scrollLeft, top: r.top - base.top,
                                    bottom: r.bottom - base.top, height: r.height });
     const m = box(center.getBoundingClientRect());
     // Where the layout puts the hub (offsets ignore the glide's transforms): the plugs are dealt on it,
@@ -678,6 +678,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   brandNew?: boolean; }) {
   const text = lang === "en" ? enText : zhText;
   const stage = useRef<HTMLDivElement>(null);
+  const [workspaceBranch, setWorkspaceBranch] = useState<HTMLDivElement | null>(null);
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
   const hub = useRef<HTMLElement>(null);
   const cards = useRef(new Map<string, { side: Side; node: HTMLElement }>());
   const [hot, setHot] = useState("");
@@ -843,7 +845,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   const layout = [ids(context), ids(branches), ids(agents), ids(below), ids(loom), files.length, history?.length ?? 0,
                   modelTotal, modelView, query, reasoningState?.value ?? "",
                   data.tasks.length, data.taskList?.length ?? 0, data.scope.length, data.attention ? 1 : 0, data.phase,
-                  dirtyOpen, objectiveOpen, draft, data.narration.summary, data.narration.text,
+                  workspaceExpanded, dirtyOpen, objectiveOpen, draft, data.narration.summary, data.narration.text,
                   data.conversation?.length ?? 0, proposal?.id ?? "", data.chatting ? 1 : 0].join("|");
   const { cables, measure, svg } = useCables(stage, hub, cards, layout);
   // A low stage squeezes the thread above the hub: it shows the newest line, and scrolls up to the objective.
@@ -1050,7 +1052,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   };
 
   return (
-    <div className="pf-stage" ref={stage} data-state={data.state} data-phase={data.phase} data-renewing={renewing || wordsHeld || undefined}>
+    <WorkspaceBranchContext.Provider value={{ target: workspaceBranch, setOpen: setWorkspaceExpanded }}>
+    <div className="pf-stage" data-workspace-expanded={workspaceExpanded || undefined} ref={stage} data-state={data.state} data-phase={data.phase} data-renewing={renewing || wordsHeld || undefined}>
       <svg className="pf-cables" aria-hidden="true" ref={svg}>
         {cables.map((cable) => (
           <g key={cable.id} className="pf-cable" data-cable={cable.id} data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || hot === cable.id.replace("-draft", "") || undefined}
@@ -1079,6 +1082,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
       <div className="pf-col pf-left pf-side">
         {shown("repo") ? (
           <div className="pf-slot pf-offset-2" data-glide="repo" {...hover("repo")} {...slot("repo")}>
+            <div className="pf-workspace-branch-host" ref={setWorkspaceBranch} hidden={!workspaceExpanded} />
             <Card id="repo" side="left" icon={<GitBranch size={12} />} label={text.repository} register={register}>
               <div className="pf-well pf-repo">
                 <strong title={data.repository.name}>{data.repository.name}</strong>
@@ -1688,5 +1692,6 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
         </section>
       ) : null}
     </div>
+    </WorkspaceBranchContext.Provider>
   );
 }
