@@ -12,6 +12,11 @@ is charged; it can cost more than the largest request observed so far, which is
 what admission predicts with. A request that failed or was cancelled after it was
 sent has unknown usage; its admission reserve is assumed spent, and it is counted
 separately from known tokens.
+
+Cached input counts at a tenth, as a long goal's does: every episode re-sends its whole
+history on each step, and a run that was 98% cache reads used up a budget sized for
+real work in a fraction of the time. Input estimates made before any request returned
+stay unweighted, so admission errs on the side of stopping.
 """
 from __future__ import annotations
 
@@ -26,6 +31,18 @@ from app.agent_runtime.context_budget import estimate_tokens
 USAGE_FIELDS = {E.MODEL_RESPONSE: "usage", E.MODEL_RESPONSE_REJECTED: "usage", E.TURN_STOP_CHECKED: "usage",
                 E.CONTEXT_CHECKPOINTED: "summary_usage"}
 ACTIVE_EPISODE = ("prepared", "running", "waiting_approval")
+CACHED_WEIGHT = 0.1
+
+
+def weighted(total, cached=0):
+    """What a request costs against a budget: its tokens, with cached input at CACHED_WEIGHT."""
+    total = max(0, int(total or 0))
+    cached = min(max(0, int(cached or 0)), total)
+    return int(round(total - cached + cached * CACHED_WEIGHT))
+
+
+def usage_tokens(usage):
+    return weighted(getattr(usage, "total_tokens", 0), getattr(usage, "cached_input_tokens", 0)) if usage else 0
 
 SCHEMA = """
     CREATE TABLE IF NOT EXISTS project_model_requests(id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES project_runs(id),
@@ -47,7 +64,7 @@ def event_tokens(event):
     if field is None:
         return None
     usage = event.data.get(field) or {}
-    return max(0, int(usage.get("total_tokens") or 0)) if isinstance(usage, dict) else 0
+    return weighted(usage.get("total_tokens"), usage.get("cached_input_tokens")) if isinstance(usage, dict) else 0
 
 
 def ledger_id(run):
@@ -311,11 +328,11 @@ class BudgetedModelExecutor:
             # A tool-contract error carries the complete response, which the
             # runtime commits (and reports usage for) like any other.
             carried = getattr(getattr(exc, "response", None), "usage", None)
-            tokens = getattr(carried, "total_tokens", 0) or 0
+            tokens = usage_tokens(carried)
             self._finish(ticket, "returned" if tokens else "unknown", tokens, input_only=_nothing_received(exc))
             raise
         usage = getattr(response, "usage", None)
-        self._finish(ticket, "returned", getattr(usage, "total_tokens", 0) or 0)
+        self._finish(ticket, "returned", usage_tokens(usage))
         return response
 
     def _finish(self, ticket, state, tokens=0, *, input_only=False):

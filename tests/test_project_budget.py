@@ -11,6 +11,7 @@ from app.ai.execution_control import ModelAdmissionRefused
 from app.agent_runtime import AgentTool, ToolEffect, ToolResult
 from app.agent_runtime.contracts import AgentEventKind as E
 from app.project_runner.budget import BudgetedModelExecutor, ProjectBudget
+from app.project_runner import budget as budget_module
 from app.project_runner.store import ProjectStore, encoded
 from test_project_runner import PLAN, build, control, create, cycle, reply
 
@@ -302,3 +303,27 @@ def test_a_request_whose_connection_never_opened_costs_nothing(tmp_path, cause, 
     position = budget.report(run)
     assert position["unknownRequests"] == (1 if billed else 0)
     assert (position["assumedUnknownTokens"] > 0) is billed
+
+
+def test_cached_input_counts_at_a_tenth_like_a_long_goals(tmp_path):
+    # An episode re-sends its history on every step; a 98%-cached run ate a budget sized for real work.
+    from app.project_runner import goal
+    from app.project_runner.budget import event_tokens, weighted
+    assert weighted(1000, 900) == 190 and weighted(1000) == 1000 and weighted(100, 500) == 10
+    assert goal.CACHED_WEIGHT == budget_module.CACHED_WEIGHT, "one rule for goals and projects"
+    store, run, budget = ledger(tmp_path, budget=10_000)
+    item = episode(store, run)
+    event = SimpleNamespace(event_id=str(uuid.uuid4()), session_id="s1", turn_id=item["turnId"], kind=E.MODEL_RESPONSE,
+                            data={"usage": {"total_tokens": 1000, "cached_input_tokens": 900}})
+    assert event_tokens(event) == 190
+    cached = Inner(0)
+    cached.outcomes = [ModelUsage(input_tokens=950, output_tokens=50, total_tokens=1000, cached_input_tokens=900)]
+    cached.execute = lambda *a, **k: ModelResponse(text="ok", usage=cached.outcomes.pop(0))
+    BudgetedModelExecutor(cached, budget).execute(None, "p", request(), None)
+    assert charged(budget, run) == 190, "a returned request is charged the same way as its event"
+    budget.observe(event)
+    with store.transaction() as db:
+        current = store._read(db, run["id"])
+        assert budget.settle(db, current, item, {"usage": [(event.event_id, event_tokens(event))]}, store.save) == 190
+        store.save(db, current, "settled")
+    assert store.get(run["id"])["tokensUsed"] == 190

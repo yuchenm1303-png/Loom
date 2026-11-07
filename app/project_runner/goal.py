@@ -24,10 +24,10 @@ from app.agent_runtime.contracts import AgentEventKind, AgentStatus
 from app.ai.contracts import MessageRole
 from app.agent_runtime.durable_state import GoalStatus
 from app.agent_runtime.turn_plan import PLAN_TOOLS
+from .budget import CACHED_WEIGHT
 
 GOALS_FILE = "weave-goals.json"
 RETRIES_FILE = "weave-start-retries.json"
-CACHED_WEIGHT = 0.1
 MAX_TURNS = 300
 MAX_CHECKS = 3  # rejected checks before the person decides
 MAX_CHECK_FAULTS = 2  # a checker that died or gave no verdict is run again, not believed
