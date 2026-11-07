@@ -139,10 +139,11 @@ export function ThreadHeader({
           <span className="thread-status-label">{state.label}</span>
         </span>
 
-        {/* The build hub has no single conversation context to budget, so the meter is a chat-only control. */}
-        {onCompactContext && mode !== "project" ? (
+        {/* The build hub has no single conversation context to budget, so the meter is a chat-only control. It is
+            handed no reading there rather than unmounted, so its own presence fades it out (and back in). */}
+        {onCompactContext ? (
           <ContextMeter
-            report={context}
+            report={mode === "project" ? null : context}
             pending={contextPending}
             compacting={compacting}
             progress={compactionProgress}
