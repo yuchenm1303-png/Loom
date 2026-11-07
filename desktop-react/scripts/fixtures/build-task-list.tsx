@@ -18,7 +18,8 @@ applyThemePreference(params.get("theme") === "light" ? "light" : "dark", { anima
 Object.assign(window, { loom: { queryModelUsage: async () => ({ status: "ok", provider: "m", checkedAt: Date.now(), balances: [], windows: [] }),
   async call(method: string, params?: unknown) {
     if (method === "projectWeave/goal") { (window as unknown as { goalCalls: unknown[] }).goalCalls.push(params); return {}; }
-    if (method === "projectRun/overview") return { goal: params2.get("goal") ? { objective: "研究 AI-RAN", status: "active", phase: "working", tokens: 1200000, tokenBudget: 8000000, turns: 3, reason: "", summary: "", checked: false } : null, run: null, program: null, children: [], agents: [], events: [], workspace: { path: "C:/work/loom", branch: "main", status: "ready" } };
+    if (method === "projectRun/overview") return { goal: params2.get("goal") ? { objective: "研究 AI-RAN", status: "active", phase: "working", tokens: 1200000, tokenBudget: 8000000, turns: 3, reason: "", summary: "", checked: false,
+      ...(params2.get("goal") === "agents" ? { agents: 2 } : params2.get("goal") === "deepen" ? { deepens: 1, hours: 8 } : params2.get("goal") === "retry" ? { retryAt: Date.now() / 1000 + 600 } : {}) } : null, run: null, program: null, children: [], agents: [], events: [], workspace: { path: "C:/work/loom", branch: "main", status: "ready" } };
     throw new Error(`no ${method} here`);
   } } });
 

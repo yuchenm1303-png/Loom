@@ -70,6 +70,18 @@ try {
     assert.equal(await goalPage.evaluate(() => window.goalCalls[0].action), "pause");
     if (process.env.LOOM_TASKS_SCREENSHOT) await goalPage.screenshot({ path: `${process.env.LOOM_TASKS_SCREENSHOT}-goal-${theme}.png` });
     await goalPage.close();
+
+    // What the goal is doing beyond "running": sub-agents at work, a pass that went deeper, a provider being waited out.
+    for (const [kind, expected] of [["agents", /长目标进行中，2 个子代理在工作/], ["deepen", /检查已通过，正用剩余时间加深（第 1 轮）/],
+                                    ["retry", /模型服务暂时不可用，\d\d:\d\d 自动重试/]]) {
+      const kindPage = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+      await kindPage.goto(`${origin}/scripts/fixtures/build-task-list.html?theme=${theme}&goal=${kind}`);
+      const row = kindPage.locator(".pf-goal");
+      await row.waitFor();
+      assert.match(await row.innerText(), expected, kind);
+      if (process.env.LOOM_TASKS_SCREENSHOT) await kindPage.screenshot({ path: `${process.env.LOOM_TASKS_SCREENSHOT}-goal-${kind}-${theme}.png` });
+      await kindPage.close();
+    }
   }
   console.log("The task list is a branch of its own: explained while empty, opens with the list, follows it, folds, and leaves the plan card alone");
 } finally { await browser.close(); }
