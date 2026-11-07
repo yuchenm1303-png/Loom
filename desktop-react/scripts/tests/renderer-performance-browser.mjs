@@ -86,6 +86,9 @@ try {
   await page.locator(".markdown-body").filter({ hasText: "Loaded visual-2" }).waitFor();
   await page.waitForTimeout(500);
   const baseline = await memory();
+  // The active conversation and the conversations palette each hold one for the life of the app.
+  const listenersBefore = await page.evaluate(() => window.performanceFixture.listenerCount());
+  assert.equal(listenersBefore, 2, "one subscription per owner");
   for (let index = 0; index < 12; index++) {
     await select("visual-0");
     await page.locator(".turn-final-answer").nth(19).waitFor();
@@ -94,7 +97,8 @@ try {
   }
   await page.waitForTimeout(500);
   const final = await memory();
-  assert.equal(await page.evaluate(() => window.performanceFixture.listenerCount()), 1);
+  assert.equal(await page.evaluate(() => window.performanceFixture.listenerCount()), listenersBefore,
+    "switching conversations must not add notification listeners");
   assert.equal(final.jsEventListeners, baseline.jsEventListeners, "switching must release old listeners");
   assert.ok(final.nodes <= baseline.nodes + 100, `old DOM accumulated: ${baseline.nodes} -> ${final.nodes}`);
   assert.equal(final.documents, baseline.documents);

@@ -1,7 +1,7 @@
 .project-runs { color:var(--sr-ink,#edf0f3); max-width:1120px; margin:auto; display:grid; gap:20px; font-size:13px; line-height:1.6; }
 .project-runs * { box-sizing:border-box; }
 .project-runs :is(h1,h2,h3,p) { margin:0; }
-.project-runs h1 { font-size:25px; font-weight:600; }
+.project-runs h1 { font-size:24px; font-weight:600; }
 .project-runs h2 { font-size:16px; font-weight:600; }
 .project-runs h3 { font-size:14px; }
 .project-runs header { display:grid; gap:7px; }
