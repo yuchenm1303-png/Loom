@@ -283,7 +283,11 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       onDismiss: proposal ? () => act(() => window.loom.call("projectWeave/dismiss", { threadId, proposalId: proposal.id })) : undefined,
       imagesAllowed, imageSupport,
       onGoal: (action) => act(() => window.loom.call("projectWeave/goal", { threadId, action })),
-      onChat: onChat ? (text, attachments, tokens) => { setError(""); void onChat(text, attachments, tokens).catch((cause) => setError(readableError(cause instanceof Error ? cause.message : String(cause), lang))); } : undefined,
+      onChat: onChat ? async (text, attachments, tokens) => {
+        setError("");
+        try { await onChat(text, attachments, tokens); }
+        catch (cause) { setError(readableError(cause instanceof Error ? cause.message : String(cause), lang)); throw cause; }
+      } : undefined,
       onInterrupt: onInterrupt ? () => { void onInterrupt(); } : undefined,
       onPermissionModeChange,
       onOpenThread: onOpenThread ? (id) => onOpenThread(id) : undefined,

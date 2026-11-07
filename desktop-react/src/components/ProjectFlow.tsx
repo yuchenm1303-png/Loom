@@ -25,6 +25,7 @@ import {
 import { BuildHistory, type BuildHistoryEntry } from "./BuildHistory";
 import { NewConversationRow } from "./NewConversationRow";
 import { MarkdownMessage } from "./MarkdownMessage";
+import { ProjectDecisionReply } from "./ProjectDecisionReply";
 import { ApprovalCard, ErrorRow } from "./Transcript";
 import { ThinkingGlyph } from "./ThinkingGlyph";
 import { WeaveStage } from "./WeaveFlow";
@@ -127,7 +128,7 @@ export interface FlowActions {
   workspaceControls?: ReactNode;
   onChooseWorkspace?(): void;
   /** A message to the conversation's agent, with the files pasted, dropped or picked into the field. */
-  onChat?(text: string, attachments: { path: string; name: string }[], tokens?: number): void;
+  onChat?(text: string, attachments: { path: string; name: string }[], tokens?: number): Promise<void> | void;
   /** The long goal's stop, resume and dismiss. */
   onGoal?(action: "pause" | "resume" | "dismiss"): void;
   /** Whether the model can take the images attached to a message, and whether that is known (the chat composer's gate). */
@@ -654,8 +655,9 @@ function CopyReply({ value, label, done }: { value: string; label: string; done:
  *  then the Host's manifest read back from the text. */
 function Said({ message, workspace }: { message: FlowMessage; workspace?: string }) {
   const parsed = optimisticUserMessageContent(message.text, message.attachments);
-  if (!parsed.attachments.length) return <div className="pf-bubble pf-said"><span className="pf-said-text">{message.text}</span></div>;
-  return <div className="pf-bubble pf-said pf-said-files"><UserMessageContent parsed={parsed} workspace={workspace} /></div>;
+  const receipt = { "data-loom-message-kind": "user", "data-loom-message-text": message.text };
+  if (!parsed.attachments.length) return <div className="pf-bubble pf-said" {...receipt}><span className="pf-said-text">{message.text}</span></div>;
+  return <div className="pf-bubble pf-said pf-said-files" {...receipt}><UserMessageContent parsed={parsed} workspace={workspace} /></div>;
 }
 
 function Pulse({ of, d, step, back = false }: { of: string; d: string; step: number; back?: boolean }) {
@@ -992,7 +994,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     const value = draft.trim();
     if (!value && !attached.length) return;
     if (imageNotice.blocked) return;
-    if (actions.onChat) actions.onChat(value, attached.map((item) => ({ path: item.path, name: item.name })), tokens);
+    if (actions.onChat) void Promise.resolve(actions.onChat(value, attached.map((item) => ({ path: item.path, name: item.name })), tokens)).catch(() => undefined);
     else if (!draftMode && value) actions.onSteer?.(value);
     // What the person just said is where they are reading.
     following.current = true;
@@ -1178,8 +1180,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
             </div>
           ) : (
             <div key={message.id} className="pf-reply" data-streaming={message.live || undefined}>
-              <MarkdownMessage content={message.text} compact glow streaming={message.streaming} messageKey={message.id}
-                               workspace={data.repository.path} />
+              <ProjectDecisionReply content={message.text} streaming={message.streaming} live={message.live} messageKey={message.id}
+                                    workspace={data.repository.path} disabled={actions.busy || data.chatting || renewing || accessChanging}
+                                    onSubmit={actions.onChat ? async (value) => { await actions.onChat!(value, [], tokens); } : undefined} />
               {/* An answer is copied once its turn is over: until then this is narration, whatever follows it. */}
               {message.live ? null : <CopyReply value={message.text} label={text.copy} done={text.copied} />}
             </div>
