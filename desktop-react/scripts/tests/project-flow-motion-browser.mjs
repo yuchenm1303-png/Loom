@@ -524,6 +524,47 @@ try {
     await page.close();
   }
 
+  // As a build starts, the draft's plan card leaves where it stood and the run's arrives higher up, as the hub above
+  // them shrinks. The newcomer is born in sight, from its dot: it once cut itself against the leaving card held below
+  // it, stayed hidden through its birth and came into sight nine tenths born.
+  {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.goto(`${origin}/scripts/fixtures/project-flow.html?at=0&draft=1&proposal=1&theme=dark`);
+    await page.locator('[data-glide="plan-draft"]').waitFor();
+    await page.waitForTimeout(1200);
+    const seen = await page.evaluate(async () => {
+      const length = (value, size) => {
+        let m;
+        if ((m = value.match(/^calc\(\(100% - ([-\d.]+)px\) \* ([-\d.]+)\)$/))) return (size - +m[1]) * +m[2];
+        if ((m = value.match(/^calc\(([-\d.]+)% - ([-\d.]+)px\)$/))) return size * +m[1] / 100 - +m[2];
+        if ((m = value.match(/^calc\(100% - ([-\d.]+)px\)$/))) return size - +m[1];
+        return value.endsWith("%") ? size * parseFloat(value) / 100 : parseFloat(value);
+      };
+      const insets = (node) => {
+        const clip = getComputedStyle(node).clipPath;
+        if (!clip || clip === "none") return [0, 0, 0, 0];
+        const [t, r = t, b = t, l = r] = clip.replace(/^inset\(/, "").replace(/ round .*$|\)$/g, "").match(/calc\((?:[^()]|\([^()]*\))*\)|[^ ]+/g);
+        const w = node.offsetWidth, h = node.offsetHeight;
+        return [length(t, h), length(r, w), length(b, h), length(l, w)].map((value) => Math.max(0, value));
+      };
+      const shown = (node) => { const box = node.getBoundingClientRect(), [t, r, b, l] = insets(node); return { x0: box.left + l, y0: box.top + t, x1: box.right - r, y1: box.bottom - b }; };
+      const frames = [];
+      window.projectControlsFixture.activate();
+      for (const end = performance.now() + 2400; performance.now() < end;) {
+        await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+        const slot = document.querySelector('[data-glide="plan"]:not([data-leaving])'), card = slot?.querySelector(":scope > .pf-card");
+        if (!card) continue;
+        const a = shown(card), b = shown(slot);
+        frames.push(Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0)));
+      }
+      return frames;
+    });
+    const whole = seen.at(-1);
+    const pops = seen.filter((area, index) => index && seen[index - 1] < whole * 0.05 && area > whole * 0.3);
+    assert.ok(whole > 10000 && pops.length === 0, `the run's plan card is born in sight: ${JSON.stringify({ whole, pops, seen: seen.map(Math.round) })}`);
+    await page.close();
+  }
+
   const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
   await page.goto(`${origin}/scripts/fixtures/project-flow.html?at=0&draft=1&dirty=1&proposal=1`);
   await settle(page);

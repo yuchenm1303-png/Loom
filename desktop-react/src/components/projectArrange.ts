@@ -71,6 +71,19 @@ export const EXIT_HOLD = DUR.base;
  *  with the neighbours in the middle of closing the room dropped frames right where they move fastest. */
 export const LEAVE_RETAIN = EXIT_HOLD + HUB_CLOCK + LONG_WAY_MOST + 3 * RIPPLE_MS + RETAIN_MARGIN_MS;
 /** The transitions that change a card's size (project-flow.css runs them on the hub's clock). */
+/** The beats of an arrival, which wait together while its room is still taken. */
+const BEATS = new Set(["pf-shell", "pf-part", "pf-row", "pf-mark"]);
+/** How far a neighbour may still reach over the point a newcomer grows out of before the newcomer waits for it. */
+const COVER_SLACK = 2;
+/** Whether an arriving card's shape has begun (or is gone, done): its clip-path beat is past its delay. */
+const shapeOfBirth = (surface: HTMLElement) => surface.getAnimations().find((running) => running.id === "pf-shell"
+  && running.effect instanceof KeyframeEffect && "clipPath" in (running.effect.getKeyframes()[0] ?? {}));
+/** How long until an arriving card's shape sets off (0 once it has, or is done). */
+function shapeLeft(surface: HTMLElement) {
+  const shape = shapeOfBirth(surface);
+  return shape ? Math.max(0, Number(shape.effect?.getTiming().delay ?? 0) - Number(shape.currentTime ?? 0)) : 0;
+}
+function bornYet(surface: HTMLElement) { return shapeLeft(surface) <= 0; }
 const SIZE = /height|width|padding|margin|gap|grid-template/;
 const ENTRANCE_IDS = new Set(["pf-glide", "pf-row", "pf-shell", "pf-part", "pf-mark", "pf-exit"]);
 
@@ -327,8 +340,26 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
   const held = useRef(new Map<HTMLElement, Place>());  // leaving cards and the place they are held at
   const reveals = useRef<Reveal[]>([]);
   const clock = useRef<Animation | null>(null);
+  // Newcomers whose room a neighbour still covers, and their beats, paused before the first.
+  const waiting = useRef(new Map<HTMLElement, { beats: Animation[]; since: number; left: number }>()).current;
+  const resume = (surface: HTMLElement) => {
+    const { beats = [], since = 0, left = 0 } = waiting.get(surface) ?? {};
+    waiting.delete(surface);
+    // A card that started to leave meanwhile had its beats called off: they stay off.
+    if (surface.closest("[data-leaving]")) return;
+    // The wait counts toward the shape's lead (its cable went on growing meanwhile): it sets off when it would have,
+    // or now if that has passed, not a whole lead after its room came free.
+    const ahead = Math.max(0, Math.min(performance.now() - since, left));
+    for (const beat of beats) {
+      if (beat.playState !== "paused") continue;
+      beat.currentTime = Number(beat.currentTime ?? 0) + ahead;
+      beat.play();
+    }
+  };
+  const resumeAll = () => { for (const surface of [...waiting.keys()]) resume(surface); };
 
   const clear = () => {
+    resumeAll();
     for (const { node, hung } of reveals.current) {
       node.style.clipPath = "";
       shownEdges.delete(node);
@@ -342,7 +373,7 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     const wires = stage.current?.querySelector(".pf-cables");
     if (moving) wires?.setAttribute("data-moving", ""); else wires?.removeAttribute("data-moving");
   };
-  useLayoutEffect(() => () => { cancelAnimationFrame(frame.current); clock.current?.cancel(); stopAll(); }, []);
+  useLayoutEffect(() => () => { cancelAnimationFrame(frame.current); clock.current?.cancel(); stopAll(); resumeAll(); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => onReducedMotionChange(() => {
     if (!prefersReducedMotionNow()) return;
     cancelAnimationFrame(frame.current);
@@ -505,8 +536,18 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
         const all = [...column.children].filter((item): item is HTMLElement => item instanceof HTMLElement && item.hasAttribute("data-glide"));
         // An arriving card's neighbours may be leaving (it unrolls against them); a leaving or growing card's
         // neighbours are the cards that stay put in the layout, never a newcomer (which has no room of its own yet).
+        // A leaving card is held where it was, which is not always on its side of the newcomer: as a build starts,
+        // the draft's plan card is held low while the new one arrives higher up (the hub above them shrank). Cut
+        // against it, the new card stayed hidden until the old one was gone, and came into sight half born.
+        const centre = to.y + to.height / 2;
+        const besideIt = (item: HTMLElement) => {
+          const held = startOf(item);
+          if (!held) return false;
+          return all.indexOf(item) < all.indexOf(node) ? held.y + held.height / 2 < centre : held.y + held.height / 2 > centre;
+        };
         const siblings = all.filter((item) => item === node
-          || (kind === "arrive" ? staying(item) || kindOf.get(item) === "leave" : staying(item) && kindOf.get(item) !== "arrive"));
+          || (kind === "arrive" ? staying(item) || (kindOf.get(item) === "leave" && besideIt(item))
+            : staying(item) && kindOf.get(item) !== "arrive"));
         const index = siblings.indexOf(node);
         prev = siblings[index - 1];
         after = siblings[index + 1];
@@ -661,9 +702,28 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
         reveal.node.style.clipPath = `inset(${above.toFixed(1)}px 0 ${below.toFixed(1)}px 0 round ${reveal.round}px)`;
         shownEdges.set(reveal.node, { top, bottom });
       }
+      // A newcomer is born only once its room is clear. Its beats run on their own clock, and a neighbour still
+      // gliding through that room (the hub going up as a build starts, under the plan card) cut it away while
+      // they played: the card came into sight two thirds born and finished in a blink. Until the neighbour has
+      // left the spot its shape grows out of, its beats wait where they are, before the first.
+      const arriving = new Set<HTMLElement>();
+      for (const { reveal, box, top, bottom } of cuts) {
+        if (reveal.kind !== "arrive" || !reveal.morph) continue;
+        const surface = reveal.node.querySelector<HTMLElement>(":scope > .pf-card");
+        if (!surface) continue;
+        arriving.add(surface);
+        const plug = box.top + (surface.dataset.side === "below" ? 0 : Math.min(34, box.height / 2));
+        const covered = plug < top - COVER_SLACK || plug > bottom + COVER_SLACK;
+        if (covered && !waiting.has(surface) && !bornYet(surface)) {
+          const beats = surface.getAnimations({ subtree: true }).filter((running) => BEATS.has(running.id));
+          for (const beat of beats) beat.pause();
+          waiting.set(surface, { beats, since: performance.now(), left: shapeLeft(surface) });
+        } else if (!covered && waiting.has(surface)) resume(surface);
+      }
+      for (const surface of [...waiting.keys()]) if (!arriving.has(surface) || !surface.isConnected) resume(surface);
       onFrame(first, first ? hold : undefined);
       first = false;
-      if (t < 1 || performance.now() < until || gliding.current.size) frame.current = requestAnimationFrame(tick);
+      if (t < 1 || performance.now() < until || gliding.current.size || waiting.size) frame.current = requestAnimationFrame(tick);
       else { clear(); onFrame(); }
     };
     cancelAnimationFrame(frame.current);

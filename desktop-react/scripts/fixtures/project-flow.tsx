@@ -226,6 +226,8 @@ function variantOf(data: FlowData): FlowData {
     proposal: params.has("proposal") ? PROPOSAL : undefined };
   if (params.has("attention")) return { ...data, state: "needs_you", attention: { reason: "token 预算已用完。", action: "budget" },
     controls: { pause: false, resume: false, cancel: true }, agents: data.agents.filter((agent) => agent.done) };
+  // &noplan=1: the milestone has started but its plan isn't made yet (the plan card shows its empty line).
+  if (params.has("noplan")) return { ...data, tasks: [] };
   return data;
 }
 
