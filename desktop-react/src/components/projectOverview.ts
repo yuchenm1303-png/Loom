@@ -401,6 +401,7 @@ export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "z
   const spent = `${money(goal.tokens)} / ${money(goal.tokenBudget)}`;
   const en = lang === "en";
   const line = (zh: string, english: string) => `${en ? english : zh} · ${spent}`;
+  if (goal.status === "active" && goal.phase === "approval") return { text: line("长目标在等你批准", "The long goal is waiting for your approval"), detail: goal.objective, live: false, action: "pause", dismiss: false };
   if (goal.status === "active" && goal.phase === "checking") return { text: line("正在独立检查结果", "Independently checking the result"), detail: goal.objective, live: true, action: "pause", dismiss: false };
   if (goal.status === "active") return { text: line("长目标进行中", "Long goal running"), detail: goal.objective, live: true, action: "pause", dismiss: false };
   if (goal.status === "complete") {

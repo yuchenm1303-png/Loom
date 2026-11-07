@@ -72,6 +72,7 @@ def test_a_goal_keeps_going_until_a_check_agrees(tmp_path):
         assert state(service, source)["turns"] == 1, "a turn that ended is not the end of the goal"
         tick(service, source)
         assert runtime.get_goal(source).status is GoalStatus.COMPLETE, "the agent's claim, read by the driver next"
+        assert state(service, source)["phase"] == "checking" and state(service, source)["status"] == "active",             "a claim never shows as finished: seen in real Electron as 'the check could not be completed'"
         tick(service, source, 3)
         final = state(service, source)
         assert final["status"] == "complete" and final["checked"] is True and final["phase"] == "done"
@@ -145,8 +146,49 @@ def test_a_checker_stopped_by_a_limit_is_asked_for_its_verdict_before_it_is_repl
         runtime.close()
 
 
+@pytest.mark.parametrize("status", ["RUNNING", "WAITING_APPROVAL"])
+def test_a_checker_nothing_is_running_is_replaced_not_waited_for(tmp_path, status):
+    # Killing the app mid-check left the goal "checking" for good: on disk the checker was still running.
+    service, runtime, _, source = conversation(tmp_path, [START, DONE, answer("做完了"), answer("读到一半"), PASSED])
+    try:
+        tick(service, source)
+        first = service.weave_goals.get(source)["checkerId"]
+        session = service.store.load(first)
+        session.status = getattr(type(session.status), status)
+        service.store.save(session)
+        tick(service, source)
+        assert service.weave_goals.get(source)["checkerId"] != first, "a new checker, not an endless wait"
+        tick(service, source)
+        assert state(service, source)["checked"] is True
+    finally:
+        runtime.close()
+
+
+def test_a_goal_waiting_for_an_approval_says_so(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [START, answer("0")])
+    try:
+        session = service.store.load(source)
+        session.status = type(session.status).WAITING_APPROVAL
+        service.store.save(session)
+        assert state(service, source)["phase"] == "approval"
+    finally:
+        runtime.close()
+
+
 def test_turns_without_a_tool_stop_as_stalled(tmp_path):
     service, runtime, platform, source = conversation(tmp_path, [START, answer("0"), answer("1"), answer("2"), answer("3")])
+    try:
+        tick(service, source, 6)
+        assert state(service, source)["status"] == "blocked" and "no progress" in state(service, source)["reason"]
+        assert state(service, source)["turns"] == 2
+    finally:
+        runtime.close()
+
+
+def test_a_tool_that_keeps_failing_is_not_progress(tmp_path):
+    # Seen in real Electron: a refused mark_thread_goal, turn after turn, every three seconds until the budget.
+    refused = calling("mark_thread_goal", {"status": "not-a-status"})
+    service, runtime, _, source = conversation(tmp_path, [START, answer("0"), refused, answer("a"), refused, answer("b"), answer("c")])
     try:
         tick(service, source, 6)
         assert state(service, source)["status"] == "blocked" and "no progress" in state(service, source)["reason"]

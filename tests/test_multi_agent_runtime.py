@@ -154,6 +154,24 @@ def test_model_can_spawn_wait_and_receive_independent_child_result(tmp_path):
     runtime.close()
 
 
+def test_a_sub_agent_runs_on_the_conversations_model_not_the_hosts_default(tmp_path):
+    runtime, _, default = _runtime(tmp_path)
+    chosen = DelegationPlatform()
+    try:
+        parent = runtime.create_session(AGENT_FAST_ROLE, permission_mode="workspace")
+        parent.model, parent.model_selection = "chosen-model", "profile:chosen"
+        runtime.store.save(parent)
+        runtime.set_session_model(parent.session_id, chosen, reasoning=None)
+
+        snapshot = runtime.agent_control.spawn(parent.session_id, "Inspect delegated task", background=False)
+
+        assert chosen.requests and not default.requests, "the person chose this model for this conversation"
+        child = runtime.store.load(snapshot.node.session_id)
+        assert (child.model, child.model_selection) == ("chosen-model", "profile:chosen")
+    finally:
+        runtime.close()
+
+
 def test_agent_messages_use_durable_queue_and_tree_boundary(tmp_path):
     runtime, store, _ = _runtime(tmp_path)
     workspace = tmp_path / "project"

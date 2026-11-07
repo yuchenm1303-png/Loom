@@ -33,6 +33,7 @@ test("a long goal reads as one line with the move the person has", () => {
   assert.equal(toGoal(null), null);
   assert.deepEqual(toGoal(base), { text: "长目标进行中 · 1.2M / 8M", detail: "研究 AI-RAN", live: true, action: "pause", dismiss: false });
   assert.match(toGoal({ ...base, phase: "checking" }).text, /独立检查/);
+  assert.match(toGoal({ ...base, phase: "approval" }).text, /等你批准/, "nothing moves until it is answered, so it never reads as running");
   assert.equal(toGoal({ ...base, status: "paused" }).action, "resume");
   assert.equal(toGoal({ ...base, status: "budget_limited" }).action, "resume");
   const blocked = toGoal({ ...base, status: "blocked", reason: "缺数据" });

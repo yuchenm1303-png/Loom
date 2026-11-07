@@ -154,7 +154,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     return () => window.removeEventListener("focus", again);
   }, [load]);
 
-  const resting = !chatting && (!overview?.run || ["integrated", "cancelled"].includes(overview.run.state) ||
+  const resting = !chatting && overview?.goal?.status !== "active" && (!overview?.run || ["integrated", "cancelled"].includes(overview.run.state) ||
     overview.run.state === "needs_review" || overview.run.control === "budget_limited");
   useEffect(() => {
     const timer = window.setInterval(() => { if (!document.hidden) void load(); }, resting ? REST_POLL_MS : LIVE_POLL_MS);

@@ -18,6 +18,10 @@ from .contracts import AgentRunResult, AgentSession, AgentStatus
 from .history import repair_tool_history
 
 
+_MODEL_FIELDS = ("model_selection", "model", "model_provider", "model_base_url", "model_vision",
+                 "reasoning_kind", "reasoning_value")
+
+
 @dataclass(frozen=True, slots=True)
 class AgentExecutionSnapshot:
     node: AgentNode
@@ -154,6 +158,16 @@ class AgentControl:
             permission_mode=parent.permission_mode,
             emit_session_created=False,
         )
+        # A conversation's model is on its session, not the Host's default: without this
+        # every sub-agent silently ran on whatever model the Host was started with.
+        for name in _MODEL_FIELDS:
+            setattr(child, name, getattr(parent, name))
+        if self.runtime.has_session_model(parent.session_id):
+            self.runtime.set_session_model(
+                child.session_id,
+                self.runtime.platform_for_session(parent.session_id),
+                reasoning=self.runtime.reasoning_for_session(parent.session_id),
+            )
         child.messages = self._inherited_history(
             parent,
             mode=resolved_history,

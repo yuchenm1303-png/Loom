@@ -20,8 +20,9 @@ import threading
 import time
 import uuid
 
-from app.agent_runtime.contracts import AgentStatus
+from app.agent_runtime.contracts import AgentEventKind, AgentStatus
 from app.agent_runtime.durable_state import GoalStatus
+from app.agent_runtime.turn_plan import PLAN_TOOLS
 
 GOALS_FILE = "weave-goals.json"
 CACHED_WEIGHT = 0.1
@@ -29,7 +30,8 @@ MAX_TURNS = 300
 MAX_CHECKS = 3  # rejected checks before the person decides
 MAX_CHECK_FAULTS = 2  # a checker that died or gave no verdict is run again, not believed
 MAX_FAILURES = 8
-MAX_STALLS = 2  # goal turns in a row without a tool call
+MAX_STALLS = 2  # goal turns in a row with no tool call that worked
+EVENTS_READ = 500  # the end of a turn; any success in a longer one is in there too
 RETRY_BASE, RETRY_MAX = 60, 1800
 USAGE_EVERY, CHECK_EVERY = 30, 5
 _BUSY = {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}
@@ -137,6 +139,7 @@ def _finish(service, thread_id, record, summary, checked):
 
 
 def _spawn_checker(service, thread_id, record, objective):
+    service._prepare_turn(service.store.load(thread_id))  # the conversation's model, freshly connected
     snapshot = service.runtime.agent_control.spawn(thread_id, CHECK_PROMPT + objective, role="goal-check",
                                                    history_mode="none", background=True)
     record.update(phase="checking", checkerId=snapshot.node.session_id, checkerPressed=False)
@@ -162,8 +165,11 @@ def _collect(service, thread_id, record, objective):
     """Read the checker's verdict once it has finished."""
     control = service.runtime.agent_control
     snapshot = control.snapshot(thread_id, record["checkerId"])
-    if snapshot.execution_running or snapshot.session_status in _BUSY:
+    if snapshot.execution_running:
         return False
+    # Still "running" on disk with nothing running it: the app was killed. Waiting for an approval: no one
+    # sees a checker's. Either way it will never answer, and waiting for it would hold the goal for good.
+    waiting = snapshot.session_status is AgentStatus.WAITING_APPROVAL
     verdict = _verdict(snapshot.final_text or "") if snapshot.session_status is AgentStatus.COMPLETED else None
     if snapshot.session_status is AgentStatus.LIMIT_REACHED and not record.get("checkerPressed"):
         # What it has seen so far is worth more than a new checker starting from nothing.
@@ -179,7 +185,8 @@ def _collect(service, thread_id, record, objective):
         if record["checkFaults"] < MAX_CHECK_FAULTS:
             _spawn_checker(service, thread_id, record, objective)
             return True
-        return _finish(service, thread_id, record, str((verdict or {}).get("summary") or "The check could not be completed."), False)
+        unfinished = "The check stopped at a command that needs approval." if waiting else "The check could not be completed."
+        return _finish(service, thread_id, record, str((verdict or {}).get("summary") or unfinished), False)
     summary = str(verdict.get("summary") or "")
     if verdict["verdict"] == "passed":
         return _finish(service, thread_id, record, summary, True)
@@ -191,6 +198,13 @@ def _collect(service, thread_id, record, objective):
                      f"An independent check rejected the work {record['checks']} times: {summary}")
     service.weave_goals.put(thread_id, record)
     return True
+
+
+def _made_progress(service, thread_id, turn):
+    """Whether a turn got any real work done. Calling a tool that keeps failing is not progress."""
+    return any(event.turn_id == turn and event.kind is AgentEventKind.TOOL_COMPLETED and event.data.get("ok")
+               and event.data.get("tool") not in PLAN_TOOLS
+               for event in service.store.events(thread_id, limit=EVENTS_READ))
 
 
 def _settle_turn(service, thread_id, record, session):
@@ -209,7 +223,7 @@ def _settle_turn(service, thread_id, record, session):
         return False
     record["failures"] = 0
     if turn == record.get("goalTurn"):
-        record["stalls"] = 0 if session.tool_calls else record["stalls"] + 1
+        record["stalls"] = 0 if _made_progress(service, thread_id, turn) else record["stalls"] + 1
         if record["stalls"] >= MAX_STALLS:
             return _stop(service, thread_id, record, GoalStatus.BLOCKED,
                          f"{MAX_STALLS} turns in a row made no progress: {str(session.final_text or '')[:600]}")
@@ -314,6 +328,11 @@ def view(service, thread_id):
     goal = service.runtime.get_goal(thread_id) if record else None
     if goal is None:
         return None
-    return {"objective": goal.objective[:300], "status": goal.status.value, "phase": record["phase"],
+    claimed = goal.status is GoalStatus.COMPLETE and record["phase"] != "done"  # until the check says so, it is not done
+    phase = "checking" if claimed else record["phase"]
+    if phase == "working" and service.store.load(thread_id).status is AgentStatus.WAITING_APPROVAL:
+        phase = "approval"  # nothing moves until the person answers, however long the night
+    return {"objective": goal.objective[:300], "status": "active" if claimed else goal.status.value,
+            "phase": phase,
             "tokens": record["tokens"], "tokenBudget": record["tokenBudget"], "turns": record["turns"],
             "reason": record["reason"], "summary": record["summary"], "checked": record["checked"]}
