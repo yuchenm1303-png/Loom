@@ -5,7 +5,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Blocks, RotateCw } from "../components/icons";
+import {
+  Blocks,
+  Bot,
+  ChevronRight,
+  FileText,
+  GitBranch,
+  ListChecks,
+  MessageSquareText,
+  RotateCw,
+  ShieldCheck,
+  Compass,
+} from "../components/icons";
 import {
   toFlowData,
   toGoal,
@@ -20,14 +31,82 @@ import {
   type BuildSettings,
 } from "./mobileProjectState";
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+const GLYPH = { size: 19, strokeWidth: 1.75 } as const;
+
+function Section({
+  title,
+  icon,
+  tone,
+  children,
+}: {
+  title: string;
+  icon?: ReactNode;
+  tone?: "wait";
+  children: ReactNode;
+}) {
   return (
-    <section className="m-card">
-      <h2>{title}</h2>
+    <section className={`m-card${tone ? ` is-${tone}` : ""}`}>
+      <div className="m-card-head">
+        {icon ? (
+          <span className={`m-tile${tone ? ` is-${tone}` : ""}`} aria-hidden="true">
+            {icon}
+          </span>
+        ) : null}
+        <div>
+          <h2>{title}</h2>
+        </div>
+      </div>
       {children}
     </section>
   );
 }
+
+/** Large counts the way people say them: 1,000,000 reads as 100 万. */
+export function readableCount(value: unknown): string {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "";
+  const trim = (n: number) => String(Math.round(n * 10) / 10);
+  if (number >= 1e8) return `${trim(number / 1e8)} 亿`;
+  if (number >= 1e4) return `${trim(number / 1e4)} 万`;
+  return number.toLocaleString();
+}
+
+function NumberField({
+  label,
+  value,
+  min,
+  max,
+  disabled,
+  hint,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  min: number;
+  max: number;
+  disabled?: boolean;
+  hint?: string;
+  onChange(value: string): void;
+}) {
+  return (
+    <label className="m-field">
+      {label}
+      <input
+        type="number"
+        aria-label={label}
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step="1"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {hint ? <span className="m-field-hint">{hint}</span> : null}
+    </label>
+  );
+}
+
 const STATE: Record<string, string> = {
   running: "运行中",
   paused: "已暂停",
@@ -39,6 +118,16 @@ const STATE: Record<string, string> = {
   review: "复审中",
   rework: "需要返工",
   integrated: "已集成",
+};
+const TONE: Record<string, "run" | "wait" | "on" | undefined> = {
+  running: "run",
+  starting: "run",
+  working: "run",
+  review: "run",
+  needs_you: "wait",
+  rework: "wait",
+  completed: "on",
+  integrated: "on",
 };
 const initialSettings: BuildSettings = {
   tokens: "1000000",
@@ -239,86 +328,79 @@ export function MobileBuildPanel({
     )
       onBudget(Number(value));
   };
+  const tokenHint = (value: string) =>
+    readableCount(value) ? `约 ${readableCount(value)} token` : "1 – 10 亿";
   const fields = (
     <div className="m-build-fields">
-      <label className="m-field">
-        总 token 预算
-        <input
-          type="number"
-          inputMode="numeric"
-          min="1"
-          max="1000000000"
-          step="1"
-          value={settings.tokens}
-          disabled={disabled}
-          onChange={(event) => update("tokens", event.target.value)}
-        />
-      </label>
-      <label className="m-field">
-        并发 Agent 数
-        <input
-          type="number"
-          inputMode="numeric"
-          min="1"
-          max="8"
-          step="1"
-          value={settings.workers}
-          disabled={disabled}
-          onChange={(event) => update("workers", event.target.value)}
-        />
-      </label>
-      <label className="m-field">
-        执行轮次上限
-        <input
-          type="number"
-          inputMode="numeric"
-          min="1"
-          max="10000"
-          step="1"
-          value={settings.episodes}
-          disabled={disabled}
-          onChange={(event) => update("episodes", event.target.value)}
-        />
-      </label>
-      <label className="m-field">
-        阶段上限
-        <input
-          type="number"
-          inputMode="numeric"
-          min="1"
-          max="50"
-          step="1"
-          value={settings.milestones}
-          disabled={disabled}
-          onChange={(event) => update("milestones", event.target.value)}
-        />
-      </label>
+      <NumberField
+        label="总 token 预算"
+        value={settings.tokens}
+        min={1}
+        max={1000000000}
+        disabled={disabled}
+        hint={tokenHint(settings.tokens)}
+        onChange={(value) => update("tokens", value)}
+      />
+      <NumberField
+        label="并发 Agent 数"
+        value={settings.workers}
+        min={1}
+        max={8}
+        disabled={disabled}
+        hint="1 – 8"
+        onChange={(value) => update("workers", value)}
+      />
+      <NumberField
+        label="执行轮次上限"
+        value={settings.episodes}
+        min={1}
+        max={10000}
+        disabled={disabled}
+        hint="1 – 10000"
+        onChange={(value) => update("episodes", value)}
+      />
+      <NumberField
+        label="阶段上限"
+        value={settings.milestones}
+        min={1}
+        max={50}
+        disabled={disabled}
+        hint="1 – 50"
+        onChange={(value) => update("milestones", value)}
+      />
     </div>
   );
   if (!threadId)
     return (
       <div className="m-build-panel">
-        <Section title="开始建造">
-          <Blocks size={28} />
-          <p>从底部描述目标。电脑会提出建造方案，确认预算和并发数后再启动。</p>
-          <label className="m-field">
-            这条建造消息的 token 预算
-            <input
-              type="number"
-              inputMode="numeric"
-              min="1"
-              max="1000000000"
-              value={settings.tokens}
-              onChange={(event) => {
-                update("tokens", event.target.value);
-                const value = Number(event.target.value);
-                if (Number.isInteger(value) && value > 0 && value <= 1e9)
-                  onBudget(value);
-              }}
-            />
-          </label>
-          <p className="m-path">{workspace || "使用电脑默认目录"}</p>
-        </Section>
+        <section className="m-card m-start">
+          <span className="m-tile is-accent is-large" aria-hidden="true">
+            <Blocks size={24} strokeWidth={1.75} />
+          </span>
+          <h2>开始建造</h2>
+          <p>
+            在底部描述目标。电脑会先提出建造方案，你确认预算和并发数后才会启动。
+          </p>
+          <NumberField
+            label="这条建造消息的 token 预算"
+            value={settings.tokens}
+            min={1}
+            max={1000000000}
+            hint={tokenHint(settings.tokens)}
+            onChange={(value) => update("tokens", value)}
+          />
+        </section>
+        <div className="m-rows">
+          <div className="m-row is-static">
+            <span className="m-row-icon" aria-hidden="true">
+              <GitBranch {...GLYPH} />
+            </span>
+            <span className="m-row-text">
+              <strong>工作目录</strong>
+              <small className="m-path">{workspace || "使用电脑默认目录"}</small>
+            </span>
+          </div>
+        </div>
       </div>
     );
   const data = overview
@@ -334,161 +416,37 @@ export function MobileBuildPanel({
   const run = overview?.run;
   const proposal = data?.phase === "draft" ? overview?.proposal : null;
   const workspaceLocked = Boolean(data?.phase === "live") || chatting;
-  return (
-    <div className="m-build-panel" aria-label="建造控制面板">
-      <div className="m-build-head">
-        <strong>{data ? STATE[data.state] : "正在读取建造状态…"}</strong>
-        <button
-          type="button"
-          className="m-inline-button"
-          disabled={!online || reading}
-          onClick={() => void load(true)}
-        >
-          <RotateCw size={16} />
-          刷新
-        </button>
-      </div>
-      {readError ? (
-        <p className="m-alert" role="alert">
-          建造状态刷新失败：{readError}。当前显示上次读取的状态。
-        </p>
-      ) : null}
-      {error ? (
-        <p className="m-alert" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {uncertain ? (
-        <Section title="操作结果待确认">
-          <p>
-            连接中断，电脑可能已经执行。先刷新状态，或使用同一操作编号查询重试。
+  const tokenShare = data?.budget.tokenLimit
+    ? Math.min(1, data.budget.tokens / data.budget.tokenLimit)
+    : 0;
+  const tone = data ? TONE[data.state] : undefined;
+  // While a build runs its folder is fixed, so the folder card steps below the live controls.
+  const workspaceCard = overview ? (
+      <Section title="工作目录与 Git" icon={<GitBranch {...GLYPH} />}>
+        <p className="m-path">{overview.workspace?.path || workspace}</p>
+        <div className="m-actions">
+          <span className="m-badge">{overview.workspace?.branch || "尚无工作分支"}</span>
+          <span className={`m-badge${overview.workspace?.changeCount ? " is-wait" : ""}`}>
+            {overview.workspace?.changeCount ?? 0} 项未提交改动
+          </span>
+        </div>
+        {workspaceLocked ? (
+          <p className="m-note">
+            建造期间工作目录保持固定；其他项目请新建建造。
           </p>
-          <button
-            type="button"
-            className="m-button"
-            disabled={!online || busy}
-            onClick={() => void control()}
-          >
-            查询并重试上次操作
-          </button>
-          <button
-            type="button"
-            className="m-inline-button"
-            disabled={!online || reading || busy}
-            onClick={() => {
-              void load(true).then((success) => {
-                if (success && alive.current) {
-                  pendingControl.current = null;
-                  setUncertain(false);
-                }
-              });
-            }}
-          >
-            刷新后结束重试
-          </button>
-        </Section>
-      ) : null}
-      {overview ? (
-        <>
-          {run && overview.agents.some((agent) => agent.approval) ? (
-            <Section title="等待你的批准">
-              {overview.agents
-                .filter((agent) => agent.approval)
-                .map((agent) => (
-                  <article className="m-agent-card" key={agent.id}>
-                    <p className="m-prewrap">{agent.approval!.command}</p>
-                    <p>{agent.approval!.reason}</p>
-                    <div className="m-actions">
-                      <button
-                        type="button"
-                        className="m-button"
-                        disabled={disabled}
-                        onClick={() =>
-                          void act(() =>
-                            window.loom.call("projectRun/approval", {
-                              runId: run.id,
-                              sessionId: agent.id,
-                              decision: "accept",
-                            }),
-                          )
-                        }
-                      >
-                        仅允许这次
-                      </button>
-                      <button
-                        type="button"
-                        className="m-button"
-                        disabled={disabled}
-                        onClick={() =>
-                          void act(() =>
-                            window.loom.call("projectRun/approval", {
-                              runId: run.id,
-                              sessionId: agent.id,
-                              decision: "decline",
-                            }),
-                          )
-                        }
-                      >
-                        拒绝
-                      </button>
-                    </div>
-                  </article>
-                ))}
-            </Section>
-          ) : null}
-          {goal ? (
-            <Section title="长目标">
-              <p>{goal.text}</p>
-              <p className="m-prewrap">{goal.detail}</p>
-              <div className="m-actions">
-                {goal.action ? (
-                  <button
-                    type="button"
-                    className="m-button"
-                    disabled={disabled}
-                    onClick={() =>
-                      void act(() =>
-                        window.loom.call("projectWeave/goal", {
-                          threadId,
-                          action: goal.action,
-                        }),
-                      )
-                    }
-                  >
-                    {goal.action === "pause" ? "暂停目标" : "继续目标"}
-                  </button>
-                ) : null}
-                {goal.dismiss ? (
-                  <button
-                    type="button"
-                    className="m-button"
-                    disabled={disabled}
-                    onClick={() =>
-                      void act(() =>
-                        window.loom.call("projectWeave/goal", {
-                          threadId,
-                          action: "dismiss",
-                        }),
-                      )
-                    }
-                  >
-                    收起目标
-                  </button>
-                ) : null}
-              </div>
-            </Section>
-          ) : null}
-          <Section title="工作目录与 Git">
-            <p className="m-path">{overview.workspace?.path || workspace}</p>
-            <p>
-              {overview.workspace?.branch || "尚无工作分支"} ·{" "}
-              {overview.workspace?.changeCount ?? 0} 项未提交改动
-            </p>
-            {workspaceLocked ? (
-              <p className="m-note">
-                当前建造期间工作目录保持固定；其他项目请新建建造。
-              </p>
-            ) : null}
+        ) : null}
+        {overview.workspace?.status === "nested" ? (
+          <p className="m-alert">
+            请选择 Git 根目录：{overview.workspace.repositoryRoot}
+          </p>
+        ) : null}
+        {overview.workspace?.changes?.length ||
+        (!workspaceLocked &&
+          ["not_git", "unborn", "detached"].includes(
+            overview.workspace?.status || "",
+          )) ||
+        (!workspaceLocked && Boolean(overview.workspace?.changeCount)) ? (
+          <div className="m-disclosures">
             {overview.workspace?.changes?.length ? (
               <details>
                 <summary>查看工作区改动</summary>
@@ -516,7 +474,7 @@ export function MobileBuildPanel({
                 </p>
                 <button
                   type="button"
-                  className="m-button"
+                  className="m-button is-block"
                   disabled={disabled}
                   onClick={() =>
                     void act(() =>
@@ -540,11 +498,6 @@ export function MobileBuildPanel({
                 </button>
               </details>
             ) : null}
-            {overview.workspace?.status === "nested" ? (
-              <p className="m-alert">
-                请选择 Git 根目录：{overview.workspace.repositoryRoot}
-              </p>
-            ) : null}
             {!workspaceLocked && Boolean(overview.workspace?.changeCount) ? (
               <details>
                 <summary>检查后提交全部工作区改动</summary>
@@ -562,7 +515,7 @@ export function MobileBuildPanel({
                 </label>
                 <button
                   type="button"
-                  className="m-button"
+                  className="m-button is-block"
                   disabled={disabled || !commit.trim()}
                   onClick={() =>
                     void act(async () => {
@@ -579,9 +532,167 @@ export function MobileBuildPanel({
                 </button>
               </details>
             ) : null}
-          </Section>
+          </div>
+        ) : null}
+      </Section>
+  ) : null;
+  return (
+    <div className="m-build-panel" aria-label="建造控制面板">
+      <div className="m-build-head">
+        <span className={`m-badge${tone ? ` is-${tone}` : ""}`}>
+          <span
+            className={`m-dot is-${tone === "run" ? "run" : tone === "wait" ? "wait" : tone === "on" ? "on" : "idle"}`}
+            aria-hidden="true"
+          />
+          {data ? STATE[data.state] : "正在读取建造状态…"}
+        </span>
+        <button
+          type="button"
+          className="m-icon-button"
+          aria-label="刷新建造状态"
+          disabled={!online || reading}
+          onClick={() => void load(true)}
+        >
+          <RotateCw size={18} strokeWidth={1.75} spinning={reading} />
+        </button>
+      </div>
+      {readError ? (
+        <p className="m-alert" role="alert">
+          建造状态刷新失败：{readError}。当前显示上次读取的状态。
+        </p>
+      ) : null}
+      {error ? (
+        <p className="m-alert" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {uncertain ? (
+        <Section title="操作结果待确认" tone="wait" icon={<RotateCw {...GLYPH} />}>
+          <p>
+            连接中断，电脑可能已经执行。先刷新状态，或使用同一操作编号查询重试。
+          </p>
+          <div className="m-actions">
+            <button
+              type="button"
+              className="m-button is-wait"
+              disabled={!online || busy}
+              onClick={() => void control()}
+            >
+              查询并重试上次操作
+            </button>
+            <button
+              type="button"
+              className="m-button"
+              disabled={!online || reading || busy}
+              onClick={() => {
+                void load(true).then((success) => {
+                  if (success && alive.current) {
+                    pendingControl.current = null;
+                    setUncertain(false);
+                  }
+                });
+              }}
+            >
+              刷新后结束重试
+            </button>
+          </div>
+        </Section>
+      ) : null}
+      {overview ? (
+        <>
+          {run && overview.agents.some((agent) => agent.approval) ? (
+            <Section title="等待你的批准" tone="wait" icon={<ShieldCheck {...GLYPH} />}>
+              {overview.agents
+                .filter((agent) => agent.approval)
+                .map((agent) => (
+                  <article className="m-approval-item" key={agent.id}>
+                    <p className="m-code">{agent.approval!.command}</p>
+                    {agent.approval!.reason ? <p>{agent.approval!.reason}</p> : null}
+                    <div className="m-actions">
+                      <button
+                        type="button"
+                        className="m-button"
+                        disabled={disabled}
+                        onClick={() =>
+                          void act(() =>
+                            window.loom.call("projectRun/approval", {
+                              runId: run.id,
+                              sessionId: agent.id,
+                              decision: "decline",
+                            }),
+                          )
+                        }
+                      >
+                        拒绝
+                      </button>
+                      <button
+                        type="button"
+                        className="m-button is-wait"
+                        disabled={disabled}
+                        onClick={() =>
+                          void act(() =>
+                            window.loom.call("projectRun/approval", {
+                              runId: run.id,
+                              sessionId: agent.id,
+                              decision: "accept",
+                            }),
+                          )
+                        }
+                      >
+                        仅允许这次
+                      </button>
+                    </div>
+                  </article>
+                ))}
+            </Section>
+          ) : null}
+          {goal ? (
+            <Section title="长目标" icon={<Compass {...GLYPH} />}>
+              <p>{goal.text}</p>
+              {goal.detail ? <p className="m-prewrap">{goal.detail}</p> : null}
+              {goal.action || goal.dismiss ? (
+                <div className="m-actions">
+                  {goal.action ? (
+                    <button
+                      type="button"
+                      className="m-button"
+                      disabled={disabled}
+                      onClick={() =>
+                        void act(() =>
+                          window.loom.call("projectWeave/goal", {
+                            threadId,
+                            action: goal.action,
+                          }),
+                        )
+                      }
+                    >
+                      {goal.action === "pause" ? "暂停目标" : "继续目标"}
+                    </button>
+                  ) : null}
+                  {goal.dismiss ? (
+                    <button
+                      type="button"
+                      className="m-button"
+                      disabled={disabled}
+                      onClick={() =>
+                        void act(() =>
+                          window.loom.call("projectWeave/goal", {
+                            threadId,
+                            action: "dismiss",
+                          }),
+                        )
+                      }
+                    >
+                      收起目标
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </Section>
+          ) : null}
+          {data?.phase !== "live" ? workspaceCard : null}
           {proposal ? (
-            <Section title={proposal.title || "确认建造方案"}>
+            <Section title={proposal.title || "确认建造方案"} icon={<Blocks {...GLYPH} />}>
               <p className="m-prewrap">{proposal.objective}</p>
               {fields}
               <label className="m-check">
@@ -602,6 +713,21 @@ export function MobileBuildPanel({
                   : ""}
               </p>
               <div className="m-actions">
+                <button
+                  type="button"
+                  className="m-button"
+                  disabled={disabled}
+                  onClick={() =>
+                    void act(() =>
+                      window.loom.call("projectWeave/dismiss", {
+                        threadId,
+                        proposalId: proposal.id,
+                      }),
+                    )
+                  }
+                >
+                  暂不采用方案
+                </button>
                 <button
                   type="button"
                   className="m-button is-primary"
@@ -635,58 +761,51 @@ export function MobileBuildPanel({
                 >
                   按此设置开始建造
                 </button>
-                <button
-                  type="button"
-                  className="m-button"
-                  disabled={disabled}
-                  onClick={() =>
-                    void act(() =>
-                      window.loom.call("projectWeave/dismiss", {
-                        threadId,
-                        proposalId: proposal.id,
-                      }),
-                    )
-                  }
-                >
-                  暂不采用方案
-                </button>
               </div>
             </Section>
           ) : null}
           {!run && !proposal ? (
-            <Section title="等待建造方案">
+            <section className="m-card m-start">
+              <span className="m-tile is-large" aria-hidden="true">
+                <MessageSquareText size={22} strokeWidth={1.75} />
+              </span>
+              <h2>等待建造方案</h2>
               <p>
                 在底部描述目标，让电脑提出方案；方案出现后可设置并发、预算和执行轮次。
               </p>
-            </Section>
+            </section>
           ) : null}
           {run && data?.phase === "live" ? (
             <>
-              <Section title={`阶段 ${data.milestone} · ${STATE[data.state]}`}>
-                <p className="m-prewrap">{data.objective}</p>
-                <p>{data.narration.summary}</p>
-                <p>{data.narration.text}</p>
+              <Section title={`阶段 ${data.milestone} · ${STATE[data.state]}`} icon={<Blocks {...GLYPH} />}>
+                {data.objective ? <p className="m-prewrap">{data.objective}</p> : null}
+                {data.narration.summary ? <p>{data.narration.summary}</p> : null}
+                {data.narration.text ? <p>{data.narration.text}</p> : null}
                 <dl className="m-build-stats">
-                  <div>
-                    <dt>整体 token</dt>
+                  <div className="is-wide">
+                    <dt>
+                      整体 token · {readableCount(data.budget.tokens) || 0} / {readableCount(data.budget.tokenLimit)}
+                      <span className={`m-meter${tokenShare > 0.85 ? " is-high" : ""}`} aria-hidden="true">
+                        <i style={{ transform: `scaleX(${tokenShare})` }} />
+                      </span>
+                    </dt>
                     <dd>
-                      {data.budget.tokens.toLocaleString()} /{" "}
-                      {data.budget.tokenLimit.toLocaleString()}
+                      {Math.round(tokenShare * 100)}% <small>已用</small>
                     </dd>
                   </div>
                   <div>
                     <dt>本阶段轮次</dt>
                     <dd>
-                      {target?.episodesUsed} / {target?.maxEpisodes}
+                      {target?.episodesUsed} <small>/ {target?.maxEpisodes}</small>
                     </dd>
                   </div>
                   <div>
-                    <dt>执行并发上限</dt>
+                    <dt>活跃 Agent</dt>
                     <dd>
-                      {data.workers} · 活跃会话 {data.agents.length}
+                      {data.agents.length} <small>/ 并发 {data.workers}</small>
                     </dd>
                   </div>
-                  <div>
+                  <div className="is-wide">
                     <dt>已验收检查</dt>
                     <dd>{data.knowledge.checks}</dd>
                   </div>
@@ -709,7 +828,7 @@ export function MobileBuildPanel({
                   data.attention?.action === "resume" ? (
                     <button
                       type="button"
-                      className="m-button"
+                      className="m-button is-tint"
                       disabled={disabled}
                       onClick={() => void control("resume")}
                     >
@@ -719,7 +838,7 @@ export function MobileBuildPanel({
                   {data.attention?.action === "recover" ? (
                     <button
                       type="button"
-                      className="m-button"
+                      className="m-button is-tint"
                       disabled={disabled}
                       onClick={() => void control("recover")}
                     >
@@ -729,7 +848,7 @@ export function MobileBuildPanel({
                   {data.attention?.action === "budget" ? (
                     <button
                       type="button"
-                      className="m-button"
+                      className="m-button is-tint"
                       disabled={disabled}
                       onClick={() => {
                         const next = raisedBudget(run, overview.program);
@@ -751,6 +870,7 @@ export function MobileBuildPanel({
                       type="button"
                       className="m-button is-danger"
                       disabled={disabled}
+                      aria-expanded={confirmStop}
                       onClick={() => setConfirmStop(!confirmStop)}
                     >
                       停止建造…
@@ -771,103 +891,109 @@ export function MobileBuildPanel({
                   </div>
                 ) : null}
                 {data.controls.cancel ? (
-                  <details ref={budgetForm}>
-                    <summary>调整当前阶段总预算并继续</summary>
-                    <label className="m-field">
-                      当前阶段总 token 上限
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="1"
-                        max="1000000000"
-                        value={tokens}
-                        onChange={(event) => setTokens(event.target.value)}
-                        disabled={disabled}
-                      />
-                    </label>
-                    <label className="m-field">
-                      当前阶段总轮次上限
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="1"
-                        max="10000"
-                        value={episodes}
-                        onChange={(event) => setEpisodes(event.target.value)}
-                        disabled={disabled}
-                      />
-                    </label>
-                    <p className="m-note">
-                      填写总上限，不是追加数量。并发数和建造权限在启动时固定；下一个建造可重新设置。
-                    </p>
-                    <button
-                      type="button"
-                      className="m-button"
-                      disabled={disabled}
-                      onClick={() => {
-                        try {
-                          const extra = resumeBudgetParams(
-                            overview,
-                            tokens,
-                            episodes,
-                          );
-                          void control("resume", extra);
-                        } catch (cause) {
-                          setError(
-                            cause instanceof Error
-                              ? cause.message
-                              : String(cause),
-                          );
-                        }
-                      }}
-                    >
-                      应用预算并继续
-                    </button>
-                  </details>
-                ) : null}
-              </Section>
-              <Section title="执行 Agent 与审批">
-                {!data.agents.length ? (
-                  <p className="m-note">当前没有活跃 Agent</p>
-                ) : null}
-                {data.agents.map((agent) => {
-                  return (
-                    <article className="m-agent-card" key={agent.id}>
-                      <h3>
-                        {agent.name} ·{" "}
-                        {agent.role === "planner"
-                          ? "规划"
-                          : agent.role === "reviewer"
-                            ? "复审"
-                            : "执行"}
-                      </h3>
-                      <p>{agent.activity}</p>
+                  <div className="m-disclosures">
+                    <details ref={budgetForm}>
+                      <summary>调整当前阶段总预算并继续</summary>
+                      <div className="m-build-fields">
+                        <NumberField
+                          label="当前阶段总 token 上限"
+                          value={tokens}
+                          min={1}
+                          max={1000000000}
+                          disabled={disabled}
+                          hint={tokenHint(tokens)}
+                          onChange={setTokens}
+                        />
+                        <NumberField
+                          label="当前阶段总轮次上限"
+                          value={episodes}
+                          min={1}
+                          max={10000}
+                          disabled={disabled}
+                          onChange={setEpisodes}
+                        />
+                      </div>
                       <p className="m-note">
-                        第 {agent.step} 步 · {agent.elapsed}
+                        填写总上限，不是追加数量。并发数和建造权限在启动时固定；下一个建造可重新设置。
                       </p>
                       <button
                         type="button"
-                        className="m-inline-button"
-                        disabled={!online}
-                        onClick={() => onOpenAgent(agent.id)}
+                        className="m-button is-block"
+                        disabled={disabled}
+                        onClick={() => {
+                          try {
+                            const extra = resumeBudgetParams(
+                              overview,
+                              tokens,
+                              episodes,
+                            );
+                            void control("resume", extra);
+                          } catch (cause) {
+                            setError(
+                              cause instanceof Error
+                                ? cause.message
+                                : String(cause),
+                            );
+                          }
+                        }}
                       >
-                        打开执行对话
+                        应用预算并继续
                       </button>
-                    </article>
-                  );
-                })}
+                    </details>
+                  </div>
+                ) : null}
+              </Section>
+              <Section title="执行 Agent" icon={<Bot {...GLYPH} />}>
+                {!data.agents.length ? (
+                  <p className="m-note">当前没有活跃 Agent</p>
+                ) : null}
+                {data.agents.length ? (
+                  <div>
+                    {data.agents.map((agent) => (
+                      <article className="m-agent-card" key={agent.id}>
+                        <div>
+                          <h3>
+                            {agent.name} ·{" "}
+                            {agent.role === "planner"
+                              ? "规划"
+                              : agent.role === "reviewer"
+                                ? "复审"
+                                : "执行"}
+                          </h3>
+                          <p>{agent.activity}</p>
+                          <p className="m-note">
+                            第 {agent.step} 步 · {agent.elapsed}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="m-icon-button"
+                          aria-label={`打开${agent.name}的执行对话`}
+                          disabled={!online}
+                          onClick={() => onOpenAgent(agent.id)}
+                        >
+                          <ChevronRight size={20} strokeWidth={1.75} />
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
               </Section>
               <Section
                 title={`任务与验收 · ${data.tasks.filter((task) => task.state === "integrated").length} / ${data.tasks.length}`}
+                icon={<ListChecks {...GLYPH} />}
               >
                 <ol className="m-build-list">
                   {data.tasks.map((task) => (
-                    <li key={task.id}>
+                    <li key={task.id} className="m-task">
                       <details>
                         <summary>
-                          {STATE[task.state]} · {task.title}
+                          <span>{task.title}</span>
+                          <span className={`m-badge${TONE[task.state] ? ` is-${TONE[task.state]}` : ""}`}>
+                            {STATE[task.state] ?? task.state}
+                          </span>
                         </summary>
-                        <p className="m-prewrap">{task.detail}</p>
+                        {task.detail ? <p className="m-prewrap">{task.detail}</p> : null}
                         {run.plan
                           .find((item) => item.id === task.id)
                           ?.acceptance.map((criterion, index) => (
@@ -884,9 +1010,9 @@ export function MobileBuildPanel({
                   <p>{data.outcome.summary || "建造已结束"}</p>
                 ) : null}
               </Section>
-              <Section title="追加建造指导">
+              <Section title="追加建造指导" icon={<MessageSquareText {...GLYPH} />}>
                 <label className="m-field">
-                  后续 Agent 都会收到
+                  之后的 Agent 都会收到
                   <textarea
                     rows={3}
                     value={guidance}
@@ -896,7 +1022,7 @@ export function MobileBuildPanel({
                 </label>
                 <button
                   type="button"
-                  className="m-button"
+                  className="m-button is-tint is-block"
                   disabled={
                     disabled || !guidance.trim() || !data.controls.cancel
                   }
@@ -915,12 +1041,14 @@ export function MobileBuildPanel({
               </Section>
             </>
           ) : null}
-          <Section title="建造参考资料">
+          {data?.phase === "live" ? workspaceCard : null}
+          <Section title="建造参考资料" icon={<FileText {...GLYPH} />}>
             {overview.program?.references?.length ? (
               <ul className="m-build-list">
                 {overview.program.references.map((item, index) => (
-                  <li key={`${item.name}:${index}`}>
-                    {item.name} · {Math.ceil(item.bytes / 1024)} KB
+                  <li className="m-event" key={`${item.name}:${index}`}>
+                    <span>{item.name}</span>
+                    <span>{Math.ceil(item.bytes / 1024)} KB</span>
                   </li>
                 ))}
               </ul>
@@ -930,7 +1058,7 @@ export function MobileBuildPanel({
             {overview.program && data?.controls.cancel ? (
               <button
                 type="button"
-                className="m-button"
+                className="m-button is-block"
                 disabled={disabled || !attachmentsReady || !attachments.length}
                 onClick={() =>
                   void act(async () => {
@@ -950,19 +1078,23 @@ export function MobileBuildPanel({
             <details className="m-card">
               <summary>阶段历史与运行事件</summary>
               {overview.program?.milestones.map((item) => (
-                <p key={item.index}>
-                  阶段 {item.index} · {item.complete ? "完成" : "未完成"} ·{" "}
-                  {item.tokens.toLocaleString()} token · {item.episodes} 轮
-                </p>
+                <div className="m-event" key={`m${item.index}`}>
+                  <span>
+                    阶段 {item.index} · {item.complete ? "完成" : "未完成"}
+                  </span>
+                  <span>
+                    {readableCount(item.tokens) || 0} token · {item.episodes} 轮
+                  </span>
+                </div>
               ))}
               {overview.events
                 .slice(-20)
                 .reverse()
                 .map((event) => (
-                  <p key={event.sequence}>
-                    {event.kind}
-                    {event.reason ? ` · ${event.reason}` : ""}
-                  </p>
+                  <div className="m-event" key={event.sequence}>
+                    <span>{event.kind}</span>
+                    {event.reason ? <span>{event.reason}</span> : null}
+                  </div>
                 ))}
             </details>
           ) : null}
