@@ -43,7 +43,8 @@ android {
 }
 
 // The page is the desktop-react mobile entry: `npm run build:mobile` first.
-val copyWeb by tasks.registering(Copy::class) {
+// Sync, not Copy: bundles from earlier builds must not pile up in the APK.
+val copyWeb by tasks.registering(Sync::class) {
     val page = rootProject.file("../desktop-react/dist-mobile")
     doFirst { check(page.resolve("mobile.html").exists()) { "Run npm run build:mobile in desktop-react first." } }
     from(page)
