@@ -214,7 +214,7 @@ const zhText = {
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目和长目标的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以；16M 之后再点一下可以输入任意额度", budgetCustom: "自定义预算（单位：百万 token，1–1000）", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
-  goalDismiss: "收起", goalCharter: "交付", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
+  goalDismiss: "收起", goalCharter: "交付", goalDeliverable: "交付物", goalCriteria: "验收标准", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
   agentsPending: "当前没有可查看的 agent，任务调度后自动启用", timelinePending: "还没有执行记录，建造开始后自动启用",
   filesUnavailable: "当前没有可查看或添加的参考文件", historyUnavailable: "当前环境未提供对话记录",
 };
@@ -245,7 +245,7 @@ const enText: typeof zhText = {
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The total token budget for projects and long goals; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓; one more click after 16M lets you type any amount", budgetCustom: "Custom budget (millions of tokens, 1–1000)", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
-  goalDismiss: "Dismiss", goalCharter: "Deliverable", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
+  goalDismiss: "Dismiss", goalCharter: "Deliverable", goalDeliverable: "Deliverable", goalCriteria: "Acceptance criteria", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
   agentsPending: "No agents to inspect yet; available once tasks are dispatched", timelinePending: "No execution records yet; available once the build starts",
   filesUnavailable: "No reference files to view or add here", historyUnavailable: "Conversation history is not available here",
 };
@@ -1567,10 +1567,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
           return (
           <div className="pf-slot" data-glide="goal" data-fit="" {...hover("goal")} {...slot("goal")}>
             <Card id="goal" side="right" className="pf-listed pf-goal-card" icon={<Timer size={12} />} label={text.goalCard} register={register}>
-            <div className="pf-goal" role="status" data-live={goal.live || undefined}>
+            {/* pf-list: when the column caps the card (an open budget editor, a long charter), the body scrolls inside it. */}
+            <div className="pf-goal pf-list" role="status" data-live={goal.live || undefined}>
               <div className="pf-goal-head">
                 <span className="pf-attention-dot" />
-                <span className="pf-attention-text" title={goal.detail || undefined}><Inline text={goal.text} /></span>
+                {/* With the budget meter below, the spent figure lives there, not in the heading. */}
+                <span className="pf-attention-text" title={goal.detail || undefined}><Inline text={goal.budget && actions.onGoalBudget ? goal.text.replace(/ · [\d.]+[KM] \/ [\d.]+[KM]$/, "") : goal.text} /></span>
                 {goal.action ? <button type="button" className="pf-control" aria-label={goal.action === "pause" ? text.stop : text.resume}
                   title={goal.action === "pause" ? text.stop : text.resume}
                   disabled={actions.busy || (goal.action === "resume" && Boolean(goal.budget && goal.budget.tokens >= goal.budget.tokenBudget))}
@@ -1578,7 +1580,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                 {goal.dismiss ? <button type="button" className="pf-control" aria-label={text.goalDismiss} title={text.goalDismiss} disabled={actions.busy}
                   onClick={() => actions.onGoal?.("dismiss")}><X size={12} /></button> : null}
               </div>
-              {goal.budget && actions.onGoalBudget ? <GoalBudgetControl goal={goal.budget} disabled={actions.busy} canResume={goal.action === "resume"} onSubmit={actions.onGoalBudget} /> : null}
+              {goal.budget && actions.onGoalBudget ? <GoalBudgetControl meter goal={goal.budget} disabled={actions.busy} canResume={goal.action === "resume"} onSubmit={actions.onGoalBudget} /> : null}
               {goal.lines?.length ? (
                 <ul className="pf-goal-lines">
                   {goal.lines.map((line) => (
@@ -1591,20 +1593,27 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                 </ul>
               ) : null}
               {goal.charter ? (
-                <ul className="pf-goal-lines pf-goal-charter" aria-label={text.goalCharter}>
-                  <li data-state="done" title={goal.charter.deliverable}>
-                    <i aria-hidden="true" />
-                    <span>{text.goalCharter}：{goal.charter.deliverable}</span>
-                  </li>
-                  {goal.charter.where ? <li className="pf-goal-where"><small>{goal.charter.where}</small></li> : null}
-                  {goal.charter.items.map((item) => (
-                    <li key={item.title} data-state={item.state} title={item.title}>
-                      <i aria-hidden="true" />
-                      <span>{item.title}</span>
-                      <small>{item.label}</small>
-                    </li>
-                  ))}
-                </ul>
+                <section className="pf-goal-charter" aria-label={text.goalCharter}>
+                  <div className="pf-goal-deliverable" title={goal.charter.deliverable}>
+                    <small>{text.goalDeliverable}</small>
+                    <p>{goal.charter.deliverable.replace(/^(Deliverable|交付物?)\s*[:：]\s*/i, "")}</p>
+                  </div>
+                  {goal.charter.where ? <span className="pf-goal-where" title={goal.charter.where}>{goal.charter.where}</span> : null}
+                  {goal.charter.items.length ? <>
+                    <div className="pf-goal-criteria-head"><small>{text.goalCriteria}</small>
+                      {/* A dropped criterion is set aside, not failed: it reads quiet and leaves the count, as on the phone. */}
+                      <small>{goal.charter.items.filter((item) => item.state === "done").length}/{goal.charter.items.filter((item) => !/放弃|Dropped/.test(item.label)).length}</small></div>
+                    <ul className="pf-goal-lines pf-goal-criteria">
+                      {goal.charter.items.map((item) => (
+                        <li key={item.title} data-state={item.state} data-dropped={/放弃|Dropped/.test(item.label) || undefined} title={item.title}>
+                          <i aria-hidden="true" />
+                          <span>{item.title}</span>
+                          <small>{item.label}</small>
+                        </li>
+                      ))}
+                    </ul>
+                  </> : null}
+                </section>
               ) : null}
             </div>
             </Card>

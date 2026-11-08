@@ -1006,12 +1006,37 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-goal[data-live] .pf-attention-dot { background: var(--pf-live); }
 .pf-goal:has(.pf-goal-lines) { flex-wrap: wrap; }
 /* The long goal is a branch card: its line, its stop, its budget and what it committed to, never over the conversation. */
-.pf-goal-card .pf-goal { display: grid; gap: 8px; min-width: 0; font-size: 12px; color: var(--pl-secondary); }
+.pf-goal-card .pf-goal { display: grid; gap: 10px; min-width: 0; font-size: 12px; color: var(--pl-secondary); overflow-x: hidden; }
 .pf-goal-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--pl-ink); }
+.pf-goal-card .pf-goal-head .pf-attention-text { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-goal-card .pf-goal-lines { padding-left: 2px; }
 .pf-goal-card .goal-budget-control { font-size: 12px; }
 .pf-goal-card .goal-budget-control p { margin: 0; }
 .pf-goal-card .goal-budget-toggle { min-height: 0; padding: 0; }
+.pf-goal-card .goal-budget-meter { padding-left: 14px; }
+/* The charter under the meter: what it delivers, where the work is, and the criteria it is held to. */
+.pf-goal-card .pf-goal-charter { display: grid; gap: 8px; min-width: 0; padding-top: 10px; border-top: 1px solid var(--pl-line); }
+.pf-goal-charter small { color: var(--pl-muted); font-size: 10.5px; letter-spacing: .04em; }
+.pf-goal-deliverable { display: grid; gap: 3px; min-width: 0; }
+.pf-goal-deliverable p { margin: 0; color: var(--pl-ink); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.pf-goal-charter .pf-goal-where { justify-self: start; max-width: 100%; box-sizing: border-box; padding: 2px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--pl-ink) 6%, transparent); color: var(--pl-secondary); font-size: 11px; line-height: 1.6;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-goal-criteria-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px; }
+.pf-goal-criteria-head small:last-child { font-variant-numeric: tabular-nums; }
+.pf-goal-card .pf-goal-criteria { gap: 6px; margin: 0; padding-left: 0; }
+.pf-goal-criteria li { font-size: 12px; }
+.pf-goal-criteria i { width: 7px; height: 7px; box-sizing: border-box; }
+.pf-goal-card .pf-goal-criteria li[data-state="running"] i { background: transparent; border: 1.5px solid var(--pl-muted); }
+.pf-goal-card .pf-goal-criteria li[data-state="done"] i { background: var(--pf-live); }
+.pf-goal-card .pf-goal-criteria li[data-state="done"] span { color: var(--pl-muted); }
+.pf-goal-card .pf-goal-criteria li[data-state="failed"] i { background: transparent; border: 1.5px solid var(--pf-warn); }
+.pf-goal-card .pf-goal-criteria li[data-state="done"] small { color: var(--pf-live); }
+.pf-goal-card .pf-goal-criteria li[data-state="failed"] small { color: var(--pf-warn); }
+.pf-goal-card .pf-goal-criteria li[data-dropped] i { border-color: var(--pl-faint, var(--pl-muted)); }
+.pf-goal-card .pf-goal-criteria li[data-dropped] span { color: var(--pl-muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--pl-muted) 60%, transparent); }
+.pf-goal-card .pf-goal-criteria li[data-dropped] small { color: var(--pl-muted); }
 .pf-goal-lines { flex-basis: 100%; display: grid; gap: 4px; margin: 2px 0 0; padding: 0 0 0 16px; list-style: none; }
 .pf-goal-lines li { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--pl-secondary); font-size: 11.5px; }
 .pf-goal-lines i { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--pf-live); }
@@ -1021,11 +1046,6 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-goal-lines li[data-state="failed"] i { background: var(--pf-warn); }
 .pf-goal-lines span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-goal-lines small { flex: none; color: var(--pl-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-/* The deliverable is the one line of the charter worth reading whole: up to three lines, not an ellipsis. */
-.pf-goal-charter li:first-child { align-items: flex-start; }
-.pf-goal-charter li:first-child i { margin-top: 5px; }
-.pf-goal-charter li:first-child span { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-.pf-goal-charter .pf-goal-where { padding-left: 13px; }
 
 /* Uncommitted changes before a start: the attention line, opened into the files and one commit. */
 .pf-dirty { display: grid; gap: 4px; align-items: stretch; }
