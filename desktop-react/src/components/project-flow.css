@@ -102,6 +102,8 @@ html[data-loom-theme="light"] .pf-stage {
   --pf-dash-period: var(--loom-period-spin);
   animation: pf-flow var(--pf-dash-period) steps(16) infinite, pf-fade var(--loom-dur-base) var(--loom-ease-out) var(--loom-dur-panel) backwards;
 }
+/* Hovering a branch lights its cable, and the stream along it with it. */
+.pf-flow[data-hot] { opacity: 1; stroke-width: 3; }
 .pf-cables[data-moving] .pf-flow { opacity: 0; transition: opacity var(--loom-dur-press) var(--loom-ease-exit); }
 @keyframes pf-flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 24; } }
 /* A merge runs the other way, out of the hub into the repository, in the colour of landed work. */

@@ -1118,13 +1118,22 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                   style={cable.reveal == null ? undefined : { opacity: cable.reveal }} />
           </g>
         ))}
-        {cables.filter((cable) => cable.id.startsWith("agent:") && !leaving.has(cable.id)).map((cable) => {
-          // While an agent works, the work runs out along its cable to it as a stream of beads; it stops when the
-          // agent is done or waits for the person.
-          const agent = data.agents.find((item) => `agent:${item.id}` === cable.id);
-          return agent && !agent.done && !agent.waiting && data.state === "running"
-            ? <path key={`flow:${cable.id}`} className="pf-flow" data-of={cable.id} d={cable.d} /> : null;
+        {cables.filter((cable) => !leaving.has(cable.id)).map((cable) => {
+          // While a branch is at work, the work runs out along its cable to it as a stream of beads: an agent that
+          // is neither done nor waiting for the person, a long goal that is running, a task list with a task in hand.
+          const agent = cable.id.startsWith("agent:") ? data.agents.find((item) => `agent:${item.id}` === cable.id) : undefined;
+          const streams = agent ? !agent.done && !agent.waiting && data.state === "running"
+            : cable.id === "goal" ? Boolean(data.goal?.live && data.goal.action !== "resume")
+            : cable.id === "tasks" ? Boolean(!data.taskListEarlier && data.taskList?.some((task) => task.state === "working"))
+            : false;
+          const lit = hot === cable.id || hot === cable.id.replace("agent:", "task:");
+          return streams ? <path key={`flow:${cable.id}`} className="pf-flow" data-of={cable.id} data-hot={lit || undefined} d={cable.d} /> : null;
         })}
+        {/* A task on the list is done: a bead runs back down its cable into the hub. */}
+        {cables.filter((cable) => cable.id === "tasks" && !leaving.has(cable.id)).map((cable) => (
+          <Pulse key={`tasks:${conversationId}`} of={cable.id} d={cable.d}
+                 step={data.taskListEarlier ? -1 : (data.taskList ?? []).filter((task) => task.state === "integrated").length} />
+        ))}
         {cables.filter((cable) => cable.id.startsWith("agent:")).map((cable) => {
           const agent = data.agents.find((item) => `agent:${item.id}` === cable.id);
           return agent && !agent.done ? <Pulse key={cable.id} of={cable.id} d={cable.d} step={agent.step} /> : null;
