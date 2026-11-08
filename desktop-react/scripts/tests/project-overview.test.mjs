@@ -449,3 +449,19 @@ test("the hub's agent branch shows the conversation's own sub-agents, a long goa
   const flow = toFlowData({ ...overview, agents: [] }, now);
   assert.deepEqual(flow.agents.map(a => a.id), ["chk", "line", "proj-1"]);
 });
+
+test("the goal row carries its charter: the deliverable, where the work is, and each criterion's state", () => {
+  const goal = { objective: "研究一晚", status: "active", phase: "working", tokens: 1_000_000, tokenBudget: 8_000_000, turns: 3,
+    reason: "", summary: "", checked: false, reviews: [{ round: 1, verdict: "passed", summary: "", major: 0, minor: 1 }],
+    charter: { deliverable: "一份可以给审稿人评判的研究稿", kind: "research", phases: ["文献", "试点", "主实验", "Revision round 1"], current: 3,
+      criteria: [{ id: "C1", text: "相关工作覆盖五篇近年论文", status: "met", origin: "charter" },
+                 { id: "C2", text: "主结果给出置信区间", status: "unmet", origin: "charter" },
+                 { id: "C3", text: "第三个信道模型下验证稳健性", status: "open", origin: "review 1" },
+                 { id: "C4", text: "复现脚本", status: "dropped", origin: "charter" }] } };
+  const shown = toGoal(goal);
+  assert.equal(shown.charter.deliverable, "一份可以给审稿人评判的研究稿");
+  assert.equal(shown.charter.where, "阶段 4/4：Revision round 1 · 第 1 轮评审");
+  assert.deepEqual(shown.charter.items.map(i => [i.state, i.label]),
+    [["done", "已达标"], ["failed", "未达标"], ["running", "待完成 · 第 1 轮评审"], ["failed", "已放弃"]]);
+  assert.equal(toGoal({ ...goal, charter: null }).charter, undefined);
+});

@@ -11,7 +11,7 @@ from app.ai import ModelResponse, ModelUsage, ToolCall
 from app.ai.errors import AITransportError
 from app.agent_runtime.tools import AgentTool, ToolResult
 from app.agent_runtime.contracts import ToolEffect
-from app.project_runner import goal, goal_lines, weave
+from app.project_runner import goal, goal_charter, goal_lines, weave
 import test_app_server
 from test_app_server import _wait_until
 from test_project_runner import build
@@ -24,6 +24,7 @@ def runtime_with_sub_agents(monkeypatch):
     monkeypatch.delenv(goal_lines.MODE_ENV, raising=False)
     monkeypatch.setattr(goal, "LINES_EVERY", 0)
     monkeypatch.setattr(goal_lines, "SPLIT_AFTER", 0)  # the question comes at once unless a test is about when it comes
+    monkeypatch.setattr(goal_charter, "MAX_HOLDS", 0)  # the charter is asked for in its own tests; here it gives way
 
 
 def usage(total=10, cached=0):

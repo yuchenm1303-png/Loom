@@ -437,13 +437,45 @@ export interface LongGoal {
   agents?: number;
   /** The Host's round of parallel lines: the lead waits for them, and the person sees each one. */
   lines?: GoalLine[];
+  /** What the lead committed to deliver and the criteria the referee holds it to. */
+  charter?: GoalCharter | null;
+  reviews?: { round: number; verdict: string; summary: string; major: number; minor: number }[];
+}
+export interface GoalCharter {
+  deliverable: string; kind: string; phases: string[]; current: number;
+  criteria: { id: string; text: string; status: "open" | "met" | "unmet" | "dropped"; origin: string }[];
 }
 
 export interface GoalLine { title: string; state: "running" | "waiting" | "reporting" | "done" | "failed"; tokens?: number; cap?: number; retryAt?: number; why?: string; check?: "" | "passed" | "failed" | "not_run";
   changed?: string[]; report?: string; startedAt?: number; writes?: string[] }
 
 /** One line for a long goal: what it is doing, what it has spent, and the move the person has. */
+/** The charter as the hub shows it under the goal: the deliverable, where the work is, and each criterion's state. */
+export function toCharter(goal: LongGoal, lang: "zh" | "en" = "zh"): NonNullable<FlowData["goal"]>["charter"] {
+  const charter = goal.charter;
+  if (!charter) return undefined;
+  const en = lang === "en";
+  const words = en ? { open: "To do", met: "Met", unmet: "Not met", dropped: "Dropped", review: (n: number) => `review ${n}` }
+    : { open: "待完成", met: "已达标", unmet: "未达标", dropped: "已放弃", review: (n: number) => `第 ${n} 轮评审` };
+  const states = { open: "running", met: "done", unmet: "failed", dropped: "failed" } as const;
+  const phase = charter.phases[charter.current] || "";
+  const rounds = goal.reviews?.length ?? 0;
+  const where = [phase && (en ? `phase ${charter.current + 1}/${charter.phases.length}: ${phase}` : `阶段 ${charter.current + 1}/${charter.phases.length}：${phase}`),
+                 rounds ? words.review(rounds) : ""].filter(Boolean).join(" · ");
+  return {
+    deliverable: charter.deliverable, where,
+    items: charter.criteria.map((item) => ({ title: item.text, state: states[item.status] || "running",
+      label: item.origin !== "charter" ? `${words[item.status] || item.status} · ${item.origin.replace(/^review (\d+)$/, (_, n) => words.review(Number(n)))}` : words[item.status] || item.status })),
+  };
+}
+
 export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {
+  const shown = goalLine(goal, lang);
+  const charter = shown && goal ? toCharter(goal, lang) : undefined;
+  return charter ? { ...shown!, charter } : shown;
+}
+
+function goalLine(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {
   if (!goal) return null;
   const money = (value: number) => value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M` : `${Math.round(value / 1000)}K`;
   const spent = `${money(goal.tokens)} / ${money(goal.tokenBudget)}`;

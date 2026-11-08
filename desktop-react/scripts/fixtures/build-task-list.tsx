@@ -19,7 +19,14 @@ Object.assign(window, { loom: { queryModelUsage: async () => ({ status: "ok", pr
   async call(method: string, params?: unknown) {
     if (method === "projectWeave/goal") { (window as unknown as { goalCalls: unknown[] }).goalCalls.push(params); return {}; }
     if (method === "projectRun/overview") return { goal: params2.get("goal") ? { objective: "研究 AI-RAN", status: "active", phase: "working", tokens: 1200000, tokenBudget: 8000000, turns: 3, reason: "", summary: "", checked: false,
-      ...(params2.get("goal") === "agents" ? { agents: 2 } : params2.get("goal") === "deepen" ? { deepens: 1, hours: 8 } : params2.get("goal") === "retry" ? { retryAt: Date.now() / 1000 + 600 } : {}) } : null, run: null, program: null, children: [], agents: [], events: [], workspace: { path: "C:/work/loom", branch: "main", status: "ready" } };
+      ...(params2.get("goal") === "agents" ? { agents: 2 } : params2.get("goal") === "deepen" ? { deepens: 1, hours: 8 } : params2.get("goal") === "retry" ? { retryAt: Date.now() / 1000 + 600 }
+        : params2.get("goal") === "charter" ? { reviews: [{ round: 1, verdict: "passed", summary: "", major: 0, minor: 1 }], charter: {
+            deliverable: "一份可以给审稿人评判的研究稿：问题与动机、相关工作与新意、方法、与公平基线的对比实验、局限，附复现代码", kind: "research",
+            phases: ["文献与新意", "方向试点", "主实验", "写作与自审", "Revision round 1"], current: 4,
+            criteria: [{ id: "C1", text: "相关工作对比至少覆盖五篇近年论文，并说明新意在哪里", status: "met", origin: "charter" },
+                       { id: "C2", text: "主结果与两个公平基线对比，给出置信区间", status: "unmet", origin: "charter" },
+                       { id: "C3", text: "在第三个信道模型下验证结论是否稳健", status: "open", origin: "review 1" },
+                       { id: "C4", text: "一条命令复现文中所有数字", status: "dropped", origin: "charter" }] } } : {}) } : null, run: null, program: null, children: [], agents: [], events: [], workspace: { path: "C:/work/loom", branch: "main", status: "ready" } };
     throw new Error(`no ${method} here`);
   } } });
 

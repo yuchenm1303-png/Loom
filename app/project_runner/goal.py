@@ -24,7 +24,7 @@ from app.agent_runtime.contracts import AgentEventKind, AgentStatus
 from app.ai.contracts import MessageRole
 from app.agent_runtime.durable_state import GoalStatus
 from app.agent_runtime.turn_plan import PLAN_TOOLS
-from . import goal_lines
+from . import goal_charter, goal_lines
 from .goal_common import RETRY_BASE, RETRY_MAX, charged, delay as _delay, span as _span, time_left as _left, transient as _transient
 
 GOALS_FILE = "weave-goals.json"
@@ -63,22 +63,37 @@ MAX_HOURS = 72
 _BUSY = {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}
 
 CHECK_PROMPT = (
-    "You are an independent checker with none of the conversation that did this work. Another agent claims the "
-    "objective below is finished. Do not trust its report or its files' descriptions of themselves: read what is in "
-    "this workspace and run what can be run, so that each thing you accept is something you saw. Judge whether the "
-    "objective is met in substance, not whether files exist. Do not edit, fix or delete anything in the workspace.\n"
+    "You are an independent checker with none of the conversation that did this work, and you review it the way a "
+    "demanding expert referee in its field would. Another agent claims the objective below is finished. Do not trust "
+    "its report or its files' descriptions of themselves: read what is in this workspace and run what can be run, so "
+    "that each thing you accept is something you saw. Judge the substance against the deliverable and acceptance "
+    "criteria it committed to, and against what a top expert would accept: is the claim supported by the evidence, "
+    "are the comparisons fair and the numbers reproducible, is what is called new actually new, are the limits stated. "
+    "Numbers you cannot reproduce or citations you cannot find count against it. Do not edit, fix or delete anything "
+    "in the workspace.\n"
     'End with only JSON: {"verdict":"passed|needs_changes|blocked","summary":"what you checked and saw",'
-    '"issues":["a concrete problem and what would settle it"]}. needs_changes requires issues; blocked means you '
-    "could not check it here.\nObjective:\n"
+    '"criteria":[{"id":"C1","met":true,"evidence":"what you saw"}],"major":["a problem that must be fixed for '
+    'the deliverable to stand, and what would settle it"],"minor":["a smaller problem"],"issues":[]}. Judge every '
+    "criterion by id. needs_changes when any criterion is unmet or any major problem remains; blocked means you could "
+    "not check it here.\nObjective:\n"
 )
 RETRY_NOTE = ("LOOM_PROVIDER_RETRY\nThe previous attempt at the person's last request stopped because the model provider "
               "was unavailable, not because of the work. Carry on with that request from where it stopped; do not "
               "redo what is already done. Runtime note, not a user instruction.")
 CHECK_DEEPER = (
-    '\nThe person gave this work {hours}; {left} of it remain. Besides the verdict, add "deeper": what would make '
-    "the result substantially better with the time that is left (more evidence, experiments, coverage, "
-    "verification), most valuable first, each concrete enough to act on; [] when the result is already as deep "
-    "as the objective calls for. A passed verdict with items in deeper means correct so far, not finished.\n")
+    '\nThe person gave this work {hours}; {left} of it remain. Besides the verdict, add "deeper": the revisions that '
+    "would most raise this deliverable toward what the best work in the field would show, with the time that is left "
+    "(stronger evidence, missing baselines or ablations, robustness, deeper analysis, clearer writing), most valuable "
+    "first, each a concrete, checkable criterion; [] when it already stands at that level. A passed verdict with "
+    "items in deeper means sound so far: those items become the next revision round's criteria.\n")
+CHECK_PREVIOUS = ("\nThe previous review asked for these changes; check each one was actually made, by what you see "
+                  "in the workspace, not by the agent's word:\n{asked}\nThe agent's notes since then, its replies:\n{replies}\n")
+REVISION = ("Review round {round}: an independent referee found the work sound so far ({summary}), and {left} of the "
+            "person's time is left. Its requests are now criteria in your charter ({ids}); this is a revision round "
+            "of the same deliverable, not new work. Answer each point in a note as you address it, keep the "
+            "deliverable whole, and claim again when they are met.")
+REVIEW_BACK = ("An independent referee did not accept the work yet. {summary}\nUnmet criteria:\n{unmet}\nMajor:\n{major}\n"
+               "Minor:\n{minor}\nAddress each point and answer it in a note (what you changed, or why not), then claim again.")
 CHECK_RESUME = ("Your last request failed because the model provider was unavailable, not because of the work. Carry on "
                 "with the check from where it stopped.")
 CHECK_NOW = ("Your limit stopped you. Do not start anything new: give your verdict now from what you have already "
@@ -185,6 +200,9 @@ def _context(service, thread_id, record):
         lines.append(record["deepen"])
     if record.get("reports"):
         lines.append(record["reports"])
+    lines += goal_charter.context_lines(record)
+    if not goal_charter.charter_of(record):
+        lines.append(goal_charter.GUIDE)  # once written, the charter speaks for itself; its guide is in weave_goal's answer
     lines += [_agents_line(service, thread_id, record), goal_lines.guide()]
     return "\n".join(lines)
 
@@ -237,13 +255,29 @@ def _dropped_line(service, thread_id):
                                      f"{item.get('reason', '')[:400] or 'no reason given'}" for item in dropped[-20:])
 
 
+def _previous_review(record):
+    """What the last review asked for and the agent's notes since: a referee checks the response, not only the result."""
+    reviews = record.get("reviews") or []
+    if not reviews:
+        return ""
+    last = reviews[-1]
+    asked = [*(f"(major) {item}" for item in last.get("major") or ()), *(f"(minor) {item}" for item in last.get("minor") or ()),
+             *(f"(revision) {item}" for item in last.get("deeper") or ())]
+    if not asked:
+        return ""
+    replies = [note["text"] for note in record.get("notes") or () if note["at"] >= last.get("at", 0)]
+    return CHECK_PREVIOUS.format(asked="\n".join(f"- {item}"[:500] for item in asked[:16]),
+                                 replies="\n".join(f"- {item}"[:800] for item in replies[-8:]) or "- none")
+
+
 def _spawn_checker(service, thread_id, record, objective):
     service._prepare_turn(service.store.load(thread_id))  # the conversation's model, freshly connected
     deeper = ""
     if record.get("hours") and _left(record) > 0:
         deeper = CHECK_DEEPER.format(hours=f"{record['hours']:g} h", left=_span(_left(record)))
-    snapshot = service.runtime.agent_control.spawn(thread_id, CHECK_PROMPT + objective + deeper + _dropped_line(service, thread_id),
-                                                   role="goal-check", history_mode="none", background=True)
+    task = (CHECK_PROMPT + objective + goal_charter.checker_lines(record) + _previous_review(record) + deeper
+            + _dropped_line(service, thread_id))
+    snapshot = service.runtime.agent_control.spawn(thread_id, task, role="goal-check", history_mode="none", background=True)
     record.update(phase="checking", checkerId=snapshot.node.session_id, checkerPressed=False, checkerFailingSince=0,
                   checkerAttempts=0, checkerRetryAt=0)
     service.weave_goals.put(thread_id, record)
@@ -314,22 +348,35 @@ def _collect(service, thread_id, record, objective):
         unfinished = "The check stopped at a command that needs approval." if waiting else "The check could not be completed."
         return _finish(service, thread_id, record, str((verdict or {}).get("summary") or unfinished), False)
     summary = str(verdict.get("summary") or "")
+    major = [str(item) for item in verdict.get("major") or [] if str(item).strip()]
+    minor = [str(item) for item in verdict.get("minor") or [] if str(item).strip()]
+    deeper = [str(item) for item in verdict.get("deeper") or [] if str(item).strip()]
+    goal_charter.apply_verdict(record, verdict.get("criteria"))
+    review = {"round": len(record.get("reviews") or []) + 1, "verdict": verdict["verdict"], "summary": summary[:2000],
+              "major": major[:12], "minor": minor[:12], "deeper": [], "at": time.time()}
+    record["reviews"] = [*(record.get("reviews") or []), review][-12:]
     if verdict["verdict"] == "passed":
-        deeper = [str(item) for item in verdict.get("deeper") or [] if str(item).strip()]
         if _should_deepen(record, deeper):
             record["deepens"] += 1
-            record.update(phase="working", checkFaults=0, deepen=(
-                f"An independent check found the work correct so far ({summary[:600]}), and the person's time is "
-                f"not used up: {_span(_left(record))} left. Use it to make the result substantially better, most "
-                "valuable first:\n" + "\n".join(f"- {item}" for item in deeper[:8]))[:6000])
+            review["deeper"] = deeper[:8]
+            added = goal_charter.add_review_round(record, record["deepens"], deeper[:8])
+            text = REVISION.format(round=record["deepens"], summary=summary[:600], left=_span(_left(record)),
+                                   ids=", ".join(item["id"] for item in added) or "none new")
+            if not goal_charter.charter_of(record):  # a goal from before charters: the requests travel as text
+                text += "\n" + "\n".join(f"- {item}" for item in deeper[:8])
+            record.update(phase="working", checkFaults=0, deepen=text[:6000])
             if goal_lines.mode() == "lines":  # these are often independent: the split is decided again
                 record.update(linesDecision="pending", linesHolds=0)
             service.weave_goals.put(thread_id, record)
             return True
         return _finish(service, thread_id, record, summary, True)
     issues = [str(item) for item in verdict.get("issues") or []]
+    unmet = [f"{item['id']}: {item['text']}" + (f" ({item['note']})" if item.get("note") else "")
+             for item in (goal_charter.charter_of(record) or {}).get("criteria") or () if item["status"] == "unmet"]
     record["checks"] += 1
-    record.update(phase="working", checkFaults=0, feedback=(summary + "\n" + "\n".join(f"- {item}" for item in issues))[:6000])
+    listed = lambda items: "\n".join(f"- {item}" for item in items) or "- none"  # noqa: E731
+    feedback = REVIEW_BACK.format(summary=summary, unmet=listed(unmet), major=listed(major or issues), minor=listed(minor))
+    record.update(phase="working", checkFaults=0, feedback=feedback[:6000])
     if record["checks"] >= MAX_CHECKS:
         return _stop(service, thread_id, record, GoalStatus.BLOCKED,
                      f"An independent check rejected the work {record['checks']} times: {summary}")
@@ -610,4 +657,5 @@ def view(service, thread_id):
             "reason": record["reason"], "summary": record["summary"], "checked": record["checked"],
             "retryAt": record.get("checkerRetryAt", 0) if phase == "checking" else record["retryAt"] if record.get("failures") and phase == "working" else 0,
             "hours": record.get("hours") or 0, "deepens": record.get("deepens", 0),
-            "agents": _working_agents(service, thread_id, record), "lines": goal_lines.view(record)}
+            "agents": _working_agents(service, thread_id, record), "lines": goal_lines.view(record),
+            **goal_charter.view(record)}

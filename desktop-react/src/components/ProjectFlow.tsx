@@ -87,7 +87,8 @@ export interface FlowData {
   /** The list belongs to an earlier request of the person's; this turn has none of its own yet. */
   taskListEarlier?: boolean;
   /** A long goal this conversation is pursuing by itself, with no project. */
-  goal?: { budget?: GoalBudgetState; text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean; lines?: { title: string; state: string; label: string; why?: string }[] } | null;
+  goal?: { budget?: GoalBudgetState; text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean; lines?: { title: string; state: string; label: string; why?: string }[];
+          charter?: { deliverable: string; where: string; items: { title: string; state: string; label: string }[] } } | null;
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
   models?: { current: ModelOption & { reasoning?: ModelReasoningState; vision?: boolean }; recent: ModelOption[];
              groups: { id: string; name: string; options: ModelOption[] }[] };
@@ -210,7 +211,7 @@ const zhText = {
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
-  goalDismiss: "收起", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
+  goalDismiss: "收起", goalCharter: "交付", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
   agentsPending: "当前没有可查看的 agent，任务调度后自动启用", timelinePending: "还没有执行记录，建造开始后自动启用",
   filesUnavailable: "当前没有可查看或添加的参考文件", historyUnavailable: "当前环境未提供对话记录",
 };
@@ -241,7 +242,7 @@ const enText: typeof zhText = {
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The project's total token budget; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
-  goalDismiss: "Dismiss", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
+  goalDismiss: "Dismiss", goalCharter: "Deliverable", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
   agentsPending: "No agents to inspect yet; available once tasks are dispatched", timelinePending: "No execution records yet; available once the build starts",
   filesUnavailable: "No reference files to view or add here", historyUnavailable: "Conversation history is not available here",
 };
@@ -1274,6 +1275,22 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                       <i aria-hidden="true" />
                       <span>{line.title}</span>
                       <small>{line.label}</small>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {data.goal.charter ? (
+                <ul className="pf-goal-lines pf-goal-charter" aria-label={text.goalCharter}>
+                  <li data-state="done" title={data.goal.charter.deliverable}>
+                    <i aria-hidden="true" />
+                    <span>{text.goalCharter}：{data.goal.charter.deliverable}</span>
+                    {data.goal.charter.where ? <small>{data.goal.charter.where}</small> : null}
+                  </li>
+                  {data.goal.charter.items.map((item) => (
+                    <li key={item.title} data-state={item.state} title={item.title}>
+                      <i aria-hidden="true" />
+                      <span>{item.title}</span>
+                      <small>{item.label}</small>
                     </li>
                   ))}
                 </ul>

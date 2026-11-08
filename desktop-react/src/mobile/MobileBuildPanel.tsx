@@ -674,6 +674,11 @@ export function MobileBuildPanel({
               <p>{goal.text}</p>
               {goal.detail ? <p className="m-prewrap">{goal.detail}</p> : null}
               {goal.lines?.map((line) => <p key={line.title}>{line.title} · {line.label}</p>)}
+              {goal.charter ? <>
+                <p className="m-prewrap"><strong>交付：</strong>{goal.charter.deliverable}</p>
+                {goal.charter.where ? <p className="m-note">{goal.charter.where}</p> : null}
+                <ol className="m-build-list">{goal.charter.items.map((item) => <li key={item.title}>{item.label} · {item.title}</li>)}</ol>
+              </> : null}
               {overview.goal && overview.goal.phase !== "done" ? <GoalBudgetControl goal={overview.goal} disabled={disabled} canResume={goal.action === "resume"} onSubmit={(action, update) => act(() => window.loom.call("projectWeave/goal", { threadId, action: action === "resume" ? "resume_with_budget" : action, ...update }))} /> : null}
               {goal.action || goal.dismiss ? (
                 <div className="m-actions">

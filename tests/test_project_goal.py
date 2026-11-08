@@ -6,7 +6,7 @@ import pytest
 
 from app.agent_runtime.durable_state import GoalStatus
 from app.ai import ModelResponse, ModelUsage, ToolCall
-from app.project_runner import goal, weave
+from app.project_runner import goal, goal_charter, weave
 import test_app_server
 from test_app_server import _wait_until
 from test_project_runner import build
@@ -17,6 +17,7 @@ def runtime_with_sub_agents(monkeypatch):
     """The Host's runtime has the agent tree the checker runs in."""
     from app.agent_runtime.multi_agent_runtime import MultiAgentRuntime
     monkeypatch.setattr(test_app_server, "DurableAgentRuntime", MultiAgentRuntime)
+    monkeypatch.setattr(goal_charter, "MAX_HOLDS", 0)  # the charter is asked for in its own tests; here it gives way
 
 
 def usage(total=10, cached=0):

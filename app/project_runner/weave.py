@@ -22,7 +22,7 @@ from app.agent_runtime.contracts import ToolEffect
 from app.agent_runtime.tools import AgentTool, ToolResult
 from app.ai import AIMessage, MessageRole
 
-from . import goal, goal_lines, program
+from . import goal, goal_charter, goal_lines, program
 from .parallel import MAX_WORKERS
 from .workspace import describe as describe_workspace
 
@@ -57,9 +57,10 @@ GUIDE = (
     "gave. The same for an open-ended objective with hours to run, research included. It needs no repository and "
     "no click. The Host then brings "
     "you back after each turn in this conversation until you call mark_thread_goal, so end a turn freely and keep "
-    "going in the next. Use it instead of a proposal when the person will not be there to start one. Mark complete "
-    "only when the objective is met in substance: an independent agent then checks your claim and its findings come "
-    "back to you. Pass hours when the person gave you a time: a night asks for a night's depth, and with much of "
+    "going in the next. Use it instead of a proposal when the person will not be there to start one. Right after it, "
+    "write the goal's charter with weave_charter (the deliverable a top expert would hand in, its acceptance criteria, "
+    "its phases) and keep notes with weave_note. Mark complete only when the charter is met in substance: an "
+    "independent referee then reviews your claim against it and its findings come back to you. Pass hours when the person gave you a time: a night asks for a night's depth, and with much of "
     "it left a correct result is a reason to go further, not to stop. Mark blocked only when you cannot go on "
     "without the person. When the person gives new work or a new direction and no long goal is running (the last "
     "one was claimed, ran out of budget or was paused), start a new one for it with weave_goal, even without a time: "
@@ -325,8 +326,37 @@ def tools(service):
         given = f" and {hours:g} h of the person's time" if hours else ""
         return ToolResult(ok=True, content=f"Long goal started with a budget of {budget:,} tokens{given}. Carry on "
                           "working; the Host continues this conversation after each turn until you call "
-                          "mark_thread_goal.\n" + goal_lines.guide(),
+                          "mark_thread_goal.\n" + goal_charter.GUIDE + "\n" + goal_lines.guide(),
                           data={"tokenBudget": budget, "hours": hours})
+
+    def write_charter(context, arguments):
+        weave_session(context)
+        with service.project_runner.guard:  # the scheduler writes the same record
+            record = service.weave_goals.get(context.session_id)
+            if record is None or record.get("phase") == "done":
+                raise ValueError("weave_charter belongs to a running long goal; start one with weave_goal first.")
+            changed = goal_charter.set_charter(record, arguments)
+            service.weave_goals.put(context.session_id, record)
+        charter = record["charter"]
+        listed = "\n".join(f"- {item['id']}: {item['text']}" for item in charter["criteria"] if item["status"] != "dropped")
+        dropped = ("\nLeft out, kept as dropped with your reason: " + "; ".join(changed["dropped"])) if changed["dropped"] else ""
+        return ToolResult(ok=True, content=(
+            ("Charter written." if changed["new"] else "Charter revised.") + " The independent check holds the work to "
+            f"these criteria:\n{listed}{dropped}\nPhase now: {charter['phases'][charter['current']]}. Mark the next phase "
+            "with current_phase when you move on, and end each turn with weave_note."),
+            data={"criteria": len(charter["criteria"]), "phases": len(charter["phases"])})
+
+    def note(context, arguments):
+        weave_session(context)
+        with service.project_runner.guard:
+            record = service.weave_goals.get(context.session_id)
+            if record is None or record.get("phase") == "done":
+                raise ValueError("weave_note belongs to a running long goal.")
+            goal_charter.add_note(record, arguments.get("text"))
+            if isinstance(arguments.get("current_phase"), int):
+                goal_charter.advance_phase(record, arguments["current_phase"])
+            service.weave_goals.put(context.session_id, record)
+        return ToolResult(ok=True, content="Noted. Every goal turn shows your latest notes.", data={})
 
     def lines(context, arguments):
         weave_session(context)
@@ -379,7 +409,38 @@ def tools(service):
                 "solo_reason": {"type": "string", "description": "Why you do this yourself, when lines is empty."},
             }, "additionalProperties": False},
             handler=lines, effect=ToolEffect.READ_ONLY),)
-    return line_tools + (
+    goal_tools = (
+        AgentTool(
+            name="weave_charter",
+            description=("Write or revise the long goal's charter: the deliverable a top expert in the field would hand "
+                         "in for this request, the acceptance criteria the independent check holds it to, and the phases "
+                         "the time is spent in. Revising takes a reason; a criterion left out stays visible as dropped."),
+            input_schema={"type": "object", "properties": {
+                "deliverable": {"type": "string", "description": "What will be handed in, as an expert would deliver it, "
+                                "in the person's language: its parts, its form, what it shows."},
+                "criteria": {"type": "array", "minItems": goal_charter.MIN_CRITERIA, "maxItems": goal_charter.MAX_CRITERIA,
+                             "items": {"type": "string"}, "description": "Concrete acceptance criteria a checker can "
+                             "verify by reading and running, in the person's language."},
+                "phases": {"type": "array", "minItems": goal_charter.MIN_PHASES, "maxItems": goal_charter.MAX_PHASES,
+                           "items": {"type": "string"}, "description": "The planned phases in order, sized to the time."},
+                "kind": {"type": "string", "enum": list(goal_charter.KINDS)},
+                "current_phase": {"type": "integer", "minimum": 0, "description": "Index of the phase now under way."},
+                "reason": {"type": "string", "description": "Required when revising: what changed and why."},
+            }, "required": ["deliverable", "criteria", "phases"], "additionalProperties": False},
+            handler=write_charter, effect=ToolEffect.READ_ONLY),
+        AgentTool(
+            name="weave_note",
+            description=("Add to the long goal's notes: what you did, what you found (with numbers), what you decided "
+                         "and why, what comes next, or your answer to a review point. Every goal turn shows the latest "
+                         "notes; the checker reads the ones written after its last review."),
+            input_schema={"type": "object", "properties": {
+                "text": {"type": "string", "description": "The note, in the person's language."},
+                "current_phase": {"type": "integer", "minimum": 0, "description": "Index of the phase now under way, "
+                                  "when it changed."},
+            }, "required": ["text"], "additionalProperties": False},
+            handler=note, effect=ToolEffect.READ_ONLY),
+    )
+    return line_tools + goal_tools + (
         AgentTool(
             name="weave_status",
             description=("Read this conversation's persistent project: its objective, state, milestone, plan with each "
