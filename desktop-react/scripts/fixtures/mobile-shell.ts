@@ -60,6 +60,19 @@ if (params.has("longgoal")) {
     tokenBudget: 4000000, turns: 3, reason: "Stopped by the person", summary: "", checked: false, startedAt: 123,
   } });
 }
+if (params.has("goalagents")) {
+  Object.assign(threads[2], { status: "completed", active: false, currentTurnId: null });
+  Object.assign(buildOverview, { run: null, program: null, agents: [], goal: {
+    objective: "独立检查研究报告", status: "active", phase: "checking", tokens: 4700000, tokenBudget: 400000000,
+    turns: 4, reason: "", summary: "", checked: false,
+  }, conversationAgents: params.has("emptyagents") ? [] : [
+    { id: "checker-1", parentId: "thread-build", role: "goal-check", state: "running", executionRunning: true, queueDepth: 0, activity: "读取 report/report.md", step: 3 },
+    { id: "line-1", parentId: "thread-build", role: "goal-line", state: "completed", executionRunning: false, queueDepth: 0, activity: "检查结果已生成", step: 5 },
+  ] });
+  if (params.has("oldhost")) delete buildOverview.conversationAgents;
+  if (params.has("agenterror")) { buildOverview.conversationAgents = []; buildOverview.conversationAgentsError = "模拟读取失败"; }
+  threads.push({ ...threads[2], id: "checker-1", title: "独立检查执行记录", weave: false, parentThreadId: "thread-build" });
+}
 const pendingApproval = {
   requestId: "req-1", threadId: THREAD, turnId: "turn-1", itemId: "tool-1", approvalItemId: "approval:call-1", callId: "call-1",
   requestType: "toolExecution", approvalStage: "before", retryReason: null, startedAtMs: Date.now(), toolName: "exec",
@@ -275,6 +288,7 @@ const state = {
 };
 const emit = (event: unknown) => window.__loomShellEvent?.(JSON.stringify(event));
 const shell = {
+  agentState(id: string, state: string, executionRunning: boolean) { const agent = buildOverview.conversationAgents?.find(item => item.id === id); if (agent) Object.assign(agent, { state, executionRunning }); },
   calls: [] as Array<{ operation: string; args: unknown[] }>,
   biometric: true,
   failProjects: false,

@@ -102,3 +102,12 @@ at 320/390 px in both themes. The streaming browser test also checks rich-block 
 The completion hold also retains the quiet-gap indicator's space while fading it out, then releases it
 with the process fold. It becomes inert and stops registering as thinking immediately, avoiding the
 one-row jump before the final answer. `execution-sequence-browser.mjs` checks this hold/fold frame by frame.
+
+The Agent branch includes conversation descendants independently of project runs. `projectRun/overview`
+returns `conversationAgents` for open descendants, including long-goal `goal-check` and `goal-line` roles,
+with execution/queue/session state and current-turn activity. Completed-but-open agents remain visible
+until their result is collected/closed; closed agents and sibling branches are excluded. Failed reads
+are explicit errors. The phone deduplicates project episode agents and opens the actual child thread.
+Both phone and desktop Host must be updated. Older Hosts show an upgrade message instead of an empty pane.
+`node scripts/tests/mobile-conversation-agents.mjs` covers checker-without-run, status refresh, child
+navigation, old Host, empty/error states and 320/390 px layouts.

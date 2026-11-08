@@ -755,3 +755,36 @@ def test_a_checker_of_a_list_that_dropped_nothing_hears_nothing_about_it(tmp_pat
         assert checker and "dropped these steps" not in checker[0]
     finally:
         runtime.close()
+
+def test_overview_exposes_independent_checker_without_a_project_run(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [START, answer("已经提交"), PASSED])
+    try:
+        record = service.weave_goals.get(source)
+        goal._spawn_checker(service, source, record, "独立检查报告")
+        checker = service.weave_goals.get(source)["checkerId"]
+        runtime.agent_control.wait(source, checker, timeout_seconds=10)
+        overview = service.project_overview({"threadId": source})
+        assert overview["run"] is None and overview["agents"] == []
+        agent = next(item for item in overview["conversationAgents"] if item["id"] == checker)
+        assert agent["role"] == "goal-check" and agent["parentId"] == source
+        assert agent["state"] == "completed" and not agent["executionRunning"]
+        runtime.agent_control.close_agent(source, checker)
+        assert service.project_overview({"threadId": source})["conversationAgents"] == []
+    finally:
+        runtime.close()
+
+
+def test_conversation_agent_overview_excludes_siblings_but_includes_nested_children(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [START, answer("开始"), answer("调查"), answer("复核"), answer("旁支")])
+    try:
+        control = runtime.agent_control
+        first = control.spawn(source, "调查", role="survey", history_mode="none", background=True).node.session_id
+        control.wait(source, first, timeout_seconds=10)
+        child = control.spawn(first, "复核", role="reviewer", history_mode="none", background=True).node.session_id
+        control.wait(source, child, timeout_seconds=10)
+        sibling = control.spawn(source, "旁支", role="worker", history_mode="none", background=True).node.session_id
+        control.wait(source, sibling, timeout_seconds=10)
+        assert {item["id"] for item in service._conversation_agent_views(first)["conversationAgents"]} == {child}
+        assert {item["id"] for item in service._conversation_agent_views(source)["conversationAgents"]} == {first, child, sibling}
+    finally:
+        runtime.close()

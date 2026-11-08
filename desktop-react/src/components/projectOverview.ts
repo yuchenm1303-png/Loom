@@ -14,6 +14,10 @@ export interface OverviewAgent {
   approval?: { callId: string; requestId: string; tool: string; command: string; reason: string; kind: string; error?: string } | null;
 }
 export interface OverviewEvent { sequence: number; runId: string; kind: string; at?: number | null; reason?: string; taskId?: string | null }
+export interface ConversationAgent {
+  id: string; parentId: string; role: string; state: string; executionRunning: boolean; queueDepth: number;
+  activity: string; step: number; startedAt?: string | null; error?: string;
+}
 export interface ProjectProgram {
   id: string; objective: string; state: string; reason?: string; maxWorkers?: number; permissionMode?: string; createdAt?: number;
   milestones: { index: number; runId: string; complete: boolean; tokens: number; episodes: number; summary: string }[];
@@ -21,6 +25,8 @@ export interface ProjectProgram {
   references?: { name: string; bytes: number }[];
 }
 export interface ProjectOverview {
+  conversationAgents?: ConversationAgent[];
+  conversationAgentsError?: string;
   observedAt?: number;
   goal?: LongGoal | null;
   run: (ProjectRun & { ledgerPosition?: { chargedTokens: number }; ledgerTokens?: number; ledgerEpisodes?: number;

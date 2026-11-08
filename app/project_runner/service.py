@@ -593,6 +593,7 @@ class ProjectServiceMixin(WorkspaceMixin):
         internal_root = store.get(checks.registry_root(internal)) if internal else None
         if internal:
             thread_id = internal["sourceThreadId"]
+        conversation_agents = self._conversation_agent_views(thread_id)
         milestone = (internal_root or {}).get("milestone") or {}
         current = (program.get(store, milestone["programId"]) if milestone.get("programId")
                    else None if internal else program.for_thread(store, thread_id))
@@ -605,7 +606,7 @@ class ProjectServiceMixin(WorkspaceMixin):
             root = internal_root or (max(roots, key=lambda run: run.get("createdAt", 0)) if roots else None)
         if root is None:
             # Nothing started yet: what would stop a start (uncommitted changes) is shown before it is tried.
-            return {"observedAt": time.time(), "run": None, "program": current, "children": [], "agents": [], "events": [],
+            return {"observedAt": time.time(), **conversation_agents, "run": None, "program": current, "children": [], "agents": [], "events": [],
                     "workspace": self._project_workspace_state(thread_id), "proposal": self.weave_proposals.get(thread_id),
                     "goal": goal.view(self, thread_id)}
         children = [run for run in runs if run.get("teamOwnerId") == root["id"]]
@@ -630,10 +631,39 @@ class ProjectServiceMixin(WorkspaceMixin):
         kinds = {run["id"]: "shard" if run.get("reviewShard") else "team" if run.get("teamOwnerId")
                  else "integration" if run.get("integrationTarget") else "root" for run in family}
         measured = {**metrics.summarize(spans, kinds), "waits": metrics.waits(store, ids)}
-        return {"observedAt": time.time(), "run": view, "program": current, "children": children, "integration": integration,
+        return {"observedAt": time.time(), **conversation_agents, "run": view, "program": current, "children": children, "integration": integration,
                 "agents": agents, "events": events, "timeline": spans[-120:], "metrics": measured,
                 "proposal": proposal, "workspace": self._project_workspace_state(thread_id) if proposal else None,
                 "goal": goal.view(self, thread_id)}
+
+    def _conversation_agent_views(self, thread_id):
+        """Conversation descendants, including long-goal checkers, independent of project episodes."""
+        control = getattr(self.runtime, "agent_control", None)
+        if control is None:
+            return {"conversationAgents": []}
+        try:
+            nodes = control.graph.list_tree(thread_id, include_closed=True)
+            descendants = {thread_id}
+            while True:
+                before = len(descendants)
+                descendants.update(node.session_id for node in nodes if node.parent_session_id in descendants)
+                if len(descendants) == before:
+                    break
+            agents = []
+            for item in control.list_tree(thread_id, include_closed=False):
+                node = item.node
+                if node.session_id == thread_id or node.session_id not in descendants or node.relation_status.value != "active":
+                    continue
+                session = self.store.load(node.session_id)
+                view = self._agent_view({"id": "", "plan": []}, {
+                    "sessionId": node.session_id, "turnId": session.current_turn_id, "state": item.session_status.value})
+                agents.append({"id": node.session_id, "parentId": node.parent_session_id, "role": node.role,
+                               "state": item.session_status.value, "executionRunning": item.execution_running,
+                               "queueDepth": item.queue_depth, "activity": view["activity"], "step": view["step"],
+                               "startedAt": view["startedAt"] or node.created_at, "error": (item.error or "")[:500]})
+            return {"conversationAgents": agents}
+        except (OSError, ValueError, RuntimeError) as cause:
+            return {"conversationAgents": [], "conversationAgentsError": str(cause)[:300]}
 
     def _project_workspace_state(self, thread_id):
         return describe_workspace(self._load(thread_id).workspace_dir)

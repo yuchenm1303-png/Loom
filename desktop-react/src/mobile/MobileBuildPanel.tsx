@@ -1,4 +1,5 @@
 import { BuildBranchDetails } from "./BuildBranchDetails";
+import { ConversationAgents } from "./ConversationAgents";
 import { GoalBudgetControl } from "../components/GoalBudgetControl";
 import type { CurrentModel } from "../types/loom";
 import { BuildBranches, BranchCard, type BuildBranch } from "./BuildBranches";
@@ -664,6 +665,7 @@ export function MobileBuildPanel({
                 ))}
             </Section>
           ) : null}
+          {overview && (overview.conversationAgents?.length || !data?.agents.length) ? <Section category="agents" title="对话子 Agent" icon={<Bot {...GLYPH} />}><ConversationAgents overview={overview} online={online} onOpen={onOpenAgent} /></Section> : null}
           {goal ? (
             <Section title="长目标" icon={<Compass {...GLYPH} />}>
               <p>{goal.text}</p>
@@ -963,7 +965,7 @@ export function MobileBuildPanel({
                   </div>
                 ) : null}
               </Section>
-              <Section title="执行 Agent" icon={<Bot {...GLYPH} />}>
+              {data.agents.length ? <Section title="执行 Agent" icon={<Bot {...GLYPH} />}>
                 {!data.agents.length ? (
                   <p className="m-note">当前没有活跃 Agent</p>
                 ) : null}
@@ -998,7 +1000,7 @@ export function MobileBuildPanel({
                     ))}
                   </div>
                 ) : null}
-              </Section>
+              </Section> : null}
               <Section
                 title={`任务与验收 · ${data.tasks.filter((task) => task.state === "integrated").length} / ${data.tasks.length}`}
                 icon={<ListChecks {...GLYPH} />}
