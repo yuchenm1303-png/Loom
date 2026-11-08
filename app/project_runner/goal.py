@@ -30,7 +30,8 @@ from .goal_common import RETRY_BASE, RETRY_MAX, charged, delay as _delay, span a
 GOALS_FILE = "weave-goals.json"
 RETRIES_FILE = "weave-start-retries.json"
 MAX_TURNS = 300
-MAX_CHECKS = 3  # rejected checks before the person decides
+MAX_CHECKS = 3  # rejections that ask for no less than the one before, before the person decides
+MAX_REJECTIONS = 8  # rejections in all, converging or not
 # Past this share of the budget the lead is told to wrap up and claim, so the check still fits. A real night used
 # its whole budget in the last verification step: the work was done, never claimed, never checked, and in the
 # morning the goal only said the budget was used up.
@@ -365,6 +366,7 @@ def _collect(service, thread_id, record, objective):
             if not goal_charter.charter_of(record):  # a goal from before charters: the requests travel as text
                 text += "\n" + "\n".join(f"- {item}" for item in deeper[:8])
             record.update(phase="working", checkFaults=0, deepen=text[:6000])
+            record.pop("rejectionWeight", None)  # a new round's requests are not measured against the old one's
             if goal_lines.mode() == "lines":  # these are often independent: the split is decided again
                 record.update(linesDecision="pending", linesHolds=0)
             service.weave_goals.put(thread_id, record)
@@ -374,10 +376,16 @@ def _collect(service, thread_id, record, objective):
     unmet = [f"{item['id']}: {item['text']}" + (f" ({item['note']})" if item.get("note") else "")
              for item in (goal_charter.charter_of(record) or {}).get("criteria") or () if item["status"] == "unmet"]
     record["checks"] += 1
+    # A rejection that asks for less than the last one is the work converging, not stuck: only the others count.
+    weight = len(unmet) + len(major or issues)
+    previous = record.get("rejectionWeight")
+    if previous is None or weight >= previous:
+        record["rejectionStalls"] = record.get("rejectionStalls", 0) + 1
+    record["rejectionWeight"] = weight
     listed = lambda items: "\n".join(f"- {item}" for item in items) or "- none"  # noqa: E731
     feedback = REVIEW_BACK.format(summary=summary, unmet=listed(unmet), major=listed(major or issues), minor=listed(minor))
     record.update(phase="working", checkFaults=0, feedback=feedback[:6000])
-    if record["checks"] >= MAX_CHECKS:
+    if record["rejectionStalls"] >= MAX_CHECKS or record["checks"] >= MAX_REJECTIONS:
         return _stop(service, thread_id, record, GoalStatus.BLOCKED,
                      f"An independent check rejected the work {record['checks']} times: {summary}")
     service.weave_goals.put(thread_id, record)

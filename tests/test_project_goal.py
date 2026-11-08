@@ -110,6 +110,37 @@ def test_a_check_that_keeps_rejecting_stops_for_the_person(tmp_path):
         runtime.close()
 
 
+def test_rejections_that_ask_for_less_each_time_do_not_stop_the_goal(tmp_path):
+    def rejected(count):
+        return answer(json.dumps({"verdict": "needs_changes", "summary": "还差一点",
+                                  "major": [f"问题 {i}" for i in range(count)]}))
+    service, runtime, _, source = conversation(tmp_path, [
+        START, DONE, answer("1"), rejected(4), DONE, answer("2"), rejected(3), DONE, answer("3"), rejected(2),
+        DONE, answer("4"), rejected(1), DONE, answer("5"), PASSED])
+    try:
+        tick(service, source, 16)
+        final = state(service, source)
+        assert final["status"] == "complete" and final["checked"] is True, final.get("reason")
+        record = service.weave_goals.get(source)
+        assert record["checks"] == 4 and record["rejectionStalls"] == 1
+    finally:
+        runtime.close()
+
+
+def test_rejections_that_stop_shrinking_still_stop_the_goal(tmp_path):
+    def rejected(count):
+        return answer(json.dumps({"verdict": "needs_changes", "summary": "没改好", "major": [f"问题 {i}" for i in range(count)]}))
+    service, runtime, _, source = conversation(tmp_path, [
+        START, DONE, answer("1"), rejected(3), DONE, answer("2"), rejected(2), DONE, answer("3"), rejected(2),
+        DONE, answer("4"), rejected(2)])
+    try:
+        tick(service, source, 14)
+        final = state(service, source)
+        assert final["status"] == "blocked" and "4 times" in final["reason"]
+    finally:
+        runtime.close()
+
+
 def test_a_checker_that_gives_no_verdict_does_not_count_as_a_pass(tmp_path):
     service, runtime, _, source = conversation(tmp_path, [START, DONE, answer("做完了"), answer("没有 JSON"), answer("还是没有")])
     try:
