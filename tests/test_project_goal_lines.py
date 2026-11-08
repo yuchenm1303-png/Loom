@@ -979,6 +979,28 @@ def test_a_read_only_line_needs_no_check(tmp_path):
         runtime.close()
 
 
+def test_a_claim_is_called_a_claim_until_the_check(tmp_path):
+    # Real run: told "Durable goal marked complete.", the lead reported "independently verified" before any check.
+    service, runtime, platform, source, _ = conversation(tmp_path, [START, SOLO, DONE, answer("在核验中")])
+    try:
+        said = said_to_lead(platform)[-1]
+        assert goal.CLAIMED[:40] in said and "Durable goal marked complete." not in said
+    finally:
+        runtime.close()
+
+
+def test_a_goal_outside_build_mode_keeps_the_plain_answer(tmp_path):
+    service, runtime, platform, source, _ = conversation(tmp_path, [answer("好")])
+    try:
+        runtime.set_goal(source, "普通目标")
+        tool = runtime.tools.get("mark_thread_goal")
+        from app.agent_runtime.tools import ToolContext
+        result = tool.handler(ToolContext(session_id=source, turn_id="t", workspace=tmp_path), {"status": "complete"})
+        assert result.content == "Durable goal marked complete."
+    finally:
+        runtime.close()
+
+
 def test_outside_a_goal_there_is_nothing_to_split(tmp_path):
     service, runtime, _, source, _ = conversation(tmp_path, [answer("你好")])
     try:

@@ -7,7 +7,9 @@ from .durable_state import DurableThreadStateStore, GoalStatus
 from .tools import AgentTool, ToolContext, ToolResult
 
 
-def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None) -> tuple[AgentTool, ...]:
+def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None, claim_note=None) -> tuple[AgentTool, ...]:
+    """claim_note(session_id) -> text or None: what marking complete means here, when someone else decides it.
+    A real lead was told "Durable goal marked complete." and reported "independently verified" before any check ran."""
     def get_state(context: ToolContext, _arguments: dict[str, Any]) -> ToolResult:
         goal = store.get_goal(context.session_id)
         queue = store.list_queue(context.session_id)
@@ -60,9 +62,10 @@ def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None) -> 
                 "source": "model",
             },
         )
+        note = claim_note(context.session_id) if claim_note is not None and status is GoalStatus.COMPLETE else None
         return ToolResult(
             ok=True,
-            content=f"Durable goal marked {goal.status.value}.",
+            content=note or f"Durable goal marked {goal.status.value}.",
             data={
                 "objective": goal.objective,
                 "status": goal.status.value,

@@ -16,6 +16,7 @@ from .context_state import (
     render_runtime_state_text,
 )
 from .history import repair_tool_history
+from .investigate import annotate as annotate_reads, hold as hold_reads, investigate_tool
 from .multi_agent_tools import multi_agent_tools
 
 
@@ -90,9 +91,11 @@ class MultiAgentRuntime(ContextAgentRuntime):
             max_agents_per_tree=max_agents_per_tree,
             max_depth=max_agent_depth,
         )
-        for tool in multi_agent_tools(self.agent_control):
+        for tool in (*multi_agent_tools(self.agent_control), investigate_tool(self.agent_control)):
             if self.tools.get(tool.name) is None:
                 self.tools.register(tool)
+        self.tool_result_annotator = annotate_reads
+        self.read_batch_gate = hold_reads
 
     def close(self) -> None:
         try:

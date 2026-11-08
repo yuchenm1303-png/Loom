@@ -1054,7 +1054,9 @@ class AgentRuntime:
         step = self._resolve_batch_step(session, step, calls)
         from .turn_plan import held_calls
         gate = getattr(self, "tool_batch_gate", None)
-        held = held_calls(self, session, step, calls) or (gate(session, step, calls) if gate else None)
+        reads = getattr(self, "read_batch_gate", None)
+        held = (held_calls(self, session, step, calls) or (gate(session, step, calls) if gate else None)
+                or (reads(self, session, step, calls) if reads else None))
         held = tuple(held or ())
         if held:
             # Only what the gate refused: a real weave_goal beside another call was refused with it,
@@ -1772,6 +1774,9 @@ class AgentRuntime:
                     "recorded earlier in this turn (a check changed until it passes never counts in the same turn). "
                     "Cite the earlier definition if it was right; otherwise end this turn reporting that more "
                     "checking is needed, and run this corrected check first in the next turn."), result.data)
+        annotator = getattr(self, "tool_result_annotator", None)
+        if annotator is not None and not failed:
+            result = annotator(self, session, call, result)
         data: dict[str, object] = {
             "call_id": call.call_id,
             "tool": call.name,

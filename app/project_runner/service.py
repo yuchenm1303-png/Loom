@@ -427,6 +427,7 @@ class ProjectServiceMixin(WorkspaceMixin):
         self.weave_retries = goal.Goals(home, goal.RETRIES_FILE)
         self.runtime.subscribe(lambda event: goal.observe_failure(self, event))
         self.runtime.tool_batch_gate = lambda session, step, calls: goal_lines.hold(self, session, step, calls)
+        self.runtime.goal_claim_note = lambda session_id: goal.CLAIMED if self.weave_goals.get(session_id) else None
         for tool in weave.tools(self):
             if self.runtime.tools.get(tool.name) is None:
                 self.runtime.tools.register(tool)

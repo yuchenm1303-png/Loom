@@ -14,7 +14,7 @@ from .agent_graph import (
     AgentRelationStatus,
 )
 from .context_state import compaction_split_index
-from .contracts import AgentRunResult, AgentSession, AgentStatus
+from .contracts import AgentRunResult, AgentSession, AgentStatus, PermissionMode
 from .history import repair_tool_history
 
 
@@ -132,7 +132,12 @@ class AgentControl:
         recent_messages: int = 16,
         profile_id: str | None = None,
         background: bool = True,
+        read_only: bool = False,
+        tool_selection: list[str] | None = None,
+        system_prompt: str | None = None,
     ) -> AgentExecutionSnapshot:
+        """Start a child thread. read_only narrows it to the read-only permission mode (never widens anything);
+        tool_selection limits the tools it is offered; system_prompt replaces the parent's for a narrow role."""
         self._assert_open()
         body = str(task or "").strip()
         if not body:
@@ -153,11 +158,13 @@ class AgentControl:
         resolved_history = AgentHistoryMode(history_mode)
         child = self.runtime.create_session(
             str(profile_id or parent.profile_id),
-            system_prompt=self._child_system_prompt(parent, role),
+            system_prompt=system_prompt or self._child_system_prompt(parent, role),
             workspace_dir=parent.workspace_dir,
-            permission_mode=parent.permission_mode,
+            permission_mode=PermissionMode.READ_ONLY if read_only else parent.permission_mode,
             emit_session_created=False,
         )
+        if tool_selection is not None:
+            child.tool_selection = sorted(set(tool_selection))
         # A conversation's model is on its session, not the Host's default: without this
         # every sub-agent silently ran on whatever model the Host was started with.
         for name in _MODEL_FIELDS:

@@ -31,6 +31,11 @@ GOALS_FILE = "weave-goals.json"
 RETRIES_FILE = "weave-start-retries.json"
 MAX_TURNS = 300
 MAX_CHECKS = 3  # rejected checks before the person decides
+# What marking a long goal complete means. A real lead was told only "Durable goal marked complete." and told the
+# person "independently verified" a minute before the checker started.
+CLAIMED = ("Claim recorded, not verified. A separate agent with none of this conversation now checks the work; "
+           "until it passes the goal is not done, and it may send the work back. Tell the person the result is being "
+           "checked, not that it passed or was verified.")
 MAX_CHECK_FAULTS = 2  # a checker that died or gave no verdict is run again, not believed
 MAX_FAILURES = 8
 MAX_STALLS = 2  # goal turns in a row with no tool call that worked
