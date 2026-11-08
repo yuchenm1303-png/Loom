@@ -216,6 +216,99 @@ def test_the_budget_counts_cached_input_at_a_tenth_and_stops_the_goal(tmp_path):
         runtime.close()
 
 
+def test_past_the_wrap_share_the_lead_is_told_to_finish_and_claim(tmp_path):
+    # Real night: the budget ran out in the last verification step; the work was done, never claimed, never checked.
+    service, runtime, platform, source = conversation(tmp_path, [
+        calling("weave_goal", {"objective": "研究", "token_budget": 2_000_000}),
+        answer("花了很多", total=1_800_000), answer("收尾")])
+    try:
+        assert state(service, source)["reason"] == ""
+        tick(service, source)
+        record = service.weave_goals.get(source)
+        assert record["wrapUp"] is True
+        said = " ".join(str(m.content) for m in platform.requests[-1].messages)
+        assert "Start nothing new" in said, "the next goal turn says it"
+    finally:
+        runtime.close()
+
+
+def test_a_running_turn_is_told_once_through_a_tool_result(tmp_path):
+    from types import SimpleNamespace
+    from app.agent_runtime.tools import ToolResult
+    service, runtime, _, source = conversation(tmp_path, [START, answer("开始")])
+    try:
+        record = service.weave_goals.get(source)
+        record.update(wrapUp=True, tokens=900, tokenBudget=1000)
+        service.weave_goals.put(source, record)
+        weave_session = SimpleNamespace(session_id=source, weave=True)
+        first = goal.annotate(service, weave_session, ToolResult(True, "读到了", {}))
+        again = goal.annotate(service, weave_session, ToolResult(True, "又读到了", {}))
+        assert "Start nothing new" in first.content and "90%" in first.content
+        assert again.content == "又读到了", "once"
+        plain = SimpleNamespace(session_id=source, weave=False)
+        record = service.weave_goals.get(source)
+        record["wrapTold"] = False
+        service.weave_goals.put(source, record)
+        assert goal.annotate(service, plain, ToolResult(True, "x", {})).content == "x", "only build mode has goals"
+    finally:
+        runtime.close()
+
+
+def test_the_note_reaches_a_running_goal_turn_through_the_runtime(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [
+        START, answer("开始"), calling("get_thread_state", {}, "call-state"), answer("收尾了")])
+    try:
+        from app.project_runner.goal_common import charged
+        record = service.weave_goals.get(source)
+        spent = charged(service.store.load(source).usage) - record["baseCharged"]
+        record["tokenBudget"] = int(spent / 0.9)  # about 90% used before the next goal turn
+        assert spent / record["tokenBudget"] >= goal.WRAP_SHARE
+        service.weave_goals.put(source, record)
+        tick(service, source)
+        results = [event.data["content"] for event in service.store.events(source)
+                   if event.kind.value == "tool_completed" and event.data.get("tool") == "get_thread_state"]
+        assert results and "Runtime note: Budget" in results[-1]
+    finally:
+        runtime.close()
+
+
+def test_a_larger_budget_takes_the_wrap_up_back(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [
+        calling("weave_goal", {"objective": "研究", "token_budget": 2_000_000}),
+        answer("花了很多", total=1_800_000), answer("收尾"), answer("继续")])
+    try:
+        tick(service, source)
+        assert service.weave_goals.get(source)["wrapUp"] is True
+        record = service.weave_goals.get(source)
+        record["tokenBudget"] = 8_000_000
+        service.weave_goals.put(source, record)
+        tick(service, source)
+        assert not service.weave_goals.get(source)["wrapUp"]
+    finally:
+        runtime.close()
+
+
+def test_running_out_says_which_side_of_the_claim_it_was(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [
+        calling("weave_goal", {"objective": "研究", "token_budget": 2_000_000}), answer("没读缓存", total=2_100_000)])
+    try:
+        tick(service, source)
+        assert state(service, source)["status"] == "budget_limited"
+        assert service.weave_goals.get(source)["reason"] == goal.OUT_WORKING
+    finally:
+        runtime.close()
+    (tmp_path / "b").mkdir()
+    service, runtime, _, source = conversation(tmp_path / "b", [START, DONE, answer("做完了")])
+    try:
+        record = service.weave_goals.get(source)
+        record["tokenBudget"] = 1
+        service.weave_goals.put(source, record)
+        tick(service, source)
+        assert service.weave_goals.get(source)["reason"] == goal.OUT_CHECKING
+    finally:
+        runtime.close()
+
+
 def test_the_person_stopping_a_turn_pauses_the_goal(tmp_path):
     service, runtime, platform, source = conversation(tmp_path, [START, answer("继续"), answer("恢复后"), answer("x"), answer("y")])
     try:
@@ -592,8 +685,11 @@ def test_a_goal_turn_tells_the_lead_to_delegate_and_names_its_open_sub_agents(tm
         runtime.close()
 
 
-def test_the_guide_keeps_ordinary_turns_frugal_and_flips_in_a_goal():
-    assert "in an ordinary turn" in weave.GUIDE and "In a long goal the default flips" in weave.GUIDE
+def test_the_guide_keeps_ordinary_turns_frugal_and_says_how_a_goal_splits():
+    assert "in an ordinary turn" in weave.GUIDE and "the Host asks whether to split it into lines" in weave.GUIDE
+    assert "default flips" not in weave.GUIDE, "a goal starts alone now; the old line said the opposite"
+    # Real morning: a new direction in a conversation whose goal had run out was done in one short turn.
+    assert "new direction and no long goal is running" in weave.GUIDE
     hours = next(tool for tool in weave.tools(type("S", (), {})()) if tool.name == "weave_goal").input_schema
     assert "hours" in hours["properties"]
 

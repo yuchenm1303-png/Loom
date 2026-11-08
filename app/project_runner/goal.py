@@ -31,6 +31,15 @@ GOALS_FILE = "weave-goals.json"
 RETRIES_FILE = "weave-start-retries.json"
 MAX_TURNS = 300
 MAX_CHECKS = 3  # rejected checks before the person decides
+# Past this share of the budget the lead is told to wrap up and claim, so the check still fits. A real night used
+# its whole budget in the last verification step: the work was done, never claimed, never checked, and in the
+# morning the goal only said the budget was used up.
+WRAP_SHARE = 0.85
+WRAP_UP = ("Budget: {share:.0%} of this goal's token budget is used. Start nothing new. Finish what is in hand, bring "
+           "the report up to date, and claim the goal with mark_thread_goal within a few steps (or mark it blocked); "
+           "what is left of the budget is for the independent check.")
+OUT_WORKING = "The token budget ran out before the work was claimed complete"
+OUT_CHECKING = "The token budget ran out during the independent check: the work was claimed complete but is not verified"
 # What marking a long goal complete means. A real lead was told only "Durable goal marked complete." and told the
 # person "independently verified" a minute before the checker started.
 CLAIMED = ("Claim recorded, not verified. A separate agent with none of this conversation now checks the work; "
@@ -170,6 +179,8 @@ def _working_agents(service, thread_id, record):
 
 def _context(service, thread_id, record):
     lines = [_time_line(record)]
+    if record.get("wrapUp"):
+        lines.append(WRAP_UP.format(share=record["tokens"] / max(1, record["tokenBudget"])))
     if record.get("deepen"):
         lines.append(record["deepen"])
     if record.get("reports"):
@@ -398,10 +409,15 @@ def _advance(service, thread_id, record, polled):
     polled[thread_id] = now
     session = _charge(service, thread_id, record)
     if record["tokens"] >= record["tokenBudget"]:
-        _stop(service, thread_id, record, GoalStatus.BUDGET_LIMITED, "The token budget is used up")
+        claimed = record["phase"] == "checking" or goal.status is GoalStatus.COMPLETE
+        _stop(service, thread_id, record, GoalStatus.BUDGET_LIMITED, OUT_CHECKING if claimed else OUT_WORKING)
         if session.status in _BUSY or service._is_active(thread_id):
             service.runtime.cancel(thread_id)
         return True
+    if record["phase"] == "working" and record["tokens"] >= WRAP_SHARE * record["tokenBudget"]:
+        record["wrapUp"] = True  # the next tool result of the running turn says so, and every goal turn after
+    elif record.get("wrapUp"):  # a larger budget, or the check: said again only if it comes back
+        record.update(wrapUp=False, wrapTold=False)
     service.weave_goals.put(thread_id, record)
     if service._is_active(thread_id) or session.status in _BUSY:
         return False
@@ -419,6 +435,24 @@ def _advance(service, thread_id, record, polled):
     if now < record["retryAt"] or goal_lines.live(record):  # the lead costs nothing while it waits for its lines
         return False
     return _continue(service, thread_id, record, session)
+
+
+def annotate(service, session, result):
+    """A tool result of a goal's conversation as the model sees it: the first one after the goal passes WRAP_SHARE
+    carries the note. Goal turns run for hours, and a tool result is where a running turn can be told."""
+    if getattr(session, "weave", False) is not True:
+        return result  # only build mode has goals; ordinary turns pay no file read per tool call
+    record = service.weave_goals.get(session.session_id)
+    if not record or not record.get("wrapUp") or record.get("wrapTold") or record.get("phase") != "working":
+        return result
+    with service.project_runner.guard:
+        record = service.weave_goals.get(session.session_id)
+        if not record or record.get("wrapTold"):
+            return result
+        record["wrapTold"] = True
+        service.weave_goals.put(session.session_id, record)
+    note = WRAP_UP.format(share=record["tokens"] / max(1, record["tokenBudget"]))
+    return type(result)(result.ok, result.content + "\n\nRuntime note: " + note, result.data)
 
 
 def observe_failure(service, event):

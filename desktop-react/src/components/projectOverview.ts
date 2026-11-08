@@ -454,7 +454,13 @@ export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "z
       : line("长目标完成，但独立检查没能做完", "Long goal finished, but the independent check could not be completed");
     return { text, detail: goal.summary, live: false, dismiss: true };
   }
-  if (goal.status === "budget_limited") return { text: line("预算用完，长目标已停下", "Budget used up, the long goal stopped"), detail: goal.objective, live: false, action: "resume", dismiss: true };
+  if (goal.status === "budget_limited") {
+    // Which side of the claim it ran out on: done but unchecked is not the same as unfinished.
+    const checking = /during the independent check/i.test(goal.reason || "");
+    const text = checking ? line("预算在独立检查中用完：已声明完成，但未经核验", "Budget used up during the check: claimed done, not verified")
+      : line("预算用完，长目标在声明完成前停下", "Budget used up before the goal was claimed done");
+    return { text, detail: goal.objective, live: false, action: "resume", dismiss: true };
+  }
   if (goal.status === "paused") return { text: line("长目标已暂停", "Long goal paused"), detail: goal.objective, live: false, action: "resume", dismiss: true };
   return { text: line("长目标需要你处理", "The long goal needs you"), detail: goal.reason, live: false, action: "resume", dismiss: true };
 }

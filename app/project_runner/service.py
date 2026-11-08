@@ -428,6 +428,9 @@ class ProjectServiceMixin(WorkspaceMixin):
         self.runtime.subscribe(lambda event: goal.observe_failure(self, event))
         self.runtime.tool_batch_gate = lambda session, step, calls: goal_lines.hold(self, session, step, calls)
         self.runtime.goal_claim_note = lambda session_id: goal.CLAIMED if self.weave_goals.get(session_id) else None
+        reads = getattr(self.runtime, "tool_result_annotator", None)
+        self.runtime.tool_result_annotator = lambda runtime, session, call, result: goal.annotate(
+            self, session, reads(runtime, session, call, result) if reads else result)
         for tool in weave.tools(self):
             if self.runtime.tools.get(tool.name) is None:
                 self.runtime.tools.register(tool)
