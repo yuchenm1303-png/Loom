@@ -988,6 +988,13 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-goal:not([data-live]) .pf-attention-dot { animation: none; }
 .pf-goal[data-live] .pf-attention-dot { background: var(--pf-live); }
 .pf-goal:has(.pf-goal-lines) { flex-wrap: wrap; }
+/* The long goal is a branch card: its line, its stop, its budget and what it committed to, never over the conversation. */
+.pf-goal-card .pf-goal { display: grid; gap: 8px; min-width: 0; font-size: 12px; color: var(--pl-secondary); }
+.pf-goal-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--pl-ink); }
+.pf-goal-card .pf-goal-lines { padding-left: 2px; }
+.pf-goal-card .goal-budget-control { font-size: 12px; }
+.pf-goal-card .goal-budget-control p { margin: 0; }
+.pf-goal-card .goal-budget-toggle { min-height: 0; padding: 0; }
 .pf-goal-lines { flex-basis: 100%; display: grid; gap: 4px; margin: 2px 0 0; padding: 0 0 0 16px; list-style: none; }
 .pf-goal-lines li { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--pl-secondary); font-size: 11.5px; }
 .pf-goal-lines i { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--pf-live); }
@@ -997,6 +1004,11 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-goal-lines li[data-state="failed"] i { background: var(--pf-warn); }
 .pf-goal-lines span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-goal-lines small { flex: none; color: var(--pl-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* The deliverable is the one line of the charter worth reading whole: up to three lines, not an ellipsis. */
+.pf-goal-charter li:first-child { align-items: flex-start; }
+.pf-goal-charter li:first-child i { margin-top: 5px; }
+.pf-goal-charter li:first-child span { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.pf-goal-charter .pf-goal-where { padding-left: 13px; }
 
 /* Uncommitted changes before a start: the attention line, opened into the files and one commit. */
 .pf-dirty { display: grid; gap: 4px; align-items: stretch; }

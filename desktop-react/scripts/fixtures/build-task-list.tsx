@@ -1,6 +1,8 @@
 /** A 建造 conversation with no project: the real ProjectMode, whose task-list branch reads the transcript.
  *  /scripts/fixtures/build-task-list.html?list=1 opens with a list; window.taskListFixture.arrive() brings it later,
  *  .step() moves it on and .uncovered() closes a step without doing it. Nothing connects to a Host.
+ *  ?earlier=1: the list was written for an earlier request and the person has sent a new message.
+ *  ?agents=conv: the conversation's own sub-agents (a goal's check, a line) running, no project.
  */
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -26,7 +28,10 @@ Object.assign(window, { loom: { queryModelUsage: async () => ({ status: "ok", pr
             criteria: [{ id: "C1", text: "相关工作对比至少覆盖五篇近年论文，并说明新意在哪里", status: "met", origin: "charter" },
                        { id: "C2", text: "主结果与两个公平基线对比，给出置信区间", status: "unmet", origin: "charter" },
                        { id: "C3", text: "在第三个信道模型下验证结论是否稳健", status: "open", origin: "review 1" },
-                       { id: "C4", text: "一条命令复现文中所有数字", status: "dropped", origin: "charter" }] } } : {}) } : null, run: null, program: null, children: [], agents: [], events: [], workspace: { path: "C:/work/loom", branch: "main", status: "ready" } };
+                       { id: "C4", text: "一条命令复现文中所有数字", status: "dropped", origin: "charter" }] } } : {}) } : null, run: null, program: null, children: [], agents: [], events: [],
+      ...(params2.get("agents") === "conv" ? { conversationAgents: [
+        { id: "chk-1", parentId: "t", role: "goal-check", state: "running", executionRunning: true, queueDepth: 0, activity: "", step: 4, startedAt: new Date(Date.now() - 180000).toISOString() },
+        { id: "line-1", parentId: "t", role: "goal-line", state: "completed", executionRunning: false, queueDepth: 0, activity: "", step: 12 }] } : {}), workspace: { path: "C:/work/loom", branch: "main", status: "ready" } };
     throw new Error(`no ${method} here`);
   } } });
 
@@ -39,7 +44,12 @@ const plans = [
 function Preview() {
   const [step, setStep] = useState(params.get("list") ? 0 : -1);
   Object.assign(window, { taskListFixture: { arrive: () => setStep(0), step: () => setStep(1), uncovered: () => setStep(2) } });
-  const items = (step < 0 ? [] : [{ id: "plan", type: "task_plan", threadId: "t", turnId: "turn", result: { plan: plans[step] } }]) as unknown as TranscriptItem[];
+  const earlier = params.get("earlier") === "1";
+  const items = (step < 0 ? [] : [
+    { id: "ask-1", type: "user_message", threadId: "t", turnId: "turn", source: "user", text: "修文档" },
+    { id: "plan", type: "task_plan", threadId: "t", turnId: "turn", result: { plan: plans[step], request: "修文档", request_turn_id: "turn" } },
+    ...(earlier ? [{ id: "ask-2", type: "user_message", threadId: "t", turnId: "turn-2", source: "user", text: "总结一下" }] : []),
+  ]) as unknown as TranscriptItem[];
   return (
     <div className="project-mode-stage" style={{ height: "100vh", background: "var(--loom-workspace-canvas)", color: "var(--loom-workspace-ink)" }}>
       <ProjectMode threadId="t" workspace="C:/work/loom" model="deepseek" items={items} chatting={step >= 0} />

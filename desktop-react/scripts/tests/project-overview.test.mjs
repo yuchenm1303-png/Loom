@@ -460,7 +460,7 @@ test("the goal row carries its charter: the deliverable, where the work is, and 
                  { id: "C4", text: "复现脚本", status: "dropped", origin: "charter" }] } };
   const shown = toGoal(goal);
   assert.equal(shown.charter.deliverable, "一份可以给审稿人评判的研究稿");
-  assert.equal(shown.charter.where, "阶段 4/4：Revision round 1 · 第 1 轮评审");
+  assert.equal(shown.charter.where, "阶段 4/4：第 1 轮修改 · 第 1 轮评审");
   assert.deepEqual(shown.charter.items.map(i => [i.state, i.label]),
     [["done", "已达标"], ["failed", "未达标"], ["running", "待完成 · 第 1 轮评审"], ["failed", "已放弃"]]);
   assert.equal(toGoal({ ...goal, charter: null }).charter, undefined);

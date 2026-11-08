@@ -174,11 +174,11 @@ function taskStates(run: ProjectRun, overview: ProjectOverview): Record<string, 
   return states;
 }
 
-const CONVERSATION_ROLES: Record<string, { zh: string; en: string; role: FlowAgent["role"] }> = {
-  "goal-check": { zh: "独立检查", en: "Independent check", role: "reviewer" },
-  "goal-line": { zh: "并行支路", en: "Parallel line", role: "worker" },
-  investigator: { zh: "只读调查", en: "Investigation", role: "worker" },
-  worker: { zh: "子代理", en: "Sub-agent", role: "worker" },
+const CONVERSATION_ROLES: Record<string, { zh: string; en: string; role: FlowAgent["role"]; zhRole: string; enRole: string }> = {
+  "goal-check": { zh: "独立检查", en: "Independent check", role: "reviewer", zhRole: "审稿", enRole: "Referee" },
+  "goal-line": { zh: "并行支路", en: "Parallel line", role: "worker", zhRole: "支路", enRole: "Line" },
+  investigator: { zh: "只读调查", en: "Investigation", role: "worker", zhRole: "调查", enRole: "Investigator" },
+  worker: { zh: "子代理", en: "Sub-agent", role: "worker", zhRole: "执行", enRole: "Worker" },
 };
 
 /** The conversation's own sub-agents (a long goal's checker, its lines, investigations, spawned workers), for the hub's
@@ -193,7 +193,8 @@ export function conversationFlowAgents(overview: ProjectOverview, now: number, l
       : agent.state === "waiting_approval" ? (lang === "en" ? "Waiting for approval" : "等待批准")
       : idle ? (lang === "en" ? "Finished, result not yet collected" : "已结束，等待收取结果")
       : (lang === "en" ? "Working" : "正在处理");
-    return { id: agent.id, role: kind.role, name: lang === "en" ? kind.en : kind.zh, step: agent.step, activity,
+    return { id: agent.id, role: kind.role, name: lang === "en" ? kind.en : kind.zh, roleLabel: lang === "en" ? kind.enRole : kind.zhRole,
+             step: agent.step, activity,
              waiting: agent.state === "waiting_approval", done: idle,
              elapsed: words[lang].short(Math.max(0, Math.round((now - (Number.isFinite(startedAt) ? startedAt : now)) / 60000))) };
   });
@@ -458,7 +459,8 @@ export function toCharter(goal: LongGoal, lang: "zh" | "en" = "zh"): NonNullable
   const words = en ? { open: "To do", met: "Met", unmet: "Not met", dropped: "Dropped", review: (n: number) => `review ${n}` }
     : { open: "待完成", met: "已达标", unmet: "未达标", dropped: "已放弃", review: (n: number) => `第 ${n} 轮评审` };
   const states = { open: "running", met: "done", unmet: "failed", dropped: "failed" } as const;
-  const phase = charter.phases[charter.current] || "";
+  // The Host names a review's revision round in English; say it in the person's language.
+  const phase = (charter.phases[charter.current] || "").replace(/^Revision round (\d+)$/, (_, n) => en ? `Revision round ${n}` : `第 ${n} 轮修改`);
   const rounds = goal.reviews?.length ?? 0;
   const where = [phase && (en ? `phase ${charter.current + 1}/${charter.phases.length}: ${phase}` : `阶段 ${charter.current + 1}/${charter.phases.length}：${phase}`),
                  rounds ? words.review(rounds) : ""].filter(Boolean).join(" · ");

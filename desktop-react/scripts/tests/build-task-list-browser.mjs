@@ -65,7 +65,7 @@ try {
     const goalRow = goalPage.locator(".pf-goal");
     await goalRow.waitFor();
     assert.match(await goalRow.innerText(), /长目标进行中 · 1\.2M \/ 8M/);
-    await goalRow.locator("button").click();
+    await goalRow.getByRole("button", { name: "停止" }).click();  // the card also holds the budget control
     await goalPage.waitForFunction(() => window.goalCalls.length === 1);
     assert.equal(await goalPage.evaluate(() => window.goalCalls[0].action), "pause");
     if (process.env.LOOM_TASKS_SCREENSHOT) await goalPage.screenshot({ path: `${process.env.LOOM_TASKS_SCREENSHOT}-goal-${theme}.png` });

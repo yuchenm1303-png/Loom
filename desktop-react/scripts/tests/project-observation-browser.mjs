@@ -6,11 +6,11 @@ try {
   const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
-  const branch = name => page.locator(`.bo-nav [data-branch="observe-${name}"]`);
+  const branch = name => page.locator(`.pf-branch-toggles [data-branch="observe-${name}"]`);
   const panel = name => page.locator(`[data-observation="${name}"]`);
   for (const theme of ["dark", "light"]) {
     await page.goto(`${origin}/scripts/fixtures/project-observation.html?theme=${theme}`);
-    await page.locator(".bo-nav").waitFor();
+    await page.locator(".pf-branch-toggles [data-branch^=\"observe-\"]").first().waitFor();
     assert.equal(await page.evaluate(() => window.observationFlags.calls.length), 0, "details load only when opened");
     await branch("blockers").focus();
     await page.keyboard.press("Enter");

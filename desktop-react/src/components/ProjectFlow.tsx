@@ -22,6 +22,7 @@ import {
   ArrowDown, ArrowUp, Bot, BookMarked, ChartGantt, Check, Circle, CircleDot, Compass, Copy, File, FileCode, FileImage,
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldAlert, ShieldCheck,
   History, ListChecks, Search, Sparkles, Square, X, Gauge, RefreshCw, ExternalLink,
+  Timer, CircleAlert, GitPullRequest, FileDiff, TrendingUp, Package,
 } from "./icons";
 import { BuildHistory, type BuildHistoryEntry } from "./BuildHistory";
 import { NewConversationRow } from "./NewConversationRow";
@@ -66,6 +67,8 @@ export interface FlowAgent {
   done?: boolean;
   /** Waits for the person to allow a call. */
   waiting?: boolean;
+  /** What this agent is when it is not one of a project's (a goal's referee, a line, an investigation). */
+  roleLabel?: string;
 }
 
 export interface FlowData {
@@ -211,7 +214,7 @@ const zhText = {
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
-  goalDismiss: "收起", goalCharter: "交付", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
+  goalDismiss: "收起", goalCharter: "交付", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
   agentsPending: "当前没有可查看的 agent，任务调度后自动启用", timelinePending: "还没有执行记录，建造开始后自动启用",
   filesUnavailable: "当前没有可查看或添加的参考文件", historyUnavailable: "当前环境未提供对话记录",
 };
@@ -242,7 +245,7 @@ const enText: typeof zhText = {
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The project's total token budget; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
-  goalDismiss: "Dismiss", goalCharter: "Deliverable", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
+  goalDismiss: "Dismiss", goalCharter: "Deliverable", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
   agentsPending: "No agents to inspect yet; available once tasks are dispatched", timelinePending: "No execution records yet; available once the build starts",
   filesUnavailable: "No reference files to view or add here", historyUnavailable: "Conversation history is not available here",
 };
@@ -813,6 +816,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   const [observationBranch, setObservationBranch] = useState<BuildBranch | null>(null);
   const inspection = useBuildInspection(conversationId || data.objective || "draft", Boolean(observationBranch), actions.onInspect);
   const observationLabels = buildLabels[lang];
+  const observationIcons: Record<BuildBranch, typeof Check> = { blockers: CircleAlert, evidence: ShieldCheck, reviews: GitPullRequest,
+                                                            changes: FileDiff, spending: TrendingUp, delivery: Package };
   const history = data.history;
   const open = (id: string) => id === "history" ? historyOpen : !folded.includes(id);
   const showHistory = (value: boolean) => {
@@ -831,7 +836,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   const usageZh = lang !== "en";
   const toggleUsage = () => setUsageOpen(!usageOpen);
   const agents = useDeparting(open("agents") ? data.agents : []);
-  const branches = useDeparting([...(data.taskList?.length && open("tasks") ? [{ id: "tasks" }] : []),
+  const branches = useDeparting([...(data.goal && open("goal") ? [{ id: "goal" }] : []),
+                                 ...(data.taskList?.length && open("tasks") ? [{ id: "tasks" }] : []),
                                  ...(observationBranch ? [{ id: `observe-${observationBranch}` }] : []),
                                  ...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : []),
                                  ...(usageOpen && data.models ? [{ id: "usage" }] : [])]);
@@ -856,6 +862,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     { id: "knowledge", icon: BookMarked, label: text.knowledge,
       unavailable: data.knowledge.checks + data.knowledge.notes ? undefined : text.knowledgePending },
     data.outcome ? { id: "plan", icon: Check, label: text.outcome } : { id: "plan", icon: Compass, label: text.plan(data.milestone) },
+    { id: "goal", icon: Timer, label: text.goalCard, unavailable: data.goal ? undefined : text.goalPending },
     { id: "tasks", icon: ListChecks, label: data.taskListEarlier ? text.taskListEarlier : text.taskList, unavailable: data.taskList?.length ? undefined : text.taskListPending },
     { id: "agents", icon: Bot, label: text.agentCards, unavailable: data.agents.length ? undefined : text.agentsPending },
     { id: "loom", icon: ChartGantt, label: text.loom, unavailable: data.timeline ? undefined : text.timelinePending },
@@ -1261,42 +1268,6 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
           {data.narration.summary ? <span className="pf-summary">{data.narration.summary}</span> : null}
           {/* Before a project, the hint is for an empty conversation; once people talk it only repeats itself. */}
           {data.narration.text && !(draftMode && data.conversation?.length) ? <p className="pf-narration" key={data.narration.text}>{data.narration.text}</p> : null}
-          {data.goal ? (
-            <div className="pf-attention pf-goal" role="status" data-live={data.goal.live || undefined}>
-              <span className="pf-attention-dot" />
-              <span className="pf-attention-text" title={data.goal.detail || undefined}><Inline text={data.goal.text} /></span>
-              {data.goal.dismiss ? <button type="button" className="pf-attention-quiet" disabled={actions.busy} onClick={() => actions.onGoal?.("dismiss")}>{text.goalDismiss}</button> : null}
-              {data.goal.action ? <button type="button" disabled={actions.busy || (data.goal.action === "resume" && Boolean(data.goal.budget && data.goal.budget.tokens >= data.goal.budget.tokenBudget))} onClick={() => actions.onGoal?.(data.goal!.action!)}>{data.goal.action === "pause" ? text.stop : text.resume}</button> : null}
-              {data.goal.budget && actions.onGoalBudget ? <GoalBudgetControl goal={data.goal.budget} disabled={actions.busy} canResume={data.goal.action === "resume"} onSubmit={actions.onGoalBudget} /> : null}
-              {data.goal.lines?.length ? (
-                <ul className="pf-goal-lines">
-                  {data.goal.lines.map((line) => (
-                    <li key={line.title} data-state={line.state} title={line.why || undefined}>
-                      <i aria-hidden="true" />
-                      <span>{line.title}</span>
-                      <small>{line.label}</small>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {data.goal.charter ? (
-                <ul className="pf-goal-lines pf-goal-charter" aria-label={text.goalCharter}>
-                  <li data-state="done" title={data.goal.charter.deliverable}>
-                    <i aria-hidden="true" />
-                    <span>{text.goalCharter}：{data.goal.charter.deliverable}</span>
-                    {data.goal.charter.where ? <small>{data.goal.charter.where}</small> : null}
-                  </li>
-                  {data.goal.charter.items.map((item) => (
-                    <li key={item.title} data-state={item.state} title={item.title}>
-                      <i aria-hidden="true" />
-                      <span>{item.title}</span>
-                      <small>{item.label}</small>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          ) : null}
           {data.attention ? (
             <div className="pf-attention" role="status">
               <span className="pf-attention-dot" />
@@ -1367,6 +1338,16 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                   <Icon size={12} />
                 </button>
               ))}
+              {/* What the work is waiting on, its evidence, reviews, changes, spending and delivery: one icon each, a card when open. */}
+              {actions.onInspect || data.observation ? BUILD_BRANCHES.map((branch) => {
+                const Icon = observationIcons[branch];
+                return <button type="button" key={branch} className="pf-branch-toggle" data-branch={`observe-${branch}`}
+                  aria-label={observationLabels[branch]} aria-pressed={observationBranch === branch}
+                  disabled={!actions.onInspect || renewing}
+                  title={!actions.onInspect ? `${observationLabels[branch]} · ${lang === "zh" ? "此会话暂无运行记录来源" : "No build record source is available"}`
+                    : observationBranch === branch ? text.foldBranch(observationLabels[branch]) : text.unfoldBranch(observationLabels[branch])}
+                  onClick={() => setObservationBranch(current => current === branch ? null : branch)}><Icon size={12} /></button>;
+              }) : null}
             </span>
             {/* The quill: a new 建造 conversation in this project, straight into a fresh hub. */}
             {newThread ? <NewConversationRow className="pf-new-thread" label={text.newThread} title={text.newThread} onNew={newThread} /> : null}
@@ -1387,16 +1368,6 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
             {data.controls.resume ? <button type="button" className="pf-control" aria-label={text.resume} title={text.resume} disabled={actions.busy} onClick={actions.onResume}><Play size={12} /></button> : null}
             {data.controls.cancel ? <button type="button" className="pf-control" aria-label={text.stop} title={text.stop} disabled={actions.busy} onClick={actions.onCancel}><Square size={11} /></button> : null}
           </header>
-          {actions.onInspect || data.observation ? <nav className="bo-nav" aria-label={lang === "zh" ? "工作状态支路" : "Build observation branches"}>
-            {BUILD_BRANCHES.map(branch => <button type="button" key={branch} data-branch={`observe-${branch}`}
-              aria-label={observationLabels[branch]} aria-pressed={observationBranch === branch}
-              disabled={!actions.onInspect || renewing} title={!actions.onInspect ? (lang === "zh" ? "此会话暂无运行记录来源" : "No build record source is available") : undefined}
-              onClick={() => setObservationBranch(current => current === branch ? null : branch)}>{observationLabels[branch]}</button>)}
-            {data.observation ? <span className="bo-snapshot" data-offline={data.observation.offline || undefined} role="status">
-              {data.observation.offline ? (lang === "zh" ? "连接中断 · 显示上次记录" : "Offline · showing last snapshot")
-                : data.observation.observedAt ? (lang === "zh" ? "更新于 " : "Updated ") + new Date(data.observation.observedAt * 1000).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-US")
-                : (lang === "zh" ? "记录时间未知" : "Snapshot time unavailable")}</span> : null}
-          </nav> : null}
           <div className={`pf-well pf-input${attaching && actions.onPickFiles ? " has-attach" : ""}`}>
             <ComposerAttachmentStrip attachments={attached} imagesAllowed={actions.imagesAllowed ?? true} onRemove={unattach} />
             <textarea ref={input} value={draft} rows={draftMode ? 3 : 2}
@@ -1546,10 +1517,62 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
 
       {/* With the model card open, the agents under it fold to one line each, so both fit the column. */}
       <div className="pf-col pf-right pf-side" data-crowded={branches.some((item) => !item.leaving && item.id !== "tasks") || undefined}>
+        {branches.some((item) => item.id === "goal") && leavingView("goal").goal ? (() => {
+          const goal = leavingView("goal").goal!;
+          return (
+          <div className="pf-slot" data-glide="goal" data-fit="" {...hover("goal")} {...slot("goal")}>
+            <Card id="goal" side="right" className="pf-listed pf-goal-card" icon={<Timer size={12} />} label={text.goalCard} register={register}>
+            <div className="pf-goal" role="status" data-live={goal.live || undefined}>
+              <div className="pf-goal-head">
+                <span className="pf-attention-dot" />
+                <span className="pf-attention-text" title={goal.detail || undefined}><Inline text={goal.text} /></span>
+                {goal.action ? <button type="button" className="pf-control" aria-label={goal.action === "pause" ? text.stop : text.resume}
+                  title={goal.action === "pause" ? text.stop : text.resume}
+                  disabled={actions.busy || (goal.action === "resume" && Boolean(goal.budget && goal.budget.tokens >= goal.budget.tokenBudget))}
+                  onClick={() => actions.onGoal?.(goal.action!)}>{goal.action === "pause" ? <Square size={11} /> : <Play size={12} />}</button> : null}
+                {goal.dismiss ? <button type="button" className="pf-control" aria-label={text.goalDismiss} title={text.goalDismiss} disabled={actions.busy}
+                  onClick={() => actions.onGoal?.("dismiss")}><X size={12} /></button> : null}
+              </div>
+              {goal.budget && actions.onGoalBudget ? <GoalBudgetControl goal={goal.budget} disabled={actions.busy} canResume={goal.action === "resume"} onSubmit={actions.onGoalBudget} /> : null}
+              {goal.lines?.length ? (
+                <ul className="pf-goal-lines">
+                  {goal.lines.map((line) => (
+                    <li key={line.title} data-state={line.state} title={line.why || undefined}>
+                      <i aria-hidden="true" />
+                      <span>{line.title}</span>
+                      <small>{line.label}</small>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {goal.charter ? (
+                <ul className="pf-goal-lines pf-goal-charter" aria-label={text.goalCharter}>
+                  <li data-state="done" title={goal.charter.deliverable}>
+                    <i aria-hidden="true" />
+                    <span>{text.goalCharter}：{goal.charter.deliverable}</span>
+                  </li>
+                  {goal.charter.where ? <li className="pf-goal-where"><small>{goal.charter.where}</small></li> : null}
+                  {goal.charter.items.map((item) => (
+                    <li key={item.title} data-state={item.state} title={item.title}>
+                      <i aria-hidden="true" />
+                      <span>{item.title}</span>
+                      <small>{item.label}</small>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            </Card>
+          </div>
+          );
+        })() : null}
         {branches.filter(item => item.id.startsWith("observe-")).map(item => {
           const branch = item.id.slice(8) as BuildBranch;
           return <div key={item.id} className="pf-slot" data-glide={item.id} data-fit="" {...hover(item.id)} {...slot(item.id)}>
-            <Card id={item.id} side="right" className="pf-listed pf-observation" icon={<Gauge size={12} />} label={observationLabels[branch]} register={register}>
+            <Card id={item.id} side="right" className="pf-listed pf-observation" icon={<Gauge size={12} />} label={observationLabels[branch]} register={register}
+                  count={data.observation ? (data.observation.offline ? (lang === "zh" ? "连接中断 · 上次记录" : "Offline · last snapshot")
+                    : data.observation.observedAt ? new Date(data.observation.observedAt * 1000).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit" })
+                    : (lang === "zh" ? "时间未知" : "time unknown")) : undefined}>
               <div className="pf-list"><BuildObservationPanel branch={branch} lang={lang} data={inspection.data} loading={inspection.loading}
                 error={inspection.error} refresh={inspection.refresh} offline={data.observation?.offline} busy={actions.busy || renewing}
                 attentionLabel={data.attention?.action ? text.attention[data.attention.action] : undefined}
@@ -1713,7 +1736,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                   <span className="pf-agent-mark"><Icon size={15} /></span>
                   <div className="pf-agent-copy">
                     <div className="pf-agent-line">
-                      <strong>{text.roles[agent.role]}</strong>
+                      <strong>{agent.roleLabel || text.roles[agent.role]}</strong>
                       {agent.done ? <span className="pf-agent-check"><Check size={8} strokeWidth={3.2} /></span> : <span className="pf-agent-live" data-waiting={agent.waiting || undefined} />}
                       <span className="pf-agent-time">{agent.elapsed}</span>
                     </div>
