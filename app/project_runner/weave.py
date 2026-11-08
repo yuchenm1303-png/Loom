@@ -22,7 +22,7 @@ from app.agent_runtime.contracts import ToolEffect
 from app.agent_runtime.tools import AgentTool, ToolResult
 from app.ai import AIMessage, MessageRole
 
-from . import goal, goal_charter, goal_lines, program
+from . import goal, goal_charter, goal_lines, goal_scope, program
 from .parallel import MAX_WORKERS
 from .workspace import describe as describe_workspace
 
@@ -58,7 +58,9 @@ GUIDE = (
     "gave. The same, with no time named and hours omitted, for work no single turn can do well: deep or open-ended "
     "research ('深入研究', 'see what results we can get', 'find promising directions', 'could we publish'), a study "
     "with experiments, a field-level deliverable. Asking for depth is asking for a goal; a question about the topic "
-    "is not. It needs no repository and "
+    "is not. With no goal or project running, size each request before you change anything: weave_goal, or "
+    "weave_one_turn for a quick task you will finish well in this turn (the Host holds changing calls until you "
+    "choose; reading and answering need neither). It needs no repository and "
     "no click. The Host then brings "
     "you back after each turn in this conversation until you call mark_thread_goal, so end a turn freely and keep "
     "going in the next. Use it instead of a proposal when the person will not be there to start one. Right after it, "
@@ -359,6 +361,11 @@ def tools(service):
             "with current_phase when you move on, and end each turn with weave_note."),
             data={"criteria": len(charter["criteria"]), "phases": len(charter["phases"])})
 
+    def one_turn(context, arguments):
+        weave_session(context)
+        return ToolResult(ok=True, content=goal_scope.choose_one_turn(
+            service, context.session_id, context.turn_id, arguments.get("reason")))
+
     def note(context, arguments):
         weave_session(context)
         with service.project_runner.guard:
@@ -452,6 +459,16 @@ def tools(service):
                                   "when it changed."},
             }, "required": ["text"], "additionalProperties": False},
             handler=note, effect=ToolEffect.READ_ONLY),
+        AgentTool(
+            name="weave_one_turn",
+            description=("Size the person's request as a quick task you will finish well in this turn, so no long goal "
+                         "is needed. In build mode a request is sized before anything changes: this, or weave_goal for "
+                         "anything more (research, experiments, several steps that feed each other, work worth an "
+                         "independent check). When unsure, it is a goal."),
+            input_schema={"type": "object", "properties": {
+                "reason": {"type": "string", "description": "Why it ends in this turn and what done looks like."},
+            }, "required": ["reason"], "additionalProperties": False},
+            handler=one_turn, effect=ToolEffect.READ_ONLY),
     )
     return line_tools + goal_tools + (
         AgentTool(

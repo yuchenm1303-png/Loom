@@ -24,6 +24,16 @@ def _isolate_computer_diagnostics(tmp_path_factory, monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _build_requests_are_not_sized(request, monkeypatch):
+    """Build-mode requests are sized (goal or one turn) before they change anything; that gate has its own
+    tests (a module sets GOAL_SCOPE_GATE = True). Everywhere else it gives way at once."""
+    if getattr(request.module, "GOAL_SCOPE_GATE", False):
+        return
+    from app.project_runner import goal_scope
+    monkeypatch.setattr(goal_scope, "MAX_HOLDS", 0)
+
+
 def without_stickers(text: str) -> str:
     """Drop inline sticker markers from a reply before asserting on its wording.
 

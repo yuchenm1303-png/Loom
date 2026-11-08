@@ -15,7 +15,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash, review_progress
-from . import delivery, escalation, goal, goal_charter, goal_lines, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
+from . import delivery, escalation, goal, goal_charter, goal_lines, goal_scope, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
 from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
@@ -427,7 +427,8 @@ class ProjectServiceMixin(WorkspaceMixin):
         self.weave_retries = goal.Goals(home, goal.RETRIES_FILE)
         self.runtime.subscribe(lambda event: goal.observe_failure(self, event))
         self.runtime.tool_batch_gate = lambda session, step, calls: (
-            goal_charter.hold(self, session, step, calls) or goal_lines.hold(self, session, step, calls))
+            goal_scope.hold(self, session, step, calls) or goal_charter.hold(self, session, step, calls)
+            or goal_lines.hold(self, session, step, calls))
         self.runtime.goal_claim_note = lambda session_id: goal.CLAIMED if self.weave_goals.get(session_id) else None
         reads = getattr(self.runtime, "tool_result_annotator", None)
         self.runtime.tool_result_annotator = lambda runtime, session, call, result: goal.annotate(
