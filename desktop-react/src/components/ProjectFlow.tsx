@@ -837,8 +837,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     return next;
   });
   const [historyOpen, setHistoryOpen] = useState(readHistoryOpen);
-  const [observationBranch, setObservationBranch] = useState<BuildBranch | null>(null);
-  const inspection = useBuildInspection(conversationId || data.objective || "draft", Boolean(observationBranch), actions.onInspect);
+  const [observationBranches, setObservationBranches] = useState<BuildBranch[]>([]);
+  const inspection = useBuildInspection(conversationId || data.objective || "draft", observationBranches.length > 0, actions.onInspect);
   const observationLabels = buildLabels[lang];
   const observationIcons: Record<BuildBranch, typeof Check> = { blockers: CircleAlert, evidence: ShieldCheck, reviews: GitPullRequest,
                                                             changes: FileDiff, spending: TrendingUp, delivery: Package };
@@ -862,7 +862,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   const agents = useDeparting(open("agents") ? data.agents : []);
   const branches = useDeparting([...(data.goal && open("goal") ? [{ id: "goal" }] : []),
                                  ...(data.taskList?.length && open("tasks") ? [{ id: "tasks" }] : []),
-                                 ...(observationBranch ? [{ id: `observe-${observationBranch}` }] : []),
+                                 ...BUILD_BRANCHES.filter(branch => observationBranches.includes(branch)).map(branch => ({ id: `observe-${branch}` })),
                                  ...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : []),
                                  ...(usageOpen && data.models ? [{ id: "usage" }] : [])]);
   // Before a project the plan is a different card from the project's: one leaves as the other is born.
@@ -1366,11 +1366,11 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
               {actions.onInspect || data.observation ? BUILD_BRANCHES.map((branch) => {
                 const Icon = observationIcons[branch];
                 return <button type="button" key={branch} className="pf-branch-toggle" data-branch={`observe-${branch}`}
-                  aria-label={observationLabels[branch]} aria-pressed={observationBranch === branch}
+                  aria-label={observationLabels[branch]} aria-pressed={observationBranches.includes(branch)}
                   disabled={!actions.onInspect || renewing}
                   title={!actions.onInspect ? `${observationLabels[branch]} · ${lang === "zh" ? "此会话暂无运行记录来源" : "No build record source is available"}`
-                    : observationBranch === branch ? text.foldBranch(observationLabels[branch]) : text.unfoldBranch(observationLabels[branch])}
-                  onClick={() => setObservationBranch(current => current === branch ? null : branch)}><Icon size={12} /></button>;
+                    : observationBranches.includes(branch) ? text.foldBranch(observationLabels[branch]) : text.unfoldBranch(observationLabels[branch])}
+                  onClick={() => setObservationBranches(current => current.includes(branch) ? current.filter(item => item !== branch) : [...current, branch])}><Icon size={12} /></button>;
               }) : null}
             </span>
             {/* The quill: a new 建造 conversation in this project, straight into a fresh hub. */}
