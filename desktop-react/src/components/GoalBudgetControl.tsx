@@ -45,8 +45,9 @@ export function GoalBudgetControl({ goal, disabled, canResume, onSubmit, meter }
     {meter ? <div className="goal-budget-meter" title={exact}>
       <span className="goal-budget-bar" role="meter" aria-label="长目标预算用量" aria-valuemin={0} aria-valuemax={goal.tokenBudget} aria-valuenow={Math.min(goal.tokens, goal.tokenBudget)}>
         <span style={{ transform: `scaleX(${Math.max(share, goal.tokens > 0 ? 0.012 : 0)})` }} /></span>
-      <span className="goal-budget-figures"><b>{short(goal.tokens)}</b> / {short(goal.tokenBudget)}<em>{spent ? "已耗尽" : `剩余 ${short(left)}`}</em></span>
+      <span className="goal-budget-figures"><b>{short(goal.tokens)}</b> / {short(goal.tokenBudget)}{spent ? <em>已耗尽</em> : null}</span>
       <button type="button" className="goal-budget-toggle" aria-label="调整长目标预算" aria-expanded={open} onClick={() => setOpen(!open)}>调整预算</button>
+      <p className="goal-budget-balance goal-budget-exact">{exact}</p>
     </div> : <>
       <p className="goal-budget-balance">{exact}</p>
       <button type="button" className="goal-budget-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>调整长目标预算{spent ? " · 已耗尽" : ""}</button>

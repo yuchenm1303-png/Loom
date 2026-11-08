@@ -1030,12 +1030,15 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .pf-goal-charter .pf-goal-where { justify-self: start; max-width: 100%; box-sizing: border-box; padding: 2px 8px; border-radius: 999px;
   background: color-mix(in srgb, var(--pl-ink) 6%, transparent); color: var(--pl-secondary); font-size: 11px; line-height: 1.6;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  overflow-wrap: anywhere; }
 .pf-goal-criteria-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px; }
 .pf-goal-criteria-head small:last-child { font-variant-numeric: tabular-nums; }
 .pf-goal-card .pf-goal-criteria { gap: 6px; margin: 0; padding-left: 0; }
-.pf-goal-criteria li { font-size: 12px; }
-.pf-goal-criteria i { width: 7px; height: 7px; box-sizing: border-box; }
+.pf-goal-criteria li { align-items: flex-start; font-size: 12px; line-height: 1.5; }
+.pf-goal-criteria i { width: 7px; height: 7px; margin-top: 5.5px; box-sizing: border-box; }
+/* A criterion is read, not skimmed: two lines before the ellipsis, the whole text in its tooltip. */
+.pf-goal-card .pf-goal-criteria span { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.pf-goal-card .pf-goal-criteria small { max-width: 45%; line-height: 1.6; text-align: right; }
 .pf-goal-card .pf-goal-criteria li[data-state="running"] i { background: transparent; border: 1.5px solid var(--pl-muted); }
 .pf-goal-card .pf-goal-criteria li[data-state="done"] i { background: var(--pf-live); }
 .pf-goal-card .pf-goal-criteria li[data-state="done"] span { color: var(--pl-muted); }

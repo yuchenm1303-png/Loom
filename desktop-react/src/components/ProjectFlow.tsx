@@ -1565,10 +1565,10 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
         {branches.some((item) => item.id === "goal") && leavingView("goal").goal ? (() => {
           const goal = leavingView("goal").goal!;
           return (
-          <div className="pf-slot" data-glide="goal" data-fit="" {...hover("goal")} {...slot("goal")}>
+          <div className="pf-slot" data-glide="goal" {...hover("goal")} {...slot("goal")}>
+            {/* No data-fit: the goal never gives height, its criteria and an open budget editor stay whole; the column scrolls instead. */}
             <Card id="goal" side="right" className="pf-listed pf-goal-card" icon={<Timer size={12} />} label={text.goalCard} register={register}>
-            {/* pf-list: when the column caps the card (an open budget editor, a long charter), the body scrolls inside it. */}
-            <div className="pf-goal pf-list" role="status" data-live={goal.live || undefined}>
+            <div className="pf-goal" role="status" data-live={goal.live || undefined}>
               <div className="pf-goal-head">
                 <span className="pf-attention-dot" />
                 {/* With the budget meter below, the spent figure lives there, not in the heading. */}

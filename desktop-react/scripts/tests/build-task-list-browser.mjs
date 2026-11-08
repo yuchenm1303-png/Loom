@@ -65,7 +65,8 @@ try {
     const goalRow = goalPage.locator(".pf-goal");
     await goalRow.waitFor();
     assert.match(await goalRow.locator(".pf-goal-head").innerText(), /长目标进行中/);  // the spent figure moved into the meter
-    assert.match(await goalRow.locator(".goal-budget-figures").innerText(), /1\.2M \/ 8M\s*剩余 6\.8M/);
+    assert.match(await goalRow.locator(".goal-budget-figures").innerText(), /1\.2M \/ 8M/);
+    assert.match(await goalRow.locator(".goal-budget-exact").innerText(), /已用 1,200,000 · 总额 8,000,000 · 剩余 6,800,000 token/);
     await goalRow.getByRole("button", { name: "停止" }).click();  // the card also holds the budget control
     await goalPage.waitForFunction(() => window.goalCalls.length === 1);
     assert.equal(await goalPage.evaluate(() => window.goalCalls[0].action), "pause");
