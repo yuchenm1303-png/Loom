@@ -44,7 +44,10 @@ GUIDE = (
     "finish in this turn yourself.\n"
     "- First make sure you know what they want; if the goal is unclear, ask in plain conversation. The objective "
     "you propose is the project's whole brief: what to build, constraints, and what done looks like, self-contained. "
-    "A proposal starts nothing: the person reviews it in the hub and starts it there.\n"
+    "A proposal starts nothing: the person reviews it in the hub and starts it there. When the person gave you time "
+    "or said they will be away, nobody would click: for code work of that kind in a ready Git repository, start it "
+    "yourself with start=true. A project is for building software in tasks that can run apart; research, "
+    "experiments, writing, and work where each step feeds the next are a long goal's.\n"
     "- While a project runs, keep talking normally. Call weave_status before you answer about its progress. "
     "Pass changes of direction into it with weave_steer, and pause or resume it with weave_control. Do not do "
     "its tasks yourself in this conversation unless the person asks you to.\n"
@@ -191,6 +194,36 @@ def start(service, params):
     return created
 
 
+UNATTENDED_MODES = {"full-access": "full-access", "workspace": "workspace"}
+
+
+def _start_unattended(service, context, proposal):
+    """The agent starts the project itself, because the person said they will not be there to click.
+
+    A night's work asked for by someone going to bed only ever became a long goal: a proposal waits for a
+    click no one would make. The authority is the one a long goal already has: the budget is the hub's
+    setting for this conversation, and the project runs in this conversation's permission mode, never a
+    wider one. A conversation on approval is refused: unattended, every command would wait for a person."""
+    session = service.store.load(context.session_id)
+    mode = UNATTENDED_MODES.get(getattr(session.permission_mode, "value", str(session.permission_mode)))
+    if mode is None:
+        raise ValueError("This conversation asks before each command, so a project left alone would wait at every one. "
+                         "Use weave_goal, or propose it without start for the person to start.")
+    budget = snap_budget(getattr(service, "weave_budgets", {}).get(context.session_id, proposal["tokenBudget"]))
+    with service.project_runner.guard:
+        created = program.create(service, {
+            "operationId": f"weave-unattended:{proposal['id']}", "threadId": context.session_id,
+            "objective": proposal["objective"], "tokenBudget": budget, "maxEpisodes": 400,
+            "maxWorkers": proposal["maxWorkers"], "maxMilestones": 20, "permissionMode": mode})
+    service.weave_proposals.take(context.session_id)
+    return ToolResult(ok=True, content=(
+        f"Project started without a click, as the person will not be there: budget {budget:,} tokens, up to "
+        f"{proposal['maxWorkers']} worker(s), {mode} permissions. It plans milestones and runs its tasks in its own "
+        "checkout of the last commit; uncommitted changes here are not in it. Read it with weave_status, steer it with "
+        "weave_steer; do not do its tasks yourself in this conversation."),
+        data={"program": {"id": created["id"], "state": created["state"]}, "tokenBudget": budget, "permissionMode": mode})
+
+
 def dismiss(service, params):
     thread_id = service._required_text(params, "threadId")
     service.weave_proposals.take(thread_id, params.get("proposalId"))
@@ -267,6 +300,8 @@ def tools(service):
                     "tokenBudget": snap_budget(arguments.get("token_budget")),
                     "maxWorkers": workers if type(workers) is int and 1 <= workers <= MAX_WORKERS else 1,
                     "createdAt": time.time()}
+        if arguments.get("start") is True:
+            return _start_unattended(service, context, proposal)
         service.weave_proposals.put(context.session_id, proposal)
         return ToolResult(ok=True, content="Proposal shown in the hub; the person starts it there. Nothing runs until then.",
                           data={"proposal": proposal})
@@ -365,6 +400,9 @@ def tools(service):
                                 "description": "Upper bound on agents implementing tasks at once. How many really run "
                                 "is what the plan makes independent (disjoint files, no shared resources); 1 for a "
                                 "small or tightly sequential objective."},
+                "start": {"type": "boolean", "description": "Start it now instead of waiting for the person's click. "
+                          "Only when they gave you time or said they will be away; it runs on the hub's budget for this "
+                          "conversation and with this conversation's permissions."},
             }, "required": ["objective"], "additionalProperties": False},
             handler=propose, effect=ToolEffect.READ_ONLY),
         AgentTool(

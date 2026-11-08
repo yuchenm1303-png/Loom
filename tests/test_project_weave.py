@@ -255,3 +255,65 @@ def test_budget_suggestions_snap_to_the_hubs_choices():
     assert weave.snap_budget(3_000_000) in (2_000_000, 4_000_000)
     assert weave.snap_budget(50_000_000) == 16_000_000
     assert weave.snap_budget("lots") == 8_000_000
+
+
+# A night's work asked for by someone going to bed only ever became a long goal: a proposal waits for a click no one
+# makes. With start=true the agent starts it, with the authority a long goal has (the hub's budget, this
+# conversation's permissions, never wider).
+
+def _set_mode(runtime, source, mode):
+    from app.agent_runtime.contracts import PermissionMode
+    session = runtime.store.load(source)
+    session.permission_mode = PermissionMode(mode)
+    runtime.store.save(session)
+
+
+def test_the_agent_starts_a_project_itself_when_the_person_is_away(tmp_path):
+    objective = "Add a CLI that prints the README; done when `python cli.py` prints it."
+    service, runtime, platform, _, source = build(tmp_path, [
+        calling("weave_propose", {"objective": objective, "start": True, "max_workers": 2, "token_budget": 2_000_000}),
+        answer("项目已经开始了，明早看结果。"), answer(json.dumps(PLAN))])
+    try:
+        service.weave_budgets = {source: 16_000_000}  # the hub's chip for this conversation wins
+        service.weave_proposals.put(source, {"id": "old", "objective": "an earlier idea", "tokenBudget": 2_000_000, "maxWorkers": 1})
+        turn(service, source, "我去睡了，你有一整晚，把这个 CLI 做出来", weave_mode=True)
+        started = program.for_thread(service.project_store, source)
+        assert started is not None and started["objective"] == objective
+        assert started["tokenBudget"] == 16_000_000 and started["maxWorkers"] == 2
+        assert started["permissionMode"] == "workspace", "this conversation's permissions, no wider"
+        assert service.weave_proposals.get(source) is None
+        said = json.dumps([str(m.content) for m in platform.requests[-1].messages], ensure_ascii=False)
+        assert "Project started without a click" in said
+        cycle(service)
+        assert len(platform.requests) == 3, "the planner runs without anyone's click"
+    finally:
+        runtime.close()
+
+
+def test_an_unattended_project_keeps_full_access_only_where_the_conversation_has_it(tmp_path):
+    service, runtime, platform, _, source = build(tmp_path, [
+        calling("weave_propose", {"objective": "Build the CLI.", "start": True}), answer("开始了")])
+    try:
+        _set_mode(runtime, source, "full-access")
+        turn(service, source, "你有一整晚", weave_mode=True)
+        assert program.for_thread(service.project_store, source)["permissionMode"] == "full-access"
+    finally:
+        runtime.close()
+
+
+def test_a_conversation_that_asks_first_cannot_leave_a_project_running_alone(tmp_path):
+    service, runtime, platform, _, source = build(tmp_path, [
+        calling("weave_propose", {"objective": "Build the CLI.", "start": True}), answer("那我先提议")])
+    try:
+        _set_mode(runtime, source, "approval")
+        turn(service, source, "你有一整晚", weave_mode=True)
+        assert program.for_thread(service.project_store, source) is None
+        said = json.dumps([str(m.content) for m in platform.requests[-1].messages], ensure_ascii=False)
+        assert "would wait at every one" in said
+    finally:
+        runtime.close()
+
+
+def test_the_guide_says_when_to_start_and_what_a_project_is_for():
+    assert "start it yourself with start=true" in weave.GUIDE
+    assert "research, experiments, writing" in weave.GUIDE
