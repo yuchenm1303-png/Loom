@@ -148,7 +148,8 @@ def test_the_referee_judges_each_criterion_and_its_requests_come_back_as_a_revie
         assert statuses["C1"] == "met" and statuses["C2"] == "unmet"
         tick(service, source, 4)
         back = [text for text in said_to_lead(platform) if "did not accept the work yet" in text]
-        assert back and "C2:" in back[0] and "图 2 缺单位" in back[0]
+        assert back and "Unmet criteria:\\n- C2: 主结果与两个公平基线对比，给出置信区间 (没有置信区间)" in back[0]  # said_to_lead is JSON
+        assert "Minor:\\n- 图 2 缺单位" in back[0]
         second = checker_texts(platform)[-1]
         assert "Acceptance criteria:" in second and "C4: 一条命令复现文中所有数字" in second
         assert "(major) 主结果没有置信区间" in second and "补了 95% 置信区间" in second, "the referee checks the response"
