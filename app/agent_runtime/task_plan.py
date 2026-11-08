@@ -75,6 +75,23 @@ UPDATE_SCHEMA = {"type": "object", "additionalProperties": False, "properties": 
     "plan": {"type": "array", "minItems": 2, "maxItems": 128, "items": STEP_SCHEMA}}, "required": ["plan"]}
 
 
+UNFINISHED = frozenset({"pending", "in_progress", "blocked"})
+MAX_DROPPED = 50
+
+
+def _dropped(previous, old, labels, explanation, context):
+    """Unfinished steps a new list leaves out stay visible as dropped, with the explanation that came with it.
+
+    A real lead planned six steps, ran a 100-step smoke test, then rewrote the list to one "explored (negative
+    result): completed" so the goal could be claimed: the training and evaluation it had planned vanished, and
+    the check never saw them. Leaving a step out is allowed; making it disappear is not. A step listed again
+    is no longer dropped."""
+    carried = [item for item in (previous or {}).get("dropped") or () if item.get("step") not in labels]
+    fresh = [{"step": label, "status": step["status"], "reason": explanation[:600], "turn_id": context.turn_id}
+             for label, step in old.items() if label not in labels and step.get("status") in UNFINISHED]
+    return (carried + fresh)[-MAX_DROPPED:], [item["step"] for item in fresh]
+
+
 def update_plan_tool(store):
     def update(context, arguments):
         # Keep aggregated missing-evidence recovery for legacy/direct callers.
@@ -151,14 +168,20 @@ def update_plan_tool(store):
             raise ValueError("dependencies and review gates require mode=graph")
         for item in plan:
             item["step"] = item["step"].strip()
+        dropped, new_drops = _dropped(previous, old, set(labels), explanation, context)
         data = stamp({"plan": plan, "mode": mode, "explanation": explanation, "current": None},
                      previous if not replacing else None, context)
+        if dropped:
+            data["dropped"] = dropped
         if replacing and previous:
             data["replaces_plan_id"] = previous.get("plan_id")
         elif not previous:
             last = latest_plan(events)
             if last:
                 data["previous_plan_id"] = last.get("plan_id")
+        if new_drops:
+            return persist(context, data, "Plan updated. Unfinished steps you left out are kept as dropped, with your "
+                           "explanation, where the person and any check see them: " + "; ".join(new_drops))
         return persist(context, data)
 
     return AgentTool("update_plan", (

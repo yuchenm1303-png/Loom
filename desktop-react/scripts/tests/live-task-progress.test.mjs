@@ -57,3 +57,12 @@ test("graph action receipts work for older hosts and evidence versions are visib
   assert.deepEqual(model.latestTaskPlan([item("graph", "tool_call", {toolName:"manage_plan",ok:true,result:{plan:[step]}})]), [step]);
   assert.ok(model.milestoneEvidenceLabels(step)[0].includes("SHA-256 " + "a".repeat(64)));
 });
+
+test("steps a plan left out unfinished stay in view as dropped, with the reason", () => {
+  // Real run: six planned steps became one "explored (negative result): completed"; training and evaluation vanished.
+  const plan = { plan: [{ step: "温度头探索", status: "completed", outcome: "passed" }, { step: "更新报告", status: "pending" }],
+    dropped: [{ step: "训练 nr_temphead.pt", status: "pending", reason: "冒烟结果为负" }, { bogus: true }] };
+  const steps = model.latestTaskPlan([item("p", "task_plan", { result: plan })]);
+  assert.deepEqual(steps.map(s => [s.step, s.status]), [["温度头探索", "completed"], ["更新报告", "pending"], ["训练 nr_temphead.pt", "dropped"]]);
+  assert.equal(steps[2].blocker, "冒烟结果为负");
+});

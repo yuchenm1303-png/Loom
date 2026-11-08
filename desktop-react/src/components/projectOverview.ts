@@ -466,14 +466,16 @@ export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "z
 }
 
 export function toTurnTasks(steps: TaskMilestone[], lang: "zh" | "en" = "zh"): FlowData["tasks"] {
-  const states: Record<TaskMilestone["status"], FlowTaskState> = { pending: "pending", in_progress: "working", completed: "integrated", blocked: "rework" };
+  const states: Record<TaskMilestone["status"], FlowTaskState> = { pending: "pending", in_progress: "working", completed: "integrated", blocked: "rework", dropped: "rework" };
+  const droppedWord = lang === "en" ? "Dropped" : "已放弃";
   // A step closed without being done is closed, not done: it does not count toward the tick total.
   const unmet: Partial<Record<NonNullable<TaskMilestone["outcome"]>, string>> = lang === "en"
     ? { failed: "Acceptance failed", interrupted: "Test interrupted", not_covered: "Not covered" }
     : { failed: "验收失败", interrupted: "测试中断", not_covered: "未覆盖" };
   return steps.map((step, index) => {
     const miss = step.status === "completed" && step.outcome ? unmet[step.outcome] : undefined;
-    return { id: `turn-${index}`, title: step.step, state: miss ? "rework" : states[step.status], detail: miss ?? step.blocker };
+    const detail = step.status === "dropped" ? `${droppedWord}${step.blocker ? (lang === "en" ? ": " : "：") + step.blocker : ""}` : miss ?? step.blocker;
+    return { id: `turn-${index}`, title: step.step, state: miss ? "rework" : states[step.status], detail };
   });
 }
 

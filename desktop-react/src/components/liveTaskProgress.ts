@@ -10,7 +10,8 @@ export interface TaskMilestone {
   feedback?: { status: "open" | "resolved"; report?: string };
   evidence_facts?: { path?: string; reference_path?: string; sha256?: string; call_id?: string; event_id?: string }[];
   step: string;
-  status: "pending" | "in_progress" | "completed" | "blocked";
+  /** dropped: left out of the list unfinished; the Host keeps it with the reason given (blocker carries it). */
+  status: "pending" | "in_progress" | "completed" | "blocked" | "dropped";
   evidence?: string;
   evidence_refs?: ({ call_id: string } | { path: string })[];
   outcome?: "passed" | "failed" | "interrupted" | "not_covered" | "not_assessed";
@@ -25,12 +26,17 @@ export function latestTaskPlan(items: TranscriptItem[]): TaskMilestone[] {
   for (let index = candidates.length - 1; index >= 0; index -= 1) {
     const item = candidates[index];
     if (item.type !== "task_plan" && (!["update_plan", "manage_plan"].includes(item.toolName ?? "") || item.status !== "completed" || item.ok === false)) continue;
-    const result = item.result as { plan?: unknown; lifecycle?: string } | undefined;
+    const result = item.result as { plan?: unknown; lifecycle?: string; dropped?: unknown } | undefined;
     if (result?.lifecycle === "archived") return [];
     if (!Array.isArray(result?.plan)) continue;
-    return result.plan.filter((entry): entry is TaskMilestone => Boolean(entry)
+    const listed = result.plan.filter((entry): entry is TaskMilestone => Boolean(entry)
       && typeof entry.step === "string"
       && ["pending", "in_progress", "completed", "blocked"].includes(entry.status));
+    // Steps left out unfinished stay in view: a real list once lost its training and evaluation this way.
+    const dropped = (Array.isArray(result.dropped) ? result.dropped : [])
+      .filter((entry): entry is { step: string; reason?: string } => Boolean(entry) && typeof entry.step === "string")
+      .map((entry): TaskMilestone => ({ step: entry.step, status: "dropped", blocker: entry.reason || undefined }));
+    return [...listed, ...dropped];
   }
   return [];
 }

@@ -42,6 +42,8 @@ const COPY = {
     blockedFact: (count: number) => `受阻 ${count}`,
     failedFact: (count: number) => `异常 ${count}`,
     pendingFact: (count: number) => `待处理 ${count}`,
+    dropped: "已放弃",
+    droppedFact: (count: number) => `已放弃 ${count}`,
   },
   en: {
     title: "Task progress",
@@ -70,6 +72,8 @@ const COPY = {
     blockedFact: (count: number) => `${count} blocked`,
     failedFact: (count: number) => `${count} with issues`,
     pendingFact: (count: number) => `${count} pending`,
+    dropped: "Dropped",
+    droppedFact: (count: number) => `${count} dropped`,
   },
 } as const;
 
@@ -90,13 +94,17 @@ export function TaskProgressPanel({ steps, open, onClose }: TaskProgressPanelPro
 
   if (!presence.mounted || !steps.length) return null;
 
-  const completed = steps.filter(step => step.status === "completed").length;
-  const passed = steps.filter(step => step.status === "completed" && step.outcome === "passed").length;
-  const blocked = steps.filter(step => step.status === "blocked").length;
-  const pending = steps.filter(step => step.status === "pending").length;
-  const percent = Math.round((completed / steps.length) * 100);
-  const current = steps.find(step => step.status === "in_progress")
-    ?? steps.find(step => step.status === "blocked") ?? steps.find(step => step.status === "pending");
+  // Dropped steps are shown, not counted: the plan's progress is over what it still means to do.
+  const planned = steps.filter(step => step.status !== "dropped");
+  const dropped = steps.length - planned.length;
+  const total = planned.length;
+  const completed = planned.filter(step => step.status === "completed").length;
+  const passed = planned.filter(step => step.status === "completed" && step.outcome === "passed").length;
+  const blocked = planned.filter(step => step.status === "blocked").length;
+  const pending = planned.filter(step => step.status === "pending").length;
+  const percent = total ? Math.round((completed / total) * 100) : 0;
+  const current = planned.find(step => step.status === "in_progress")
+    ?? planned.find(step => step.status === "blocked") ?? planned.find(step => step.status === "pending");
   const currentTone = current ? toneFor(current) : "passed";
 
   const badge = (step: TaskMilestone): string => {
@@ -107,6 +115,7 @@ export function TaskProgressPanel({ steps, open, onClose }: TaskProgressPanelPro
     if (step.status === "completed") return step.outcome === "passed" ? copy.passed : copy.completed;
     if (step.status === "in_progress") return copy.inProgress;
     if (step.status === "blocked") return copy.blocked;
+    if (step.status === "dropped") return copy.dropped;
     return copy.pending;
   };
 
@@ -119,24 +128,25 @@ export function TaskProgressPanel({ steps, open, onClose }: TaskProgressPanelPro
         title={copy.title}
         subtitle={current?.step ?? copy.allDone}
         subtitleHint={current?.step}
-        meta={<span className={`pl-chip task-plan-chip${completed === steps.length ? " is-complete" : ""}`}>{completed}/{steps.length}</span>}
+        meta={<span className={`pl-chip task-plan-chip${completed === total ? " is-complete" : ""}`}>{completed}/{total}</span>}
         closeLabel={copy.close}
         onClose={onClose}
       />
 
       <div className="task-plan-summary">
-        <div className={`task-plan-ring${completed === steps.length ? " is-complete" : ""}`}
+        <div className={`task-plan-ring${completed === total ? " is-complete" : ""}`}
           style={{ "--task-plan-ratio": `${percent * 3.6}deg` } as CSSProperties} role="img"
-          aria-label={copy.completedLabel(completed, steps.length)}>
+          aria-label={copy.completedLabel(completed, total)}>
           <span>{percent}<small>%</small></span>
         </div>
         <div className="task-plan-summary-copy">
           <span className="task-plan-eyebrow">{copy.overall}</span>
-          <strong>{copy.passedLabel(passed, steps.length)}</strong>
+          <strong>{copy.passedLabel(passed, total)}</strong>
           <div className="task-plan-facts">
-            <span className="task-plan-fact is-complete"><CheckCircle2 size={11} aria-hidden="true" />{copy.completedLabel(completed, steps.length)}</span>
+            <span className="task-plan-fact is-complete"><CheckCircle2 size={11} aria-hidden="true" />{copy.completedLabel(completed, total)}</span>
             {blocked ? <span className="task-plan-fact is-blocked"><CircleAlert size={11} aria-hidden="true" />{copy.blockedFact(blocked)}</span> : null}
             {pending ? <span className="task-plan-fact">{copy.pendingFact(pending)}</span> : null}
+            {dropped ? <span className="task-plan-fact is-blocked"><CircleAlert size={11} aria-hidden="true" />{copy.droppedFact(dropped)}</span> : null}
           </div>
         </div>
       </div>
@@ -149,7 +159,7 @@ export function TaskProgressPanel({ steps, open, onClose }: TaskProgressPanelPro
       <div className="task-plan-list-zone">
         <div className="task-plan-list-head">
           <span>{copy.steps}</span>
-          <span>{completed}/{steps.length}</span>
+          <span>{completed}/{total}</span>
         </div>
         <ol className="task-plan-list">
           {steps.map((step, index) => {
@@ -178,7 +188,7 @@ export function TaskProgressPanel({ steps, open, onClose }: TaskProgressPanelPro
                   {step.feedback?.status === "open" ? <p className="task-plan-callout is-failed">
                     <CircleAlert size={12} aria-hidden="true" /><span>{copy.feedback}：{step.feedback.report}</span>
                   </p> : null}
-                  {step.status === "blocked" && step.blocker ? <p className="task-plan-callout is-blocked">
+                  {(step.status === "blocked" || step.status === "dropped") && step.blocker ? <p className="task-plan-callout is-blocked">
                     <CircleAlert size={12} aria-hidden="true" /><span>{step.blocker}</span>
                   </p> : null}
                   {step.acceptance?.length ? (
@@ -207,7 +217,7 @@ export function TaskProgressPanel({ steps, open, onClose }: TaskProgressPanelPro
 
       <footer className="task-plan-foot">
         <span><Sparkles size={12} aria-hidden="true" />{copy.sync}</span>
-        <span>{copy.passedLabel(passed, steps.length)}</span>
+        <span>{copy.passedLabel(passed, total)}</span>
       </footer>
     </section>,
     document.body,
@@ -217,7 +227,7 @@ export function TaskProgressPanel({ steps, open, onClose }: TaskProgressPanelPro
 function toneFor(step: TaskMilestone): string {
   if (step.outcome === "failed") return "failed";
   if (step.outcome === "interrupted") return "interrupted";
-  if (step.outcome === "not_covered") return "not_covered";
+  if (step.outcome === "not_covered" || step.status === "dropped") return "not_covered";  // not done, said plainly
   if (step.status === "completed") return step.outcome === "passed" ? "passed" : "completed";
   return step.status;
 }

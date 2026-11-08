@@ -221,13 +221,29 @@ def _finish(service, thread_id, record, summary, checked):
     return True
 
 
+CHECK_DROPPED = ("\n\nThe agent's task list dropped these steps before they were finished, with the reason it gave. "
+                 "Decide whether the goal still holds without them; a result that rests on work it dropped is not met:\n")
+
+
+def _dropped_line(service, thread_id):
+    """The steps the lead's list left unfinished, for the checker: a real lead dropped training and evaluation and
+    called the rest done, and the check never saw them."""
+    from app.agent_runtime.plan_state import active_plan
+    plan = active_plan(service.store.events(thread_id)) or {}
+    dropped = plan.get("dropped") or ()
+    if not dropped:
+        return ""
+    return CHECK_DROPPED + "\n".join(f"- {item.get('step', '')[:240]} ({item.get('status', '')}): "
+                                     f"{item.get('reason', '')[:400] or 'no reason given'}" for item in dropped[-20:])
+
+
 def _spawn_checker(service, thread_id, record, objective):
     service._prepare_turn(service.store.load(thread_id))  # the conversation's model, freshly connected
     deeper = ""
     if record.get("hours") and _left(record) > 0:
         deeper = CHECK_DEEPER.format(hours=f"{record['hours']:g} h", left=_span(_left(record)))
-    snapshot = service.runtime.agent_control.spawn(thread_id, CHECK_PROMPT + objective + deeper, role="goal-check",
-                                                   history_mode="none", background=True)
+    snapshot = service.runtime.agent_control.spawn(thread_id, CHECK_PROMPT + objective + deeper + _dropped_line(service, thread_id),
+                                                   role="goal-check", history_mode="none", background=True)
     record.update(phase="checking", checkerId=snapshot.node.session_id, checkerPressed=False, checkerFailingSince=0,
                   checkerAttempts=0, checkerRetryAt=0)
     service.weave_goals.put(thread_id, record)

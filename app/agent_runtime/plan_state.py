@@ -37,7 +37,7 @@ def summary(plan):
     completed = sum(s["status"] == "completed" for s in steps)
     return {"plan_id": plan.get("plan_id"), "revision": plan.get("revision", 0),
             "assessment_source": "assistant_assessment_with_verified_references",
-            "total": len(steps), "completed": completed, "passed": passed,
+            "total": len(steps), "completed": completed, "passed": passed, "dropped": len(plan.get("dropped") or ()),
             "status": "passed" if passed == len(steps) else "blocked" if any(
                 s["status"] == "blocked" for s in steps) else "incomplete"}
 

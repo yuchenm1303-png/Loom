@@ -371,3 +371,56 @@ def test_runtime_executes_entire_graph_through_exposed_tools(tmp_path):
     assert terminal.data["plan_summary"]["passed"] == 3
     assert not [e for e in events if e.kind is E.TOOL_FAILED]
     assert current_plan(events)["plan"][1]["cycles"] == 1
+
+
+def done(step):
+    return {"step": step, "status": "completed", "outcome": "passed", "evidence_refs": [{"path": "proof.txt"}]}
+
+
+SIX = ["读代码", "设计温度头", "冒烟", "训练 nr_temphead.pt", "高 SNR 配对评估", "更新报告"]
+
+
+def test_unfinished_steps_left_out_stay_as_dropped_with_the_reason(harness):
+    # Real run: six planned steps became one "explored (negative result): completed" after a 100-step smoke test.
+    h = harness
+    h.update.handler(h.context, {"plan": [done(SIX[0]), {"step": SIX[1], "status": "in_progress"}]
+                                  + [{"step": s, "status": "pending"} for s in SIX[2:]]})
+    result = h.update.handler(h.context, {"plan": [done(SIX[0]), done("温度头探索（负向结论）")],
+                                          "explanation": "冒烟结果为负"})
+    assert result.ok and "kept as dropped" in result.content and "训练 nr_temphead.pt" in result.content
+    plan = current_plan(h.store.events("abcdef"))
+    assert [d["step"] for d in plan["dropped"]] == SIX[1:]
+    assert {d["reason"] for d in plan["dropped"]} == {"冒烟结果为负"}
+    assert {d["status"] for d in plan["dropped"]} == {"pending", "in_progress"}
+    assert summary(plan)["dropped"] == 5 and summary(plan)["status"] == "passed", "dropping is visible, not a block"
+
+
+def test_dropped_steps_are_carried_until_listed_again(harness):
+    h = harness
+    h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "B", "status": "pending"},
+                                          {"step": "C", "status": "pending"}]})
+    h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "D", "status": "pending"}],
+                                 "explanation": "换方向"})
+    h.update.handler(h.context, {"plan": [done("A"), {"step": "D", "status": "in_progress"}]})
+    assert [d["step"] for d in current_plan(h.store.events("abcdef"))["dropped"]] == ["B", "C"], "a later update keeps them"
+    h.update.handler(h.context, {"plan": [done("A"), {"step": "D", "status": "in_progress"}, {"step": "B", "status": "pending"}],
+                                 "explanation": "B 还是要做"})
+    assert [d["step"] for d in current_plan(h.store.events("abcdef"))["dropped"]] == ["C"]
+
+
+def test_finished_steps_left_out_are_not_dropped(harness):
+    h = harness
+    h.update.handler(h.context, {"plan": [done("A"), {"step": "B", "status": "pending"}]})
+    result = h.update.handler(h.context, {"plan": [{"step": "B", "status": "in_progress"}, {"step": "C", "status": "pending"}],
+                                          "explanation": "A 已做完，不再列"})
+    assert "dropped" not in current_plan(h.store.events("abcdef")) and "kept as dropped" not in result.content
+
+
+def test_replacing_the_plan_keeps_what_it_left_unfinished(harness):
+    h = harness
+    h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "B", "status": "pending"}]})
+    first = current_plan(h.store.events("abcdef"))
+    h.update.handler(h.context, {"plan": [{"step": "X", "status": "in_progress"}, {"step": "Y", "status": "pending"}],
+                                 "replace": True, "plan_id": first["plan_id"], "expected_revision": first["revision"],
+                                 "explanation": "用户换了任务"})
+    assert [d["step"] for d in current_plan(h.store.events("abcdef"))["dropped"]] == ["A", "B"]

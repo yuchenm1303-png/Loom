@@ -722,3 +722,36 @@ def test_time_from_the_person_starts_a_goal_first():
     assert "gives you time" in weave.GUIDE and "in your first response" in weave.GUIDE
     tool = next(tool for tool in weave.tools(type("S", (), {})()) if tool.name == "weave_goal")
     assert "Call it first whenever the person gives you time" in tool.description
+
+
+def test_the_checker_is_told_what_the_lead_dropped(tmp_path):
+    # Real run: training and evaluation left the list before the claim; the check never saw them.
+    proof = [{"call_id": "call-1"}]
+    first = {"plan": [{"step": "冒烟", "status": "in_progress"}, {"step": "训练 3000 步", "status": "pending"},
+                      {"step": "配对评估", "status": "pending"}]}
+    second = {"plan": [{"step": "冒烟", "status": "completed", "outcome": "passed", "evidence_refs": proof},
+                       {"step": "结论", "status": "completed", "outcome": "passed", "evidence_refs": proof}],
+              "explanation": "冒烟结果为负，不再训练"}
+    service, runtime, platform, source = conversation(tmp_path, [
+        START, calling("update_plan", first, "call-p1"), calling("update_plan", second, "call-p2"), DONE,
+        answer("交给检查"), PASSED])
+    try:
+        tick(service, source, 2)
+        said = [" ".join(str(m.content) for m in request.messages) for request in platform.requests]
+        checker = [text for text in said if "You are an independent checker" in text]
+        assert checker, "the check ran"
+        assert "dropped these steps before they were finished" in checker[0]
+        assert "训练 3000 步" in checker[0] and "冒烟结果为负，不再训练" in checker[0]
+    finally:
+        runtime.close()
+
+
+def test_a_checker_of_a_list_that_dropped_nothing_hears_nothing_about_it(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [START, DONE, answer("交给检查"), PASSED])
+    try:
+        tick(service, source, 2)
+        said = [" ".join(str(m.content) for m in request.messages) for request in platform.requests]
+        checker = [text for text in said if "You are an independent checker" in text]
+        assert checker and "dropped these steps" not in checker[0]
+    finally:
+        runtime.close()

@@ -21,7 +21,11 @@ interface FixtureState {
   nextTurn: boolean;
   open: boolean;
   archived: boolean;
+  dropped?: boolean;
 }
+
+// A step the list left out unfinished, as the Host keeps it.
+const DROPPED: TaskMilestone = { step: "训练 nr_temphead.pt 到 3000 步", status: "dropped", blocker: "冒烟结果为负，不再训练" };
 
 function stepsFor(completed: boolean): TaskMilestone[] {
   const running = completed ? "completed" : "in_progress";
@@ -59,7 +63,7 @@ let update: ((updater: (state: FixtureState) => FixtureState) => void) | null = 
 function Harness() {
   const [state, setState] = useState<FixtureState>({ width: 1200, completed: false, nextTurn: false, open: true, archived: false });
   update = setState;
-  const steps = state.archived ? [] : stepsFor(state.completed);
+  const steps = state.archived ? [] : [...stepsFor(state.completed), ...(state.dropped ? [DROPPED] : [])];
   const completed = steps.filter(step => step.status === "completed").length;
   const noop = () => {};
 
@@ -110,6 +114,11 @@ const api = window as unknown as {
   renderPlan(width: number, completed?: boolean, nextTurn?: boolean): void;
   setTaskPanelOpen(open: boolean): void;
   archiveTaskPlan(): void;
+  showDropped(dropped: boolean): void;
+};
+
+api.showDropped = dropped => {
+  flushSync(() => update?.(state => ({ ...state, dropped })));
 };
 
 api.renderPlan = (width, completed = false, nextTurn = false) => {

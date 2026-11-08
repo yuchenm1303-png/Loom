@@ -413,3 +413,18 @@ test("long-goal budget failures explain refresh and Host upgrade without suggest
   assert.match(readableError("The budget changed; refresh before changing it again"), /刷新/);
   assert.match(readableError("Total token budget must be an integer above usage and at most 1000000000"), /实际已用量/);
 });
+
+test("a dropped step reads as dropped with its reason, never as done", () => {
+  const [row] = toTurnTasks([{ step: "训练", status: "dropped", blocker: "冒烟结果为负" }]);
+  assert.equal(row.state, "rework");
+  assert.equal(row.detail, "已放弃：冒烟结果为负");
+  const [english] = toTurnTasks([{ step: "Train", status: "dropped" }], "en");
+  assert.equal(english.detail, "Dropped");
+});
+
+test("running out of budget says which side of the claim it was", () => {
+  const checking = toGoal({ objective: "研究", status: "budget_limited", reason: "The token budget ran out during the independent check: the work was claimed complete but is not verified" });
+  const working = toGoal({ objective: "研究", status: "budget_limited", reason: "The token budget ran out before the work was claimed complete" });
+  assert.match(checking.text, /检查中用完/);
+  assert.match(working.text, /声明完成前/);
+});
