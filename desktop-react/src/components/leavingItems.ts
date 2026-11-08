@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 
+const RESOLVED_APPROVAL_STATUSES = new Set(["approved", "denied", "completed", "cancelled", "interrupted", "failed"]);
+
+/** An approval the Host has settled one way or another: it no longer asks anything of the reader. */
+export function isResolvedApproval(item: TranscriptItem): boolean {
+  if (item.type !== "approval") return false;
+  return RESOLVED_APPROVAL_STATUSES.has(String(item.status || "").toLowerCase());
+}
+
 const leavingVariants = new WeakMap<TranscriptItem, TranscriptItem>();
 
 function asLeaving(item: TranscriptItem): TranscriptItem {

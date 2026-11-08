@@ -20,7 +20,7 @@ try {
     });
     const row = page.locator(".wv-row").first();
     await row.waitFor();
-    assert.ok(await row.evaluate(el => el.getBoundingClientRect().height >= 44));
+    assert.ok(await row.evaluate(el => el.getBoundingClientRect().height >= 34), "compact tool rows keep a 34px thumb height");
     await page.locator(".wv-sub-text").waitFor();
     await page.evaluate(() => {
       window.tailNode = document.querySelector(".wv-sub-text");
@@ -33,7 +33,7 @@ try {
     await page.waitForFunction(() => Number(document.querySelector(".wv-sub-text")?.textContent.match(/line-(\d+)/)?.[1]) >= 3);
     assert.ok(await page.evaluate(() => window.tailNode === document.querySelector(".wv-sub-text")), "output deltas preserve the tail node, preventing repeated fade-in");
     await page.evaluate(() => clearInterval(window.outputTimer));
-    assert.equal(await page.locator(".wv-verb").evaluate(el => getComputedStyle(el).animationName), "none", "tool copy stays still while its status mark moves");
+    assert.ok(!/shimmer/.test(await page.locator(".wv-verb").evaluate(el => getComputedStyle(el).animationName)), "tool copy stays still while its status mark moves: no shimmer, only its one birth fade");
     const ring = await row.locator(".wv-node").evaluate(el => { const css = getComputedStyle(el, "::before"); return { width: css.width, height: css.height, animation: css.animationName }; });
     assert.equal(ring.width, ring.height);
     assert.equal(ring.animation, "m-tool-orbit");
@@ -59,5 +59,5 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log("PASS: mobile live tool output, stable tail DOM, 44px rows, circular status motion, disclosure reversal, completion and both reduced-motion preferences");
+  console.log("PASS: mobile live tool output, stable tail DOM, 34px compact rows, circular status motion, disclosure reversal, completion and both reduced-motion preferences");
 } finally { await browser.close(); }

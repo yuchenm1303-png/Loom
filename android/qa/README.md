@@ -95,7 +95,7 @@ Run `node scripts/tests/goal-budget-controls.mjs` against Vite on 5199 for mobil
 Conversation motion keeps Markdown component identities stable when receiving ends, so rich blocks retain
 local state and do not flash/remount. Live process tails publish at most every 220 ms even under continuous
 stdout, preserving the same text node instead of restarting an entrance for each line. Mobile tool rows
-have 44 px touch targets, persistent disclosure chevrons and one circular running mark; their labels stay
+have 34 px compact rows, persistent disclosure chevrons and one circular running mark; their labels stay
 still. Both reduced-motion preferences stop the mark, and changing the preference clears typing highlights.
 `node scripts/tests/mobile-conversation-flow.mjs` covers live output, rapid drawer reversals and completion
 at 320/390 px in both themes. The streaming browser test also checks rich-block identity at completion.

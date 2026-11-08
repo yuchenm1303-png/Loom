@@ -39,6 +39,8 @@ import {
 import { Transcript } from "../components/Transcript";
 import { TranscriptScrollController } from "../components/TranscriptScrollController";
 import { RETAIN } from "../motion/tokens";
+import { isResolvedApproval, useLeavingItems } from "../components/leavingItems";
+import { useReducedMotion } from "../motion/useReducedMotion";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import { useLoom } from "../state/useLoom";
 import type { AccountDevices, ApprovalDecision, ThreadRecord, TranscriptItem } from "../types/loom";
@@ -541,7 +543,33 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
   const [controls, setControls] = useState(false);
   const [error, setError] = useState("");
   const field = useRef<HTMLTextAreaElement>(null);
-  const approvalOffscreen = useApprovalOffscreen(Boolean(loom.active?.pendingApproval));
+  // An answered approval leaves at once and folds away, as on the desktop (App.tsx): the Host only marks it
+  // approved, and left in the list it kept its buttons and split the exec row from the process it started.
+  const [dismissedApprovals, setDismissedApprovals] = useState<ReadonlySet<string>>(() => new Set());
+  const reduceMotion = useReducedMotion();
+  const keptItems = useLeavingItems(
+    loom.items,
+    (item) => !isResolvedApproval(item) && !dismissedApprovals.has(item.id),
+    (item) => item.type === "approval",
+    reduceMotion ? 0 : RETAIN.fold,
+    [dismissedApprovals],
+  );
+  // While an answered card folds away it waits at the end of its turn. Left in place it split the exec row
+  // from the process it started for the length of the fold, so the steps above flashed into a summary line
+  // and the command showed twice.
+  const transcriptItems = useMemo(() => {
+    if (!keptItems.some((item) => item.leaving)) return keptItems;
+    const leaving = keptItems.filter((item) => item.leaving);
+    const rest = keptItems.filter((item) => !item.leaving);
+    for (const card of leaving) {
+      let at = -1;
+      rest.forEach((item, index) => { if (item.turnId === card.turnId) at = index; });
+      rest.splice(at + 1, 0, card);
+    }
+    return rest;
+  }, [keptItems]);
+  const waitingApproval = transcriptItems.some((item) => item.type === "approval" && !item.leaving && !isResolvedApproval(item));
+  const approvalOffscreen = useApprovalOffscreen(waitingApproval);
   const approvalJump = useMotionPresence(approvalOffscreen, RETAIN.fast);
   const fieldHeight = useRef(0);
   const fail = (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause));
@@ -550,8 +578,12 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
     setError("");
     try {
       if (decision === "acceptWithPrefixRule" && !(await confirmBiometric("这个项目以后都允许这类命令"))) return;
+      setDismissedApprovals((current) => new Set(current).add(item.id));
       await loom.respondApproval(item, decision, feedback);
-    } catch (cause) { fail(cause); }
+    } catch (cause) {
+      setDismissedApprovals((current) => { const next = new Set(current); next.delete(item.id); return next; });
+      fail(cause);
+    }
   }, [loom.respondApproval]);
 
   const submit = async () => {
@@ -618,7 +650,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
           <Transcript
             threadId={thread?.id}
             runtimePhase={loom.modelActivity?.turnId === thread?.currentTurnId ? loom.modelActivity?.phase : undefined}
-            items={loom.items}
+            items={transcriptItems}
             running={running}
             currentTurnId={running ? thread?.currentTurnId : undefined}
             workspace={thread?.workspace}
@@ -626,7 +658,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
             usageReady={false}
           />
           <TranscriptScrollController
-            items={loom.items}
+            items={transcriptItems}
             threadId={thread?.id}
             currentTurnId={thread?.currentTurnId}
             running={running}

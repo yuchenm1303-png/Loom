@@ -45,7 +45,7 @@ import { SPLIT_DEFAULT, SPLIT_MAX, SPLIT_MIN, SplitConversationPane, SplitDropTa
 import { startConversationActivity, useConversationAttention, watchConversations } from "./state/conversationActivity";
 import { latestTaskPlan } from "./components/liveTaskProgress";
 import { Transcript } from "./components/Transcript";
-import { useLeavingItems } from "./components/leavingItems";
+import { isResolvedApproval, useLeavingItems } from "./components/leavingItems";
 import { TranscriptScrollController } from "./components/TranscriptScrollController";
 import "./components/inline-thinking.css";
 import "./components/review-dock.css";
@@ -72,15 +72,6 @@ import {
 import { useAccount } from "./state/useAccount";
 import { currentTurnHasTerminalError, useLoom } from "./state/useLoom";
 import type { ApprovalDecision, ThreadRecord, TranscriptItem } from "./types/loom";
-
-const RESOLVED_APPROVAL_STATUSES = new Set([
-  "approved",
-  "denied",
-  "completed",
-  "cancelled",
-  "interrupted",
-  "failed",
-]);
 
 /** How long an answered approval stays to fold away (the log's fold: weave.css --wv-fold). */
 const APPROVAL_EXIT_MS = RETAIN.fold;
@@ -172,11 +163,6 @@ type ResizeSession = {
   frame: number | null;
   handle: HTMLDivElement;
 };
-
-function isResolvedApproval(item: TranscriptItem): boolean {
-  if (item.type !== "approval") return false;
-  return RESOLVED_APPROVAL_STATUSES.has(String(item.status || "").toLowerCase());
-}
 
 function afterPaint(callback: () => void): void {
   requestAnimationFrame(() => requestAnimationFrame(callback));

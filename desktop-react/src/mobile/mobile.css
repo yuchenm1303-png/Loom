@@ -695,3 +695,34 @@ html[data-loom-surface="mobile"] .m-composer-box textarea { padding: 10px 14px 2
   .m-thread:has(.m-composer textarea:focus) .m-build-summary { font-size: 12px; }
   .m-thread:has(.m-composer textarea:focus) .m-attachment-list { max-height: 90px; }
 }
+
+/* Conversation pass 2026-11-08 (filmed on the ?live= fixture turn).
+   Tool flow, compact: a 34px row (the desktop's 28px plus room for a thumb), a 20px node, the stage's
+   summary line and the process header on the same height, so a long run of steps reads as a list,
+   not a stack of buttons. */
+html[data-loom-surface="mobile"] .m-stage .wv-stage { --wv-row: 34px; --wv-mid: 17px; --wv-node: 22px; --wv-gap: 8px; }
+html[data-loom-surface="mobile"] .m-stage .wv-row { border-radius: 8px; }
+html[data-loom-surface="mobile"] .m-stage .wv-line { border-radius: 8px; }
+html[data-loom-surface="mobile"] .m-stage .wv-sub { padding-bottom: 4px; line-height: 17px; }
+html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-node::before { width: 20px; height: 20px; margin: -10px 0 0 -10px; }
+html[data-loom-surface="mobile"] .m-stage .turn-process-header { min-height: 34px; }
+/* A running verb holds still on the phone, but its birth fade must stay in the same animation list:
+   dropping it while running and restoring it on completion replayed the fade (90ms of a blank verb)
+   every time a step finished. */
+html[data-loom-surface="mobile"] .m-stage .wv-step[data-born="live"] .wv-row.is-executing .wv-verb {
+  animation: wv-fade-in var(--loom-dur-base) var(--loom-ease-out) 90ms backwards;
+}
+/* The thinking bead is a 6px dot here; arriving 120ms before its words it read as a stray dot.
+   The words follow almost at once. */
+html[data-loom-surface="mobile"] .m-stage .inline-thinking .thinking-shimmer {
+  animation:
+    loom-thinking-label-in var(--loom-dur-base) var(--loom-ease-out) calc(var(--thinking-lead, 0ms) + 30ms) backwards,
+    var(--thinking-sweep);
+}
+/* The composer sits clear of the gesture bar; while the keyboard is up it gives that room back. */
+.m-composer { padding-bottom: 16px; }
+.m-composer:focus-within { padding-bottom: 8px; }
+html[data-loom-surface="mobile"][data-loom-reduced-motion="true"] .m-stage .wv-step[data-born="live"] .wv-row.is-executing .wv-verb { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-loom-surface="mobile"] .m-stage .wv-step[data-born="live"] .wv-row.is-executing .wv-verb { animation: none; }
+}

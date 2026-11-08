@@ -78,6 +78,139 @@ const profile = { selection: "builtin:minimax", id: "minimax", kind: "builtin", 
   reasoning: { kind: "openai-effort", value: "medium", defaultValue: "medium", source: "catalog", options: [{ value: "low", label: "低" }, { value: "medium", label: "中" }, { value: "high", label: "高" }] } };
 const models = { primary: profile, profiles: [profile, { ...profile, selection: "builtin:ling", id: "ling", name: "Ling-3.0-flash", model: "Ling-3.0-flash", reasoning: null }], activeModelId: "minimax", current: { ...profile, provider: "openai" }, recentModels: [] };
 
+/* ?live=1 (or ?live=approval): a conversation whose next turn is played as the Host plays one,
+   event by event, with the same item shapes app_server.py emits: a thinking gap, streamed reasoning
+   and commentary, tool calls with streamed arguments, a process with live output, a diff, an
+   optional approval, then a streamed Markdown answer. Send any message in "首页加载变慢" to start it;
+   window.__shell.liveDone resolves when the turn has completed. */
+const LIVE = "thread-live";
+const live = params.get("live");
+const liveItems: Record<string, unknown>[] = [];
+let liveTurns: Array<{ id: string; threadId: string; status: string; startedAt: string; completedAt?: string; items: Record<string, unknown>[] }> = [];
+let approvalGate: (() => void) | null = null;
+const liveThread: ThreadRecord = { id: LIVE, title: "首页加载变慢", status: "completed", workspace: "D:/work/Loom", permissionMode: "approval", createdAt: at, updatedAt: new Date().toISOString(), active: true, weave: false, projectId: "p1" };
+if (live) threads.push(liveThread);
+const LIVE_REASONING = "用户说首页变慢了。先确认是哪一段慢：接口、打包体积还是渲染。先读入口文件，再跑一次性能脚本拿数字。";
+const LIVE_NOTE = "我先看一下首页的入口和数据请求，再跑一次性能脚本，拿到实际数字再改。";
+const LIVE_ANSWER = `## 结论
+
+首页慢在**首屏同时发了 6 个请求**，其中 \`/api/feed\` 平均 1.8 秒，并且阻塞了渲染。
+
+### 改动
+
+1. \`HomePage.tsx\`：feed 改为首屏之后再取，先渲染骨架。
+2. \`api/client.ts\`：给 \`/api/profile\` 加了 60 秒缓存。
+
+\`\`\`ts
+const feed = useDeferredQuery("/api/feed", { after: "first-paint" });
+\`\`\`
+
+| 指标 | 修改前 | 修改后 |
+| --- | --- | --- |
+| 首屏时间 | 2.9 s | 1.1 s |
+| 请求数 | 6 | 3 |
+
+性能脚本和单元测试都已通过。`;
+const PERF_LINES = ["> loom-web@1.4.0 perf", "> node scripts/perf.mjs --route /", "", "warming up (3 runs)…", "run 1  first paint 2.91s  requests 6", "run 2  first paint 2.87s  requests 6", "run 3  first paint 2.94s  requests 6", "slowest: GET /api/feed 1.82s (blocking)", "slowest: GET /api/profile 0.64s", "done in 9.4s"];
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+let seed = 7;
+const chunk = () => { seed = (seed * 9301 + 49297) % 233280; return 1 + Math.floor((seed / 233280) * 7); };
+function liveNotify(method: string, params: Record<string, unknown>) {
+  emit({ type: "notification", payload: { method, params: { threadId: LIVE, ...params } } });
+}
+function liveUpsert(item: Record<string, unknown>, method: "item/started" | "item/completed") {
+  const full = { threadId: LIVE, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...item };
+  const index = liveItems.findIndex((entry) => entry.id === full.id);
+  if (index >= 0) liveItems[index] = { ...liveItems[index], ...full }; else liveItems.push(full);
+  liveNotify(method, { item: full });
+}
+async function liveStream(itemId: string, turnId: string, field: "text" | "reasoning", text: string, pace = 34) {
+  for (let at = 0; at < text.length;) {
+    const piece = text.slice(at, at += chunk());
+    const index = liveItems.findIndex((entry) => entry.id === itemId);
+    liveItems[index] = { ...liveItems[index], [field]: `${String(liveItems[index][field] ?? "")}${piece}` };
+    liveNotify("item/delta", { turnId, itemId, delta: { [field]: piece } });
+    await sleep(pace + (seed % 3) * 14);
+  }
+}
+async function liveTool(turnId: string, callId: string, toolName: string, args: Record<string, unknown>, run: () => Promise<Record<string, unknown>>) {
+  const id = `tool:${callId}`;
+  liveUpsert({ id, turnId, type: "tool_call", status: "streaming_arguments", callId, toolName }, "item/started");
+  const json = JSON.stringify(args);
+  for (let at = 0; at < json.length;) {
+    const piece = json.slice(at, at += 6);
+    liveNotify("item/delta", { turnId, itemId: id, delta: { kind: "tool_call_argument", callId, toolName, arguments: piece } });
+    await sleep(28);
+  }
+  liveUpsert({ id, turnId, type: "tool_call", status: "started", callId, toolName, arguments: args }, "item/completed");
+  await sleep(90);
+  liveUpsert({ id, turnId, type: "tool_call", status: "running", callId, toolName, arguments: args }, "item/completed");
+  liveNotify("turn/modelActivity", { turnId, phase: "running", active: false, contentGapSeconds: 0 });
+  const result = await run();
+  liveUpsert({ id, turnId, type: "tool_call", status: "completed", callId, toolName, arguments: args, ok: true, ...result }, "item/completed");
+}
+async function playLiveTurn(text: string) {
+  const turnId = `turn-live-${liveTurns.length + 1}`;
+  const startedAt = new Date().toISOString();
+  liveTurns.push({ id: turnId, threadId: LIVE, status: "running", startedAt, items: liveItems });
+  Object.assign(liveThread, { status: "running", currentTurnId: turnId });
+  await sleep(60);
+  liveNotify("turn/started", { turn: { id: turnId, threadId: LIVE, status: "running", startedAt } });
+  liveUpsert({ id: `user:${turnId}`, turnId, type: "user_message", status: "completed", text, source: "user" }, "item/started");
+  liveNotify("turn/modelActivity", { turnId, phase: "waiting_model", active: false, contentGapSeconds: 0 });
+  await sleep(1300);
+  // Step 1: reasoning, then a sentence of commentary, then tools.
+  const step1 = `assistant:${turnId}:s1`;
+  liveUpsert({ id: step1, turnId, type: "assistant_message", status: "streaming" }, "item/started");
+  await liveStream(step1, turnId, "reasoning", LIVE_REASONING, 30);
+  await liveStream(step1, turnId, "text", LIVE_NOTE);
+  liveUpsert({ id: step1, turnId, type: "assistant_message", status: "completed", text: LIVE_NOTE, reasoning: LIVE_REASONING, phase: "commentary", stepId: "s1" }, "item/completed");
+  await liveTool(turnId, "read-1", "read_file", { path: "src/pages/HomePage.tsx" }, async () => { await sleep(380); return { content: "export function HomePage() { … }  (212 lines)" }; });
+  await liveTool(turnId, "grep-1", "grep", { pattern: "useQuery\\(", path: "src" }, async () => { await sleep(300); return { content: "src/pages/HomePage.tsx:41\nsrc/pages/HomePage.tsx:58\nsrc/api/client.ts:12" }; });
+  liveNotify("turn/modelActivity", { turnId, phase: "waiting_model", active: false, contentGapSeconds: 0 });
+  await sleep(900);
+  const runPerf = async () => {
+    const pid = `process:p-${turnId}`;
+    liveUpsert({ id: pid, turnId, type: "process", status: "running", processId: "p1", argv: ["npm", "run", "perf"], cwd: "D:/work/Loom", command: "npm run perf", stdout: "" }, "item/started");
+    let out = "";
+    for (const line of PERF_LINES) { out += `${line}\n`; liveUpsert({ id: pid, turnId, type: "process", status: "running", command: "npm run perf", stdout: out }, "item/completed"); await sleep(260); }
+    liveUpsert({ id: pid, turnId, type: "process", status: "completed", command: "npm run perf", stdout: out, returncode: 0 }, "item/completed");
+    return { content: out };
+  };
+  if (live === "approval") {
+    const callId = "perf-1";
+    liveUpsert({ id: `tool:${callId}`, turnId, type: "tool_call", status: "started", callId, toolName: "exec", arguments: { command: "npm run perf" } }, "item/started");
+    liveUpsert({ id: `approval:${callId}`, turnId, type: "approval", status: "waiting", callId, toolName: "exec", arguments: { command: "npm run perf" }, effect: "sensitive", reason: "npm run perf", availableDecisions: ["accept", "acceptForSession", "decline"], sessionScope: { kind: "prefix", prefix: ["npm", "run"] } }, "item/started");
+    Object.assign(liveThread, { status: "waiting_approval" });
+    liveNotify("approval/requested", { approval: { ...pendingApproval, threadId: LIVE, turnId, itemId: `tool:${callId}`, approvalItemId: `approval:${callId}`, callId, requestId: "req-live", arguments: { command: "npm run perf" }, reason: "npm run perf", availableDecisions: ["accept", "acceptForSession", "decline"] } });
+    await new Promise<void>((resolve) => { approvalGate = resolve; });
+    Object.assign(liveThread, { status: "running" });
+    liveUpsert({ id: `approval:${callId}`, turnId, type: "approval", status: "approved", callId, toolName: "exec" }, "item/completed");
+    liveUpsert({ id: `tool:${callId}`, turnId, type: "tool_call", status: "running", callId, toolName: "exec", arguments: { command: "npm run perf" } }, "item/completed");
+    const result = await runPerf();
+    liveUpsert({ id: `tool:${callId}`, turnId, type: "tool_call", status: "completed", callId, toolName: "exec", arguments: { command: "npm run perf" }, ok: true, ...result }, "item/completed");
+  } else {
+    await liveTool(turnId, "perf-1", "exec", { command: "npm run perf" }, runPerf);
+  }
+  liveNotify("turn/modelActivity", { turnId, phase: "waiting_model", active: false, contentGapSeconds: 0 });
+  await sleep(1100);
+  await liveTool(turnId, "patch-1", "apply_patch", { path: "src/pages/HomePage.tsx" }, async () => { await sleep(260); return { content: "Updated 2 files" }; });
+  liveUpsert({ id: `diff:${turnId}`, turnId, type: "file_edit", status: "completed", paths: ["src/pages/HomePage.tsx", "src/api/client.ts"], diff: "diff --git a/src/pages/HomePage.tsx b/src/pages/HomePage.tsx\n--- a/src/pages/HomePage.tsx\n+++ b/src/pages/HomePage.tsx\n@@ -41,3 +41,3 @@\n-  const feed = useQuery(\"/api/feed\");\n+  const feed = useDeferredQuery(\"/api/feed\", { after: \"first-paint\" });\n" }, "item/completed");
+  liveNotify("turn/modelActivity", { turnId, phase: "waiting_model", active: false, contentGapSeconds: 0 });
+  await sleep(1000);
+  // Step 2: the answer.
+  const step2 = `assistant:${turnId}:s2`;
+  liveUpsert({ id: step2, turnId, type: "assistant_message", status: "streaming" }, "item/started");
+  await liveStream(step2, turnId, "text", LIVE_ANSWER, 26);
+  liveUpsert({ id: step2, turnId, type: "assistant_message", status: "completed", text: LIVE_ANSWER, phase: "final_answer", stepId: "s2" }, "item/completed");
+  await sleep(120);
+  const completedAt = new Date().toISOString();
+  liveTurns = liveTurns.map((turn) => turn.id === turnId ? { ...turn, status: "completed", completedAt } : turn);
+  Object.assign(liveThread, { status: "completed", currentTurnId: turnId });
+  liveNotify("turn/completed", { turn: { id: turnId, threadId: LIVE, status: "completed", startedAt, completedAt } });
+  Reflect.set(shell, "liveCompletedAt", performance.now());
+}
+
 const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "thread/list": (args) => ({ threads: threads.filter((item) => !item.parentThreadId && (args.view === "all" || Boolean(item.archived) === (args.view === "archived")) && (!args.projectId || item.projectId === args.projectId)), counts: { active: threads.filter((item) => !item.archived).length, archived: threads.filter((item) => item.archived).length, all: threads.length } }),
   "project/list": () => { if (shell.failProjects) throw new Error("项目读取暂时失败"); return { projects, unfiledThreadCount: 0 }; },
@@ -102,7 +235,10 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "projectRun/resume": (args) => { if (buildOverview.run) { buildOverview.run.workflowControl = "active"; buildOverview.run.control = "active"; if (args.tokenBudget) buildOverview.run.tokenBudget = Number(args.tokenBudget); if (args.maxEpisodes) buildOverview.run.maxEpisodes = Number(args.maxEpisodes); buildOverview.run.revision++; } return { run: buildOverview.run }; },
   "projectRun/approval": () => { buildOverview.agents.forEach((agent) => { agent.approval = null; }); return {}; },
   "thread/start": (args) => { const record: ThreadRecord = { ...threads[3], id: `new-${threads.length}`, title: "新对话", projectId: String(args.projectId || ""), workspace: String(args.workspace || workspace.path), status: "idle", weave: false }; threads.push(record); return { thread: record }; },
-  "turn/start": () => ({ turn: { id: `turn-${Date.now()}`, status: "running", items: [] } }),
+  "turn/start": (args) => {
+    if (args.threadId === LIVE) { const id = `turn-live-${liveTurns.length + 1}`; Reflect.set(shell, "liveDone", playLiveTurn(String(args.input ?? ""))); return { turn: { id, threadId: LIVE, status: "running", items: [] } }; }
+    return { turn: { id: `turn-${Date.now()}`, status: "running", items: [] } };
+  },
   "turn/steer": () => ({}),
   "thread/rename": (args) => { const record = threads.find((item) => item.id === args.threadId)!; record.title = String(args.title); return { thread: record }; },
   "thread/archive": (args) => { const record = threads.find((item) => item.id === args.threadId)!; record.archived = Boolean(args.archived); return { thread: record }; },
@@ -125,7 +261,7 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
     record.permissionMode = String(args.permissionMode);
     return { thread: record };
   },
-  "approval/respond": () => ({}),
+  "approval/respond": () => { const gate = approvalGate; approvalGate = null; window.setTimeout(() => gate?.(), 120); return {}; },
   "tools/catalog": () => ({ tools: [] }),
 };
 
