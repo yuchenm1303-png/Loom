@@ -17,6 +17,7 @@
  * Text only fades; marks and cables move (motion-tokens.css). Styles: project-flow.css.
  * The data comes from projectOverview.ts (projectRun/overview); this file only draws it. */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { GoalBudgetControl, type GoalBudgetState, type GoalBudgetUpdate } from "./GoalBudgetControl";
 import {
   ArrowDown, ArrowUp, Bot, BookMarked, ChartGantt, Check, Circle, CircleDot, Compass, Copy, File, FileCode, FileImage,
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldAlert, ShieldCheck,
@@ -81,7 +82,7 @@ export interface FlowData {
   /** The conversation's own task list, kept by its agent; a branch of its own, with or without a project. */
   taskList?: { id: string; title: string; state: FlowTaskState; detail?: string }[];
   /** A long goal this conversation is pursuing by itself, with no project. */
-  goal?: { text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean; lines?: { title: string; state: string; label: string; why?: string }[] } | null;
+  goal?: { budget?: GoalBudgetState; text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean; lines?: { title: string; state: string; label: string; why?: string }[] } | null;
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
   models?: { current: ModelOption & { reasoning?: ModelReasoningState; vision?: boolean }; recent: ModelOption[];
              groups: { id: string; name: string; options: ModelOption[] }[] };
@@ -131,6 +132,7 @@ export interface FlowActions {
   onChat?(text: string, attachments: { path: string; name: string }[], tokens?: number): Promise<void> | void;
   /** The long goal's stop, resume and dismiss. */
   onGoal?(action: "pause" | "resume" | "dismiss"): void;
+  onGoalBudget?(action: "set_budget" | "resume", update: GoalBudgetUpdate): Promise<unknown>;
   /** Whether the model can take the images attached to a message, and whether that is known (the chat composer's gate). */
   imagesAllowed?: boolean;
   imageSupport?: boolean | null;
@@ -1253,7 +1255,8 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
               <span className="pf-attention-dot" />
               <span className="pf-attention-text" title={data.goal.detail || undefined}><Inline text={data.goal.text} /></span>
               {data.goal.dismiss ? <button type="button" className="pf-attention-quiet" disabled={actions.busy} onClick={() => actions.onGoal?.("dismiss")}>{text.goalDismiss}</button> : null}
-              {data.goal.action ? <button type="button" disabled={actions.busy} onClick={() => actions.onGoal?.(data.goal!.action!)}>{data.goal.action === "pause" ? text.stop : text.resume}</button> : null}
+              {data.goal.action ? <button type="button" disabled={actions.busy || (data.goal.action === "resume" && Boolean(data.goal.budget && data.goal.budget.tokens >= data.goal.budget.tokenBudget))} onClick={() => actions.onGoal?.(data.goal!.action!)}>{data.goal.action === "pause" ? text.stop : text.resume}</button> : null}
+              {data.goal.budget && actions.onGoalBudget ? <GoalBudgetControl goal={data.goal.budget} disabled={actions.busy} canResume={data.goal.action === "resume"} onSubmit={actions.onGoalBudget} /> : null}
               {data.goal.lines?.length ? (
                 <ul className="pf-goal-lines">
                   {data.goal.lines.map((line) => (

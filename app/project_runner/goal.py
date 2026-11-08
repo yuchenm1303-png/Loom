@@ -491,29 +491,51 @@ def advance(service):
 
 
 def control(service, params):
-    """The hub's stop, resume and dismiss."""
+    """The hub's stop, explicit budget changes, resume and dismiss."""
     thread_id = service._required_text(params, "threadId")
     action, record = params.get("action"), service.weave_goals.get(thread_id)
+    if action == "resume_with_budget":
+        if "tokenBudget" not in params:
+            raise ValueError("Explicit tokenBudget is required to resume with a budget")
+        action = "resume"
     if record is None or service.runtime.get_goal(thread_id) is None:
         raise ValueError("This conversation has no long goal")
+    if "tokenBudget" in params and action not in {"resume", "set_budget"}:
+        raise ValueError("Budget changes require set_budget or resume")
+    if action in {"resume", "set_budget"}:
+        if record["phase"] == "done":
+            raise ValueError("This goal is finished")
+        if "expectedStartedAt" in params and params["expectedStartedAt"] != record["startedAt"]:
+            raise ValueError("The goal changed; refresh before changing its budget")
+        _charge(service, thread_id, record)
+        if "tokenBudget" in params:
+            budget = params["tokenBudget"]
+            if type(budget) is not int or not 1 <= budget <= 1_000_000_000 or budget <= record["tokens"]:
+                raise ValueError("Total token budget must be an integer above usage and at most 1000000000")
+            expected = params.get("expectedTokenBudget", record["tokenBudget"])
+            if expected != record["tokenBudget"] and budget != record["tokenBudget"]:
+                raise ValueError("The budget changed; refresh before changing it again")
+            record["tokenBudget"] = budget
+        elif action == "set_budget":
+            raise ValueError("tokenBudget is required")
+        if action == "resume" and record["tokens"] >= record["tokenBudget"]:
+            raise ValueError("Goal budget exhausted; explicitly set a new total token budget before resuming")
     if action == "pause":
         _stop(service, thread_id, record, GoalStatus.PAUSED, "Stopped by the person")
         if service._is_active(thread_id):
             service.runtime.cancel(thread_id)
     elif action == "resume":
-        if record["phase"] == "done":
-            raise ValueError("This goal is finished")
-        if record["tokens"] >= record["tokenBudget"]:
-            record["tokenBudget"] += record["tokenBudget"]  # resuming a spent goal means spending more
         record.update(reason="", stalls=0, failures=0, failingSince=0, retryAt=0, handledTurn=service.store.load(thread_id).current_turn_id)
         service.weave_goals.put(thread_id, record)
         service.runtime.set_goal_status(thread_id, GoalStatus.ACTIVE)
+    elif action == "set_budget":
+        service.weave_goals.put(thread_id, record)
     elif action == "dismiss":
         goal_lines.stop_all(service, thread_id, record, "the person dismissed the goal")
         service.runtime.clear_goal(thread_id)
         service.weave_goals.take(thread_id)
     else:
-        raise ValueError("action must be pause, resume or dismiss")
+        raise ValueError("action must be pause, resume, resume_with_budget, set_budget or dismiss")
     return {"goal": view(service, thread_id)}
 
 
@@ -527,6 +549,7 @@ def view(service, thread_id):
     if phase == "working" and service.store.load(thread_id).status is AgentStatus.WAITING_APPROVAL:
         phase = "approval"  # nothing moves until the person answers, however long the night
     return {"objective": goal.objective[:300], "status": "active" if claimed else goal.status.value,
+            "startedAt": record["startedAt"],
             "phase": phase,
             "tokens": record["tokens"], "tokenBudget": record["tokenBudget"], "turns": record["turns"],
             "reason": record["reason"], "summary": record["summary"], "checked": record["checked"],

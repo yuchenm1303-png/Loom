@@ -53,6 +53,13 @@ const buildOverview: ProjectOverview = {
   agents: params.has("proposal") ? [] : [{ id: "agent-1", runId: "run-1", role: "worker", taskId: "task-1", step: 3, activity: "正在检查布局", approval: { callId: "agent-call", requestId: "agent-request", tool: "exec", command: "npm test", reason: "检查测试结果", kind: "sandbox" } }],
   children: [], events: [], workspace,
 };
+if (params.has("longgoal")) {
+  Object.assign(threads[2], { status: "completed", active: false, currentTurnId: null });
+  Object.assign(buildOverview, { run: null, program: null, agents: [], goal: {
+    objective: "继续研究并交付报告", status: "paused", phase: "working", tokens: params.has("spent") ? 4000000 : 2400000,
+    tokenBudget: 4000000, turns: 3, reason: "Stopped by the person", summary: "", checked: false, startedAt: 123,
+  } });
+}
 const pendingApproval = {
   requestId: "req-1", threadId: THREAD, turnId: "turn-1", itemId: "tool-1", approvalItemId: "approval:call-1", callId: "call-1",
   requestType: "toolExecution", approvalStage: "before", retryReason: null, startedAtMs: Date.now(), toolName: "exec",
@@ -80,6 +87,17 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "projectRun/overview": (args) => args.threadId === "thread-build" ? buildOverview : { run: null, program: null, children: [], agents: [], events: [], workspace },
   "projectWeave/start": (args) => { buildOverview.run = { id: "run-1", revision: 1, sourceThreadId: "thread-build", objective: "重做账号页并独立验收", repository: "D:/work/Loom", state: "running", control: "active", phase: "planning", workflowControl: "active", completionPolicy: "local_integrate", tokensUsed: 0, tokenBudget: Number(args.tokenBudget), episodesUsed: 0, maxEpisodes: Number(args.maxEpisodes), maxWorkers: Number(args.maxWorkers), plan: [], permissionMode: String(args.permissionMode) }; buildOverview.proposal = null; return { program: {} }; },
   "projectWeave/dismiss": () => { buildOverview.proposal = null; return {}; },
+  "projectWeave/goal": (args) => {
+    const goal = buildOverview.goal!;
+    if (args.action === "resume") throw new Error("Legacy resume must not be used");
+    if (args.tokenBudget !== undefined) {
+      if (Number(args.tokenBudget) <= goal.tokens) throw new Error("Budget exhausted");
+      goal.tokenBudget = Number(args.tokenBudget);
+    }
+    if (args.action === "resume_with_budget") goal.status = "active";
+    if (args.action === "pause") goal.status = "paused";
+    return { goal };
+  },
   "projectRun/pause": () => { if (buildOverview.run) { buildOverview.run.workflowControl = "paused"; buildOverview.run.control = "paused"; buildOverview.run.revision++; } return { run: buildOverview.run }; },
   "projectRun/resume": (args) => { if (buildOverview.run) { buildOverview.run.workflowControl = "active"; buildOverview.run.control = "active"; if (args.tokenBudget) buildOverview.run.tokenBudget = Number(args.tokenBudget); if (args.maxEpisodes) buildOverview.run.maxEpisodes = Number(args.maxEpisodes); buildOverview.run.revision++; } return { run: buildOverview.run }; },
   "projectRun/approval": () => { buildOverview.agents.forEach((agent) => { agent.approval = null; }); return {}; },

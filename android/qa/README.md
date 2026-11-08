@@ -83,3 +83,11 @@ node --test scripts/tests/mobile-project-state.test.mjs scripts/tests/project-ov
 ```
 
 The control test checks cached project errors/recovery, project-scoped conversation requests, edited start/budget payloads, approvals, biometric refusal, Android Back priority, build-mode persistence while viewing its transcript, and narrow 320 px layout. Screenshot/font/touch-size checks cover the shared screens; motion checks include interrupting navigation and reduced motion. A real phone/Host smoke test is still required before release.
+
+Long-goal budgets now have an explicit total-cap/add-amount editor on both mobile and desktop.
+Saving the budget preserves the current pause state; saving and resuming uses exactly the submitted
+absolute cap. Exhausted goals require a new cap above actual usage. Resume never silently doubles it.
+Updates carry the previous cap and goal start time, rejecting stale edits and preserving identical retries.
+The new `set_budget` / `resume_with_budget` actions require an updated desktop Host: older Hosts reject
+these names instead of falling through to legacy resume/doubling. Updating only the phone is insufficient.
+Run `node scripts/tests/goal-budget-controls.mjs` against Vite on 5199 for mobile and desktop controls.

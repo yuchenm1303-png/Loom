@@ -406,3 +406,10 @@ test("each parallel reviewer of the whole project has its own timeline lane, bef
   assert.equal(measured.stats.peak, 3);
   assert.equal(measured.stats.waitMinutes, 4);
 });
+
+test("long-goal budget failures explain refresh and Host upgrade without suggesting auto-add", () => {
+  assert.match(readableError("action must be pause, resume or dismiss"), /更新电脑端/);
+  assert.match(readableError("Goal budget exhausted; explicitly set a new total token budget before resuming"), /新的总上限/);
+  assert.match(readableError("The budget changed; refresh before changing it again"), /刷新/);
+  assert.match(readableError("Total token budget must be an integer above usage and at most 1000000000"), /实际已用量/);
+});

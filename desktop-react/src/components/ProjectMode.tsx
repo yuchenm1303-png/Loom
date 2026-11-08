@@ -197,8 +197,10 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     try {
       await command();
       await load(true);
+      return true;
     } catch (cause) {
       setError(readableError(cause instanceof Error ? cause.message : String(cause), lang));
+      return false;
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -227,6 +229,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
                  historyError };
   data.taskList = here && !renewal?.cleared ? turnTasks : [];
   data.goal = here && !renewal?.cleared ? toGoal(shownOverview.goal, lang) : null;
+  if (data.goal && shownOverview.goal && shownOverview.goal.phase !== "done") data.goal.budget = shownOverview.goal;
   const proposal = data.phase === "draft" ? shownOverview.proposal : null;
   data.repository.path = run?.repository || workspace;
   if (!run) data.repository.branch = shownOverview.workspace?.branch || "—";
@@ -282,7 +285,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
         maxEpisodes: START_EPISODES, maxWorkers: workers, maxMilestones: 20, permissionMode: fullAccess ? "full-access" : "workspace" })) : undefined,
       onDismiss: proposal ? () => act(() => window.loom.call("projectWeave/dismiss", { threadId, proposalId: proposal.id })) : undefined,
       imagesAllowed, imageSupport,
-      onGoal: (action) => act(() => window.loom.call("projectWeave/goal", { threadId, action })),
+      onGoal: (action) => act(() => window.loom.call("projectWeave/goal", { threadId, action: action === "resume" ? "resume_with_budget" : action, ...(action === "resume" && shownOverview.goal ? { tokenBudget: shownOverview.goal.tokenBudget, expectedTokenBudget: shownOverview.goal.tokenBudget, expectedStartedAt: shownOverview.goal.startedAt } : {}) })),
+      onGoalBudget: (action, update) => act(() => window.loom.call("projectWeave/goal", { threadId, action: action === "resume" ? "resume_with_budget" : action, ...update })),
       onChat: onChat ? async (text, attachments, tokens) => {
         setError("");
         try { await onChat(text, attachments, tokens); }

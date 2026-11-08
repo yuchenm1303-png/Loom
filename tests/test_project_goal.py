@@ -207,8 +207,11 @@ def test_the_budget_counts_cached_input_at_a_tenth_and_stops_the_goal(tmp_path):
         assert 90_000 < state(service, source)["tokens"] < 110_000, "a million cached tokens cost a tenth"
         tick(service, source, 2)
         assert state(service, source)["status"] == "budget_limited"
-        goal.control(service, {"threadId": source, "action": "resume"})
-        assert state(service, source)["tokenBudget"] == 4_000_000, "resuming a spent goal adds to it"
+        with pytest.raises(ValueError, match="explicitly set"):
+            goal.control(service, {"threadId": source, "action": "resume"})
+        assert state(service, source)["tokenBudget"] == 2_000_000, "resume cannot silently add spending authority"
+        goal.control(service, {"threadId": source, "action": "resume_with_budget", "tokenBudget": 3_000_000})
+        assert state(service, source)["tokenBudget"] == 3_000_000
     finally:
         runtime.close()
 
@@ -227,6 +230,41 @@ def test_the_person_stopping_a_turn_pauses_the_goal(tmp_path):
         goal.control(service, {"threadId": source, "action": "resume"})
         tick(service, source)
         assert state(service, source)["status"] == "active" and len(platform.requests) == before + 1
+    finally:
+        runtime.close()
+
+
+def test_explicit_goal_budget_saves_without_resuming_and_retries_do_not_add_twice(tmp_path):
+    service, runtime, _, source = conversation(tmp_path, [START, answer("暂停前")])
+    try:
+        goal.control(service, {"threadId": source, "action": "pause"})
+        before = state(service, source)
+        params = {"threadId": source, "action": "set_budget", "tokenBudget": 5_200_000,
+                  "expectedTokenBudget": before["tokenBudget"], "expectedStartedAt": before["startedAt"]}
+        goal.control(service, params)
+        assert state(service, source)["tokenBudget"] == 5_200_000
+        assert state(service, source)["status"] == "paused"
+        goal.control(service, params)
+        assert state(service, source)["tokenBudget"] == 5_200_000
+        with pytest.raises(ValueError, match="budget changed"):
+            goal.control(service, {**params, "tokenBudget": 6_000_000})
+        with pytest.raises(ValueError, match="goal changed"):
+            goal.control(service, {**params, "expectedStartedAt": before["startedAt"] + 1})
+        goal.control(service, {"threadId": source, "action": "resume_with_budget", "tokenBudget": 5_200_000})
+        assert state(service, source)["status"] == "active"
+        assert state(service, source)["tokenBudget"] == 5_200_000
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize("budget", [True, 0, -1, 1.5, "4000000", 1_000_000_001])
+def test_invalid_goal_budgets_do_not_change_the_saved_cap(tmp_path, budget):
+    service, runtime, _, source = conversation(tmp_path, [START, answer("准备好了")])
+    try:
+        before = state(service, source)["tokenBudget"]
+        with pytest.raises(ValueError):
+            goal.control(service, {"threadId": source, "action": "set_budget", "tokenBudget": budget})
+        assert state(service, source)["tokenBudget"] == before
     finally:
         runtime.close()
 

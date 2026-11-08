@@ -242,6 +242,8 @@ function Preview() {
   const [picks, setPicks] = useState(0);
   const [draftProposal, setDraftProposal] = useState<typeof PROPOSAL | null>(null);
   const [activated, setActivated] = useState(false);
+  const [goalBudget, setGoalBudget] = useState({ tokens: 2400000, tokenBudget: 4000000, startedAt: 123 });
+  const [goalActive, setGoalActive] = useState(false);
   useEffect(() => { Object.assign(window, { projectControlsFixture: { propose: () => setDraftProposal({ ...PROPOSAL, id: crypto.randomUUID() }),
     activate: () => setActivated(true), clear: () => setActivated(false) } }); }, []);
   const current = MODELS.find((item) => item.selection === model)!;
@@ -268,9 +270,10 @@ function Preview() {
       </header>
       {mode === "project"
         ? <div className="project-mode-stage" style={{ gridRow: "2" }}>
-            <ProjectFlow data={{ ...turnTalk(activated ? play(count, workers) : variant(play(count, workers)), scene), ...(draftProposal ? { proposal: draftProposal } : {}), models, references: REFERENCES, history: THREADS, conversationPermissionMode: conversationAccess }}
+            <ProjectFlow data={{ ...turnTalk(activated ? play(count, workers) : variant(play(count, workers)), scene), ...(draftProposal ? { proposal: draftProposal } : {}), ...(params.has("longgoal") ? { goal: { text: "长目标已暂停", detail: "继续研究并交付报告", live: goalActive, action: goalActive ? "pause" as const : "resume" as const, dismiss: true, budget: goalBudget } } : {}), models, references: REFERENCES, history: THREADS, conversationPermissionMode: conversationAccess }}
                          actions={{ onChat: (...args) => { (window as unknown as { sent: unknown }).sent = args; }, onInterrupt: () => {}, onApproval: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {}, onOpenThread: (id) => { (window as unknown as { opened: unknown }).opened = id; }, onNewThread: () => {},
                                     onPermissionModeChange: conversationAccess ? async value => setConversationAccess(value) : undefined,
+                                    onGoalBudget: async (action, update) => { Object.assign(window, { goalBudgetCall: { action, ...update } }); setGoalBudget(value => ({ ...value, tokenBudget: update.tokenBudget })); if (action === "resume") setGoalActive(true); return true; },
                                     error: params.has("error") ? "Lost the Host; reconnecting…" : undefined,
                                     onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />
           </div>

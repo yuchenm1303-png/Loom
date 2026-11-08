@@ -1,0 +1,15 @@
+.goal-budget-control { width: 100%; min-width: 0; font-size: 13px; line-height: 1.6; color: var(--loom-workspace-secondary); }
+.goal-budget-control p { margin: 8px 0; overflow-wrap: anywhere; }
+.goal-budget-control button { font: inherit; color: inherit; cursor: pointer; }
+.goal-budget-control button:disabled { opacity: .45; cursor: default; }
+.goal-budget-toggle { min-height: 44px; border: 0; background: transparent; padding: 8px 0; color: var(--loom-workspace-accent) !important; }
+.goal-budget-editor { padding: 12px; border: 1px solid var(--loom-workspace-line); border-radius: 14px; background: var(--loom-workspace-canvas); }
+.goal-budget-modes, .goal-budget-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.goal-budget-control .goal-budget-modes button, .goal-budget-control .goal-budget-actions button { min-height: 44px; flex: 1 1 120px; padding: 8px 12px; border: 1px solid var(--loom-workspace-line); border-radius: 12px; background: var(--loom-workspace-panel); color: var(--loom-workspace-ink); transition: background .18s ease, border-color .18s ease; }
+.goal-budget-control .goal-budget-modes [aria-pressed="true"] { color: var(--loom-workspace-accent); background: var(--loom-workspace-selection); }
+.goal-budget-editor label { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.goal-budget-editor input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 44px; padding: 10px 12px; border: 1px solid var(--loom-workspace-line); border-radius: 10px; background: var(--loom-workspace-panel); color: var(--loom-workspace-ink); font: inherit; font-size: 16px; }
+.goal-budget-control [role="alert"] { color: var(--semantic-danger-strong, #ef9a9a); }
+.pf-goal:has(.goal-budget-control) { flex-wrap: wrap; }
+.pf-goal > .goal-budget-control { flex-basis: 100%; }
+@media (prefers-reduced-motion: reduce) { .goal-budget-control button { transition: none; } }

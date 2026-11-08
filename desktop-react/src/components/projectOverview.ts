@@ -351,6 +351,10 @@ export function toModelChoice(snapshot: ModelSnapshot | null | undefined): FlowD
 
 // The Host's reasons a person can act on, said plainly; anything else keeps its own words.
 const REASONS: [RegExp, Record<Lang, string>][] = [
+  [/action must be pause, resume or dismiss/i, { zh: "电脑后台版本较旧，请更新电脑端后再设置长目标预算。本次没有追加预算。", en: "Update the desktop Host to edit long-goal budgets. No budget was added." }],
+  [/goal budget exhausted/i, { zh: "长目标预算已用完，请设置新的总上限后继续。", en: "The goal budget is exhausted; set a new total before resuming." }],
+  [/total token budget must be an integer above usage/i, { zh: "新总上限须为大于实际已用量的整数，且不能超过 10 亿。请刷新用量后重试。", en: "Set an integer total above current usage, up to one billion tokens. Refresh usage and retry." }],
+  [/(the budget changed|the goal changed)/i, { zh: "长目标或预算已在其他地方更新，请刷新后重新填写。", en: "The goal or budget changed elsewhere; refresh before editing again." }],
   [/commit or separate existing workspace changes/i, { zh: "仓库里有未提交的改动，先提交它们再开始。", en: "The repository has uncommitted changes; commit them before starting." }],
   [/requires a Git repository root/i, { zh: "建造需要在 Git 仓库的根目录里运行。", en: "Weave runs at the root of a Git repository." }],
   [/changes moved since they were shown/i, { zh: "改动在显示之后又变了，请再看一眼后提交。", en: "The changes moved since they were shown; look again before committing." }],
@@ -390,6 +394,7 @@ const WORK = new Set(["tool_call", "process", "file_edit"]);
 
 /** The conversation's task list as rows of the hub's plan card. */
 export interface LongGoal {
+  startedAt?: number;
   objective: string; status: string; phase: string; tokens: number; tokenBudget: number; turns: number;
   reason: string; summary: string; checked: boolean;
   /** Seconds since the epoch: the model provider failed and the Host tries again then; 0 when nothing waits. */

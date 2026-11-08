@@ -1,4 +1,5 @@
 import { BuildBranchDetails } from "./BuildBranchDetails";
+import { GoalBudgetControl } from "../components/GoalBudgetControl";
 import type { CurrentModel } from "../types/loom";
 import { BuildBranches, BranchCard, type BuildBranch } from "./BuildBranches";
 import { latestTaskPlan } from "../components/liveTaskProgress";
@@ -27,6 +28,7 @@ import {
   toFlowData,
   toGoal,
   raisedBudget,
+  readableError,
   type ProjectOverview,
 } from "../components/projectOverview";
 import { withProjectReadTimeout } from "../state/projectRead";
@@ -274,7 +276,7 @@ export function MobileBuildPanel({
   }, [target?.id, target?.tokenBudget, target?.maxEpisodes]);
 
   const act = async (action: () => Promise<unknown>) => {
-    if (actionLock.current || !online) return;
+    if (actionLock.current || !online) return false;
     actionLock.current = true;
     setBusy(true);
     onBusy(true);
@@ -282,10 +284,12 @@ export function MobileBuildPanel({
     try {
       await action();
       await load(true);
+      return true;
     } catch (cause) {
       if (alive.current)
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError(readableError(cause instanceof Error ? cause.message : String(cause)));
       await load(true);
+      return false;
     } finally {
       actionLock.current = false;
       onBusy(false);
@@ -432,7 +436,9 @@ export function MobileBuildPanel({
   const tokenShare = data?.budget.tokenLimit
     ? Math.min(1, data.budget.tokens / data.budget.tokenLimit)
     : 0;
-  const tone = data ? TONE[data.state] : undefined;
+  const goalOnly = !run && overview?.goal ? overview.goal : null;
+  const state = goalOnly ? goalOnly.status === "active" ? (goalOnly.phase === "approval" ? "needs_you" : "running") : goalOnly.status === "complete" ? "completed" : goalOnly.status === "paused" ? "paused" : "needs_you" : data?.state;
+  const tone = state ? TONE[state] : undefined;
   // While a build runs its folder is fixed, so the folder card steps below the live controls.
   const workspaceCard = overview ? (
       <Section title="工作目录与 Git" icon={<GitBranch {...GLYPH} />}>
@@ -547,7 +553,7 @@ export function MobileBuildPanel({
       </Section>
   ) : null;
   return (
-    <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"}><div className="m-build-panel" aria-label="建造控制面板"><BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
+    <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : goalOnly && goal ? goal.text : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"}><div className="m-build-panel" aria-label="建造控制面板"><BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
       {data?.attention && data.attention.action !== "approval" ? <Section title="建造需要处理" tone="wait"><p>{data.attention.reason}</p><button type="button" className="m-inline-button" onClick={() => onBranch("budget")}>处理预算与运行状态</button></Section> : null}
       {latestTaskPlan(items).length ? <Section title="对话任务"><ol className="m-build-list">{toTurnTasks(latestTaskPlan(items)).map(task => <li key={task.id}>{STATE[task.state]} · {task.title}{task.detail ? <p>{task.detail}</p> : null}</li>)}</ol></Section> : null}
       <div className="m-build-head">
@@ -556,7 +562,7 @@ export function MobileBuildPanel({
             className={`m-dot is-${tone === "run" ? "run" : tone === "wait" ? "wait" : tone === "on" ? "on" : "idle"}`}
             aria-hidden="true"
           />
-          {data ? STATE[data.state] : "正在读取建造状态…"}
+          {state ? STATE[state] : "正在读取建造状态…"}
         </span>
         <button
           type="button"
@@ -663,18 +669,20 @@ export function MobileBuildPanel({
               <p>{goal.text}</p>
               {goal.detail ? <p className="m-prewrap">{goal.detail}</p> : null}
               {goal.lines?.map((line) => <p key={line.title}>{line.title} · {line.label}</p>)}
+              {overview.goal && overview.goal.phase !== "done" ? <GoalBudgetControl goal={overview.goal} disabled={disabled} canResume={goal.action === "resume"} onSubmit={(action, update) => act(() => window.loom.call("projectWeave/goal", { threadId, action: action === "resume" ? "resume_with_budget" : action, ...update }))} /> : null}
               {goal.action || goal.dismiss ? (
                 <div className="m-actions">
                   {goal.action ? (
                     <button
                       type="button"
                       className="m-button"
-                      disabled={disabled}
+                      disabled={disabled || (goal.action === "resume" && Boolean(overview.goal && overview.goal.tokens >= overview.goal.tokenBudget))}
                       onClick={() =>
                         void act(() =>
                           window.loom.call("projectWeave/goal", {
                             threadId,
-                            action: goal.action,
+                            action: goal.action === "resume" ? "resume_with_budget" : goal.action,
+                            ...(goal.action === "resume" && overview.goal ? { tokenBudget: overview.goal.tokenBudget, expectedTokenBudget: overview.goal.tokenBudget, expectedStartedAt: overview.goal.startedAt } : {}),
                           }),
                         )
                       }
