@@ -505,6 +505,19 @@ class ProjectServiceMixin(WorkspaceMixin):
     def project_control(self, params, action):
         with self.project_runner.guard:
             current = self.project_store.get(self._required_text(params, "runId"))
+            owner = (current.get("milestone") or {}).get("programId")
+            held = program.get(self.project_store, owner) if owner and action == "resume" else None
+            if held and held.get("handoffHold") and current["state"] == "integrated":
+                revision = params.get("expectedRevision")
+                if type(revision) is not int or revision < 1:
+                    raise ValueError("expectedRevision must be a positive integer")
+                if revision != current["revision"]:
+                    raise ValueError("stale project revision; read the run before retrying")
+                self.project_store.command(params.get("operationId"),
+                    {"action": "resume_handoff", "id": current["id"], "expectedRevision": revision}, lambda db: current)
+                held.pop("handoffHold", None)
+                program._save(self.project_store, held)
+                return current
             if current.get("completionPolicy") == "local_integrate" or current.get("maxWorkers", 1) > 1:
                 run = workflow.control(self, params, action)
                 self._raise_program_budget(current, params)
@@ -513,12 +526,16 @@ class ProjectServiceMixin(WorkspaceMixin):
                         if target["activeEpisode"]:
                             self.project_runner.executor.cancel(target["activeEpisode"])
                 self._project_team_cancel(run, action)
+                if held and held.pop("handoffHold", None):
+                    program._save(self.project_store, held)
                 return run
             run = self.project_store.control(params.get("operationId"), self._required_text(params, "runId"),
                                              params.get("expectedRevision"), action)
             if action == "cancel" and run["activeEpisode"]:
                 self.project_runner.executor.cancel(run["activeEpisode"])
             self._project_team_cancel(run, action)
+            if held and held.pop("handoffHold", None):
+                program._save(self.project_store, held)
             return run
 
     def _raise_program_budget(self, before, params):

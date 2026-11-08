@@ -28,6 +28,8 @@ export const MOBILE_RPC_METHODS: ReadonlySet<string> = new Set([
   "thread/start",
   "thread/resume",
   "thread/fork",
+  "thread/handoff_status",
+  "thread/handoff_retry",
   "thread/rename",
   "thread/archive",
   "thread/delete",

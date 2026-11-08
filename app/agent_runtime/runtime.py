@@ -322,12 +322,13 @@ class AgentRuntime:
         workspace_dir: str | Path | None = None,
         permission_mode: PermissionMode | str | None = None,
         emit_session_created: bool = True,
+        session_id: str | None = None,
     ) -> AgentSession:
         profile = str(profile_id or "").strip().casefold()
         prompt = str(system_prompt or "").strip()
         if not profile or not prompt:
             raise ValueError("agent session requires profile_id and system_prompt")
-        session_id = str(uuid.uuid4())
+        session_id = str(uuid.UUID(session_id)) if session_id is not None else str(uuid.uuid4())
         now = utc_now()
         if workspace_dir is None:
             workspace = (self.store.session_dir(session_id) / "workspace").resolve()

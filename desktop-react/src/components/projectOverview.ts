@@ -19,6 +19,7 @@ export interface ConversationAgent {
   activity: string; step: number; startedAt?: string | null; error?: string;
 }
 export interface ProjectProgram {
+  handoffHold?: string;
   id: string; objective: string; state: string; reason?: string; maxWorkers?: number; permissionMode?: string; createdAt?: number;
   milestones: { index: number; runId: string; complete: boolean; tokens: number; episodes: number; summary: string }[];
   tokenBudget: number; maxEpisodes: number; currentRunId?: string | null;
@@ -230,7 +231,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
   // An unattended project has no one at its threads: an agent waiting for approval waits for the person here.
   const asking = overview.agents.findIndex((agent) => agent.approval);
   const blocked = run.state === "needs_review" || run.workflowStatus === "blocked" || program?.state === "needs_review" || budgetOut || asking >= 0 || access;
-  const paused = !blocked && (run.state === "created" || run.workflowControl === "paused" && run.workflowStatus !== "completed" && run.control !== "active");
+  const paused = !blocked && (Boolean(program?.handoffHold) || run.state === "created" || run.workflowControl === "paused" && run.workflowStatus !== "completed" && run.control !== "active");
   const state: FlowData["state"] = finished ? "completed" : stopped ? "paused" : blocked ? "needs_you" : paused ? "paused" : "running";
   const started = (program?.createdAt || run.createdAt || now / 1000) * 1000;
   // Worked time runs while the project runs; stopped, paused or waiting, it ends at the last thing that happened

@@ -40,6 +40,8 @@ import { RightToolDock } from "./components/RightToolDock";
 import { BackgroundTaskPanel } from "./components/BackgroundTaskPanel";
 import { OPEN_TERMINAL_EVENT, type TerminalRequest } from "./terminal";
 import { TaskProgressPanel } from "./components/TaskProgressPanel";
+import { ThreadHandoffPanel } from "./components/ThreadHandoffPanel";
+import { useHandoffNavigation } from "./state/useHandoffNavigation";
 import { ConversationRunsPanel } from "./components/ConversationRunsPanel";
 import { SPLIT_DEFAULT, SPLIT_MAX, SPLIT_MIN, SplitConversationPane, SplitDropTarget } from "./components/SplitConversationPane";
 import { startConversationActivity, useConversationAttention, watchConversations } from "./state/conversationActivity";
@@ -509,6 +511,8 @@ export default function App() {
   const autoOpenedAgentsForThreadRef = useRef("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [branchError, setBranchError] = useState("");
+  const [handoffPresence, setHandoffPresence] = useState({ id: "", visible: false });
+  const reportHandoffPresence = useCallback((id: string, visible: boolean) => setHandoffPresence({ id, visible }), []);
   const [reportingBranch, setReportingBranch] = useState(false);
   const [filesProjectId, setFilesProjectId] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => readPanelWidth(
@@ -592,6 +596,8 @@ export default function App() {
     if (threadId === selectedThreadId) return;
     setSplitThreadId(threadId);
   }, [selectedThreadId]);
+  const handoffNavigation = { current: loom.openThread, split: openInSplit };
+  const handoffNavigationError = useHandoffNavigation([selectedThreadId, splitThreadId], handoffNavigation);
   const changeSplitRatio = useCallback((ratio: number) => {
     setSplitRatio(ratio);
     try { localStorage.setItem(SPLIT_RATIO_KEY, String(ratio)); } catch { /* Kept until the next reload. */ }
@@ -1781,6 +1787,7 @@ export default function App() {
 
       <section
         className={`workspace ${threadSwitching ? "is-thread-switching" : ""}`.trim()}
+        data-handoff={handoffPresence.id === activeThreadId && handoffPresence.visible || undefined}
         style={splitThreadId ? { "--loom-split-ratio": splitRatio } as CSSProperties : undefined}
         aria-busy={threadSwitching ? true : undefined}
       >
@@ -1839,6 +1846,7 @@ export default function App() {
           onSplit={openInSplit}
         />
 
+        <ThreadHandoffPanel threadId={activeThreadId} navigation={handoffNavigation} navigationError={handoffNavigationError} onPresenceChange={reportHandoffPresence} />
         {showProject && thread ? (
           <div className="project-mode-stage" data-morph={renderedPhase()} inert={threadSwitching}>
               <ProjectMode threadId={thread.id} opening={loom.openingThreadId} workspace={selectedThread?.workspace || workspace} model={currentModel}

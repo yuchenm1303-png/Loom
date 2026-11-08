@@ -1,5 +1,7 @@
 import type { BuildBranch } from "./BuildBranches";
 import { NavCapsule } from "./NavCapsule";
+import { ThreadHandoffPanel } from "../components/ThreadHandoffPanel";
+import { useHandoffNavigation } from "../state/useHandoffNavigation";
 import { AnimatedFold } from "../motion/AnimatedFold";
 import { MotionRows, MotionValue } from "./MotionRows";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
@@ -519,6 +521,8 @@ function useApprovalOffscreen(active: boolean): boolean {
 
 function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, onMode, onOpenAgent }: { loom: Loom; space: Space; online: boolean; connecting: boolean; draftWorkspace?: string; onBack(): void; onMode(mode: Space): void; onOpenAgent(id: string): void }) {
   const thread = loom.active?.thread;
+  const handoffNavigation = { current: loom.openThread };
+  const handoffError = useHandoffNavigation(loom.openingThreadId || thread?.id, handoffNavigation);
   // The screen arrives at once; until the Host answers it must not show the previous conversation.
   const opening = Boolean(loom.openingThreadId && thread?.id !== loom.openingThreadId);
   const offlineNotice = useHeld(!online, OFFLINE_NOTICE_MS);
@@ -643,6 +647,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
         </div>
         <button type="button" className="m-icon-button" aria-label="对话详情与操作" disabled={opening || sending || buildBusy} onClick={() => setDetails(true)}><Ellipsis size={22} /></button>
       </header>
+      <ThreadHandoffPanel threadId={thread?.id} navigation={handoffNavigation} navigationError={handoffError} />
       {space === "build" && !opening ? <div className="m-stage m-build-stage" hidden={pane !== "build"}><MobileBuildPanel model={loom.models?.current} onModelSettings={() => setControls(true)} items={loom.items} dock={buildDock} branch={branch} onBranch={chooseBranch} key={thread?.id || "draft"} threadId={thread?.id} workspace={thread?.workspace || draftWorkspace} online={online} chatting={running} visible={true} attachments={attachments.filter((item) => item.status === "ready").map((item) => ({ path: item.path!, name: item.file.name }))} attachmentsReady={attachmentsReady && !picking && !sending} onConsumeAttachments={() => queue.clear()} onBudget={setWeaveBudget} onBusy={setBuildBusy} onOpenAgent={onOpenAgent} /></div> : null}
       {opening ? (
         <div className="m-stage is-opening"><Skeleton rows={4} /></div>

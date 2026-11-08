@@ -1,4 +1,5 @@
 import { installWindowChrome } from "./windowChrome.js";
+import { openConversationWindow } from "./conversationWindows.js";
 import { EmbeddedBrowserManager, type EmbeddedBrowserCommand } from "./embeddedBrowser.js";
 import { loadRunPageAction } from "./pageActions.js";
 import { EmbeddedBrowserAgentClient } from "./embeddedBrowserAgentBridge.js";
@@ -11,7 +12,7 @@ import { ModelUsageService } from "./modelUsage.js";
 import { writeClipboardImage } from "./clipboardImage.js";
 import { installRendererContentSecurity, type RendererDocument } from "./contentSecurity.js";
 import { lastDialogFolder, rememberDialogChoice } from "./dialogLocations.js";
-import { fromLoomRenderer, sentByLoomRenderer, trustRendererDocument } from "./rendererIpc.js";
+import { fromLoomRenderer, sentByLoomRenderer, trustRendererDocument, trustedRendererWindows } from "./rendererIpc.js";
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
@@ -1090,7 +1091,7 @@ function handleRuntimeNotification(payload: JsonRpcResponse): void {
   if (payload.method === "account/authorization-refresh-needed") {
     void syncAccountToolAccessCredential(true);
   }
-  mainWindow?.webContents.send("loom:notification", payload);
+  for (const window of trustedRendererWindows()) window.webContents.send("loom:notification", payload);
   broadcastHostEvent("loom:notification", payload);
   sendRelayNotification(payload);
   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
@@ -1342,13 +1343,17 @@ function createWindow(): void {
   void loadRenderer(window, document);
   // AI tasks open their own tabs in Loom Browser without the panel open first.
   startEmbeddedBrowserAgentClient(window);
-  window.on("closed", () => {
-    embeddedBrowserAgentClient?.stop();
-    embeddedBrowserAgentClient = null;
-    embeddedBrowserManager?.dispose();
-    embeddedBrowserManager = null;
-    if (mainWindow === window) mainWindow = null;
-  });
+  window.on("closed", () => retireDesktopWindow(window));
+}
+
+function retireDesktopWindow(window: BrowserWindow): void {
+  if (mainWindow !== window) return;
+  embeddedBrowserAgentClient?.stop();
+  embeddedBrowserAgentClient = null;
+  embeddedBrowserManager?.dispose();
+  embeddedBrowserManager = null;
+  mainWindow = trustedRendererWindows().find(candidate => candidate !== window) || null;
+  if (mainWindow) startEmbeddedBrowserAgentClient(mainWindow);
 }
 
 function ensureDesktopUi(): void {
@@ -1661,10 +1666,17 @@ handleHostChannel("loom:call", (_event, method: string, params?: Record<string, 
 // Disconnecting a UI must never stop shared web tasks or the Agent Runtime.
 // Every other renderer channel checks its sender (rendererIpc.ts); this one does nothing.
 ipcMain.handle("loom:disconnect", () => true);
+ipcMain.handle("loom:open-thread-window", fromLoomRenderer((_event, threadId: string) => openConversationWindow(threadId, {
+  document: rendererDocument(), preload: path.join(__dirname, "preload.cjs"),
+  backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0e11" : "#f7f7f8",
+  readThread: id => runRpcCall("thread/read", { threadId: id, threadOnly: true }),
+  onClosed: retireDesktopWindow,
+})));
 ipcMain.handle("loom:embedded-browser", async (event, command: EmbeddedBrowserCommand) => {
   if (!mainWindow || mainWindow.isDestroyed() || !sentByLoomRenderer(event)) {
     throw new Error("Embedded browser is only available in Loom Desktop.");
   }
+  if (event.sender !== mainWindow.webContents) throw new Error("Open Loom Browser in the main Loom window; this conversation can continue here.");
   if (!command || typeof command !== "object" || typeof command.action !== "string") {
     throw new Error("Invalid browser command.");
   }

@@ -540,6 +540,12 @@ def observe_failure(service, event):
     if event.kind is not AgentEventKind.TURN_FAILED or not _transient(event.data):
         return
     thread_id, now = event.session_id, time.time()
+    library = getattr(service, "thread_library", None)
+    if library:
+        meta = library.read(thread_id)
+        incoming = meta.get("incomingHandoff") or {}
+        if incoming.get("turnId") == event.turn_id or any(item.get("sourceTurnId") == event.turn_id for item in meta.get("handoffs", [])):
+            return  # handoff receipts own retries; never restart a parked source behind its receiver
     if thread_id in service._project_session_ids or service.weave_goals.get(thread_id):
         return  # a project's own agents and a goal's turns have their own retries
     earlier = service.weave_retries.get(thread_id) or {}

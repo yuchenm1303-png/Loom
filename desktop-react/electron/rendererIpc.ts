@@ -4,8 +4,10 @@ import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
 // frame. Only Loom's own document in the desktop window may use it; other
 // windows (artifact previews, the HUD), iframes, and anything the window has
 // been navigated to are refused.
-let rendererWindow: BrowserWindow | null = null;
-let rendererOrigin = "";
+const rendererWindows = new Map<BrowserWindow["webContents"], { window: BrowserWindow; origin: string; document: string }>();
+export function trustedRendererWindows(): BrowserWindow[] {
+  return [...rendererWindows.values()].map(entry => entry.window).filter(window => !window.isDestroyed());
+}
 
 function documentOrigin(url: string): string {
   const parsed = new URL(url);
@@ -15,17 +17,20 @@ function documentOrigin(url: string): string {
 
 /** Called before the window loads the renderer, so its first requests are already accepted. */
 export function trustRendererDocument(window: BrowserWindow, documentUrl: string): void {
-  rendererWindow = window;
-  rendererOrigin = documentOrigin(documentUrl);
+  const contents = window.webContents;
+  rendererWindows.set(contents, { window, origin: documentOrigin(documentUrl), document: documentUrl.split("#", 1)[0] });
+  if (typeof window.once === "function") window.once("closed", () => rendererWindows.delete(contents));
 }
 
 export function sentByLoomRenderer(event: IpcMainInvokeEvent): boolean {
-  const window = rendererWindow;
+  const trusted = rendererWindows.get(event.sender);
+  const window = trusted?.window;
   if (!window || window.isDestroyed()) return false;
   const contents = window.webContents;
   const frame = event.senderFrame;
   return event.sender === contents && frame !== null && frame === contents.mainFrame
-    && frame.origin === rendererOrigin;
+    && frame.origin === trusted!.origin
+    && (!frame.url || frame.url.split("#", 1)[0] === trusted!.document);
 }
 
 export function fromLoomRenderer<Args extends unknown[], Result>(

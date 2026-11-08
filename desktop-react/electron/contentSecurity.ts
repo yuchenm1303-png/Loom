@@ -5,6 +5,7 @@ export interface RendererDocument {
   url: string;
   development: boolean;
 }
+const policies = new WeakMap<BrowserWindow["webContents"]["session"], Map<number, { window: BrowserWindow; target: URL; policy: string }>>();
 
 /**
  * What the Loom window may load and run. Everything not named is refused, and no script runs unless it is
@@ -47,21 +48,28 @@ export function rendererContentSecurityPolicy(document: RendererDocument): strin
 export function installRendererContentSecurity(window: BrowserWindow, document: RendererDocument): void {
   const policy = rendererContentSecurityPolicy(document);
   const target = new URL(document.url);
-  const pattern = target.protocol === "file:" ? "file:///*" : `${target.origin}/*`;
-  window.webContents.session.webRequest.onHeadersReceived({ urls: [pattern] }, (details, callback) => {
-    if (details.resourceType !== "mainFrame" || details.webContentsId !== window.webContents.id || window.isDestroyed()) {
+  const session = window.webContents.session;
+  const rules = policies.get(session) || new Map();
+  policies.set(session, rules);
+  const contentsId = window.webContents.id;
+  rules.set(contentsId, { window, target, policy });
+  if (typeof window.once === "function") window.once("closed", () => rules.delete(contentsId));
+  const patterns = [...new Set([...rules.values()].map(rule => rule.target.protocol === "file:" ? "file:///*" : `${rule.target.origin}/*`))];
+  session.webRequest.onHeadersReceived({ urls: patterns }, (details, callback) => {
+    const rule = rules.get(details.webContentsId);
+    if (!rule || details.resourceType !== "mainFrame" || rule.window.isDestroyed()) {
       callback({});
       return;
     }
     let sameDocument = false;
     try {
       const url = new URL(details.url);
-      sameDocument = target.protocol === "file:" ? url.protocol === "file:" : url.origin === target.origin;
+      sameDocument = url.protocol === rule.target.protocol && url.host === rule.target.host && url.pathname === rule.target.pathname;
     } catch {
       // An unparsable address is not Loom's document.
     }
     callback(sameDocument
-      ? { responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": [policy] } }
+      ? { responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": [rule.policy] } }
       : {});
   });
 }

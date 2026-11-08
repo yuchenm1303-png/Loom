@@ -174,3 +174,21 @@ test("the hook runs its launch through runStartup and exposes the stage", () => 
   // The old chain awaited the model list before anything else; it must stay gone.
   assert.ok(!/await refreshModels\(\);\s*\n\s*if \(disposed\) return;\s*\n\s*await refreshProjects\(\)/.test(hook));
 });
+
+test("a requested receiving conversation opens even when the active library is empty", async () => {
+  const opened = [];
+  const { steps, gates } = harness({ openRequested: async () => { opened.push("receiver"); return true; }, openFirst: async () => { opened.push("fallback"); } });
+  const running = runStartup(steps);
+  gates.connect.resolve({}); gates.projects.resolve(); gates.models.resolve(); gates.threads.resolve([]);
+  await running;
+  assert.deepEqual(opened, ["receiver"]);
+});
+
+test("a normal window without a requested receiver still opens the first conversation", async () => {
+  const opened = [];
+  const { steps, gates } = harness({ openRequested: async () => false, openFirst: async thread => { opened.push(thread.id); } });
+  const running = runStartup(steps);
+  gates.connect.resolve({}); gates.projects.resolve(); gates.models.resolve(); gates.threads.resolve([{ id: "normal" }]);
+  await running;
+  assert.deepEqual(opened, ["normal"]);
+});

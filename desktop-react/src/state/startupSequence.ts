@@ -22,6 +22,8 @@ export interface StartupSteps<Initialized, Thread> {
   /** Conversations and projects are loaded; the window can be used. */
   ready(threads: readonly Thread[]): void;
   openFirst(thread: Thread): Promise<unknown>;
+  /** A separate conversation window can name an archived receiver outside the active list. */
+  openRequested?(): Promise<boolean>;
   /** Any step failing is fatal, wherever it fails: models included. */
   failed(cause: unknown): void;
   cancelled(): boolean;
@@ -45,6 +47,7 @@ export async function runStartup<Initialized, Thread>(steps: StartupSteps<Initia
     const [, threads] = await Promise.all([steps.loadProjects(), steps.loadThreads()]);
     if (steps.cancelled()) return;
     steps.ready(threads);
+    if (await steps.openRequested?.()) return;
     if (threads.length) await steps.openFirst(threads[0]);
   } catch (cause) {
     if (!steps.cancelled()) steps.failed(cause);

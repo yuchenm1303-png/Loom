@@ -28,3 +28,19 @@ test("window IPC validates sender, coordinates, maximize and controls", async ()
   await handler(event, "minimize"); await handler(event, "close");
   assert.deepEqual(calls, [[45, 71], "minimize", "close"]);
 });
+
+test("window controls keep addressing their own window after another is installed or closed", () => {
+  const closed = [], callbacks = new Map();
+  const make = id => ({ webContents: { mainFrame: {} }, isDestroyed: () => false, isMaximized: () => false,
+    getBounds: () => ({ x: id, y: 0, width: 900, height: 600 }), close: () => closed.push(id),
+    on: (name, callback) => callbacks.set(id + name, callback) });
+  const first = make(1), second = make(2);
+  installWindowChrome(first); installWindowChrome(second);
+  const event = window => ({ sender: window.webContents, senderFrame: window.webContents.mainFrame });
+  handler(event(first), "close");
+  callbacks.get("1closed")();
+  assert.equal(handler(event(first), "state"), null);
+  assert.equal(handler(event(second), "state").x, 2);
+  handler(event(second), "close");
+  assert.deepEqual(closed, [1, 2]);
+});

@@ -10,6 +10,7 @@ import { RETAIN } from "../motion/tokens";
 import { useCompanionThread } from "../state/useCompanionThread";
 import type { ApprovalDecision, ProjectRecord, TranscriptItem } from "../types/loom";
 import { PanelHeader } from "./PanelHeader";
+import { ThreadHandoffPanel } from "./ThreadHandoffPanel";
 import { Transcript } from "./Transcript";
 import "./split-conversation.css";
 
@@ -280,6 +281,7 @@ export function SplitConversationPane({ threadId, projects, ratio, onRatioChange
         closeClassName="split-pane-close"
         onClose={onClose}
       />
+      <ThreadHandoffPanel threadId={shownId} navigation={{ current: onPromote }} />
       <div className="split-pane-stage" ref={stageRef}>
         {items.length ? (
           <Transcript

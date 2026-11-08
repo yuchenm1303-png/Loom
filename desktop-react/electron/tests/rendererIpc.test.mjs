@@ -45,6 +45,20 @@ test("a wrapped handler refuses before running and passes arguments through", as
   assert.deepEqual(calls, [["a", 2]]);
 });
 
+test("a second conversation window does not revoke the first, and another local document is refused", () => {
+  const first = fakeWindow("file://"), second = fakeWindow("file://");
+  const url = "file:///C:/Loom/dist/index.html";
+  trustRendererDocument(first, url); trustRendererDocument(second, url);
+  first.webContents.mainFrame.url = url + "#thread=first";
+  second.webContents.mainFrame.url = url + "#thread=second";
+  const own = window => ({ sender: window.webContents, senderFrame: window.webContents.mainFrame });
+  assert.equal(sentByLoomRenderer(own(first)), true);
+  assert.equal(sentByLoomRenderer(own(second)), true);
+  second.webContents.mainFrame.url = "file:///C:/work/untrusted.html";
+  assert.equal(sentByLoomRenderer(own(second)), false);
+  assert.equal(sentByLoomRenderer(own(first)), true);
+});
+
 test("every renderer channel checks its sender", () => {
   const main = readFileSync(new URL("../main.ts", import.meta.url), "utf8");
   const registrations = [...main.matchAll(/ipcMain\.handle\("([^"]+)",\s*([^\n]*)/g)];

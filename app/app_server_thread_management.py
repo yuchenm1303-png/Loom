@@ -460,6 +460,16 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.thread_library = ThreadLibraryStore(self.store)
+        from .thread_handoff import ThreadHandoffs, handoff_tool
+        self.thread_handoffs = ThreadHandoffs(self)
+        if self.runtime.tools.get("handoff_thread") is None:
+            self.runtime.tools.register(handoff_tool(self.thread_handoffs))
+        self.runtime.subscribe(self.thread_handoffs.observe)
+        original_close = self.runtime.close
+        def close_handoffs():
+            self.thread_handoffs.closed.set()
+            original_close()
+        self.runtime.close = close_handoffs
         self._branch_plan_lock = threading.Lock()
         self._branch_plans_inflight: set[str] = set()
         self._branch_plan_jobs: dict[str, dict[str, Any]] = {}
@@ -873,6 +883,8 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         record["parentThreadId"] = str(metadata.get("parentThreadId") or "") or None
         record["branchSourceMessageId"] = str(metadata.get("branchSourceMessageId") or "") or None
         record["branchReportedAt"] = str(metadata.get("branchReportedAt") or "") or None
+        from .thread_handoff import metadata as handoff_metadata
+        handoff_metadata(record, metadata)
         return record
 
 
@@ -1135,6 +1147,8 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             thread["parentThreadId"] = str(metadata.get("parentThreadId") or "") or None
             thread["branchSourceMessageId"] = str(metadata.get("branchSourceMessageId") or "") or None
             thread["branchReportedAt"] = str(metadata.get("branchReportedAt") or "") or None
+            from .thread_handoff import metadata as handoff_metadata
+            handoff_metadata(thread, metadata)
         return payload
 
     def thread_rename(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -1611,6 +1625,7 @@ class ManagedStreamingLoomRpcController(StreamingLoomRpcController):
             "autoTitle": True,
             "branches": True,
             "branchPlanning": True,
+            "handoff": True,
         }
         result["capabilities"]["context"] = {
             "report": True,
@@ -1627,6 +1642,8 @@ class ManagedStreamingLoomRpcController(StreamingLoomRpcController):
             "thread/branch_plan": self.service.thread_branch_plan,
             "thread/branch_plan_status": self.service.thread_branch_plan_status,
             "thread/branch_create": self.service.thread_branch_create,
+            "thread/handoff_status": lambda params: self.service.thread_handoffs.status(self.service._required_text(params, "threadId")),
+            "thread/handoff_retry": lambda params: {"handoff": self.service.thread_handoffs.retry(self.service._required_text(params, "threadId"), params.get("expectedTurnId"), params.get("sourceThreadId"))},
             "thread/branch_report": self.service.thread_branch_report,
             "thread/rename": self.service.thread_rename,
             "thread/archive": self.service.thread_archive,

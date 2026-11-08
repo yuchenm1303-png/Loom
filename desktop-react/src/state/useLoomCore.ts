@@ -24,6 +24,7 @@ import { switchCurrentModelForThread, switchModelProfileForThread } from "./mode
 import { afterNextPaint } from "./afterNextPaint";
 import { RetainedBudgetMap } from "./retainedBudgetMap";
 import { runStartup, type StartupStage } from "./startupSequence";
+import { conversationFromHash } from "./threadHandoff";
 import { withThreadReadTimeout } from "./threadReadTimeout";
 import { withProjectReadTimeout } from "./projectRead";
 import { reconcileThreadCompletion, settleCompletedTurnItems, terminalStatus, type TerminalTurn } from "./turnCompletion";
@@ -1443,6 +1444,12 @@ export function useLoom() {
       loadThreads: () => refreshThreads("active"),
       ready: () => setConnection("ready"),
       openFirst: (thread) => openThread(thread.id),
+      openRequested: async () => {
+        const requested = conversationFromHash(location.hash);
+        if (!requested) return false;
+        await openThread(requested);
+        return true;
+      },
       failed: (cause) => {
         setError(cause instanceof Error ? cause.message : String(cause));
         setConnection("error");

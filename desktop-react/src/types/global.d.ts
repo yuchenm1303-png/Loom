@@ -21,6 +21,8 @@ export type ComputerLogExportResult = DiagnosticLogExportResult;
 export type BrowserLogExportResult = DiagnosticLogExportResult;
 
 export interface LoomBridge {
+  /** Open/focus a separate trusted Loom conversation window; the Host keeps running when it closes. */
+  openThreadWindow?(threadId: string): Promise<boolean>;
   windowControl?(action: "state" | "minimize" | "maximize" | "close" | "move", point?: { x: number; y: number }): Promise<{ maximized: boolean; x: number; y: number; width: number; height: number } | null>;
   connect(): Promise<unknown>;
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;

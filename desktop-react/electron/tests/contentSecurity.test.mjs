@@ -70,3 +70,13 @@ test("a destroyed window gets no header", () => {
   destroy();
   assert.deepEqual(respond(registered(), { resourceType: "mainFrame", webContentsId: 5, url: built.url }), {});
 });
+
+test("two conversation windows sharing a Chromium session keep both policies", () => {
+  const first = windowWith(101), second = windowWith(102);
+  second.window.webContents.session = first.window.webContents.session;
+  installRendererContentSecurity(first.window, built);
+  installRendererContentSecurity(second.window, built);
+  for (const id of [101, 102]) assert.ok(respond(first.registered(), { resourceType: "mainFrame", webContentsId: id, url: built.url }).responseHeaders);
+  assert.deepEqual(respond(first.registered(), { resourceType: "mainFrame", webContentsId: 102, url: "file:///C:/work/untrusted.html" }), {});
+  assert.deepEqual(respond(first.registered(), { resourceType: "mainFrame", webContentsId: 999, url: built.url }), {});
+});

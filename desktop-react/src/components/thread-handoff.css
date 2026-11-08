@@ -1,0 +1,22 @@
+.thread-handoff-panel { flex: none; min-width: 0; max-height: 32vh; overflow: auto; margin: 4px 18px 8px; color: var(--pl-secondary); font-size: 12px; line-height: 1.6; }
+.workspace[data-handoff] { grid-template-rows: 60px auto minmax(0, 1fr) auto; }
+.workspace > .thread-handoff-panel { grid-row: 2; grid-column: 1; }
+.workspace[data-handoff] > .project-mode-stage { grid-row: 3 / -1; }
+.workspace[data-handoff] > .conversation-stage { grid-row: 3; grid-column: 1; }
+.workspace[data-handoff] > .composer-stage { grid-row: 4; grid-column: 1; }
+.thread-handoff-record { background: var(--loom-workspace-panel); border-radius: 10px; margin-top: 5px; }
+.thread-handoff-record > summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; }
+.thread-handoff-record > summary > svg { flex: none; color: var(--pl-accent); }
+.thread-handoff-record > summary > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread-handoff-record > summary > small { flex: none; color: var(--pl-faint); }
+.thread-handoff-record[data-state="failed"] > summary > small, .thread-handoff-record[data-state="interrupted"] > summary > small { color: var(--semantic-warning-strong, #c19238); }
+.thread-handoff-body { padding: 0 12px 12px; overflow-wrap: anywhere; }
+.thread-handoff-body p { margin: 6px 0; white-space: pre-wrap; }
+.thread-handoff-body strong { font-weight: 550; color: var(--pl-ink); }
+.thread-handoff-body > small { display: block; color: var(--pl-faint); }
+.thread-handoff-body ul { margin: 4px 0 9px; padding-left: 18px; }
+.thread-handoff-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.thread-handoff-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--loom-workspace-ink) 8%, var(--loom-workspace-panel)); color: var(--pl-ink); font: inherit; font-size: 11px; cursor: pointer; }
+.thread-handoff-actions button:disabled { opacity: .5; cursor: default; }
+.thread-handoff-panel button:focus-visible, .thread-handoff-record > summary:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 2px; }
+@media (max-width: 700px) { .thread-handoff-panel { margin: 4px 8px; } .thread-handoff-record > summary { flex-wrap: wrap; } .thread-handoff-record > summary > small { margin-left: 21px; } }

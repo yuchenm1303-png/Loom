@@ -197,7 +197,7 @@ def advance(service):
     """Settle finished milestones and start the next; returns whether anything changed."""
     store, changed = service.project_store, False
     for program in list_programs(store):
-        if program["state"] != "running":
+        if program["state"] != "running" or program.get("handoffHold"):
             continue
         if not program.get("currentRunId"):
             _start_milestone(service, program, 1, program["tokenBudget"], program["maxEpisodes"])
