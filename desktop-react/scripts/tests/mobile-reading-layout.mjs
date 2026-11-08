@@ -19,7 +19,8 @@ try {
     });
     assert.ok(geometry.transcript >= width - 34, JSON.stringify(geometry));
     assert.ok(geometry.final >= width - 40, JSON.stringify(geometry));
-    assert.ok(geometry.font >= 17 && geometry.line / geometry.font >= 1.65);
+    assert.equal(geometry.font, 15);
+    assert.ok(Math.abs(geometry.line / geometry.font - 1.6) < .01);
     assert.ok(geometry.indent <= 4, "process nesting must not steal reading width");
     assert.ok(geometry.stage >= 550, JSON.stringify(geometry));
     assert.equal(geometry.overflow, 0);
@@ -31,5 +32,5 @@ try {
     await page.screenshot({ path: `${out}/keyboard-${width}.png`, animations: "disabled" });
     await page.close();
   }
-  console.log("Phone reading: full-width text, 17px body, relaxed leading, flattened process indentation and keyboard space passed at 320/390/430px");
+  console.log("Phone reading: full-width text, compact 15px body, 1.6 leading, flattened process indentation and keyboard space passed at 320/390/430px");
 } finally { await browser.close(); }

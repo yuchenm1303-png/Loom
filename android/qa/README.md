@@ -49,7 +49,7 @@ Device acceptance checks (use a real Host; `stack.py` only stubs pairing/thread 
 
 ## Projects, conversations and build controls
 
-Mobile messages use the full reading column with 16 px outer gutters and a 17 px body-size floor.
+Mobile messages use the full reading column with 16 px outer gutters, a 15 px body-size floor and 1.6 line spacing.
 Expanded process notes share the final answer's left edge instead of adding desktop nested gutters.
 The bottom rail keeps 44 px touch targets without a separate hint row; at keyboard-sized heights,
 focusing the composer temporarily hides the rail while keeping its status/return control available.
