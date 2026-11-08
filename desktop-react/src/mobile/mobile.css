@@ -794,3 +794,53 @@ html[data-loom-surface="mobile"] .m-stage .decision-submit {
 html[data-loom-surface="mobile"] .m-stage .decision-submit:disabled { background: var(--m-fill); color: var(--loom-workspace-muted); }
 html[data-loom-surface="mobile"] .m-stage .decision-submit svg { flex: none; }
 html[data-loom-surface="mobile"] .m-branch-close { background: var(--loom-canvas) !important; }
+
+/* The long goal, 2026-11-08: a state line with a live dot, a spend meter, the objective and the deliverable
+   folded to a few lines, phases as segments, and criteria with marks instead of "待完成 ·" prefixes. */
+.m-goal { gap: 12px; }
+.m-goal-head { display: flex; align-items: center; gap: 12px; }
+.m-goal-title { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+html[data-loom-surface="mobile"] .m-goal-title h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.25; }
+.m-goal-state { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 1.4; color: var(--loom-workspace-secondary); }
+.m-goal-state i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--loom-workspace-muted); }
+.m-goal[data-tone="run"] .m-goal-state i { background: var(--m-on); box-shadow: 0 0 0 3px rgba(127, 209, 174, .16); animation: m-goal-breathe 2.4s ease-in-out infinite; }
+.m-goal[data-tone="wait"] .m-goal-state i { background: var(--m-wait); }
+.m-goal[data-tone="run"] .m-tile { color: var(--m-run); background: var(--m-run-soft, rgba(181, 167, 245, .14)); }
+@keyframes m-goal-breathe { 50% { box-shadow: 0 0 0 5px rgba(127, 209, 174, .06); } }
+
+.m-goal-meter { display: grid; gap: 7px; padding: 11px 12px 12px; border-radius: 12px; background: var(--m-fill); }
+.m-goal-meter-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; font-size: 12px; line-height: 1.3; color: var(--loom-workspace-muted); font-variant-numeric: tabular-nums; }
+.m-goal-meter-row > span { white-space: nowrap; }
+.m-goal-meter-row b { font-size: 15px; font-weight: 600; color: var(--loom-workspace-ink); }
+.m-goal-bar { height: 4px; border-radius: 2px; overflow: hidden; background: rgba(224, 230, 242, .08); }
+.m-goal-bar span { display: block; height: 100%; border-radius: 2px; background: var(--m-run); transform-origin: left; }
+
+.m-goal-clamp p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--loom-workspace-secondary); overflow-wrap: anywhere; white-space: pre-wrap;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--m-lines); overflow: hidden; }
+.m-goal-clamp[data-open] p { display: block; }
+html[data-loom-surface="mobile"] .m-goal-more { display: block; min-height: 30px; margin-bottom: -6px; padding: 0; border: 0; background: none; font-size: 12.5px; color: var(--m-run); }
+.m-goal-objective p { color: var(--loom-workspace-ink); }
+
+.m-goal-block { display: grid; gap: 8px; padding-top: 13px; border-top: 1px solid var(--loom-workspace-line); }
+.m-goal-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--loom-workspace-muted); }
+.m-goal-phases { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.m-goal-phases li { flex: 1; height: 4px; border-radius: 2px; background: rgba(224, 230, 242, .1); }
+.m-goal-phases li[data-at="past"] { background: color-mix(in srgb, var(--m-run) 55%, transparent); }
+.m-goal-phases li[data-at="now"] { background: var(--m-run); }
+.m-goal-phase { margin: 0; font-size: 14px; line-height: 1.5; color: var(--loom-workspace-ink); }
+
+.m-goal-criteria { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.m-goal-criteria li { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; }
+.m-goal-mark { width: 20px; height: 20px; flex: none; display: grid; place-items: center; margin-top: 1px; border-radius: 50%;
+  background: rgba(224, 230, 242, .06); color: var(--loom-workspace-muted); }
+.m-goal-criteria li[data-state="done"] .m-goal-mark { background: rgba(127, 209, 174, .14); color: var(--m-on); }
+.m-goal-criteria li[data-state="failed"] .m-goal-mark { background: var(--m-bad-soft, rgba(240, 160, 144, .1)); color: var(--m-bad); }
+.m-goal-criterion { display: grid; gap: 2px; min-width: 0; }
+.m-goal-criterion > span { font-size: 14px; line-height: 1.5; color: var(--loom-workspace-ink); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.m-goal-criterion small { font-size: 12px; color: var(--loom-workspace-muted); }
+.m-goal-criteria li[data-state="dropped"] .m-goal-criterion > span { color: var(--loom-workspace-muted); text-decoration: line-through; text-decoration-color: rgba(224, 230, 242, .25); }
+.m-goal .goal-budget-control { padding-top: 4px; border-top: 1px solid var(--loom-workspace-line); }
+.m-goal > .m-actions { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .m-goal[data-tone="run"] .m-goal-state i { animation: none; } }
+html[data-loom-reduced-motion="true"] .m-goal[data-tone="run"] .m-goal-state i { animation: none; }

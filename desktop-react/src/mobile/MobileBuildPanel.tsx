@@ -5,6 +5,7 @@ import { MotionValue } from "./MotionRows";
 import { GoalBudgetControl } from "../components/GoalBudgetControl";
 import type { CurrentModel } from "../types/loom";
 import { BuildBranches, BranchCard, type BuildBranch } from "./BuildBranches";
+import { MobileGoalCard } from "./MobileGoalCard";
 import { latestTaskPlanInfo } from "../components/liveTaskProgress";
 import { toTurnTasks } from "../components/projectOverview";
 import type { TranscriptItem } from "../types/loom";
@@ -672,16 +673,8 @@ export function MobileBuildPanel({
             </Section>
           ) : null}
           {overview && (overview.conversationAgents?.length || !data?.agents.length) ? <Section category="agents" title="对话子 Agent" icon={<Bot {...GLYPH} />}><ConversationAgents overview={overview} online={online} onOpen={onOpenAgent} /></Section> : null}
-          {goal ? (
-            <Section title="长目标" icon={<Compass {...GLYPH} />}>
-              <p>{goal.text}</p>
-              {goal.detail ? <p className="m-prewrap">{goal.detail}</p> : null}
-              {goal.lines?.map((line) => <p key={line.title}>{line.title} · {line.label}</p>)}
-              {goal.charter ? <>
-                <p className="m-prewrap"><strong>交付：</strong>{goal.charter.deliverable}</p>
-                {goal.charter.where ? <p className="m-note">{goal.charter.where}</p> : null}
-                <ol className="m-build-list">{goal.charter.items.map((item) => <li key={item.title}>{item.label} · {item.title}</li>)}</ol>
-              </> : null}
+          {goal && overview.goal ? (
+            <BranchCard title="长目标"><MobileGoalCard goal={goal} raw={overview.goal}>
               {overview.goal && overview.goal.phase !== "done" ? <GoalBudgetControl goal={overview.goal} disabled={disabled} canResume={goal.action === "resume"} onSubmit={(action, update) => act(() => window.loom.call("projectWeave/goal", { threadId, action: action === "resume" ? "resume_with_budget" : action, ...update }))} /> : null}
               {goal.action || goal.dismiss ? (
                 <div className="m-actions">
@@ -722,7 +715,7 @@ export function MobileBuildPanel({
                   ) : null}
                 </div>
               ) : null}
-            </Section>
+            </MobileGoalCard></BranchCard>
           ) : null}
           {data?.phase !== "live" ? workspaceCard : null}
           {proposal ? (
