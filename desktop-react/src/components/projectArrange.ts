@@ -171,6 +171,8 @@ function shade(surface: HTMLElement, show: boolean, delay: number, duration: num
 
 /** The beats of an arriving card (its shape, then its parts, then its marks). Returns how long they run. */
 function enter(surface: HTMLElement, lead: number) {
+  // Reversing an exit also needs a cable approach; a zero-delay shell starts with its cable already complete.
+  lead = Math.max(SHELL_LEAD, lead);
   for (const running of surface.getAnimations({ subtree: true })) if (running.id === "pf-exit") running.cancel();
   const birth = surface.animate(births(shapeOf(surface, true), false), { duration: BIRTH, delay: lead, easing: "linear", fill: "backwards" });
   birth.id = "pf-shell";
@@ -355,8 +357,9 @@ export function useGlide(stage: React.RefObject<HTMLElement | null>, key: string
     waiting.delete(surface);
     // A card that started to leave meanwhile had its beats called off: they stay off.
     if (surface.closest("[data-leaving]")) return;
-    // Consume the room-making delay together on the birth clock, keeping the original response time.
-    const ahead = Math.max(0, Math.min(performance.now() - since, left));
+    // Only consume the room-making delay. The final lead is the cable's visible approach, not idle waiting:
+    // skipping it made a paused cable jump from hidden to fully connected when the neighbour moved away.
+    const ahead = Math.max(0, Math.min(performance.now() - since, left - SHELL_LEAD));
     for (const beat of beats) {
       if (beat.playState !== "paused") continue;
       beat.currentTime = Number(beat.currentTime ?? 0) + ahead;
