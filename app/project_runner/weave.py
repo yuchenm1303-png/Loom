@@ -29,6 +29,7 @@ from .workspace import describe as describe_workspace
 PROPOSALS_FILE = "weave-proposals.json"
 # The budgets the hub's chip offers; a proposal's budget is one of them.
 BUDGETS = (2_000_000, 4_000_000, 8_000_000, 16_000_000)
+MIN_BUDGET, MAX_BUDGET = 1_000_000, 1_000_000_000  # a custom amount the person types in the hub
 MAX_OBJECTIVE = 20000
 CONTEXT_NAME = "loom_weave_mode"
 _FINISHED_PROGRAM = {"completed", "cancelled"}
@@ -151,6 +152,15 @@ def snap_budget(value):
     return min(BUDGETS, key=lambda budget: abs(budget - value))
 
 
+def budget_for(service, session_id, suggested):
+    """The person's budget from the hub, kept as they set it (custom amounts included); without one, the
+    agent's suggestion snapped to a preset."""
+    chosen = getattr(service, "weave_budgets", {}).get(session_id)
+    if type(chosen) is int and MIN_BUDGET <= chosen <= MAX_BUDGET:
+        return chosen
+    return snap_budget(suggested)
+
+
 def status(service, thread_id):
     """What the agent needs to talk about the project: compact, never the raw overview."""
     overview = service.project_overview({"threadId": thread_id})
@@ -210,7 +220,7 @@ def _start_unattended(service, context, proposal):
     if mode is None:
         raise ValueError("This conversation asks before each command, so a project left alone would wait at every one. "
                          "Use weave_goal, or propose it without start for the person to start.")
-    budget = snap_budget(getattr(service, "weave_budgets", {}).get(context.session_id, proposal["tokenBudget"]))
+    budget = budget_for(service, context.session_id, proposal["tokenBudget"])
     with service.project_runner.guard:
         created = program.create(service, {
             "operationId": f"weave-unattended:{proposal['id']}", "threadId": context.session_id,
@@ -317,7 +327,7 @@ def tools(service):
         _, run = current_project(service, context.session_id)
         if run is not None:
             raise ValueError("A project is running in this conversation; steer it with weave_steer")
-        budget = snap_budget(getattr(service, "weave_budgets", {}).get(context.session_id, arguments.get("token_budget")))
+        budget = budget_for(service, context.session_id, arguments.get("token_budget"))
         try:
             hours = max(0.0, min(float(arguments.get("hours") or 0), goal.MAX_HOURS))
         except (TypeError, ValueError):

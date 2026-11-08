@@ -257,6 +257,16 @@ def test_budget_suggestions_snap_to_the_hubs_choices():
     assert weave.snap_budget("lots") == 8_000_000
 
 
+def test_a_custom_budget_from_the_hub_is_kept_as_set():
+    service = type("S", (), {"weave_budgets": {"a": 40_000_000, "b": 500, "c": 2_000_000_000, "d": "40M"}})()
+    assert weave.budget_for(service, "a", 2_000_000) == 40_000_000, "the person's amount, not a preset"
+    assert weave.budget_for(service, "b", 3_000_000) in (2_000_000, 4_000_000), "too small: the suggestion"
+    assert weave.budget_for(service, "c", 50_000_000) == 16_000_000, "too large: the suggestion, snapped"
+    assert weave.budget_for(service, "d", None) == 8_000_000
+    assert weave.budget_for(service, "none", 16_000_000) == 16_000_000
+    assert weave.budget_for(object(), "a", 4_000_000) == 4_000_000
+
+
 # A night's work asked for by someone going to bed only ever became a long goal: a proposal waits for a click no one
 # makes. With start=true the agent starts it, with the authority a long goal has (the hub's budget, this
 # conversation's permissions, never wider).

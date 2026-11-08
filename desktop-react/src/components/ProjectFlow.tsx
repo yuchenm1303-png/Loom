@@ -211,7 +211,7 @@ const zhText = {
   review: "沙箱", reviewHint: "开发和复审 agent 只能改写自己的独立检出，读不到你的其他文件夹；每个任务合入前都由另一个 agent 独立复审",
   fullAccess: "完全访问", fullAccessHint: "开发和复审 agent 不受沙箱限制，可以联网、安装依赖、读写你电脑上的任何文件；每个任务合入前仍由另一个 agent 独立复审", accessToggle: "点击切换沙箱 / 完全访问", settings: "运行设置", agents: "并行 agent", fewer: "减少", more: "增加", send: "发送", start: "开始", pause: "暂停", resume: "继续", stop: "停止",
   roles: { planner: "规划", worker: "开发", reviewer: "复审" }, objective: "目标", guidance: "补充要求", hub: "建造",
-  attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
+  attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目和长目标的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以；16M 之后再点一下可以输入任意额度", budgetCustom: "自定义预算（单位：百万 token，1–1000）", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
   goalDismiss: "收起", goalCharter: "交付", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
@@ -242,7 +242,7 @@ const enText: typeof zhText = {
   review: "Sandbox", reviewHint: "Builders and reviewers can change only their own isolated checkout and cannot read your other folders; every task is reviewed by a separate agent before it is integrated",
   fullAccess: "Full access", fullAccessHint: "Builders and reviewers run outside the sandbox: they can use the network, install dependencies and read or change any file on this computer; every task is still reviewed by a separate agent before it is integrated", accessToggle: "Click to switch between sandbox and full access", settings: "Run settings", agents: "Parallel agents", fewer: "Fewer", more: "More", send: "Send", start: "Start", pause: "Pause", resume: "Resume", stop: "Stop",
   roles: { planner: "Planner", worker: "Builder", reviewer: "Reviewer" }, objective: "Objective", guidance: "Guidance", hub: "Weave",
-  attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The project's total token budget; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
+  attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The total token budget for projects and long goals; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓; one more click after 16M lets you type any amount", budgetCustom: "Custom budget (millions of tokens, 1–1000)", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
   goalDismiss: "Dismiss", goalCharter: "Deliverable", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
@@ -785,13 +785,37 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     finally { accessPending.current = false; setAccessChanging(false); }
   };
   const settingsTouched = useRef({ workers: false, tokens: false });
+  // Past the top step the chip turns into a field for any amount (in millions); a custom amount lights every bar.
+  const [customBudget, setCustomBudget] = useState<string | null>(null);
+  const [customInvalid, setCustomInvalid] = useState(false);
+  const customTokens = START_BUDGETS.includes(tokens) ? null : tokens;
+  const budgetLevel = customTokens === null ? START_BUDGETS.indexOf(tokens) : START_BUDGETS.length - 1;
   const stepBudget = (by: number, wrap: boolean) => {
     settingsTouched.current.tokens = true;
+    const top = START_BUDGETS[START_BUDGETS.length - 1];
+    if (wrap && by > 0 && tokens === top) {
+      setCustomInvalid(false);
+      setCustomBudget(String(customTokens === null ? (top * 2) / 1_000_000 : customTokens / 1_000_000));
+      return;
+    }
     setTokens((value) => {
-      const next = START_BUDGETS.indexOf(value) + by;
+      const at = START_BUDGETS.indexOf(value);
+      if (at < 0) return wrap ? START_BUDGETS[0] : by > 0 ? value : top;  // from a custom amount
+      const next = at + by;
       if (wrap) return START_BUDGETS[(next + START_BUDGETS.length) % START_BUDGETS.length];
       return START_BUDGETS[Math.max(0, Math.min(START_BUDGETS.length - 1, next))];
     });
+  };
+  const parsedCustom = (draft: string) => {
+    const millions = Number(draft.trim());
+    return draft.trim() && Number.isFinite(millions) && millions >= 1 && millions <= 1000 ? Math.round(millions * 10) * 100_000 : null;
+  };
+  const closeCustom = (commit: boolean) => {
+    const value = commit && customBudget !== null ? parsedCustom(customBudget) : null;
+    if (commit && value === null) { setCustomInvalid(true); return false; }
+    if (value !== null) setTokens(value);
+    setCustomBudget(null); setCustomInvalid(false);
+    return true;
   };
   // Suggestions fill untouched controls; a proposal must not overwrite the person's draft choices.
   const proposal = data.proposal;
@@ -1409,11 +1433,23 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                 title={data.fullAccess ? text.fullAccessHint : text.reviewHint}>
                 <span className="pf-chip-label">{lang === "zh" ? "任务：" : "Tasks: "}{data.fullAccess ? text.fullAccess : text.review}</span>
               </span> : null}
-              {settingUp ? (
-                // The budget is a level, not a number to type: four steps, lit up to the chosen one.
-                // A click climbs (and wraps), the wheel and the arrow keys go either way.
+              {settingUp && customBudget !== null ? (
+                <span className="pf-chip pf-budget-chip pf-budget-custom" data-invalid={customInvalid || undefined} title={text.budgetCustom}>
+                  <input autoFocus inputMode="decimal" aria-label={text.budgetCustom} aria-invalid={customInvalid || undefined}
+                         value={customBudget} size={4} onFocus={(event) => event.currentTarget.select()}
+                         onChange={(event) => { setCustomBudget(event.target.value.replace(/[^\d.]/g, "")); setCustomInvalid(false); }}
+                         onKeyDown={(event) => {
+                           if (event.key === "Enter") { event.preventDefault(); closeCustom(true); }
+                           else if (event.key === "Escape") { event.preventDefault(); closeCustom(false); }
+                         }}
+                         onBlur={() => { if (!closeCustom(true)) closeCustom(false); }} />
+                  <span className="pf-chip-unit">M</span>
+                </span>
+              ) : settingUp ? (
+                // The budget is a level: four steps, lit up to the chosen one, then any amount typed in.
+                // A click climbs (past the top it opens the field, from a custom amount it wraps), the wheel and the arrow keys go either way.
                 <button type="button" className="pf-chip pf-chip-button pf-budget-chip" title={text.budgetHint}
-                        aria-label={`${compact(tokens)} token`} data-level={START_BUDGETS.indexOf(tokens)}
+                        aria-label={`${compact(tokens)} token`} data-level={budgetLevel} data-custom={customTokens !== null || undefined}
                         onClick={() => stepBudget(1, true)}
                         onWheel={(event) => { if (event.deltaY) stepBudget(event.deltaY < 0 ? 1 : -1, false); }}
                         onKeyDown={(event) => {
@@ -1422,7 +1458,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                         }}>
                   <span className="pf-chip-value" key={tokens}>{compact(tokens)}</span>
                   <span className="pf-level" aria-hidden="true">
-                    {START_BUDGETS.map((step, index) => <i key={step} data-on={index <= START_BUDGETS.indexOf(tokens) || undefined} />)}
+                    {START_BUDGETS.map((step, index) => <i key={step} data-on={index <= budgetLevel || undefined} />)}
                   </span>
                 </button>
               ) : null}
