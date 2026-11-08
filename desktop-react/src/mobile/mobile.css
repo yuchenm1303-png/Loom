@@ -736,18 +736,47 @@ html[data-loom-surface="mobile"][data-loom-reduced-motion="true"] .m-stage .wv-s
 html[data-loom-surface="mobile"] .m-thread { background: var(--loom-canvas); }
 html[data-loom-surface="mobile"] .m-build-dock,
 html[data-loom-surface="mobile"] .m-composer { background: transparent; }
-html[data-loom-surface="mobile"] .m-build-summary { min-height: 30px; padding: 0 16px; font-size: 12px; line-height: 30px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-html[data-loom-surface="mobile"] .m-branches { padding-top: 0; }
-html[data-loom-surface="mobile"] .m-branch-track { border-radius: 22px; box-shadow: 0 0 0 1px var(--loom-workspace-line) inset; }
-html[data-loom-surface="mobile"] .m-branch-track .m-branch-ports { border-radius: 22px; }
-html[data-loom-surface="mobile"] .m-branch-track::before { border-radius: 22px 0 0 22px; background: linear-gradient(90deg, var(--m-surface), transparent); }
-html[data-loom-surface="mobile"] .m-branch-track::after { border-radius: 0 22px 22px 0; background: linear-gradient(270deg, var(--m-surface), transparent); }
+html[data-loom-surface="mobile"] .m-build-summary {
+  min-height: 28px; padding: 0 16px; font-size: 12px; line-height: 28px; letter-spacing: .02em;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--loom-workspace-muted);
+}
+html[data-loom-surface="mobile"] .m-branches { padding: 0 0 2px; }
+/* The rail is the quieter of the two: a borderless tint, tabs sized to their words so the scroll edge
+   cuts between tabs, not through an icon. The fades match the tint over the canvas. */
+html[data-loom-surface="mobile"] .m-branch-track {
+  --m-rail: color-mix(in srgb, var(--loom-canvas) 93%, rgb(224, 230, 242));
+  border-radius: 20px; background: var(--m-rail); box-shadow: none;
+}
+html[data-loom-surface="mobile"] .m-branch-track .m-branch-ports { gap: 2px; padding: 4px; border-radius: 20px; scroll-padding-inline: 24px; }
+html[data-loom-surface="mobile"] .m-branch-track .m-branch-ports button {
+  flex: 0 0 auto; min-height: 40px; padding: 0 13px; gap: 6px; border-radius: 16px; font-size: 13px; letter-spacing: .01em;
+}
+html[data-loom-surface="mobile"] .m-branch-track .m-branch-ports button svg { width: 16px; height: 16px; }
+html[data-loom-surface="mobile"] .m-branch-capsule { top: 4px; height: 40px; }
+html[data-loom-surface="mobile"] .m-branch-capsule > span { border-radius: 16px; }
+html[data-loom-surface="mobile"] .m-branch-track::before,
+html[data-loom-surface="mobile"] .m-branch-track::after { width: 28px; }
+html[data-loom-surface="mobile"] .m-branch-track::before { border-radius: 20px 0 0 20px; background: linear-gradient(90deg, var(--m-rail) 30%, transparent); }
+html[data-loom-surface="mobile"] .m-branch-track::after { border-radius: 0 20px 20px 0; background: linear-gradient(270deg, var(--m-rail) 30%, transparent); }
+/* The composer is the one strong surface: a hairline, a soft lift, the tools on one quiet row. */
 html[data-loom-surface="mobile"] .m-composer { padding-top: 8px; }
-html[data-loom-surface="mobile"] .m-composer-box { border-radius: 22px; box-shadow: 0 0 0 1px var(--loom-workspace-line) inset, 0 10px 28px rgba(0, 0, 0, .22); }
-html[data-loom-surface="mobile"] .m-composer-box:focus-within { box-shadow: 0 0 0 1px rgba(181, 167, 245, .38) inset, 0 10px 28px rgba(0, 0, 0, .22); }
-html[data-loom-surface="mobile"] .m-chip > span { height: 32px; padding: 0 10px 0 11px; border-radius: 16px; }
-html[data-loom-surface="mobile"] .m-round.is-send { width: 40px; height: 40px; margin: 2px 2px 2px 0; box-shadow: 0 4px 14px rgba(181, 167, 245, .22); }
-html[data-loom-surface="mobile"] .m-round.is-send:disabled { box-shadow: none; }
+html[data-loom-surface="mobile"] .m-composer-box {
+  border-radius: 22px; background: var(--m-surface);
+  box-shadow: 0 0 0 1px var(--loom-workspace-line) inset, 0 12px 30px rgba(0, 0, 0, .28);
+}
+html[data-loom-surface="mobile"] .m-composer-box:focus-within { box-shadow: 0 0 0 1px rgba(181, 167, 245, .4) inset, 0 12px 30px rgba(0, 0, 0, .28); }
+html[data-loom-surface="mobile"] .m-composer-box textarea { padding: 12px 16px 4px; }
+html[data-loom-surface="mobile"] .m-composer-tools { gap: 4px; padding: 0 6px 6px 4px; }
+html[data-loom-surface="mobile"] .m-composer-tools .m-tool { width: 40px; height: 40px; color: var(--loom-workspace-muted); }
+html[data-loom-surface="mobile"] .m-chip { font-size: 12.5px; }
+html[data-loom-surface="mobile"] .m-chip > span {
+  height: 30px; padding: 0 9px 0 10px; gap: 6px; border-radius: 15px;
+  background: transparent; box-shadow: 0 0 0 1px var(--loom-workspace-line) inset; color: var(--loom-workspace-secondary);
+}
+html[data-loom-surface="mobile"] .m-chip > span svg { color: var(--loom-workspace-muted); }
+html[data-loom-surface="mobile"] .m-round.is-send { width: 38px; height: 38px; box-shadow: 0 4px 14px rgba(181, 167, 245, .25); }
+/* Nothing to send: a neutral disc, not a half-transparent accent. */
+html[data-loom-surface="mobile"] .m-round.is-send:disabled { opacity: 1; background: var(--m-fill-strong, rgba(224, 230, 242, .1)); color: var(--loom-workspace-muted); box-shadow: none; }
 
 /* A choice card's foot on the phone: the hint repeats what the options already say, so one row holds
    "add your own" on the left and a light send pill on the right, both on the same centre line. */
@@ -764,3 +793,4 @@ html[data-loom-surface="mobile"] .m-stage .decision-submit {
 }
 html[data-loom-surface="mobile"] .m-stage .decision-submit:disabled { background: var(--m-fill); color: var(--loom-workspace-muted); }
 html[data-loom-surface="mobile"] .m-stage .decision-submit svg { flex: none; }
+html[data-loom-surface="mobile"] .m-branch-close { background: var(--loom-canvas) !important; }
