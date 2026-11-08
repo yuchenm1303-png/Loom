@@ -134,6 +134,8 @@ const STATE: Record<string, string> = {
   rework: "需要返工",
   integrated: "已集成",
 };
+// A conversation's own task list is not merged or reviewed like a project's tasks.
+const TURN_STATE: Record<string, string> = { integrated: "已完成", working: "进行中", rework: "未完成" };
 const TONE: Record<string, "run" | "wait" | "on" | undefined> = {
   running: "run",
   starting: "run",
@@ -443,7 +445,10 @@ export function MobileBuildPanel({
     ? Math.min(1, data.budget.tokens / data.budget.tokenLimit)
     : 0;
   const goalOnly = !run && overview?.goal ? overview.goal : null;
-  const state = goalOnly ? goalOnly.status === "active" ? (goalOnly.phase === "approval" ? "needs_you" : "running") : goalOnly.status === "complete" ? "completed" : goalOnly.status === "paused" ? "paused" : "needs_you" : data?.state;
+  // No project and no long goal: the draft's placeholder state is not a real one, so nothing reads "paused".
+  const idle = !goalOnly && !proposal && data?.phase === "draft";
+  const state = goalOnly ? goalOnly.status === "active" ? (goalOnly.phase === "approval" ? "needs_you" : "running") : goalOnly.status === "complete" ? "completed" : goalOnly.status === "paused" ? "paused" : "needs_you" : idle ? undefined : data?.state;
+  const idleText = chatting ? "对话进行中 · 没有项目或长目标" : "建造 · 等待方案";
   const tone = state ? TONE[state] : undefined;
   // While a build runs its folder is fixed, so the folder card steps below the live controls.
   const workspaceCard = overview ? (
@@ -559,16 +564,16 @@ export function MobileBuildPanel({
       </Section>
   ) : null;
   return (
-    <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : goalOnly && goal ? goal.text : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"}><div className="m-build-panel" aria-label="建造控制面板"><BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
+    <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : goalOnly && goal ? goal.text : idle ? idleText : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"}><div className="m-build-panel" aria-label="建造控制面板"><BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
       {data?.attention && data.attention.action !== "approval" ? <Section title="建造需要处理" tone="wait"><p>{data.attention.reason}</p><button type="button" className="m-inline-button" onClick={() => onBranch("budget")}>处理预算与运行状态</button></Section> : null}
-      {turnPlan.steps.length ? <Section title={turnPlan.earlier ? "之前请求的任务" : "对话任务"}><ol className="m-build-list">{turnPlan.earlier ? <li key="earlier"><p>{turnPlan.request ? `这份清单属于之前的请求「${turnPlan.request}」，这一轮还没有写自己的清单。` : "这份清单属于之前的请求，这一轮还没有写自己的清单。"}</p></li> : null}{toTurnTasks(turnPlan.steps).map(task => <li key={task.id}>{STATE[task.state]} · {task.title}{task.detail ? <p>{task.detail}</p> : null}</li>)}</ol></Section> : null}
+      {turnPlan.steps.length ? <Section title={turnPlan.earlier ? "之前请求的任务" : "对话任务"}><ol className="m-build-list">{turnPlan.earlier ? <li key="earlier"><p>{turnPlan.request ? `这份清单属于之前的请求「${turnPlan.request}」，这一轮还没有写自己的清单。` : "这份清单属于之前的请求，这一轮还没有写自己的清单。"}</p></li> : null}{toTurnTasks(turnPlan.steps).map(task => <li key={task.id}>{TURN_STATE[task.state] || STATE[task.state]} · {task.title}{task.detail ? <p>{task.detail}</p> : null}</li>)}</ol></Section> : null}
       <div className="m-build-head">
         <span className={`m-badge${tone ? ` is-${tone}` : ""}`}>
           <span
             className={`m-dot is-${tone === "run" ? "run" : tone === "wait" ? "wait" : tone === "on" ? "on" : "idle"}`}
             aria-hidden="true"
           />
-          <MotionValue value={state || "loading"}>{state ? STATE[state] : "正在读取建造状态…"}</MotionValue>
+          <MotionValue value={state || (idle ? "idle" : "loading")}>{state ? STATE[state] : idle ? idleText : "正在读取建造状态…"}</MotionValue>
         </span>
         <button
           type="button"
