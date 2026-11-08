@@ -70,8 +70,19 @@ jobs:
       - name: Build Windows release candidate
         working-directory: desktop-react
         # Normally 6-8 minutes; a hung smoke test must fail instead of holding the queue.
-        timeout-minutes: 30
-        run: npm run package:win
+        timeout-minutes: 60
+        shell: pwsh
+        # electron-builder's GitHub downloads sometimes answer 504; retry only those.
+        run: |
+          for ($i = 1; $i -le 3; $i++) {
+            npm run package:win 2>&1 | Tee-Object -Variable out
+            $code = $LASTEXITCODE
+            if ($code -eq 0) { exit 0 }
+            if (-not (($out | Out-String) -match 'Response code 5\d\d|ETIMEDOUT|ECONNRESET|socket hang up')) { exit $code }
+            Write-Host "::warning::Upstream download failed (attempt $i), retrying in 60s"
+            Start-Sleep -Seconds 60
+          }
+          exit 1
 
       - name: Verify installer metadata integrity
         working-directory: desktop-react
