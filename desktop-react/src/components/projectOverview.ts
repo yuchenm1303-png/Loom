@@ -407,7 +407,7 @@ export interface LongGoal {
   lines?: GoalLine[];
 }
 
-export interface GoalLine { title: string; state: "running" | "waiting" | "reporting" | "done" | "failed"; tokens?: number; cap?: number; retryAt?: number; why?: string }
+export interface GoalLine { title: string; state: "running" | "waiting" | "reporting" | "done" | "failed"; tokens?: number; cap?: number; retryAt?: number; why?: string; check?: "" | "passed" | "failed" | "not_run" }
 
 /** One line for a long goal: what it is doing, what it has spent, and the move the person has. */
 export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {
@@ -434,6 +434,7 @@ export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "z
       const used = item.tokens ? ` · ${money(item.tokens)}` : "";
       if (item.state === "waiting") return en ? `Provider unavailable, retrying at ${at(item.retryAt ?? 0)}` : `模型服务不可用，${at(item.retryAt ?? 0)} 重试`;
       if (item.state === "reporting") return (en ? "At its limit, wrapping up" : "到上限，正在收尾") + used;
+      if (item.state === "done" && item.check && item.check !== "passed") return (en ? "Done, its check did not pass" : "完成，但验证没通过") + used;
       if (item.state === "done") return (en ? "Done" : "完成") + used;
       if (item.state === "failed") return (en ? "Not finished" : "没做完") + used;
       return (en ? "Working" : "在做") + used;

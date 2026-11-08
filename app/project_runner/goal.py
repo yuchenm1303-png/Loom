@@ -186,7 +186,7 @@ def start(service, thread_id, objective, token_budget, hours=0):
         "feedback": "", "checkerId": "", "reason": "", "summary": "", "checked": False,
         "goalTurn": "", "handledTurn": session.current_turn_id, "startedAt": time.time(),
         "hours": max(0.0, min(float(hours or 0), MAX_HOURS)), "deepens": 0, "deepen": "",
-        "linesDecision": "pending" if goal_lines.mode() == "lines" else "", "linesHolds": 0, "lines": [], "reports": ""})
+        "linesDecision": "later" if goal_lines.mode() == "lines" else "", "linesHolds": 0, "lines": [], "reports": ""})
 
 
 def _stop(service, thread_id, record, status, reason):

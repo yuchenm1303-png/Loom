@@ -62,12 +62,20 @@ def run(args):
     service.turn_start({"threadId": thread, "input": task["prompt"].replace("{python}", sys.executable), "weave": True})
     started = time.time()
     log = (root / "progress.jsonl").open("a", encoding="utf-8")
+    graded, first_full = 0.0, None
     while True:
         time.sleep(30)
         view = goal.view(service, thread)
         session = service.store.load(thread)
-        log.write(json.dumps({"t": round(time.time() - started), "goal": view, "session": session.status.value,
-                              "errors": service.__dict__.get("_goal_errors")}, ensure_ascii=False, default=str) + "\n")
+        entry = {"t": round(time.time() - started), "goal": view, "session": session.status.value,
+                 "errors": service.__dict__.get("_goal_errors")}
+        if args.grade_every and time.time() - graded >= args.grade_every:
+            graded = time.time()
+            sample = grade(args.task, workspace)  # mid-run: the agent may be writing, so this is an indication
+            entry["grade"] = [sample["passed"], sample["of"]]
+            if first_full is None and sample["passed"] == sample["of"]:
+                first_full = entry["t"]
+        log.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
         log.flush()
         if view and view["status"] != "active":
             break
@@ -80,7 +88,7 @@ def run(args):
               "ledger": ledger(service, thread), "decision": record.get("linesDecision"),
               "soloReasons": record.get("soloReasons"), "lineStats": record.get("lineStats"),
               "holds": record.get("linesHolds"), "checks": record.get("checks"), "deepens": record.get("deepens"),
-              "grade": grade(args.task, workspace)}
+              "firstFullGrade": first_full, "grade": grade(args.task, workspace)}
     (root / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     print(json.dumps({key: result[key] for key in ("task", "mode", "seconds", "decision")}, ensure_ascii=False), result["grade"]["passed"], "/", result["grade"]["of"], flush=True)
     runtime.close()
@@ -101,7 +109,8 @@ def table(roots):
         rows.append(f"{result['task']:9s} {result['mode']:7s} grade {result['grade']['passed']:3d}/{result['grade']['of']:<3d} "
                     f"{weighted / 1e6:5.2f}M lead {lead / 1e6:5.2f}M {result['seconds'] / 60:5.1f} min "
                     f"lines {stats.get('started', 0)} ({stats.get('failed', 0)} failed) agents {len(result['ledger']) - 1} "
-                    f"checks-rejected {result.get('checks')} {goal.get('status')} checked={goal.get('checked')} decision={result.get('decision')}")
+                    f"checks-rejected {result.get('checks')} {goal.get('status')} checked={goal.get('checked')} decision={result.get('decision')}"
+                    + (f" full-at {result['firstFullGrade'] / 60:.0f} min" if result.get("firstFullGrade") is not None else ""))
     print("\n".join(rows))
 
 
@@ -114,6 +123,7 @@ def main():
     parser.add_argument("--provider")
     parser.add_argument("--hours-cap", type=float, default=2.0)
     parser.add_argument("--budget", type=int, default=8_000_000)
+    parser.add_argument("--grade-every", type=float, default=0, help="seconds between mid-run grades (0: only at the end)")
     parser.add_argument("--regrade", action="store_true")
     parser.add_argument("--table", nargs="+", type=Path)
     args = parser.parse_args()

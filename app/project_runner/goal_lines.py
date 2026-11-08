@@ -12,6 +12,15 @@ does not run while lines run, and only their reports enter its history.
 Whether two lines depend on each other only the lead can know, so the batch is its statement that they do not.
 Lines that declare the same files or the same resource are refused, not queued: serial work stays with the lead,
 or goes in a later round. Declared files are not a sandbox; what the Host saw changed is compared afterwards.
+
+Splitting pays only on a goal one agent cannot finish soon: on goals a single agent finished in about an hour, a
+forced split at the start cost 2 to 5 times the tokens for the same grade (docs/goal-lines-design-2026-11-07.md).
+So the lead starts alone, and the Host asks for the decision only once the goal has cost it SPLIT_AFTER; by then
+it also knows the work well enough to write good briefs. A goal that is deepened is asked again at once.
+
+A line that writes gives a check: a command that proves its part works. The Host does not run it (that would act
+outside the line's permissions); it reads the line's own runs, and a line that ends without its check passing is
+sent back once. What the lead reads says whether each check passed.
 """
 from __future__ import annotations
 
@@ -29,7 +38,9 @@ MODE_ENV = "LOOM_GOAL_LINES"
 MODES = ("lines", "prompt", "off")
 MAX_LINES = 4
 MAX_HOLDS = 2
-MIN_BRIEF = 40
+MIN_BRIEF = 80
+CHECK_CHARS = 500
+SPLIT_AFTER = 500_000  # weighted tokens the lead spends alone before the Host asks whether to split
 BUDGET_SHARE = 0.6  # of what is left, for the lines together; the rest is for the lead and the checker
 MIN_BUDGET_LEFT = 0.1  # below this share of the budget a round would only starve the lead and the checker
 TIME_SHARE = 0.7  # of the person's time left; the rest is for integrating
@@ -45,16 +56,17 @@ MAX_WAIT_HOLDS = 2
 FAILURE_KIND = "goal_lines_required"
 
 GUIDE_LINES = (
-    "Lines: you are the lead of this goal. What is independent should run at the same time in its own sub-agent: "
-    "your history is re-sent on every step, so the cost of one conversation grows with the square of its steps, "
-    "and a line's reading and output never enter it. Call weave_lines with up to four lines that do not depend on "
-    "each other's results, each worth at least about twenty steps of its own (a survey, an experiment, a module, a "
-    "data set), each with a self-contained brief, because a line sees none of this conversation. The Host starts "
-    "them, stops what overruns, and brings you back with their reports. After weave_lines you end the turn: no "
-    "waiting, no checking on them, no work of your own meanwhile, and that time costs you nothing. Work that feeds "
-    "each other in order, and runs that compete for one GPU or one set of files, go before the lines or in a later "
-    "round; integrating and the final result are yours. Do not read what a line produced except what your "
-    "answer relies on. When nothing here is worth splitting, say why with solo_reason.")
+    "Lines: you are the lead of this goal. Start the work yourself. A goal you can finish in an hour or so is "
+    "cheaper done alone: splitting it measured 2 to 5 times the tokens for the same result. When the goal is large "
+    "(the Host asks once it has cost you a while), run what is independent at the same time with weave_lines: up "
+    "to four lines that do not depend on each other's results, each worth many steps of its own (a survey, an "
+    "experiment, a module, a data set). A line sees none of this conversation, so its brief says the objective, "
+    "the files to read and where to write, what to hand back, and its boundaries; a line that writes gives check, "
+    "a command that proves its part works (its tests, or a script that checks its results). After weave_lines you "
+    "end the turn: no waiting, no checking on them, no work of your own meanwhile, and that time costs you "
+    "nothing. Work that feeds each other in order, and runs that compete for one GPU or one set of files, go "
+    "before the lines or in a later round; integrating and the final result are yours. Do not read what a line "
+    "produced except what your answer relies on. When nothing is worth splitting, say why with solo_reason.")
 GUIDE_PROMPT = (
     "Sub-agents: in a long goal you are the lead, and delegating is the default. Split what is left into lines "
     "that do not depend on each other, and give each line worth many steps of its own (a survey, an experiment, "
@@ -71,13 +83,20 @@ LINE_PROMPT = (
     "integrate your report. You see none of the lead's conversation.\n"
     "The whole goal, for context only:\n{objective}\n\n"
     "Your line: {title}\n{brief}\n\n"
-    "{writes}\n"
+    "{writes}\n{check}"
     "Limits: about {tokens} tokens and {time}. Do this line yourself, without sub-agents. Run what you make and "
     "look at the result; report what you saw, not what you expect.\n"
     "Put details and data in files. End with a report of at most 300 words: what you did, the files, the key "
     "results with their numbers, and anything not done, not verified or surprising.")
 WRITES_ONLY = "Write only under: {paths}. Anything else in this folder belongs to someone else: read it if you need to, do not change it."
 WRITES_NONE = "This line only reads: do not change anything in this folder."
+CHECK_LINE = ("Done when this command passes. Run it exactly as written, as your last step before the report, and "
+              "fix your part until it does:\n{check}\n")
+CHECK_AGAIN = ("Not done yet: {what}. Run exactly this, fix your part until it passes, then give your report again:\n"
+               "{check}")
+HELD_LATER = ("Not executed: this long goal has grown large, and the Host asks once whether to split what is left. "
+              "Call weave_lines now with the parts that can run at the same time, or with solo_reason if nothing is "
+              "worth splitting. Reading files first is fine if you need to before deciding.")
 REPORT_NOW = ("Your limit for this line is reached. Do not start anything new: give your report now from what you "
               "have, and say what you did not get to.")
 RESUME_LINE = ("The previous attempt at this line stopped because of the model provider or a restart, not because of "
@@ -120,8 +139,17 @@ def _validated(raw):
     for item in raw:
         title, brief = str(item.get("title") or "").strip(), str(item.get("brief") or "").strip()
         if not title or len(brief) < MIN_BRIEF:
-            raise ValueError("Each line needs a title and a self-contained brief: it sees none of this conversation.")
-        lines.append({"title": title[:120], "brief": brief, "writes": [str(path).strip() for path in item.get("writes") or ()],
+            raise ValueError("Each line needs a title and a self-contained brief: it sees none of this conversation, "
+                             "so say the objective, the files to read and where to write, what to hand back, and its "
+                             "boundaries.")
+        writes = [str(path).strip() for path in item.get("writes") or () if str(path).strip()]
+        check = " ".join(str(item.get("check") or "").split())
+        if writes and not check:
+            raise ValueError(f"\"{title}\" writes files but has no check: give a command that proves its part works, "
+                             "such as its tests or a script that checks its results.")
+        if len(check) > CHECK_CHARS:
+            raise ValueError(f"The check of \"{title}\" is too long: give one command, at most {CHECK_CHARS} characters.")
+        lines.append({"title": title[:120], "brief": brief, "writes": writes, "check": check,
                       "resource": str(item.get("resource") or "").strip().lower()})
     for at, left in enumerate(lines):
         for right in lines[at + 1:]:
@@ -170,10 +198,12 @@ def start(service, thread_id, arguments):
         record.update(linesDecision="lines", linesTurn=service.store.load(thread_id).current_turn_id, linesWaitHolds=0)
         for line in lines:
             writes = WRITES_ONLY.format(paths=", ".join(line["writes"])) if line["writes"] else WRITES_NONE
+            check = CHECK_LINE.format(check=line["check"]) if line["check"] else ""
             prompt = LINE_PROMPT.format(objective=objective, title=line["title"], brief=line["brief"], writes=writes,
-                                        tokens=f"{cap:,}", time=span(seconds))
+                                        check=check, tokens=f"{cap:,}", time=span(seconds))
             line.update(state="running", agentId="", prompt=prompt, cap=cap, startedAt=now, deadline=now + seconds,
-                        attempts=0, lost=0, retryAt=0, pressedAt=0, tokens=0, report="", why="", changed=[])
+                        attempts=0, lost=0, retryAt=0, pressedAt=0, tokens=0, report="", why="", changed=[],
+                        checkResult="", sentBack=False)
             try:
                 line["agentId"] = control.spawn(thread_id, prompt, role="goal-line", history_mode="none", background=True).node.session_id
                 stats["started"] += 1
@@ -216,6 +246,15 @@ def hold(service, session, step, calls):
         return None
     if live(record) and record.get("linesTurn") == session.current_turn_id:
         return _hold_while_running(service, session, calls)
+    if record.get("linesDecision") == "later":
+        if charged(session.usage) - record.get("baseCharged", 0) < SPLIT_AFTER:
+            return None
+        with service.project_runner.guard:
+            record = service.weave_goals.get(session.session_id)
+            if record is None or record.get("linesDecision") != "later":
+                return None
+            record.update(linesDecision="pending", linesHolds=0, linesGrown=True)
+            service.weave_goals.put(session.session_id, record)
     if record.get("linesDecision") != "pending":
         return None
 
@@ -238,7 +277,8 @@ def hold(service, session, step, calls):
             service.weave_goals.put(session.session_id, record)
             return None
         service.weave_goals.put(session.session_id, record)
-    refusal = ToolResult(False, HELD, {"failure_kind": FAILURE_KIND, "execution_status": "not_executed",
+    refusal = ToolResult(False, HELD_LATER if record.get("linesGrown") else HELD,
+                         {"failure_kind": FAILURE_KIND, "execution_status": "not_executed",
                                        "retry_policy": "decide_with_weave_lines"})
     return tuple((call, refusal) for call in waiting)
 
@@ -260,6 +300,34 @@ def _failure(service, session_id):
     return {}
 
 
+_CHECK_WORDS = {"failed": "your check did not pass the last time you ran it",
+                "not_run": "your check was not run"}
+
+
+def _command(data):
+    argv = data.get("argv")
+    if isinstance(argv, (list, tuple)):
+        return " ".join(str(part) for part in argv)
+    return str(data.get("command") or data.get("cmd") or "")
+
+
+def _check_result(service, session_id, check):
+    """"passed", "failed" or "not_run", from the last run of the check in the line's own commands."""
+    wanted = " ".join(check.split()).lower()
+    result = "not_run"
+    for event in service.store.events(session_id):
+        if event.kind not in {AgentEventKind.TOOL_COMPLETED, AgentEventKind.TOOL_FAILED}:
+            continue
+        data = event.data.get("data") if isinstance(event.data.get("data"), dict) else {}
+        if wanted not in " ".join(_command(data).split()).lower():
+            continue
+        code = data.get("returncode")
+        if data.get("running") or code is None:
+            continue
+        result = "passed" if code == 0 and event.kind is AgentEventKind.TOOL_COMPLETED else "failed"
+    return result
+
+
 def _changed(service, session_id):
     paths = set()
     for event in service.store.events(session_id):
@@ -276,6 +344,8 @@ def _settle(service, thread_id, record, line, state, why=""):
         line["report"] = str(snapshot.final_text or "")
         line["tokens"] = int(charged(service.store.load(line["agentId"]).usage))
         line["changed"] = _changed(service, line["agentId"])
+        if line.get("check"):
+            line["checkResult"] = _check_result(service, line["agentId"], line["check"])
         if not snapshot.node.relation_status.value == "closed":
             control.close_agent(thread_id, line["agentId"])
     except (OSError, ValueError, RuntimeError) as exc:
@@ -319,6 +389,13 @@ def _tick_line(service, thread_id, record, line, now):
         control.send(thread_id, line["agentId"], RESUME_LINE)
         return True
     if status is AgentStatus.COMPLETED:
+        if line.get("check"):
+            line["checkResult"] = _check_result(service, line["agentId"], line["check"])
+            if line["checkResult"] != "passed" and not line.get("sentBack") and line["state"] == "running" and not over:
+                line["sentBack"] = True
+                control.send(thread_id, line["agentId"], CHECK_AGAIN.format(what=_CHECK_WORDS[line["checkResult"]],
+                                                                            check=line["check"]))
+                return True
         _settle(service, thread_id, record, line, "done" if snapshot.final_text else "failed",
                 "" if snapshot.final_text else "it finished without a report")
         return True
@@ -362,6 +439,11 @@ def _digest(lines):
             text = text[:REPORT_CHARS] + "\n(cut: the rest of this report is not shown; details are in the line's files)"
         head = f"## {line['title']}" + ("" if line["state"] == "done" else f" (did not finish: {line['why']})")
         parts += [head, text or "(no report)"]
+        if line.get("check"):
+            said = {"passed": "passed in the line's own last run",
+                    "failed": "did NOT pass in the line's last run; its part is not done",
+                    }.get(line.get("checkResult"), "was NOT run by the line; nothing proves its part works")
+            parts.append(f"Check `{line['check']}`: {said}.")
         outside = [path for path in line["changed"] if line["writes"] and not any(_overlap(path, own) for own in line["writes"])]
         if not line["writes"] and line["changed"]:
             outside = line["changed"]
@@ -418,5 +500,6 @@ def stop_all(service, thread_id, record, reason, keep=""):
 
 def view(record):
     return [{"title": line["title"], "state": line["state"], "tokens": line.get("tokens", 0), "cap": line.get("cap", 0),
-             "retryAt": line.get("retryAt", 0) if line["state"] == "waiting" else 0, "why": line.get("why", "")}
+             "retryAt": line.get("retryAt", 0) if line["state"] == "waiting" else 0, "why": line.get("why", ""),
+             "check": line.get("checkResult", "") if line.get("check") else ""}
             for line in record.get("lines") or ()]

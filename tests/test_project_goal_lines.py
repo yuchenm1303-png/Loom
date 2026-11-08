@@ -23,6 +23,7 @@ def runtime_with_sub_agents(monkeypatch):
     monkeypatch.setattr(test_app_server, "DurableAgentRuntime", MultiAgentRuntime)
     monkeypatch.delenv(goal_lines.MODE_ENV, raising=False)
     monkeypatch.setattr(goal, "LINES_EVERY", 0)
+    monkeypatch.setattr(goal_lines, "SPLIT_AFTER", 0)  # the question comes at once unless a test is about when it comes
 
 
 def usage(total=10, cached=0):
@@ -37,11 +38,15 @@ def calling(name, arguments, call_id="call-1", **tokens):
     return ModelResponse(tool_calls=(ToolCall(call_id=call_id, name=name, arguments=arguments),), usage=usage(**tokens))
 
 
-BRIEF = "在 results/{0} 下跑这条线的实验，把结果写成文件，并在报告里给出关键数字。"
+BRIEF = ("目标：在 results/{0} 下跑这条线的实验。先读 README.md 和 sim.py 了解模型；结果写成 results/{0}/data.csv，"
+         "报告里给出关键数字和误差。只改 results/{0}，不要动别的目录，也不要改 sim.py。")
 
 
-def line(name, writes=None, **extra):
-    return {"title": name, "brief": BRIEF.format(name), "writes": [f"results/{name}"] if writes is None else writes, **extra}
+def line(name, writes=(), **extra):
+    """A read-only line unless it is given paths; one that writes comes with its check."""
+    writes = list(writes)
+    check = {"check": f"python check.py {name}"} if writes else {}
+    return {"title": name, "brief": BRIEF.format(name), "writes": writes, **check, **extra}
 
 
 START = calling("weave_goal", {"objective": "研究一晚"})
@@ -224,7 +229,7 @@ def test_no_question_after_the_host_comes_back_in_another_mode(tmp_path, monkeyp
     plan = calling("update_plan", {"plan": [{"step": "一", "status": "in_progress"}, {"step": "二", "status": "pending"}]}, "call-plan")
     service, runtime, _, source, _ = conversation(tmp_path, [START, answer("开始"), plan, calling("run_it", {}, "call-run"), answer("做了")], tools=tools)
     try:
-        assert record_of(service, source)["linesDecision"] == "pending"
+        assert record_of(service, source)["linesDecision"] == "later"
         monkeypatch.setenv(goal_lines.MODE_ENV, "prompt")
         tick(service, source)
         assert len(runs) == 1, "the mode that asked is gone; nothing else can answer"
@@ -332,6 +337,8 @@ def test_no_question_outside_a_goal(tmp_path):
     ([line("甲", resource="GPU"), line("乙", resource="gpu")], "both need gpu"),
     ([line(name) for name in "甲乙丙丁戊"], "At most"),
     ([{"title": "甲", "brief": "做", "writes": []}], "self-contained"),
+    ([{"title": "甲", "brief": BRIEF.format("甲"), "writes": ["results/甲"]}], "has no check"),
+    ([line("甲", check="python " + "x" * goal_lines.CHECK_CHARS)], "too long"),
     ([], "solo_reason"),
 ])
 def test_what_cannot_run_side_by_side_is_refused_with_the_reason(tmp_path, lines, expected):
@@ -752,7 +759,7 @@ def test_the_mode_decides_tool_and_guide(tmp_path, monkeypatch, value, tool, say
     try:
         names = [item.name for item in weave.tools(service)]
         assert ("weave_lines" in names) is tool
-        assert (record_of(service, source)["linesDecision"] == "pending") is tool
+        assert (record_of(service, source)["linesDecision"] == "later") is tool
     finally:
         runtime.close()
 
@@ -837,6 +844,137 @@ def test_a_provider_down_past_the_window_ends_as_unchecked_not_forever(tmp_path)
             tick(service, source)
         final = goal.view(service, source)
         assert final["status"] == "complete" and final["checked"] is False
+    finally:
+        runtime.close()
+
+
+def test_the_lead_starts_alone_and_is_asked_only_once_the_goal_has_grown(tmp_path, monkeypatch):
+    # Real runs: on goals one agent finished in about an hour, a split forced at the start cost 2 to 5 times the tokens.
+    monkeypatch.setattr(goal_lines, "SPLIT_AFTER", 1000)
+    tools, runs = exec_tool()
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, calling("update_plan", PLAN_CALL, "call-plan"), calling("run_it", {}, "call-small"),
+        calling("run_it", {}, "call-grown", total=2000), SOLO, calling("run_it", {}, "call-after"), answer("做了")], tools=tools)
+    try:
+        record = record_of(service, source)
+        assert len(runs) == 2, "small and after ran; the step that took the goal past the mark was held for the question"
+        assert record["linesDecision"] == "solo" and record["linesHolds"] == 1 and record["linesGrown"] is True
+        assert any(goal_lines.HELD_LATER[:40] in text for text in said_to_lead(platform))
+    finally:
+        runtime.close()
+
+
+def test_a_small_goal_is_never_asked(tmp_path, monkeypatch):
+    monkeypatch.setattr(goal_lines, "SPLIT_AFTER", 10 ** 9)
+    tools, runs = exec_tool()
+    service, runtime, _, source, _ = conversation(tmp_path, [
+        START, calling("update_plan", PLAN_CALL, "call-plan"), *[calling("run_it", {}, f"call-{n}") for n in range(4)],
+        answer("做了")], tools=tools)
+    try:
+        assert len(runs) == 4 and record_of(service, source)["linesDecision"] == "later"
+        assert not record_of(service, source).get("linesHolds")
+    finally:
+        runtime.close()
+
+
+def command_tool():
+    """Like exec: what it ran and how it exited, in the result's data; a command that exits non-zero is still a
+    completed tool call, as with the real exec."""
+    def handler(_context, arguments):
+        code = int(arguments.get("code", 0))
+        return ToolResult(ok=True, content=f"exit={code}", data={"argv": ["cmd", "/c", arguments["cmd"]], "returncode": code,
+                                                                     "running": False})
+    return AgentTool(name="run_cmd", description="Run a command.", input_schema={
+        "type": "object", "properties": {"cmd": {"type": "string"}, "code": {"type": "integer"}}, "required": ["cmd"],
+        "additionalProperties": False}, handler=handler, effect=ToolEffect.READ_ONLY)
+
+
+def run_cmd(cmd, code=0, call_id="call-cmd"):
+    return calling("run_cmd", {"cmd": cmd, "code": code}, call_id)
+
+
+def test_a_line_that_passed_its_check_is_done_and_the_lead_reads_so(tmp_path):
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, split(line("甲", ["results/甲"])), answer("开始"), answer("整合")],
+        {"甲": [run_cmd("python check.py 甲", 1, "c1"), run_cmd("python  check.py 甲", 0, "c2"), answer("甲的报告")]},
+        tools=(command_tool(),))
+    try:
+        wait_lines(service, source)
+        tick(service, source)
+        item = record_of(service, source)["lines"][0]
+        assert item["state"] == "done" and item["checkResult"] == "passed" and not item["sentBack"], "the last run counts"
+        first = str(service.store.load(item["agentId"]).messages[0].content)
+        assert "Done when this command passes" in first and "python check.py 甲" in first
+        assert any("Check `python check.py 甲`: passed" in text for text in said_to_lead(platform))
+        assert goal.view(service, source)["lines"][0]["check"] == "passed"
+    finally:
+        runtime.close()
+
+
+def test_a_line_that_did_not_run_its_check_is_sent_back_once(tmp_path):
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, split(line("甲", ["results/甲"])), answer("开始"), answer("整合")],
+        {"甲": [answer("甲说做完了"), run_cmd("python check.py 甲", 0), answer("甲跑过验证了")]}, tools=(command_tool(),))
+    try:
+        wait_lines(service, source)
+        tick(service, source)
+        item = record_of(service, source)["lines"][0]
+        assert item["state"] == "running" and item["sentBack"] and item["checkResult"] == "not_run"
+        assert any("your check was not run" in text for text in said_to_lead(platform))
+        wait_lines(service, source)
+        tick(service, source)
+        item = record_of(service, source)["lines"][0]
+        assert item["state"] == "done" and item["checkResult"] == "passed" and item["report"] == "甲跑过验证了"
+    finally:
+        runtime.close()
+
+
+def test_a_line_still_failing_its_check_goes_to_the_lead_marked(tmp_path):
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, split(line("甲", ["results/甲"])), answer("开始"), answer("整合")],
+        {"甲": [run_cmd("python check.py 甲", 2, "c1"), answer("甲没修好"), run_cmd("python check.py 甲", 2, "c2"),
+                answer("还是没过")]}, tools=(command_tool(),))
+    try:
+        wait_lines(service, source)
+        tick(service, source)
+        assert record_of(service, source)["lines"][0]["sentBack"]
+        wait_lines(service, source)
+        tick(service, source)
+        item = record_of(service, source)["lines"][0]
+        assert item["state"] == "done" and item["checkResult"] == "failed", "sent back once, not again"
+        assert any("did NOT pass" in text and "还是没过" in text for text in said_to_lead(platform))
+        assert goal.view(service, source)["lines"][0]["check"] == "failed"
+    finally:
+        runtime.close()
+
+
+def test_a_line_ended_another_way_still_says_how_its_check_went(tmp_path):
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, split(line("甲", ["results/甲"])), answer("开始"), answer("我来做")],
+        {"甲": [run_cmd("python check.py 甲", 3), answer("写到一半")]}, tools=(command_tool(),))
+    try:
+        wait_lines(service, source)
+        record = record_of(service, source)
+        session = service.store.load(record["lines"][0]["agentId"])
+        session.status = AgentStatus.WAITING_APPROVAL
+        service.store.save(session)
+        tick(service, source)
+        item = record_of(service, source)["lines"][0]
+        assert item["state"] == "failed" and item["checkResult"] == "failed"
+        assert any("did NOT pass" in text for text in said_to_lead(platform))
+    finally:
+        runtime.close()
+
+
+def test_a_read_only_line_needs_no_check(tmp_path):
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, split(line("甲", [])), answer("开始"), answer("整合")], {"甲": [answer("读完了")]})
+    try:
+        wait_lines(service, source)
+        tick(service, source)
+        item = record_of(service, source)["lines"][0]
+        assert item["state"] == "done" and not item["check"] and not item["sentBack"]
+        assert not any("Check `" in text for text in said_to_lead(platform))
     finally:
         runtime.close()
 

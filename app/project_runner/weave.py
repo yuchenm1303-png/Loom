@@ -322,15 +322,18 @@ def tools(service):
     line_tools = () if goal_lines.mode() != "lines" else (
         AgentTool(
             name="weave_lines",
-            description=("Decide how a long goal splits. Give the lines that can run at the same time: the Host runs each "
+            description=("Decide how a large long goal splits. Give the lines that can run at the same time: the Host runs each "
                          "in its own sub-agent, holds you at no cost, and brings you back with their reports. Or give "
                          "solo_reason when nothing is worth splitting. Lines that write the same paths or need the same "
                          "resource are refused: keep those for yourself or for a later round."),
             input_schema={"type": "object", "properties": {
                 "lines": {"type": "array", "maxItems": goal_lines.MAX_LINES, "items": {"type": "object", "properties": {
                     "title": {"type": "string", "description": "A few words, in the person's language; the person sees it."},
-                    "brief": {"type": "string", "description": "Self-contained: what to do, where, how to run it, what to "
-                              "report. The line sees none of this conversation."},
+                    "brief": {"type": "string", "description": "Self-contained: the objective, the files to read and where "
+                              "to write, what to hand back, and the boundaries. The line sees none of this conversation."},
+                    "check": {"type": "string", "description": "Required when writes is not empty: one command that "
+                              "proves this line's part works, such as its tests or a script that checks its results. "
+                              "The line must pass it before it reports."},
                     "writes": {"type": "array", "items": {"type": "string"}, "description": "Files or folders only this "
                                "line changes, relative to the workspace; [] when it only reads."},
                     "resource": {"type": "string", "description": "Something only one line can use at a time, such as gpu."},
