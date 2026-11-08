@@ -27,6 +27,8 @@ import { BuildHistory, type BuildHistoryEntry } from "./BuildHistory";
 import { NewConversationRow } from "./NewConversationRow";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ProjectDecisionReply } from "./ProjectDecisionReply";
+import { BuildObservationPanel, useBuildInspection } from "./BuildObservationPanel";
+import { BUILD_BRANCHES, buildLabels, type BuildBranch, type BuildInspection } from "./buildInspection";
 import { ApprovalCard, ErrorRow } from "./Transcript";
 import { ThinkingGlyph } from "./ThinkingGlyph";
 import { WeaveStage } from "./WeaveFlow";
@@ -67,6 +69,7 @@ export interface FlowAgent {
 }
 
 export interface FlowData {
+  observation?: { observedAt?: number; offline?: boolean };
   /** draft: nothing started yet, the composer takes the objective. */
   phase: "draft" | "live";
   objective: string;
@@ -78,7 +81,7 @@ export interface FlowData {
   repository: { name: string; commit: string; subject: string; branch: string; path?: string };
   scope: { path: string; count: number }[];
   knowledge: { checks: number; notes: number; latest: string };
-  tasks: { id: string; title: string; state: FlowTaskState; detail?: string; agentId?: string; agentName?: string }[];
+  tasks: { id: string; title: string; state: FlowTaskState; detail?: string; dependsOn?: string[]; agentId?: string; agentName?: string }[];
   /** The conversation's own task list, kept by its agent; a branch of its own, with or without a project. */
   taskList?: { id: string; title: string; state: FlowTaskState; detail?: string }[];
   /** A long goal this conversation is pursuing by itself, with no project. */
@@ -126,6 +129,7 @@ export interface FlowData {
 export interface ModelOption { selection: string; name: string; group: string; groupId: string }
 
 export interface FlowActions {
+  onInspect?(): Promise<BuildInspection>;
   workspaceControls?: ReactNode;
   onChooseWorkspace?(): void;
   /** A message to the conversation's agent, with the files pasted, dropped or picked into the field. */
@@ -803,6 +807,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     return next;
   });
   const [historyOpen, setHistoryOpen] = useState(readHistoryOpen);
+  const [observationBranch, setObservationBranch] = useState<BuildBranch | null>(null);
+  const inspection = useBuildInspection(conversationId || data.objective || "draft", Boolean(observationBranch), actions.onInspect);
+  const observationLabels = buildLabels[lang];
   const history = data.history;
   const open = (id: string) => id === "history" ? historyOpen : !folded.includes(id);
   const showHistory = (value: boolean) => {
@@ -822,6 +829,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   const toggleUsage = () => setUsageOpen(!usageOpen);
   const agents = useDeparting(open("agents") ? data.agents : []);
   const branches = useDeparting([...(data.taskList?.length && open("tasks") ? [{ id: "tasks" }] : []),
+                                 ...(observationBranch ? [{ id: `observe-${observationBranch}` }] : []),
                                  ...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : []),
                                  ...(usageOpen && data.models ? [{ id: "usage" }] : [])]);
   // Before a project the plan is a different card from the project's: one leaves as the other is born.
@@ -1360,6 +1368,16 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
             {data.controls.resume ? <button type="button" className="pf-control" aria-label={text.resume} title={text.resume} disabled={actions.busy} onClick={actions.onResume}><Play size={12} /></button> : null}
             {data.controls.cancel ? <button type="button" className="pf-control" aria-label={text.stop} title={text.stop} disabled={actions.busy} onClick={actions.onCancel}><Square size={11} /></button> : null}
           </header>
+          {actions.onInspect || data.observation ? <nav className="bo-nav" aria-label={lang === "zh" ? "工作状态支路" : "Build observation branches"}>
+            {BUILD_BRANCHES.map(branch => <button type="button" key={branch} data-branch={`observe-${branch}`}
+              aria-label={observationLabels[branch]} aria-pressed={observationBranch === branch}
+              disabled={!actions.onInspect || renewing} title={!actions.onInspect ? (lang === "zh" ? "此会话暂无运行记录来源" : "No build record source is available") : undefined}
+              onClick={() => setObservationBranch(current => current === branch ? null : branch)}>{observationLabels[branch]}</button>)}
+            {data.observation ? <span className="bo-snapshot" data-offline={data.observation.offline || undefined} role="status">
+              {data.observation.offline ? (lang === "zh" ? "连接中断 · 显示上次记录" : "Offline · showing last snapshot")
+                : data.observation.observedAt ? (lang === "zh" ? "更新于 " : "Updated ") + new Date(data.observation.observedAt * 1000).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-US")
+                : (lang === "zh" ? "记录时间未知" : "Snapshot time unavailable")}</span> : null}
+          </nav> : null}
           <div className={`pf-well pf-input${attaching && actions.onPickFiles ? " has-attach" : ""}`}>
             <ComposerAttachmentStrip attachments={attached} imagesAllowed={actions.imagesAllowed ?? true} onRemove={unattach} />
             <textarea ref={input} value={draft} rows={draftMode ? 3 : 2}
@@ -1494,7 +1512,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                      title={task.detail || task.title}
                      onPointerEnter={() => task.agentId && setHot(`task:${task.agentId}`)} onPointerLeave={() => task.agentId && setHot("")}>
                   <span className="pf-task-mark" key={task.state}><Icon size={11} strokeWidth={2.4} /></span>
-                  <span className="pf-task-title"><Inline text={task.title} /></span>
+                  <span className="pf-task-title"><Inline text={task.title} />{task.dependsOn?.length ? <small className="pf-dependency">{lang === "zh" ? "依赖 " : "Depends on "}{task.dependsOn.join(" · ")}</small> : null}</span>
                   {task.agentName ? <em className="pf-task-agent">{task.agentName}</em> : null}
                   {task.state === "integrated" ? <span className="pf-task-wash" key={`wash-${task.state}`} aria-hidden="true" /> : null}
                 </div>
@@ -1509,6 +1527,17 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
 
       {/* With the model card open, the agents under it fold to one line each, so both fit the column. */}
       <div className="pf-col pf-right pf-side" data-crowded={branches.some((item) => !item.leaving && item.id !== "tasks") || undefined}>
+        {branches.filter(item => item.id.startsWith("observe-")).map(item => {
+          const branch = item.id.slice(8) as BuildBranch;
+          return <div key={item.id} className="pf-slot" data-glide={item.id} data-fit="" {...hover(item.id)} {...slot(item.id)}>
+            <Card id={item.id} side="right" className="pf-listed pf-observation" icon={<Gauge size={12} />} label={observationLabels[branch]} register={register}>
+              <div className="pf-list"><BuildObservationPanel branch={branch} lang={lang} data={inspection.data} loading={inspection.loading}
+                error={inspection.error} refresh={inspection.refresh} offline={data.observation?.offline} busy={actions.busy || renewing}
+                attentionLabel={data.attention?.action ? text.attention[data.attention.action] : undefined}
+                onAttention={data.attention?.action && actions.onAttention ? () => actions.onAttention!("accept") : undefined} /></div>
+            </Card>
+          </div>;
+        })}
         {branches.some((item) => item.id === "tasks") ? (() => {
           // What the conversation's agent is doing this turn, as its own list says; a leaving card keeps what it showed.
           const list = leavingView("tasks").taskList ?? [];

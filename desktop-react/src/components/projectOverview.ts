@@ -21,6 +21,7 @@ export interface ProjectProgram {
   references?: { name: string; bytes: number }[];
 }
 export interface ProjectOverview {
+  observedAt?: number;
   goal?: LongGoal | null;
   run: (ProjectRun & { ledgerPosition?: { chargedTokens: number }; ledgerTokens?: number; ledgerEpisodes?: number;
          createdAt?: number; milestone?: { index: number; programId: string }; completionRef?: string | null;
@@ -248,7 +249,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     tasks: run.plan.map((task) => {
       const at = overview.agents.findIndex((agent) => (agent.taskId || childTask(agent.runId)) === task.id);
       return { id: task.id, title: task.instructions.split(/\.(?:\s|$)|[。\n]/)[0].slice(0, 80) || task.id, state: states[task.id],
-               detail: task.instructions, agentId: at >= 0 ? overview.agents[at].id : undefined, agentName: at >= 0 ? t.agent(at + 1) : undefined };
+               detail: task.instructions, dependsOn: task.dependsOn, agentId: at >= 0 ? overview.agents[at].id : undefined, agentName: at >= 0 ? t.agent(at + 1) : undefined };
     }),
     budget: { tokens, tokenLimit: program?.tokenBudget || run.tokenBudget },
     workers: program?.maxWorkers || run.maxWorkers || 1,
@@ -407,7 +408,8 @@ export interface LongGoal {
   lines?: GoalLine[];
 }
 
-export interface GoalLine { title: string; state: "running" | "waiting" | "reporting" | "done" | "failed"; tokens?: number; cap?: number; retryAt?: number; why?: string; check?: "" | "passed" | "failed" | "not_run" }
+export interface GoalLine { title: string; state: "running" | "waiting" | "reporting" | "done" | "failed"; tokens?: number; cap?: number; retryAt?: number; why?: string; check?: "" | "passed" | "failed" | "not_run";
+  changed?: string[]; report?: string; startedAt?: number; writes?: string[] }
 
 /** One line for a long goal: what it is doing, what it has spent, and the move the person has. */
 export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {

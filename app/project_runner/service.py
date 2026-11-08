@@ -5,6 +5,7 @@ import copy
 import shutil
 import json
 import uuid
+import time
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from app.agent_runtime import PermissionMode
@@ -600,7 +601,7 @@ class ProjectServiceMixin(WorkspaceMixin):
             root = internal_root or (max(roots, key=lambda run: run.get("createdAt", 0)) if roots else None)
         if root is None:
             # Nothing started yet: what would stop a start (uncommitted changes) is shown before it is tried.
-            return {"run": None, "program": current, "children": [], "agents": [], "events": [],
+            return {"observedAt": time.time(), "run": None, "program": current, "children": [], "agents": [], "events": [],
                     "workspace": self._project_workspace_state(thread_id), "proposal": self.weave_proposals.get(thread_id),
                     "goal": goal.view(self, thread_id)}
         children = [run for run in runs if run.get("teamOwnerId") == root["id"]]
@@ -625,7 +626,7 @@ class ProjectServiceMixin(WorkspaceMixin):
         kinds = {run["id"]: "shard" if run.get("reviewShard") else "team" if run.get("teamOwnerId")
                  else "integration" if run.get("integrationTarget") else "root" for run in family}
         measured = {**metrics.summarize(spans, kinds), "waits": metrics.waits(store, ids)}
-        return {"run": view, "program": current, "children": children, "integration": integration,
+        return {"observedAt": time.time(), "run": view, "program": current, "children": children, "integration": integration,
                 "agents": agents, "events": events, "timeline": spans[-120:], "metrics": measured,
                 "proposal": proposal, "workspace": self._project_workspace_state(thread_id) if proposal else None,
                 "goal": goal.view(self, thread_id)}
@@ -944,6 +945,9 @@ class ProjectControllerMixin:
             return self.service.project_prepare_workspace(params)
         if method == "projectRun/overview":
             return self.service.project_overview(params)
+        if method == "projectRun/inspection":
+            from .inspection import read
+            return read(self.service, params)
         if method == "projectRun/steer":
             return {"run": self.service.project_steer(params)}
         if method == "projectRun/recover":

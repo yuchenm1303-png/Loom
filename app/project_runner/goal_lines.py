@@ -501,5 +501,7 @@ def stop_all(service, thread_id, record, reason, keep=""):
 def view(record):
     return [{"title": line["title"], "state": line["state"], "tokens": line.get("tokens", 0), "cap": line.get("cap", 0),
              "retryAt": line.get("retryAt", 0) if line["state"] == "waiting" else 0, "why": line.get("why", ""),
-             "check": line.get("checkResult", "") if line.get("check") else ""}
+             "check": line.get("checkResult", "") if line.get("check") else "",
+             "changed": line.get("changed", [])[:200], "report": line.get("report", "")[:4000],
+             "startedAt": line.get("startedAt"), "writes": line.get("writes", [])}
             for line in record.get("lines") or ()]

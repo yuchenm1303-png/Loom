@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
+import type { BuildInspection } from "./buildInspection";
 import { raisedBudget, readableError, toConversation, toFlowData, toHistory, toGoal, toModelChoice, toTurnTasks, type ProjectOverview } from "./projectOverview";
 import { lastOverview } from "./projectOverviewCache";
 import { latestTaskPlan } from "./liveTaskProgress";
@@ -223,6 +224,7 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
     window.loom.call(`projectRun/${action}`, { operationId: crypto.randomUUID(), runId: run!.id, expectedRevision: run!.revision, ...extra }));
   const workspaceName = (workspace || "").split(/[\\/]/).filter(Boolean).pop() || "";
   const data = { ...toFlowData(shownOverview, now, lang, model || "", workspaceName), models: toModelChoice(models),
+                 observation: { observedAt: shownOverview.observedAt, offline },
                  conversation: renewal?.cleared ? [] : conversation.messages, activity: renewal?.cleared ? "" : conversation.activity,
                  chatting: chatting && here && !renewal?.cleared, conversationPermissionMode: permissionMode,
                  history: history ? toHistory(historyRows || history.filter(entry => entry.id === threadId).map(entry => ({ ...entry, workspace: entry.workspace || (entry.id === threadId ? workspace : undefined) })), threadId, now, lang) : undefined,
@@ -264,6 +266,8 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
 
   return (
     <ProjectFlow lang={lang} data={data} conversationId={shownThread.current} brandNew={Boolean(renewal)} renewing={Boolean(renewal && (renewal.pending || !renewal.cleared)) || changing} actions={{
+      onInspect: shownOverview.run || shownOverview.goal
+        ? () => window.loom.call<BuildInspection>("projectRun/inspection", { threadId: shownThread.current }) : undefined,
       workspaceControls: <ProjectWorkspacePicker projects={projects} workspace={{ ...shownOverview.workspace, path: data.repository.path }}
         locked={workspaceLocked} lang={lang} branch={workBranch}
         onSelect={onSelectProject ? id => void act(() => onSelectProject(id)) : undefined} onBrowse={chooseWorkspace}
