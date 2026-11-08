@@ -43,7 +43,7 @@ const threads: ThreadRecord[] = [
 threads.forEach((thread) => { thread.projectId = "p1"; });
 if (params.has("proposal")) { threads[2].status = "completed"; threads[2].currentTurnId = null; }
 if (params.has("readability")) { threads[0].weave = true; threads[0].status = "completed"; threads[0].active = false; }
-if (params.has("decision")) { Object.assign(threads[0], { status: "completed", active: false, currentTurnId: null }); }
+if (params.has("decision")) { Object.assign(threads[0], { status: "completed", active: false, currentTurnId: null, weave: params.get("decision") === "build" }); }
 threads.push({ ...threads[0], id: "agent-1", title: "执行 Agent", parentThreadId: "thread-build", status: "waiting_approval" });
 const workspace = { path: "D:/work/Loom", status: "ready" as const, git: true, branch: "main", head: "123abcd", changeCount: 0, changes: [] };
 const projects: ProjectRecord[] = [{ id: "p1", name: "Loom", root: workspace.path, instructions: "", threadCount: 4 }];
@@ -264,7 +264,7 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
         { id: "b", title: "两条线并行", description: "共享 harness" }] });
       const ask = { id: "decision-final", threadId: THREAD, turnId: "turn-1", type: "assistant_message", phase: "final_answer",
                     status: "completed", text: `选好后我立即开始。\n\n\`\`\`loom-decision\n${card}\n\`\`\`` };
-      return { thread: { ...record, status: "completed", weave: false }, hasMoreTurns: false, pendingApproval: null,
+      return { thread: { ...record, status: "completed" }, hasMoreTurns: false, pendingApproval: null,
                turns: [{ id: "turn-1", threadId: THREAD, status: "completed", startedAt: at, completedAt: at, items: [items[0], ask] }] };
     }
     if (params.has("readability")) {
