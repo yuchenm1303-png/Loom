@@ -210,6 +210,14 @@ html[data-loom-theme="light"] .pf-stage {
 /* The stagger, as a share of the column: it narrows with the column and never pushes a card past it. */
 .pf-offset-2 { margin-left: 16%; }
 .pf-offset-3 { margin-left: 12%; }
+/* The right column steps too, so its stack reads as layers and not one flush wall: the long goal hugs the hub and
+   stops short of the edge, what is observed sits indented and narrow, the task list steps back in between and runs
+   to the edge, history leans in. By branch, not by position, so a card never slides sideways when a neighbour
+   comes or goes. */
+.pf-right > .pf-slot[data-glide="goal"] { margin-right: 9%; }
+.pf-right > .pf-slot[data-glide^="observe-"] { margin-left: 15%; margin-right: 3%; }
+.pf-right > .pf-slot[data-glide="tasks"] { margin-left: 6%; }
+.pf-right > .pf-slot[data-glide="history"] { margin-left: 11%; }
 
 /* Cards. */
 .pf-card {
