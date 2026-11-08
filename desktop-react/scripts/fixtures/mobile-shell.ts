@@ -43,6 +43,7 @@ const threads: ThreadRecord[] = [
 threads.forEach((thread) => { thread.projectId = "p1"; });
 if (params.has("proposal")) { threads[2].status = "completed"; threads[2].currentTurnId = null; }
 if (params.has("readability")) { threads[0].weave = true; threads[0].status = "completed"; threads[0].active = false; }
+if (params.has("decision")) { Object.assign(threads[0], { status: "completed", active: false, currentTurnId: null }); }
 threads.push({ ...threads[0], id: "agent-1", title: "执行 Agent", parentThreadId: "thread-build", status: "waiting_approval" });
 const workspace = { path: "D:/work/Loom", status: "ready" as const, git: true, branch: "main", head: "123abcd", changeCount: 0, changes: [] };
 const projects: ProjectRecord[] = [{ id: "p1", name: "Loom", root: workspace.path, instructions: "", threadCount: 4 }];
@@ -258,6 +259,14 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "thread/read": (args) => {
     const record = threads.find((entry) => entry.id === args.threadId) ?? threads[0];
     if (record.id !== THREAD) return { thread: record, turns: [], hasMoreTurns: false };
+    if (params.has("decision")) {  // a finished turn ending in a choice card (?decision=1)
+      const card = JSON.stringify({ title: "后续研究路线", options: [{ id: "a", title: "深挖神经接收机", description: "单支路，证据连续" },
+        { id: "b", title: "两条线并行", description: "共享 harness" }] });
+      const ask = { id: "decision-final", threadId: THREAD, turnId: "turn-1", type: "assistant_message", phase: "final_answer",
+                    status: "completed", text: `选好后我立即开始。\n\n\`\`\`loom-decision\n${card}\n\`\`\`` };
+      return { thread: { ...record, status: "completed", weave: false }, hasMoreTurns: false, pendingApproval: null,
+               turns: [{ id: "turn-1", threadId: THREAD, status: "completed", startedAt: at, completedAt: at, items: [items[0], ask] }] };
+    }
     if (params.has("readability")) {
       const readableItems = [items[0],
         { id: "note-1", threadId: THREAD, turnId: "turn-1", type: "assistant_message", phase: "commentary", status: "completed", text: "五个冒烟测试全部通过，8 个源码模块的校验义务清零，报告里的自相矛盾也修掉了。现在把进度收尾。" },

@@ -585,6 +585,12 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
     }
   }, [loom.respondApproval]);
 
+  // A choice card's answer is a message like any other: the same mode and budget the composer would send with.
+  const handlePrompt = useCallback(async (prompt: string) => {
+    await loom.send(prompt, [], undefined, { weave: space === "build", ...(space === "build" ? { weaveBudget } : {}) });
+  }, [loom.send, space, weaveBudget]);
+  const promptDisabled = !online || running || buildBusy || Boolean(thread?.archived);
+
   const submit = async () => {
     const body = text.trim();
     if (sendLock.current || buildBusy || !online || picking || !attachmentsReady || thread?.archived || (!body && !attachments.length)) return;
@@ -654,6 +660,8 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
             currentTurnId={running ? thread?.currentTurnId : undefined}
             workspace={thread?.workspace}
             onApproval={handleApproval}
+            onPrompt={handlePrompt}
+            promptDisabled={promptDisabled}
             usageReady={false}
           />
           <TranscriptScrollController
