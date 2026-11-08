@@ -1,5 +1,7 @@
 import type { BuildBranch } from "./BuildBranches";
 import { NavCapsule } from "./NavCapsule";
+import { AnimatedFold } from "../motion/AnimatedFold";
+import { MotionRows, MotionValue } from "./MotionRows";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { AttachmentQueue, MAX_ATTACHMENTS } from "./attachmentQueue";
 import { AttachmentTray } from "./AttachmentTray";
@@ -167,8 +169,8 @@ function Sheet({ open, label, title, onClose, children }: { open: boolean; label
   useLayoutEffect(() => {
     if (!open || !mounted) return;
     const previous = document.activeElement as HTMLElement | null;
-    panel.current?.focus();
-    return () => { if (previous?.isConnected) previous.focus(); };
+    panel.current?.focus({ preventScroll: true });
+    return () => { if (previous?.isConnected) previous.focus({ preventScroll: true }); };
   }, [open, mounted]);
   useLayoutEffect(() => {
     if (!open) return;
@@ -203,10 +205,7 @@ function Sheet({ open, label, title, onClose, children }: { open: boolean; label
 
 /** Makes its own room in the flow, and gives it back the same way. */
 function Fold({ open, children }: { open: boolean; children: ReactNode }) {
-  const { mounted, phase } = useMotionPresence(open, RETAIN.foldBase);
-  const content = useLatchedWhile(open, children);
-  if (!mounted) return null;
-  return <div className="m-fold" data-phase={phase}><div>{content}</div></div>;
+  return <AnimatedFold open={open} className="m-fold">{children}</AnimatedFold>;
 }
 
 function Skeleton({ rows }: { rows: number }) {
@@ -260,7 +259,7 @@ function ThreadRow({ thread, onOpen }: { thread: ThreadRecord; onOpen(): void })
     <button type="button" className="m-row" onClick={onOpen}>
       <span className={`m-dot is-${state}`} aria-hidden="true" />
       <span className="m-row-text"><strong>{thread.title || "新对话"}</strong>{meta ? <small>{meta}</small> : null}</span>
-      {state === "wait" ? <span className="m-badge is-wait">等你批准</span> : state === "run" ? <span className="m-badge is-run">{thread.weave ? "建造中" : "工作中"}</span> : null}
+      {state === "wait" ? <span className="m-badge is-wait"><MotionValue value={state}>等你批准</MotionValue></span> : state === "run" ? <span className="m-badge is-run"><MotionValue value={state}>{thread.weave ? "建造中" : "工作中"}</MotionValue></span> : null}
     </button>
   );
 }
@@ -467,7 +466,7 @@ function ThreadActions({ open, loom, online, running, space, modeLocked, onMode,
         <ActionRow icon={thread.archived ? <ArchiveRestore {...ICON} /> : <Archive {...ICON} />} title={thread.archived ? "恢复到对话列表" : "归档对话"} tone={thread.archived ? undefined : "danger"} disabled={!online || busy || running} onClick={() => void act(async () => { await loom.archiveThread(thread.id, !thread.archived, () => undefined); onClose(); onLeave(); })} />
       </div>
     </> : <p className="m-note">模型和权限可从输入框旁调整。</p>}
-    {error ? <p className="m-alert" role="alert">{error}</p> : null}
+    <Fold open={Boolean(error)}><p className="m-alert" role="alert">{error}</p></Fold>
   </Sheet>;
 }
 
@@ -905,7 +904,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
         </header>
         <Fold open={offlineNotice && threads.length > 0}><p className="m-banner" role="status">{shell.socket === "connecting" ? "正在重新连接…" : "电脑离线，下面是离线前的内容"}</p></Fold>
         <main className="m-body" key={tab}>
-          {navigationError ? <p className="m-alert" role="alert">{navigationError}</p> : null}
+          <Fold open={Boolean(navigationError)}><p className="m-alert" role="alert">{navigationError}</p></Fold>
           {showOffline ? <Offline shell={shell} cached={cached} /> : null}
           {loading ? <Skeleton rows={5} /> : null}
           {!showOffline && !loading && tab === "now" ? <Now threads={threads} onOpen={openThread} /> : null}
@@ -921,11 +920,11 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
                   <button type="button" role="radio" key={view} aria-checked={(loom.threadView === "archived") === (view === "archived")} disabled={!online} onClick={() => { if ((loom.threadView === "archived") !== (view === "archived")) void loom.setThreadView(view).catch((cause) => setNavigationError(String(cause))); }}>{view === "archived" ? "已归档" : "进行中"}</button>
                 ))}
               </div>
-            </div>{list.length ? (
-              <Group>{list.map((thread) => <ThreadRow key={thread.id} thread={thread} onOpen={() => openThread(thread)} />)}</Group>
-            ) : (
+            </div><AnimatedFold open={Boolean(list.length)} fade={false}>
+              <Group><MotionRows items={list} itemKey={thread => thread.id}>{thread => <ThreadRow thread={thread} onOpen={() => openThread(thread)} />}</MotionRows></Group>
+            </AnimatedFold><AnimatedFold open={!list.length}>
               <Empty icon={tab === "build" ? <Blocks size={24} strokeWidth={1.5} /> : <MessagesSquare size={24} strokeWidth={1.5} />} title={query ? "没有匹配的对话" : loom.threadView === "archived" ? "没有已归档的对话" : tab === "build" ? "还没有建造" : "还没有对话"} />
-            )}</>
+            </AnimatedFold></>
           ) : null}
           {tab === "projects" ? <MobileProjects loom={loom} online={online} threads={threads} onOpen={openThread} onBegin={(mode, project) => begin(mode, project.root, project.id)} /> : null}
           {tab === "more" ? <More shell={shell} /> : null}
@@ -952,7 +951,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
         </nav>
       </div>
       {screen.mounted ? (
-        <div className="m-screen" data-phase={screen.phase}>
+        <div className="m-screen" data-phase={screen.phase} inert={!open}>
           <ThreadView key={viewKey} loom={loom} space={space} online={online} draftWorkspace={draftWorkspace} connecting={shell.socket === "connecting"} onBack={() => setOpen(null)} onMode={setOpen} onOpenAgent={(id) => { setViewKey((key) => key + 1); setOpen("chat"); void loom.openThread(id).catch((cause) => setNavigationError(String(cause))); }} />
         </div>
       ) : null}

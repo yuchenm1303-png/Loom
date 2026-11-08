@@ -64,9 +64,10 @@ html[data-loom-surface="mobile"] button:focus-visible, html[data-loom-surface="m
 .m-screen {
   position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--loom-workspace-canvas);
   box-shadow: -14px 0 30px rgba(0, 0, 0, .28);
-  animation: m-screen-push var(--loom-dur-flow) var(--loom-ease-out);
+  transform: translateX(0); transition: transform var(--loom-dur-flow) var(--loom-ease-out);
 }
-.m-screen[data-phase="exiting"] { pointer-events: none; animation: m-screen-back var(--loom-dur-flow-out) var(--loom-ease-exit) forwards; }
+.m-screen[data-phase="exiting"] { pointer-events: none; transform: translateX(100%); transition: transform var(--loom-dur-flow-out) var(--loom-ease-exit); }
+@starting-style { .m-screen:not([data-phase="exiting"]) { transform: translateX(100%); } }
 
 /* Tab header: a large title, and the computer's state as one quiet pill beside it. */
 .m-head { flex: none; display: flex; align-items: center; gap: 12px; padding: 18px var(--m-gutter) 10px; }
@@ -372,16 +373,20 @@ html[data-loom-surface="mobile"] .m-round:disabled, .m-tool:disabled { opacity: 
 
 /* Bottom sheets: a grip, a title row with its close, then the content. */
 .m-sheet-host { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; justify-content: flex-end; }
-html[data-loom-surface="mobile"] .m-scrim { flex: 1; min-height: 72px; background: rgba(4, 5, 8, .62); animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
-html[data-loom-surface="mobile"] [data-phase="exiting"] > .m-scrim { animation: m-fade-away var(--loom-dur-flow-out) var(--loom-ease-exit) forwards; }
+html[data-loom-surface="mobile"] .m-scrim { flex: 1; min-height: 72px; background: rgba(4, 5, 8, .62); opacity: 1; transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] [data-phase="exiting"] > .m-scrim { opacity: 0; transition: opacity var(--loom-dur-flow-out) var(--loom-ease-exit); }
 .m-sheet {
   max-height: 88%; overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; margin-top: -20px;
   padding: 0 var(--m-gutter) calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px;
   border-radius: 24px 24px 0 0; background: var(--m-sheet); box-shadow: 0 -1px 0 var(--loom-workspace-line);
-  animation: m-sheet-up var(--loom-dur-flow) var(--loom-ease-out);
+  transform: translateY(0); transition: transform var(--loom-dur-flow) var(--loom-ease-out);
 }
 .m-sheet:focus { outline: 0; }
-[data-phase="exiting"] > .m-sheet { pointer-events: none; animation: m-sheet-down var(--loom-dur-flow-out) var(--loom-ease-exit) forwards; }
+[data-phase="exiting"] > .m-sheet { pointer-events: none; transform: translateY(100%); transition: transform var(--loom-dur-flow-out) var(--loom-ease-exit); }
+@starting-style {
+  .m-sheet-host:not([data-phase="exiting"]) > .m-sheet { transform: translateY(100%); }
+  html[data-loom-surface="mobile"] .m-sheet-host:not([data-phase="exiting"]) > .m-scrim { opacity: 0; }
+}
 .m-sheet-head { position: sticky; top: 0; z-index: 1; flex: none; margin: 0 calc(var(--m-gutter) * -1) 2px; padding: 8px 8px 4px var(--m-gutter); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; background: var(--m-sheet); }
 .m-grip { grid-column: 1 / -1; justify-self: center; width: 36px; height: 4px; margin-bottom: 6px; border-radius: 2px; background: rgba(224, 230, 242, .22); }
 .m-sheet-head h2 { min-width: 0; margin: 0; font-size: 18px; font-weight: 600; line-height: 1.35; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -420,9 +425,7 @@ html[data-loom-reduced-motion="true"] .m-segments.is-capsule > .m-glider { trans
 @media (prefers-reduced-motion: reduce) { .m-segments.is-capsule > .m-glider { transition: none; } }
 
 /* Room in the flow is made by layout and takes a short fold both ways. */
-.m-fold { display: grid; grid-template-rows: 1fr; flex: none; animation: m-fold-open var(--loom-dur-base) var(--loom-ease-out); }
-.m-fold > div { min-height: 0; overflow: hidden; }
-.m-fold[data-phase="exiting"] { animation: m-fold-close var(--loom-dur-base) var(--loom-ease-out) forwards; }
+.m-fold { flex: none; }
 
 /* A screen with nothing to show yet keeps its shape. */
 .m-skeleton { display: flex; flex-direction: column; gap: 12px; animation: m-skeleton-breathe calc(var(--loom-dur-slow) * 3) var(--loom-ease-inout) infinite; }
@@ -458,9 +461,9 @@ html[data-loom-reduced-motion="true"] .m-segments.is-capsule > .m-glider { trans
 @keyframes m-skeleton-breathe { 50% { opacity: .5; } }
 
 /* Loops stop outright: the scale collapses their clock to a flicker otherwise. */
-html[data-loom-reduced-motion] .m-dot::after, html[data-loom-reduced-motion] .m-skeleton { animation: none; }
+html[data-loom-reduced-motion="true"] .m-dot::after, html[data-loom-reduced-motion="true"] .m-skeleton { animation: none; }
 @media (prefers-reduced-motion: reduce) {
-  .m-dot::after, .m-skeleton, .m-round-tool[aria-busy="true"] svg { animation: none; }
+  .m-dot.is-run::after, .m-dot.is-wait::after, .m-skeleton, .m-round-tool[aria-busy="true"] svg { animation: none; }
 }
 
 /* A sheet's content rides in with the sheet. */

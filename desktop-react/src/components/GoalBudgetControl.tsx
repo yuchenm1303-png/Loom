@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import "./goal-budget-control.css";
+import { AnimatedFold } from "../motion/AnimatedFold";
 
 export type GoalBudgetState = { tokens: number; tokenBudget: number; startedAt?: number };
 export type GoalBudgetUpdate = { tokenBudget: number; expectedTokenBudget: number; expectedStartedAt?: number };
@@ -37,14 +38,14 @@ export function GoalBudgetControl({ goal, disabled, canResume, onSubmit }: {
   return <div className="goal-budget-control">
     <p className="goal-budget-balance">已用 {goal.tokens.toLocaleString()} · 总额 {goal.tokenBudget.toLocaleString()} · 剩余 {Math.max(0, goal.tokenBudget - goal.tokens).toLocaleString()} token</p>
     <button type="button" className="goal-budget-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>调整长目标预算{spent ? " · 已耗尽" : ""}</button>
-    {open ? <div className="goal-budget-editor">
+    <AnimatedFold open={open}><div className="goal-budget-editor">
       <div className="goal-budget-modes" role="group" aria-label="预算设置方式"><button type="button" aria-pressed={mode === "total"} disabled={busy} onClick={() => { setMode("total"); setValue(String(goal.tokenBudget)); setError(""); setSaved(false); }}>设置总上限</button><button type="button" aria-pressed={mode === "add"} disabled={busy} onClick={() => { setMode("add"); setValue(""); setError(""); setSaved(false); }}>追加额度</button></div>
       <label>{mode === "total" ? "长目标总 token 上限" : "追加 token 数量"}<input type="number" inputMode="numeric" min="1" max="1000000000" step="1" value={value} disabled={disabled || busy} onChange={(event) => { setValue(event.target.value); setSaved(false); }} /></label>
       {update ? <p>修改后总额 {update.tokenBudget.toLocaleString()}，预计剩余 {Math.max(0, update.tokenBudget - goal.tokens).toLocaleString()} token。</p> : <p>新总上限必须大于已用量。</p>}
       <p>只按你填写的额度修改，不会自动翻倍。已发出的模型请求仍会完成并计入用量。</p>
       <div className="goal-budget-actions"><button type="button" disabled={disabled || busy || !update} onClick={() => void submit("set_budget")}>仅保存预算</button>{canResume ? <button type="button" disabled={disabled || busy || !update} onClick={() => void submit("resume")}>保存预算并继续</button> : null}</div>
-      {error ? <p role="alert">{error}</p> : null}{saved ? <p role="status">预算已保存。</p> : null}
-    </div> : null}
+      <AnimatedFold open={Boolean(error)}><p role="alert">{error}</p></AnimatedFold><AnimatedFold open={saved}><p role="status">预算已保存。</p></AnimatedFold>
+    </div></AnimatedFold>
     {spent && canResume ? <p role="status">预算已耗尽，请先填写新的总上限，再保存并继续。</p> : null}
   </div>;
 }

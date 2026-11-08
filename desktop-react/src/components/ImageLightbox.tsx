@@ -26,14 +26,14 @@ export function ImageLightbox({ open, source, label, path, onClose, onReveal }: 
   useLayoutEffect(() => {
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
+    closeRef.current?.focus({ preventScroll: true });
     return () => {
-      if (previous?.isConnected) previous.focus();
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
   }, [open]);
   // Presence mounts in a layout effect; focus once its DOM exists as well.
   useLayoutEffect(() => {
-    if (open && presence.mounted) closeRef.current?.focus();
+    if (open && presence.mounted) closeRef.current?.focus({ preventScroll: true });
   }, [open, presence.mounted]);
   if (!presence.mounted) return null;
   return createPortal(

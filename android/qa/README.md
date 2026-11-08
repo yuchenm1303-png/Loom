@@ -111,3 +111,18 @@ are explicit errors. The phone deduplicates project episode agents and opens the
 Both phone and desktop Host must be updated. Older Hosts show an upgrade message instead of an empty pane.
 `node scripts/tests/mobile-conversation-agents.mjs` covers checker-without-run, status refresh, child
 navigation, old Host, empty/error states and 320/390 px layouts.
+
+Mobile motion uses reversible CSS transitions for conversation screens, bottom sheets and short forms.
+Sheet/image focus restoration uses preventScroll so focusing an animated panel cannot move its viewport.
+`motion/AnimatedFold` owns one height track, makes closing content inert immediately, retains its last
+render through the exit and releases it afterwards. Budget editing, saved/error feedback, project
+registration, connection notices and attachments use it. Draft values stay in their owning component.
+`mobile/MotionRows` retains removed attachment/Agent/conversation rows for their exit, respects current
+list ordering and reuses the same keyed node when a record returns during its exit. Real removal and
+upload cancellation are immediate. Status copy fades only when its value changes, never on polling.
+Attachment image previews stay mounted through their close and retain their last source/label.
+Both reduced-motion settings disable these effects. An explicit false preference keeps normal motion.
+Run `mobile-motion-audit.mjs` for frame-by-frame form reversal, drafts, row order/reentry, preview exit,
+attachment removal and 320/390px/reduced-motion checks; `mobile-motion.mjs` additionally covers sheet
+reversal, screen navigation, connection banners and focus. Fixtures can also be served as a Vite
+production build to validate the compiled page without development hot reload.

@@ -25,8 +25,9 @@ const check = (ok, label, detail = "") => {
 async function open(query = "", reducedMotion = "no-preference") {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true, colorScheme: "dark", reducedMotion });
   const page = await context.newPage();
+  page.setDefaultNavigationTimeout(60000);
   page.on("pageerror", (error) => failures.push(`page error: ${error.message}`));
-  await page.goto(`${origin}/scripts/fixtures/mobile.html${query}`);
+  await page.goto(`${origin}/scripts/fixtures/mobile.html${query}`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1500);
   return page;
 }
@@ -76,6 +77,16 @@ await page.waitForTimeout(1000);
 const rising = await sample(page, ".m-sheet", top, `() => document.querySelector(".m-chip").click()`);
 check(distinct(rising) > 5, "a sheet rises", `in ${distinct(rising)} steps`);
 if (film) await page.screenshot({ path: path.join(film, "sheet.png") });
+await page.evaluate(() => { window.auditSheet = document.querySelector('.m-sheet'); document.querySelector('.m-scrim').click(); });
+await page.waitForTimeout(70);
+const reversedSheet = await page.evaluate(async () => {
+  const before = document.querySelector('.m-sheet').getBoundingClientRect().top;
+  document.querySelector('.m-chip').click();
+  await new Promise(requestAnimationFrame);
+  return { before, after: document.querySelector('.m-sheet').getBoundingClientRect().top, same: window.auditSheet === document.querySelector('.m-sheet') };
+});
+check(reversedSheet.same && Math.abs(reversedSheet.before - reversedSheet.after) < 80, "a sheet reverses from its current position", JSON.stringify(reversedSheet));
+await page.waitForTimeout(400);
 const segments = await sample(page, ".m-reasoning-options button:nth-of-type(3)", "(element) => getComputedStyle(element).color", `() => document.querySelectorAll(".m-segments button")[2].click()`, 30);
 check(distinct(segments) > 2, "the reasoning choice fades to its selected state", `in ${distinct(segments)} steps`);
 await page.waitForTimeout(300);

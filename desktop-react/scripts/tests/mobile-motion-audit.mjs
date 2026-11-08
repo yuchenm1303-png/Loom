@@ -1,0 +1,83 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+const { chromium } = await import(process.env.LOOM_PLAYWRIGHT_MODULE || "playwright-core");
+const browser = await chromium.launch({ executablePath: process.env.LOOM_CHROMIUM_PATH || "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
+const origin = process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5199";
+const out = process.argv[2] || "../.cache/mobile-motion-audit";
+fs.mkdirSync(out, { recursive: true });
+try {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  page.setDefaultTimeout(15000); page.setDefaultNavigationTimeout(60000);
+  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  await page.goto(`${origin}/scripts/fixtures/mobile-motion-audit.html`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => Boolean(window.motionAudit));
+  const frame = count => page.evaluate(async n => { for (let i = 0; i < n; i++) await new Promise(requestAnimationFrame); }, count);
+  const heights = () => page.evaluate(async () => {
+    const result = [];
+    for (let i = 0; i < 24; i++) { result.push(document.querySelector('#audit-fold').getBoundingClientRect().height); await new Promise(requestAnimationFrame); }
+    return result;
+  });
+  await page.evaluate(() => window.motionAudit.fold(true));
+  const opening = await heights();
+  assert.ok(new Set(opening.map(Math.round)).size > 4, "form height opens over multiple painted frames");
+  await page.getByRole("textbox", { name: "草稿" }).fill("新的草稿");
+  await page.evaluate(() => { window.keptInput = document.querySelector('#audit-fold input'); window.motionAudit.fold(false); });
+  await frame(4);
+  const reversal = await page.evaluate(() => {
+    const before = document.querySelector('#audit-fold').getBoundingClientRect().height;
+    window.motionAudit.fold(true);
+    return { before, after: document.querySelector('#audit-fold').getBoundingClientRect().height, same: window.keptInput === document.querySelector('#audit-fold input') };
+  });
+  assert.ok(reversal.same && Math.abs(reversal.before - reversal.after) < 3, JSON.stringify(reversal));
+  assert.equal(await page.getByRole("textbox", { name: "草稿" }).inputValue(), "新的草稿");
+  await frame(24);
+  await page.evaluate(() => { window.rowA = document.querySelector('[data-id="a"]'); window.stateA = window.rowA.querySelector('.m-motion-value'); window.motionAudit.rows([{ id: "a", state: "运行中" }, { id: "b", state: "运行中" }]); });
+  assert.ok(await page.evaluate(() => window.stateA === document.querySelector('[data-id="a"] .m-motion-value')), "unchanged polls do not replay status motion");
+  await page.evaluate(() => window.motionAudit.rows([{ id: "b", state: "运行中" }, { id: "a", state: "运行中" }]));
+  assert.deepEqual(await page.locator('#audit-rows [data-id]').evaluateAll(nodes => nodes.map(node => node.dataset.id)), ["b", "a"], "live order is respected without recreating rows");
+  await page.evaluate(() => window.motionAudit.rows([{ id: "b", state: "已完成" }]));
+  assert.ok(await page.locator('[data-id="a"]').evaluate(el => Boolean(el.closest('[inert][aria-hidden="true"]'))), "removed rows stop accepting input immediately");
+  await frame(4);
+  await page.evaluate(() => window.motionAudit.rows([{ id: "a", state: "等待批准" }, { id: "b", state: "已完成" }]));
+  assert.ok(await page.evaluate(() => window.rowA === document.querySelector('[data-id="a"]')), "returning identity reverses its exit rather than duplicating the row");
+  await page.getByText("等待批准", { exact: true }).waitFor();
+  await page.evaluate(() => window.motionAudit.rows([{ id: "b", state: "已完成" }]));
+  await page.locator('[data-id="a"]').waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "调整长目标预算", exact: true }).click();
+  await page.getByRole("spinbutton").fill("5500000");
+  await page.getByRole("button", { name: "调整长目标预算", exact: true }).click();
+  await frame(4);
+  await page.getByRole("button", { name: "调整长目标预算", exact: true }).click();
+  assert.equal(await page.getByRole("spinbutton").inputValue(), "5500000");
+  await page.getByRole("button", { name: "预览 image-1.svg", exact: true }).click();
+  await page.getByRole("dialog", { name: "查看图片 image-1.svg", exact: true }).waitFor();
+  await frame(18);
+  await page.evaluate(() => document.querySelector('[aria-label="关闭图片预览"]').click());
+  assert.equal(await page.locator('.user-message-image-lightbox[data-motion-phase="exiting"][inert]').count(), 1, "preview retains its image through the fade-out");
+  assert.equal(await page.locator('.user-message-image-lightbox img').getAttribute('alt'), "image-1.svg");
+  await page.locator('.user-message-image-lightbox').waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "移除 image-1.svg", exact: true }).click();
+  assert.equal(await page.evaluate(() => window.removedAttachment), 1, "real removal is immediate; only its old visual row is retained");
+  await page.locator('.m-attachment').filter({ hasText: "image-1.svg" }).waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "移除 document-2.txt", exact: true }).click();
+  await page.locator('.m-attachment-tray').waitFor({ state: "detached" });
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: `${out}/audit-${width}.png`, animations: "disabled" });
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.evaluate(() => window.motionAudit.fold(false));
+  await page.locator('#audit-fold .loom-fold').waitFor({ state: "detached" });
+  assert.equal(await page.locator('.m-dot').evaluate(el => getComputedStyle(el, '::after').animationName), "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.evaluate(() => { document.documentElement.dataset.loomReducedMotion = "false"; });
+  assert.notEqual(await page.locator('.m-dot').evaluate(el => getComputedStyle(el, '::after').animationName), "none", "a false preference must not accidentally disable normal status motion");
+  await page.evaluate(() => { document.documentElement.dataset.loomReducedMotion = "true"; window.motionAudit.fold(true); });
+  await frame(2);
+  await page.evaluate(() => window.motionAudit.fold(false));
+  await page.locator('#audit-fold .loom-fold').waitFor({ state: "detached" });
+  assert.deepEqual(errors, []);
+  await page.close();
+  console.log("PASS: reversible forms, preserved drafts, keyed row exit/reentry, stable polling, status changes, attachment removal, 320/390px and both reduced-motion preferences");
+} finally { await browser.close(); }

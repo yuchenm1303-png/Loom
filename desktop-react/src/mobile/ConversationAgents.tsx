@@ -1,5 +1,7 @@
 import { ChevronRight } from "../components/icons";
 import type { ProjectOverview, ConversationAgent } from "../components/projectOverview";
+import { MotionRows, MotionValue } from "./MotionRows";
+import { AnimatedFold } from "../motion/AnimatedFold";
 
 function agentState(agent: ConversationAgent) {
   if (agent.state === "waiting_approval") return "等待批准";
@@ -13,19 +15,19 @@ export function ConversationAgents({ overview, online, onOpen }: { overview: Pro
   const agents = overview.conversationAgents?.filter(agent => !projectIds.has(agent.id)) || [];
   const unavailable = overview.conversationAgents === undefined;
   return <>
-    {overview.conversationAgentsError ? <p role="alert" className="m-alert">子代理读取失败：{overview.conversationAgentsError}。请刷新重试。</p> : null}
-    {!agents.length && !overview.conversationAgentsError ? <p className="m-note">{unavailable
+    <AnimatedFold open={Boolean(overview.conversationAgentsError)}><p role="alert" className="m-alert">子代理读取失败：{overview.conversationAgentsError}。请刷新重试。</p></AnimatedFold>
+    <AnimatedFold open={!agents.length && !overview.conversationAgentsError}><p className="m-note">{unavailable
       ? "电脑后台尚未提供对话子代理列表，请更新电脑端。长目标的检查状态不代表列表已同步。"
-      : overview.agents.length ? "没有额外的对话子代理。" : "当前没有未关闭的子代理。已结束的执行记录可在对话工具流中查看。"}</p> : null}
-    {agents.map(agent => <article className="m-agent-card" key={agent.id}>
+      : overview.agents.length ? "没有额外的对话子代理。" : "当前没有未关闭的子代理。已结束的执行记录可在对话工具流中查看。"}</p></AnimatedFold>
+    <MotionRows items={agents} itemKey={agent => agent.id}>{agent => <article className="m-agent-card">
       <div>
         <h3>{roles[agent.role] || agent.role || "子代理"}</h3>
-        <p className="m-agent-state" role="status">{agentState(agent)}</p>
+        <p className="m-agent-state" role="status"><MotionValue value={agentState(agent)}>{agentState(agent)}</MotionValue></p>
         <p>{agent.activity || (agent.executionRunning ? "正在处理任务，等待新的活动记录" : "打开执行对话查看详情")}</p>
         {agent.error ? <p className="m-alert">{agent.error}</p> : null}
         <p className="m-note">第 {agent.step} 步 · {agent.id.slice(0, 8)}</p>
       </div>
       <button type="button" className="m-icon-button" disabled={!online} aria-label={`打开${roles[agent.role] || agent.role || "子代理"}的执行对话`} onClick={() => onOpen(agent.id)}><ChevronRight size={20} strokeWidth={1.75} /></button>
-    </article>)}
+    </article>}</MotionRows>
   </>;
 }

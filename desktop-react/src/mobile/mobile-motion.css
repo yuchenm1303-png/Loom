@@ -1,0 +1,21 @@
+/* Marks may move; copy keeps its baseline. Rows and forms own one height motion. */
+.m-motion-row { display: grid; min-width: 0; flex: none; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-move), opacity var(--loom-dur-fast-out) var(--loom-ease-exit); }
+.m-motion-row[data-open="true"] { grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-move), opacity var(--loom-dur-base) var(--loom-ease-out) 40ms; }
+.m-motion-row-clip { min-width: 0; min-height: 0; overflow: clip; }
+.m-motion-value { animation: m-value-arrive var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.m-project-view { animation: m-value-arrive var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.m-motion-row + .m-motion-row .m-agent-card { border-top: 1px solid var(--loom-workspace-line); }
+.m-rows > .m-motion-row { animation: none; border-top: 0 !important; }
+.m-rows > .m-motion-row + .m-motion-row .m-row { border-top: 1px solid var(--loom-workspace-line); }
+.m-body > .loom-fold { animation: none; }
+.m-attachment-list:has(> .m-motion-row) { gap: 0; }
+.m-attachment-list > .m-motion-row .m-motion-row-content { padding-block: 3px; }
+html[data-loom-surface="mobile"] :is(.m-button, .m-icon-button, .m-round-tool, .m-attachment-action) { transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] :is(.m-button:not(.is-primary):not(.is-wait), .m-icon-button, .m-round-tool, .m-attachment-action):active:not(:disabled) { background-color: var(--loom-workspace-selection); }
+html[data-loom-surface="mobile"] .m-badge { transition: color var(--loom-dur-base) var(--loom-ease-out), background-color var(--loom-dur-base) var(--loom-ease-out); }
+@starting-style { .m-motion-row[data-open="true"] { grid-template-rows: 0fr; opacity: 0; } }
+@keyframes m-value-arrive { from { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .m-motion-row, .m-motion-value, .m-project-view { animation: none !important; transition: none !important; }
+}
+html[data-loom-reduced-motion="true"] :is(.m-motion-row, .m-motion-value, .m-project-view) { animation: none !important; transition: none !important; }

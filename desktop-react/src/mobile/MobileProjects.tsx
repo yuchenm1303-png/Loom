@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { AnimatedFold } from "../motion/AnimatedFold";
+import "./mobile-motion.css";
 import {
   Blocks,
   ChevronLeft,
@@ -168,7 +170,7 @@ export function MobileProjects({
   const shown = searchThreads(currentProjectThreads || threads, query, project);
   if (project)
     return (
-      <div className="m-project-library">
+      <div className="m-project-library m-project-view" key={project.id}>
         <div className="m-group-head m-back-row">
           <button
             type="button"
@@ -399,7 +401,7 @@ export function MobileProjects({
           </p>
         ) : null}
       </section>
-      {adding ? (
+      <AnimatedFold open={adding}>
         <form
           className="m-card"
           onSubmit={(event) => {
@@ -445,7 +447,7 @@ export function MobileProjects({
             {busy ? "正在添加…" : "添加项目"}
           </button>
         </form>
-      ) : null}
+      </AnimatedFold>
     </div>
   );
 }

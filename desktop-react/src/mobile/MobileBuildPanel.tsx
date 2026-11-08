@@ -1,5 +1,7 @@
 import { BuildBranchDetails } from "./BuildBranchDetails";
 import { ConversationAgents } from "./ConversationAgents";
+import { AnimatedFold } from "../motion/AnimatedFold";
+import { MotionValue } from "./MotionRows";
 import { GoalBudgetControl } from "../components/GoalBudgetControl";
 import type { CurrentModel } from "../types/loom";
 import { BuildBranches, BranchCard, type BuildBranch } from "./BuildBranches";
@@ -566,7 +568,7 @@ export function MobileBuildPanel({
             className={`m-dot is-${tone === "run" ? "run" : tone === "wait" ? "wait" : tone === "on" ? "on" : "idle"}`}
             aria-hidden="true"
           />
-          {state ? STATE[state] : "正在读取建造状态…"}
+          <MotionValue value={state || "loading"}>{state ? STATE[state] : "正在读取建造状态…"}</MotionValue>
         </span>
         <button
           type="button"
@@ -578,16 +580,12 @@ export function MobileBuildPanel({
           <RotateCw size={18} strokeWidth={1.75} spinning={reading} />
         </button>
       </div>
-      {readError ? (
-        <BranchCard title="读取错误" urgent><p className="m-alert" role="alert">
+        <BranchCard title="读取错误" urgent><AnimatedFold open={Boolean(readError)}><p className="m-alert" role="alert">
           建造状态刷新失败：{readError}。当前显示上次读取的状态。
-        </p></BranchCard>
-      ) : null}
-      {error ? (
-        <BranchCard title="操作错误" urgent><p className="m-alert" role="alert">
+        </p></AnimatedFold></BranchCard>
+        <BranchCard title="操作错误" urgent><AnimatedFold open={Boolean(error)}><p className="m-alert" role="alert">
           {error}
-        </p></BranchCard>
-      ) : null}
+        </p></AnimatedFold></BranchCard>
       {uncertain ? (
         <Section title="操作结果待确认" tone="wait" icon={<RotateCw {...GLYPH} />}>
           <p>
