@@ -18,27 +18,49 @@ export interface TaskMilestone {
   blocker?: string;
 }
 
+export interface TaskPlanInfo {
+  steps: TaskMilestone[];
+  /** The person's message the list was written for, as the Host recorded it. */
+  request: string;
+  /** The list belongs to an earlier request: the person has sent a new message and this turn has no list of its own yet. */
+  earlier: boolean;
+}
+
 export function latestTaskPlan(items: TranscriptItem[]): TaskMilestone[] {
+  return latestTaskPlanInfo(items).steps;
+}
+
+export function latestTaskPlanInfo(items: TranscriptItem[]): TaskPlanInfo {
   // Committed plan events survive a crash between the state write and tool
   // completion. Prefer that source to a possibly missing/stale tool receipt.
   const authoritative = items.filter(item => item.type === "task_plan");
   const candidates = authoritative.length ? authoritative : items;
+  // The person's latest message; a goal's own continuation prompts are not theirs.
+  const asked = [...items].reverse().find(item => item.type === "user_message" && item.source !== "goal")?.turnId;
   for (let index = candidates.length - 1; index >= 0; index -= 1) {
     const item = candidates[index];
     if (item.type !== "task_plan" && (!["update_plan", "manage_plan"].includes(item.toolName ?? "") || item.status !== "completed" || item.ok === false)) continue;
-    const result = item.result as { plan?: unknown; lifecycle?: string; dropped?: unknown } | undefined;
-    if (result?.lifecycle === "archived") return [];
+    const result = item.result as { plan?: unknown; lifecycle?: string; dropped?: unknown; request?: string; request_turn_id?: string } | undefined;
+    if (result?.lifecycle === "archived") return { steps: [], request: "", earlier: false };
     if (!Array.isArray(result?.plan)) continue;
-    const listed = result.plan.filter((entry): entry is TaskMilestone => Boolean(entry)
-      && typeof entry.step === "string"
-      && ["pending", "in_progress", "completed", "blocked"].includes(entry.status));
-    // Steps left out unfinished stay in view: a real list once lost its training and evaluation this way.
-    const dropped = (Array.isArray(result.dropped) ? result.dropped : [])
-      .filter((entry): entry is { step: string; reason?: string } => Boolean(entry) && typeof entry.step === "string")
-      .map((entry): TaskMilestone => ({ step: entry.step, status: "dropped", blocker: entry.reason || undefined }));
-    return [...listed, ...dropped];
+    // A real model, asked to sum up, showed the earlier request's list as this turn's and went on doing its work.
+    const serving = result.request_turn_id || item.turnId;
+    const earlier = Boolean(asked && serving && serving !== asked && item.turnId !== asked);
+    return { steps: planSteps(result), request: typeof result.request === "string" ? result.request : "", earlier };
   }
-  return [];
+  return { steps: [], request: "", earlier: false };
+}
+
+function planSteps(result: { plan?: unknown; dropped?: unknown }): TaskMilestone[] {
+  if (!Array.isArray(result.plan)) return [];
+  const listed = result.plan.filter((entry): entry is TaskMilestone => Boolean(entry)
+    && typeof entry.step === "string"
+    && ["pending", "in_progress", "completed", "blocked"].includes(entry.status));
+  // Steps left out unfinished stay in view: a real list once lost its training and evaluation this way.
+  const dropped = (Array.isArray(result.dropped) ? result.dropped : [])
+    .filter((entry): entry is { step: string; reason?: string } => Boolean(entry) && typeof entry.step === "string")
+    .map((entry): TaskMilestone => ({ step: entry.step, status: "dropped", blocker: entry.reason || undefined }));
+  return [...listed, ...dropped];
 }
 
 /** Presentation only: preserve every item and every intervention, never infer finality. */

@@ -498,7 +498,12 @@ def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -
     if issues:
         detail = issues[0]
         path, rule = detail["argument_path"], detail["validation_rule"]
-        error = ToolRequestError(f"{path}: arguments violate schema rule {rule}; consult the advertised schema",
+        hint = ""
+        if detail.get("allowed_values"):
+            hint = " (allowed: " + ", ".join(json.dumps(value, ensure_ascii=False) for value in detail["allowed_values"]) + ")"
+        elif detail.get("required_fields"):
+            hint = " (missing: " + ", ".join(detail["required_fields"]) + ")"
+        error = ToolRequestError(f"{path}: arguments violate schema rule {rule}{hint}; consult the advertised schema",
                                  code="invalid_arguments", path=path, rule=rule)
         error.details.update(detail)
         raise error

@@ -66,3 +66,20 @@ test("steps a plan left out unfinished stay in view as dropped, with the reason"
   assert.deepEqual(steps.map(s => [s.step, s.status]), [["温度头探索", "completed"], ["更新报告", "pending"], ["训练 nr_temphead.pt", "dropped"]]);
   assert.equal(steps[2].blocker, "冒烟结果为负");
 });
+
+test("a list from an earlier request is marked as such until this turn writes its own", () => {
+  // Real run: asked to sum up, the model showed the earlier request's list as this turn's and went on doing its work.
+  const plan = (turnId, fields = {}) => item(`p-${turnId}`, "task_plan", { turnId,
+    result: { plan: [{ step: "修正 README", status: "in_progress" }, { step: "冒烟终检", status: "pending" }], request: "修文档", ...fields } });
+  const said = (turnId, source = "user") => item(`u-${turnId}`, "user_message", { turnId, source });
+  const asked = model.latestTaskPlanInfo([said("t1"), plan("t1", { request_turn_id: "t1" }), said("t2")]);
+  assert.equal(asked.earlier, true);
+  assert.equal(asked.request, "修文档");
+  assert.equal(model.latestTaskPlanInfo([said("t1"), plan("t1", { request_turn_id: "t1" })]).earlier, false);
+  assert.equal(model.latestTaskPlanInfo([said("t1"), plan("t1", { request_turn_id: "t1" }), said("t2"), plan("t2", { request_turn_id: "t2" })]).earlier, false,
+    "carried on with the person's say-so, or written for the new message");
+  assert.equal(model.latestTaskPlanInfo([said("t1"), said("g1", "goal"), plan("g1", { request_turn_id: "t1" })]).earlier, false,
+    "a goal's own continuation is not a new request");
+  assert.equal(model.latestTaskPlanInfo([said("t1"), plan("t1"), said("t2")]).earlier, true, "a list from an older Loom: its own turn");
+  assert.deepEqual(model.latestTaskPlan([said("t1"), plan("t1", { request_turn_id: "t1" }), said("t2")]).map(s => s.step), ["修正 README", "冒烟终检"]);
+});

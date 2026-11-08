@@ -428,3 +428,24 @@ test("running out of budget says which side of the claim it was", () => {
   assert.match(checking.text, /检查中用完/);
   assert.match(working.text, /声明完成前/);
 });
+
+test("dropped rows are marked so a list can show them without counting them", () => {
+  const rows = toTurnTasks([{ step: "读", status: "completed" }, { step: "训练", status: "dropped", blocker: "负向" }]);
+  assert.equal(rows[0].dropped, undefined);
+  assert.equal(rows[1].dropped, true);
+});
+
+test("the hub's agent branch shows the conversation's own sub-agents, a long goal's check included", () => {
+  // Real run: a check ran on the desktop hub with no card; only the phone listed it.
+  const now = Date.parse("2026-11-08T08:00:00Z");
+  const overview = { run: null, program: null, children: [], events: [], agents: [{ id: "proj-1" }],
+    conversationAgents: [
+      { id: "chk", parentId: "t", role: "goal-check", state: "running", executionRunning: true, queueDepth: 0, activity: "", step: 3, startedAt: "2026-11-08T07:57:00Z" },
+      { id: "line", parentId: "t", role: "goal-line", state: "completed", executionRunning: false, queueDepth: 0, activity: "", step: 9 },
+      { id: "proj-1", parentId: "t", role: "worker", state: "running", executionRunning: true, queueDepth: 0, activity: "", step: 1 }] };
+  const rows = module.exports.conversationFlowAgents(overview, now);
+  assert.deepEqual(rows.map(a => [a.id, a.name, a.role, a.done]), [["chk", "独立检查", "reviewer", false], ["line", "并行支路", "worker", true]]);
+  assert.equal(rows[0].elapsed, "3 分");
+  const flow = toFlowData({ ...overview, agents: [] }, now);
+  assert.deepEqual(flow.agents.map(a => a.id), ["chk", "line", "proj-1"]);
+});

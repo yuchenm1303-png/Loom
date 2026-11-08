@@ -174,6 +174,31 @@ function taskStates(run: ProjectRun, overview: ProjectOverview): Record<string, 
   return states;
 }
 
+const CONVERSATION_ROLES: Record<string, { zh: string; en: string; role: FlowAgent["role"] }> = {
+  "goal-check": { zh: "独立检查", en: "Independent check", role: "reviewer" },
+  "goal-line": { zh: "并行支路", en: "Parallel line", role: "worker" },
+  investigator: { zh: "只读调查", en: "Investigation", role: "worker" },
+  worker: { zh: "子代理", en: "Sub-agent", role: "worker" },
+};
+
+/** The conversation's own sub-agents (a long goal's checker, its lines, investigations, spawned workers), for the hub's
+ *  agent branch. The phone showed them; the desktop hub listed only a project's agents, so a running check had no card. */
+export function conversationFlowAgents(overview: ProjectOverview, now: number, lang: Lang = "zh"): FlowAgent[] {
+  const taken = new Set(overview.agents.map((agent) => agent.id));
+  return (overview.conversationAgents || []).filter((agent) => !taken.has(agent.id)).map((agent) => {
+    const kind = CONVERSATION_ROLES[agent.role] || CONVERSATION_ROLES.worker;
+    const startedAt = agent.startedAt ? Date.parse(agent.startedAt) : now;
+    const idle = !agent.executionRunning && agent.state !== "waiting_approval";
+    const activity = agent.activity ? activityText(agent.activity, lang)
+      : agent.state === "waiting_approval" ? (lang === "en" ? "Waiting for approval" : "等待批准")
+      : idle ? (lang === "en" ? "Finished, result not yet collected" : "已结束，等待收取结果")
+      : (lang === "en" ? "Working" : "正在处理");
+    return { id: agent.id, role: kind.role, name: lang === "en" ? kind.en : kind.zh, step: agent.step, activity,
+             waiting: agent.state === "waiting_approval", done: idle,
+             elapsed: words[lang].short(Math.max(0, Math.round((now - (Number.isFinite(startedAt) ? startedAt : now)) / 60000))) };
+  });
+}
+
 export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = "zh", model = "", workspaceName = ""): FlowData {
   const t = words[lang];
   const program = overview.program;
@@ -190,7 +215,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
       workspace: overview.workspace?.git ? { changeCount: overview.workspace.changeCount, changes: overview.workspace.changes,
                                              head: overview.workspace.head || "", branch: overview.workspace.branch || "" } : undefined,
       knowledge: { checks: 0, notes: 0, latest: "" }, tasks: [], budget: { tokens: 0, tokenLimit: 1 }, workers: 2, maxWorkers: MAX_WORKERS,
-      controls: { pause: false, resume: false, cancel: false }, agents: [],
+      controls: { pause: false, resume: false, cancel: false }, agents: conversationFlowAgents(overview, now, lang),
     };
   }
   const integration = overview.integration;
@@ -262,7 +287,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
     fullAccess: (program?.permissionMode || run.permissionMode) === "full-access",
     maxWorkers: MAX_WORKERS,
     controls: { pause: state === "running", resume: state === "paused" && !stopped && !finished, cancel: !finished && !stopped },
-    agents: overview.agents.map((agent, index) => {
+    agents: overview.agents.map((agent, index): FlowAgent => {
       const startedAt = agent.startedAt ? Date.parse(agent.startedAt) : now;
       const title = agent.role === "planner" ? t.planning
         // A team task's review runs at project scope on its own one-task run: name the task.
@@ -273,7 +298,7 @@ export function toFlowData(overview: ProjectOverview, now: number, lang: Lang = 
       return { id: agent.id, role: agent.role, name: t.agent(index + 1), step: agent.step, waiting: !!agent.approval,
                activity: agent.approval ? t.waitsFor(activityText(agent.approval.command, lang).replace(/^(运行|Running) /, ""))
                  : agent.activity ? activityText(agent.activity, lang) : title || t.waiting, elapsed: t.short(Math.max(0, Math.round((now - startedAt) / 60000))) };
-    }),
+    }).concat(conversationFlowAgents(overview, now, lang)),
   };
 }
 
@@ -481,7 +506,8 @@ export function toTurnTasks(steps: TaskMilestone[], lang: "zh" | "en" = "zh"): F
   return steps.map((step, index) => {
     const miss = step.status === "completed" && step.outcome ? unmet[step.outcome] : undefined;
     const detail = step.status === "dropped" ? `${droppedWord}${step.blocker ? (lang === "en" ? ": " : "：") + step.blocker : ""}` : miss ?? step.blocker;
-    return { id: `turn-${index}`, title: step.step, state: miss ? "rework" : states[step.status], detail };
+    return { id: `turn-${index}`, title: step.step, state: miss ? "rework" : states[step.status], detail,
+             ...(step.status === "dropped" ? { dropped: true } : {}) };
   });
 }
 

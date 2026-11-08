@@ -3,12 +3,13 @@ import { ConversationAgents } from "./ConversationAgents";
 import { GoalBudgetControl } from "../components/GoalBudgetControl";
 import type { CurrentModel } from "../types/loom";
 import { BuildBranches, BranchCard, type BuildBranch } from "./BuildBranches";
-import { latestTaskPlan } from "../components/liveTaskProgress";
+import { latestTaskPlanInfo } from "../components/liveTaskProgress";
 import { toTurnTasks } from "../components/projectOverview";
 import type { TranscriptItem } from "../types/loom";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -178,6 +179,8 @@ export function MobileBuildPanel({
   onOpenAgent(id: string): void;
 }) {
   const [overview, setOverview] = useState<ProjectOverview | null>(null);
+  // The conversation's own task list, and whether it is the person's latest request's or an earlier one's.
+  const turnPlan = useMemo(() => latestTaskPlanInfo(items), [items]);
   const [readError, setReadError] = useState("");
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
@@ -556,7 +559,7 @@ export function MobileBuildPanel({
   return (
     <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : goalOnly && goal ? goal.text : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"}><div className="m-build-panel" aria-label="建造控制面板"><BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
       {data?.attention && data.attention.action !== "approval" ? <Section title="建造需要处理" tone="wait"><p>{data.attention.reason}</p><button type="button" className="m-inline-button" onClick={() => onBranch("budget")}>处理预算与运行状态</button></Section> : null}
-      {latestTaskPlan(items).length ? <Section title="对话任务"><ol className="m-build-list">{toTurnTasks(latestTaskPlan(items)).map(task => <li key={task.id}>{STATE[task.state]} · {task.title}{task.detail ? <p>{task.detail}</p> : null}</li>)}</ol></Section> : null}
+      {turnPlan.steps.length ? <Section title={turnPlan.earlier ? "之前请求的任务" : "对话任务"}><ol className="m-build-list">{turnPlan.earlier ? <li key="earlier"><p>{turnPlan.request ? `这份清单属于之前的请求「${turnPlan.request}」，这一轮还没有写自己的清单。` : "这份清单属于之前的请求，这一轮还没有写自己的清单。"}</p></li> : null}{toTurnTasks(turnPlan.steps).map(task => <li key={task.id}>{STATE[task.state]} · {task.title}{task.detail ? <p>{task.detail}</p> : null}</li>)}</ol></Section> : null}
       <div className="m-build-head">
         <span className={`m-badge${tone ? ` is-${tone}` : ""}`}>
           <span

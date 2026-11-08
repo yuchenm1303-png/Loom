@@ -58,6 +58,10 @@ def argument_issues(schema: dict, arguments: Any, *, validator=None) -> list[dic
                 detail["argument_path"] += "." + str(missing[0])
         elif rule == "type":
             detail["expected_type"] = error.validator_value
+        elif rule == "enum" and isinstance(error.validator_value, list):
+            # The schema's own values, never the rejected one: a real model sent outcome values outside the
+            # list five times in a row when the message only said "enum".
+            detail["allowed_values"] = [value for value in error.validator_value if isinstance(value, (str, int, float, bool))][:12]
         issues.append(detail)
         if len(issues) >= 4:
             break

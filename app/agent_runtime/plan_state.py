@@ -29,6 +29,36 @@ def active_plan(events):
     return plan if plan and plan.get("lifecycle", "active") == "active" else None
 
 
+PERSON_SOURCES = frozenset({"user", "queue"})
+UNFINISHED = frozenset({"pending", "in_progress", "blocked"})
+REQUEST_CHARS = 200
+
+
+def person_turn(events, turn_id):
+    """Whether the person started this turn with a new message: not a goal's continuation, not a retry of the
+    same message. Only such a turn can leave a task list belonging to an earlier request."""
+    for event in events:
+        if event.kind is Event.TURN_STARTED and event.turn_id == turn_id:
+            return (event.data.get("source", "user") in PERSON_SOURCES
+                    and not event.data.get("retrying_failed_input"))
+    return False
+
+
+def serving(plan):
+    """The turn of the person's request a list serves; lists from before this was recorded fall back to the
+    turn that last wrote them."""
+    return plan.get("request_turn_id") or plan.get("updated_turn_id") or plan.get("origin_turn_id")
+
+
+def from_earlier_request(plan, events, turn_id):
+    """The list belongs to an earlier request and this turn is the person's new one."""
+    return bool(plan) and person_turn(events, turn_id) and serving(plan) != turn_id
+
+
+def unfinished(plan):
+    return [step for step in (plan or {}).get("plan") or () if step.get("status") in UNFINISHED]
+
+
 def summary(plan):
     if not plan or not plan.get("plan") or plan.get("lifecycle", "active") != "active":
         return {"status": "not_assessed"}

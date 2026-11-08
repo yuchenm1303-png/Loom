@@ -83,7 +83,9 @@ export interface FlowData {
   knowledge: { checks: number; notes: number; latest: string };
   tasks: { id: string; title: string; state: FlowTaskState; detail?: string; dependsOn?: string[]; agentId?: string; agentName?: string }[];
   /** The conversation's own task list, kept by its agent; a branch of its own, with or without a project. */
-  taskList?: { id: string; title: string; state: FlowTaskState; detail?: string }[];
+  taskList?: { id: string; title: string; state: FlowTaskState; detail?: string; dropped?: boolean }[];
+  /** The list belongs to an earlier request of the person's; this turn has none of its own yet. */
+  taskListEarlier?: boolean;
   /** A long goal this conversation is pursuing by itself, with no project. */
   goal?: { budget?: GoalBudgetState; text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean; lines?: { title: string; state: string; label: string; why?: string }[] } | null;
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
@@ -186,7 +188,7 @@ const taskIcon: Record<FlowTaskState, typeof Check> = { pending: Circle, working
 
 const zhText = {
   repository: "仓库", scope: "工作范围", knowledge: "项目知识", checks: "条检查", notes: "条笔记", plan: (n: number) => `阶段 ${n} 计划`,
-  taskList: "任务清单", planEmpty: "规划完成后在这里显示任务", outcome: "已完成", outcomeCount: (n: number) => `${n} 个阶段`, episodes: (n: number) => `${n} 轮`,
+  taskList: "任务清单", taskListEarlier: "之前请求的任务清单", planEmpty: "规划完成后在这里显示任务", outcome: "已完成", outcomeCount: (n: number) => `${n} 个阶段`, episodes: (n: number) => `${n} 轮`,
   donePlaceholder: "目标已完成", loom: "建造时间线", phases: { plan: "规划", work: "开发", review: "复审" },
   loomStats: (s: { episodes: number; trouble: number; perHour: number; peak?: number; waitMinutes?: number }) =>
     `${s.episodes} 轮 · 重试 ${s.trouble} · ${compact(s.perHour)}/时${(s.peak || 0) > 1 ? ` · 最多同时 ${s.peak}` : ""}${s.waitMinutes ? ` · 排队 ${s.waitMinutes} 分` : ""}`,
@@ -214,7 +216,7 @@ const zhText = {
 };
 const enText: typeof zhText = {
   repository: "Repository", scope: "Scope", knowledge: "Knowledge", checks: "checks", notes: "notes", plan: (n: number) => `Milestone ${n} plan`,
-  taskList: "Task list", planEmpty: "Tasks appear here once the plan is made", outcome: "Complete", outcomeCount: (n: number) => `${n} milestones`,
+  taskList: "Task list", taskListEarlier: "Task list of an earlier request", planEmpty: "Tasks appear here once the plan is made", outcome: "Complete", outcomeCount: (n: number) => `${n} milestones`,
   episodes: (n: number) => `${n} episodes`, donePlaceholder: "The objective is complete",
   loom: "Timeline", phases: { plan: "Plan", work: "Build", review: "Review" },
   loomStats: (s: { episodes: number; trouble: number; perHour: number; peak?: number; waitMinutes?: number }) =>
@@ -853,7 +855,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     { id: "knowledge", icon: BookMarked, label: text.knowledge,
       unavailable: data.knowledge.checks + data.knowledge.notes ? undefined : text.knowledgePending },
     data.outcome ? { id: "plan", icon: Check, label: text.outcome } : { id: "plan", icon: Compass, label: text.plan(data.milestone) },
-    { id: "tasks", icon: ListChecks, label: text.taskList, unavailable: data.taskList?.length ? undefined : text.taskListPending },
+    { id: "tasks", icon: ListChecks, label: data.taskListEarlier ? text.taskListEarlier : text.taskList, unavailable: data.taskList?.length ? undefined : text.taskListPending },
     { id: "agents", icon: Bot, label: text.agentCards, unavailable: data.agents.length ? undefined : text.agentsPending },
     { id: "loom", icon: ChartGantt, label: text.loom, unavailable: data.timeline ? undefined : text.timelinePending },
     { id: "history", icon: History, label: text.history, unavailable: history ? undefined : text.historyUnavailable },
@@ -1541,10 +1543,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
         {branches.some((item) => item.id === "tasks") ? (() => {
           // What the conversation's agent is doing this turn, as its own list says; a leaving card keeps what it showed.
           const list = leavingView("tasks").taskList ?? [];
+          const counted = list.filter((task) => !task.dropped);  // shown, not counted
           return (
             <div className="pf-slot" data-glide="tasks" data-fit="" {...hover("tasks")} {...slot("tasks")}>
-              <Card id="tasks" side="right" className="pf-listed pf-task-list" icon={<ListChecks size={12} />} label={text.taskList}
-                    count={`${list.filter((task) => task.state === "integrated").length}/${list.length}`}
+              <Card id="tasks" side="right" className="pf-listed pf-task-list" icon={<ListChecks size={12} />}
+                    label={leavingView("tasks").taskListEarlier ? text.taskListEarlier : text.taskList}
+                    count={`${counted.filter((task) => task.state === "integrated").length}/${counted.length}`}
                     under={<div className="pf-strip" aria-hidden="true">
                       {list.map((task) => <span key={task.id} className="pf-strip-cell" data-state={task.state}><span key={task.state} /></span>)}
                     </div>} register={register}>

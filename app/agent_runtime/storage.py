@@ -408,6 +408,8 @@ def _context_event_projection(payload):
                                              "definition_fingerprint", "definition_changed") if key in data}
     elif kind == "tool_started":
         selected = {key: data[key] for key in ("call_id", "tool", "effect", "call_fingerprint", "repeat_count") if key in data}
+    elif kind == "turn_started":  # who started a turn: a task list belongs to the person's request it serves
+        selected = {key: data[key] for key in ("source", "retrying_failed_input") if key in data}
     elif kind == "tool_failed":
         result = data.get("data") or {}
         selected = {key: data[key] for key in ("call_id", "tool", "ok") if key in data}

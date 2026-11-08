@@ -43,7 +43,7 @@ import { TaskProgressPanel } from "./components/TaskProgressPanel";
 import { ConversationRunsPanel } from "./components/ConversationRunsPanel";
 import { SPLIT_DEFAULT, SPLIT_MAX, SPLIT_MIN, SplitConversationPane, SplitDropTarget } from "./components/SplitConversationPane";
 import { startConversationActivity, useConversationAttention, watchConversations } from "./state/conversationActivity";
-import { latestTaskPlan } from "./components/liveTaskProgress";
+import { latestTaskPlanInfo } from "./components/liveTaskProgress";
 import { Transcript } from "./components/Transcript";
 import { isResolvedApproval, useLeavingItems } from "./components/leavingItems";
 import { TranscriptScrollController } from "./components/TranscriptScrollController";
@@ -798,8 +798,11 @@ export default function App() {
   const lastGitBarProject = useRef(currentProject);
   if (currentProject) lastGitBarProject.current = currentProject;
   const gitBarProject = currentProject ?? lastGitBarProject.current;
-  const taskMilestones = useMemo(() => latestTaskPlan(loom.items), [loom.items]);
+  const taskPlan = useMemo(() => latestTaskPlanInfo(loom.items), [loom.items]);
+  const taskMilestones = taskPlan.steps;
   const taskCompleted = taskMilestones.filter(step => step.status === "completed").length;
+  // Dropped steps are shown in the panel, not counted; a list from an earlier request is not this turn's work.
+  const taskTotal = taskMilestones.filter(step => step.status !== "dropped").length;
   const selectedProject = selectedProjectId
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
@@ -1666,8 +1669,8 @@ export default function App() {
         backgroundRunningCount={backgroundRunningCount}
         taskOpen={taskPlanOpen}
         taskCompleted={taskCompleted}
-        taskTotal={taskMilestones.length}
-        taskRunning={running && taskMilestones.some(step => step.status === "in_progress")}
+        taskTotal={taskTotal}
+        taskRunning={running && !taskPlan.earlier && taskMilestones.some(step => step.status === "in_progress")}
         runsOpen={runsOpen}
         runsLive={runsLive}
         runsFinished={runsFinished}
@@ -1821,6 +1824,7 @@ export default function App() {
 
         <TaskProgressPanel
           steps={taskMilestones}
+          earlierRequest={taskPlan.earlier ? taskPlan.request : undefined}
           open={taskPlanOpen}
           onClose={() => setTaskPlanOpen(false)}
         />

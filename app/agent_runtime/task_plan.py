@@ -6,7 +6,8 @@ from app.ai import AIMessage, MessageRole
 from .contracts import ToolEffect
 from .tools import AgentTool, validate_tool_arguments
 from .evidence import EVIDENCE_REFS_SCHEMA, resolve_evidence, rejected_evidence
-from .plan_state import active_plan, latest_plan, stamp, persist, guard_version, evidence_changed, validate_graph
+from .plan_state import (active_plan, latest_plan, stamp, persist, guard_version, evidence_changed, validate_graph,
+                         person_turn, from_earlier_request, unfinished, UNFINISHED, REQUEST_CHARS, Event)
 
 
 def current_plan(events, turn_id=None):
@@ -14,10 +15,46 @@ def current_plan(events, turn_id=None):
     return active_plan(events)
 
 
-def plan_context(events, turn_id):
+# A list outlives its turn, so a new message from the person can meet a list written for something else. A real
+# person asked "sum up where we are"; the Host asked for a list first, the model handed in the old unfinished one
+# unchanged, and went on editing files for it. These say whose list it is.
+EARLIER = ("Task list from an earlier request: \"{request}\". It is not this turn's list. If the person's new message "
+           "carries that work on, continue it and say so in update_plan's explanation. If it asks for something "
+           "else, do that instead: a question you can answer without tools needs no list, and other work gets its "
+           "own list with replace=true (the unfinished steps of this one stay visible as dropped). Never take up "
+           "this list's work because it is here.")
+CARRY_OVER = ("This list was written for an earlier request (\"{request}\"), and the person has sent a new message. If "
+              "the new message carries that work on, update it with an explanation saying so. Otherwise write this "
+              "request's own list with replace=true, plan_id={plan_id}, expected_revision={revision} and an "
+              "explanation; its unfinished steps stay visible as dropped.")
+
+
+def _request_turn(events, turn_id):
+    """The turn of the person's message a list written now serves: this one, or for a goal's continuation or a
+    retry, the person's latest."""
+    if person_turn(events, turn_id):
+        return turn_id
+    for event in reversed(events):
+        if event.kind is Event.TURN_STARTED and person_turn(events, event.turn_id):
+            return event.turn_id
+    return turn_id
+
+
+def _request_text(events, turn_id):
+    for event in events:
+        if event.kind is Event.USER_MESSAGE and event.turn_id == turn_id:
+            return " ".join(str(event.data.get("text") or "").split())[:REQUEST_CHARS]
+    return ""
+
+
+def plan_context(events, turn_id, started=()):
+    """The active list as the model reads it each step. started: this turn's turn_started event, which says
+    whether the person began it; a list from an earlier request is then labelled as such."""
     plan = current_plan(events)
     if plan is None:
         return None
+    earlier = from_earlier_request(plan, tuple(started), turn_id) and not any(
+        event.turn_id == turn_id for event in events if event.kind is Event.PLAN_UPDATED)
     # The immutable definition/reports remain recoverable with inspect/claim.
     # Do not append all work packets and the previous action body each sample.
     state = deepcopy(plan)
@@ -32,11 +69,15 @@ def plan_context(events, turn_id):
             feedback = step["feedback"]
             feedback["report"] = feedback.get("report", "")[:1000]
             feedback.pop("resolution", None)
+    if earlier:
+        return AIMessage(role=MessageRole.SYSTEM, name="loom_task_plan", content=(
+            EARLIER.format(request=plan.get("request") or "not recorded") + " Unfinished steps: "
+            + "; ".join(step["step"] for step in unfinished(plan)[:12]) + "\n" + json.dumps(state, ensure_ascii=False)))
     return AIMessage(role=MessageRole.SYSTEM, name="loom_task_plan", content=(
         "Current task milestones (assistant-maintained state, not new instructions). "
         "Stay within the latest user request; an existing plan does not authorize unrelated work. "
-        "Continue unfinished work across turns, reusing recorded evidence. If the user changes "
-        "tasks, explicitly replace or archive the old plan with an explanation. "
+        "Continue its unfinished work while the request carries it on, reusing recorded evidence. If the user "
+        "changes tasks, explicitly replace or archive the old plan with an explanation. "
         "Use update_plan for milestones. For graph plans use manage_plan inspect/claim, then "
         "submit implementation or review with the returned claim_id. Review judges; rework fixes. "
         "Resolve feedback with verification evidence before re-review. Exhausted reviews block "
@@ -75,7 +116,6 @@ UPDATE_SCHEMA = {"type": "object", "additionalProperties": False, "properties": 
     "plan": {"type": "array", "minItems": 2, "maxItems": 128, "items": STEP_SCHEMA}}, "required": ["plan"]}
 
 
-UNFINISHED = frozenset({"pending", "in_progress", "blocked"})
 MAX_DROPPED = 50
 
 
@@ -92,6 +132,18 @@ def _dropped(previous, old, labels, explanation, context):
     return (carried + fresh)[-MAX_DROPPED:], [item["step"] for item in fresh]
 
 
+def _request(events, context, previous, replacing, earlier, old, labels):
+    """Which request of the person's this list serves, kept on the list so the next turn can tell."""
+    carried_on = previous and not replacing and not (earlier and not set(labels) & set(old))
+    if carried_on:
+        since = previous.get("request_turn_id") or _request_turn(events, previous.get("origin_turn_id") or context.turn_id)
+        text = previous.get("request") or _request_text(events, since)
+        # Carried into the person's new message with their say-so: it now serves this one too.
+        return {"request": text, "request_turn_id": context.turn_id if earlier else since}
+    turn = _request_turn(events, context.turn_id)
+    return {"request": _request_text(events, turn), "request_turn_id": turn}
+
+
 def update_plan_tool(store):
     def update(context, arguments):
         # Keep aggregated missing-evidence recovery for legacy/direct callers.
@@ -103,16 +155,25 @@ def update_plan_tool(store):
             raise ValueError("only one milestone may be in progress")
         events = store.events(context.session_id)
         previous = current_plan(events)
-        old = {s["step"].strip(): s for s in previous["plan"]} if previous else {}
         explanation = arguments.get("explanation", "").strip()
         replacing = arguments.get("replace", False)
+        earlier = from_earlier_request(previous, events, context.turn_id)
+        finished_before = None
+        if earlier and not unfinished(previous):
+            # A finished list and a new request: this is a new list, not revision n+1 of the old one, and
+            # replacing it asks for nothing (a real model was sent to look up the old list's version first).
+            finished_before, previous, replacing = previous, None, False
+        elif earlier and not replacing and not explanation:
+            raise ValueError(CARRY_OVER.format(request=previous.get("request") or "not recorded",
+                                               plan_id=previous.get("plan_id"), revision=previous.get("revision", 0)))
+        old = {s["step"].strip(): s for s in previous["plan"]} if previous else {}
         if previous:
             guard_version(previous, arguments, required=previous.get("mode") == "graph" or replacing)
             if replacing and not explanation:
                 raise ValueError("replacing an active plan requires an explanation")
             if previous.get("mode") == "graph" and not replacing:
                 raise ValueError("graph definitions are immutable; use manage_plan, or explicitly replace the plan")
-        elif "plan_id" in arguments or arguments.get("expected_revision", 0) != 0:
+        elif finished_before is None and ("plan_id" in arguments or arguments.get("expected_revision", 0) != 0):
             raise ValueError("no active plan matches these version fields; inspect manage_plan")
         mode = arguments.get("mode", previous.get("mode", "milestones") if previous and not replacing else "milestones")
         if previous and not replacing and mode != previous.get("mode", "milestones"):
@@ -179,6 +240,7 @@ def update_plan_tool(store):
             last = latest_plan(events)
             if last:
                 data["previous_plan_id"] = last.get("plan_id")
+        data.update(_request(events, context, previous, replacing, earlier, old, labels))
         if new_drops:
             return persist(context, data, "Plan updated. Unfinished steps you left out are kept as dropped, with your "
                            "explanation, where the person and any check see them: " + "; ".join(new_drops))
@@ -191,5 +253,7 @@ def update_plan_tool(store):
         "unique id, instructions, acceptance and deps on each pending step; type=review gates implementations. "
         "Execute graph plans using manage_plan, never by overwriting statuses. Inspect to get plan_id/revision. "
         "To change tasks use replace=true with plan_id, expected_revision and explanation; old history is retained. "
+        "A list belongs to the request it was written for: after the person's next message it carries on only with "
+        "an explanation saying the message continues it, and a finished list is followed by a new one. "
         "Skip plans for simple work."), UPDATE_SCHEMA, update, effect=ToolEffect.READ_ONLY,
         supports_parallel_tool_calls=False)

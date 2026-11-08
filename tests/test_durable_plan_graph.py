@@ -424,3 +424,149 @@ def test_replacing_the_plan_keeps_what_it_left_unfinished(harness):
                                  "replace": True, "plan_id": first["plan_id"], "expected_revision": first["revision"],
                                  "explanation": "用户换了任务"})
     assert [d["step"] for d in current_plan(h.store.events("abcdef"))["dropped"]] == ["A", "B"]
+
+
+# Whose list is it: a list belongs to the person's request it was written for (2026-11-08). A real person asked
+# "sum up where we are"; the model handed in the earlier request's unfinished list unchanged and went on editing.
+
+def turn(h, turn_id, text="", source="user", retrying=False):
+    """A new turn as the runtime starts it, and a context for tools called in it."""
+    def emit(kind, data, turn_id=turn_id):
+        h.store.append_event(AgentEvent(str(uuid.uuid4()), "abcdef", turn_id, kind, "2026-10-16T00:00:00Z", deepcopy(data)))
+    emit(E.TURN_STARTED, {"source": source, "retrying_failed_input": retrying})
+    if not retrying:
+        emit(E.USER_MESSAGE, {"text": text, "source": source})
+    return ToolContext("abcdef", turn_id, h.workspace, emit_event=emit)
+
+
+def write(h, context, plan, **extra):
+    return h.update.handler(context, {"plan": plan, **extra})
+
+
+UNDONE = [{"step": "修正 README", "status": "in_progress"}, {"step": "冒烟终检", "status": "pending"}]
+
+
+def test_a_new_request_after_a_finished_list_gets_a_new_list(harness):
+    h = harness
+    first = turn(h, "t1", "做实验")
+    write(h, first, [done("实验"), done("报告")])
+    old = current_plan(h.store.events("abcdef"))
+    second = turn(h, "t2", "总结一下成果")
+    write(h, second, [{"step": "读结果", "status": "in_progress"}, {"step": "写总结", "status": "pending"}],
+          plan_id=old["plan_id"], expected_revision=old["revision"])
+    new = current_plan(h.store.events("abcdef"))
+    assert new["plan_id"] != old["plan_id"] and new["revision"] == 1 and new["previous_plan_id"] == old["plan_id"]
+    assert new["request"] == "总结一下成果" and new["request_turn_id"] == "t2"
+
+
+def test_an_unfinished_list_does_not_carry_into_a_new_message_unasked(harness):
+    h = harness
+    write(h, turn(h, "t1", "修文档"), UNDONE)
+    old = current_plan(h.store.events("abcdef"))
+    second = turn(h, "t2", "总结一下我们现在的工作")
+    with pytest.raises(ValueError, match="earlier request") as refused:
+        write(h, second, UNDONE)
+    assert "修文档" in str(refused.value) and old["plan_id"] in str(refused.value)
+    assert current_plan(h.store.events("abcdef"))["revision"] == old["revision"], "nothing written"
+
+
+def test_carrying_it_on_takes_a_reason_and_then_serves_the_new_message(harness):
+    h = harness
+    write(h, turn(h, "t1", "修文档"), UNDONE)
+    second = turn(h, "t2", "继续")
+    write(h, second, UNDONE, explanation="这条消息让我继续修文档")
+    plan = current_plan(h.store.events("abcdef"))
+    assert plan["request"] == "修文档" and plan["request_turn_id"] == "t2"
+    write(h, second, [done("修正 README"), {"step": "冒烟终检", "status": "in_progress"}])  # same turn: no reason needed
+
+
+def test_a_new_list_for_a_new_request_keeps_the_old_unfinished_steps_visible(harness):
+    h = harness
+    write(h, turn(h, "t1", "修文档"), UNDONE)
+    old = current_plan(h.store.events("abcdef"))
+    second = turn(h, "t2", "总结成果")
+    write(h, second, [{"step": "读结果", "status": "in_progress"}, {"step": "写总结", "status": "pending"}],
+          replace=True, plan_id=old["plan_id"], expected_revision=old["revision"], explanation="用户问的是总结")
+    plan = current_plan(h.store.events("abcdef"))
+    assert plan["request"] == "总结成果" and plan["request_turn_id"] == "t2"
+    assert [d["step"] for d in plan["dropped"]] == ["修正 README", "冒烟终检"]
+
+
+@pytest.mark.parametrize("source,retrying", [("goal", False), ("user", True)])
+def test_a_goal_turn_or_a_retry_continues_the_list_as_it_is(harness, source, retrying):
+    h = harness
+    write(h, turn(h, "t1", "整晚研究"), UNDONE)
+    later = turn(h, "t2", "Continue pursuing this durable Loom goal", source=source, retrying=retrying)
+    write(h, later, [done("修正 README"), {"step": "冒烟终检", "status": "in_progress"}])
+    plan = current_plan(h.store.events("abcdef"))
+    assert plan["request_turn_id"] == "t1" and plan["request"] == "整晚研究"
+
+
+def test_a_queued_message_is_the_persons_new_request(harness):
+    h = harness
+    write(h, turn(h, "t1", "修文档"), UNDONE)
+    with pytest.raises(ValueError, match="earlier request"):
+        write(h, turn(h, "t2", "顺便看看日志", source="queue"), UNDONE)
+
+
+def test_a_list_from_before_requests_were_recorded_is_still_known_as_earlier(harness):
+    h = harness
+    write(h, h.context, UNDONE)  # the harness's own turn has no turn_started: like a list written by an older Loom
+    plan = current_plan(h.store.events("abcdef"))
+    plan.pop("request", None)
+    with pytest.raises(ValueError, match="earlier request"):
+        write(h, turn(h, "t2", "新问题"), UNDONE)
+
+
+def test_the_list_the_model_reads_says_whose_it_is(harness):
+    h = harness
+    write(h, turn(h, "t1", "修文档"), UNDONE)
+    events = h.store.events("abcdef")
+    plans = [e for e in events if e.kind is E.PLAN_UPDATED]
+    new_started = [AgentEvent("x", "abcdef", "t2", E.TURN_STARTED, "2026-10-16T00:00:00Z", {"source": "user"})]
+    said = plan_context(plans, "t2", started=new_started).content
+    assert "Task list from an earlier request: \"修文档\"" in said and "修正 README" in said and "Never take up" in said
+    goal_started = [AgentEvent("y", "abcdef", "t3", E.TURN_STARTED, "2026-10-16T00:00:00Z", {"source": "goal"})]
+    assert plan_context(plans, "t3", started=goal_started).content.startswith("Current task milestones")
+    assert plan_context(plans, "t1", started=[]).content.startswith("Current task milestones")
+
+
+def test_a_list_written_by_an_older_loom_is_read_by_the_turn_that_last_wrote_it():
+    from app.agent_runtime.plan_state import serving, from_earlier_request
+    legacy = {"plan": UNDONE, "origin_turn_id": "t0", "updated_turn_id": "t1"}
+    assert serving(legacy) == "t1"
+    started = [AgentEvent("x", "abcdef", "t2", E.TURN_STARTED, "2026-10-16T00:00:00Z", {"source": "user"})]
+    assert from_earlier_request(legacy, started, "t2") is True
+    assert from_earlier_request(legacy, started, "t1") is False
+
+
+def test_replacing_a_finished_list_from_an_earlier_request_asks_for_nothing(harness):
+    # Real run: the model replaced a finished list and was sent to look up its version first.
+    h = harness
+    write(h, turn(h, "t1", "加乘法"), [done("加乘法"), done("验证")])
+    write(h, turn(h, "t2", "写说明"), [{"step": "写说明", "status": "in_progress"}, {"step": "核对", "status": "pending"}],
+          replace=True, explanation="新任务")
+    plan = current_plan(h.store.events("abcdef"))
+    assert plan["revision"] == 1 and plan["request"] == "写说明" and "replaces_plan_id" not in plan
+
+
+def test_a_wrong_value_is_answered_with_the_values_allowed(harness):
+    from app.agent_runtime.tools import validate_tool_arguments, ToolRequestError
+    from app.agent_runtime.task_plan import UPDATE_SCHEMA
+    bad = {"plan": [{"step": "a", "status": "completed", "outcome": "success", "evidence_refs": [{"path": "proof.txt"}]},
+                    {"step": "b", "status": "pending"}]}
+    with pytest.raises(ToolRequestError) as refused:
+        validate_tool_arguments(UPDATE_SCHEMA, bad)
+    assert '"passed"' in str(refused.value) and '"not_assessed"' in str(refused.value)
+    assert "success" not in str(refused.value), "the rejected value is not echoed"
+    missing = {"plan": [{"step": "a", "status": "completed", "outcome": "passed"}, {"step": "b", "status": "pending"}]}
+    with pytest.raises(ToolRequestError, match="missing: evidence_refs"):
+        validate_tool_arguments(UPDATE_SCHEMA, missing)
+
+
+def test_a_list_first_written_in_a_goal_turn_serves_the_persons_latest_message(harness):
+    h = harness
+    turn(h, "t1", "整晚研究随机图")
+    write(h, turn(h, "g1", "Continue pursuing this durable Loom goal", source="goal"), UNDONE)
+    plan = current_plan(h.store.events("abcdef"))
+    assert plan["request_turn_id"] == "t1" and plan["request"] == "整晚研究随机图"

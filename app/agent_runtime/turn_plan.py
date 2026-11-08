@@ -6,7 +6,7 @@ progress and guards nothing, so it gives way after MAX_HOLDS refused batches: a 
 write a list loses the list, not the person's turn.
 """
 from .contracts import AgentEventKind
-from .plan_state import active_plan
+from .plan_state import active_plan, from_earlier_request
 from .tool_selection import WEAVE_PREFIX
 from .tools import ToolResult
 
@@ -17,11 +17,17 @@ PLAN_TOOLS = frozenset({"update_plan", "manage_plan"})
 _FREE = PLAN_TOOLS | {"tool_search", "get_thread_state", "mark_thread_goal"}
 
 
-def _refusal(previous):
+def _refusal(previous, earlier=False):
     text = ("Not executed: in Build mode a turn that uses tools shows the person its task list first. "
             "Reissue these calls with update_plan first in the same response: at least two short steps, "
             "the one you are starting in_progress, the rest pending.")
-    if previous:
+    if previous and earlier:
+        # A real model handed in the earlier request's list unchanged here and went on doing its work.
+        text += (f" The active list was written for an earlier request (\"{previous.get('request') or 'not recorded'}\"), "
+                 "not for the person's new message. Write this request's list with replace=true "
+                 f"(plan_id={previous.get('plan_id')}, expected_revision={previous.get('revision', 0)}, an explanation); "
+                 "continue the old one only if the new message carries it on, and then say so in the explanation.")
+    elif previous:
         text += (f" An earlier list is still active (plan_id={previous.get('plan_id')}, "
                  f"expected_revision={previous.get('revision', 0)}): update it if this turn continues that work, "
                  "otherwise pass replace=true with those two values and an explanation.")
@@ -48,5 +54,8 @@ def held_calls(runtime, session, step, calls):
     if holds >= MAX_HOLDS:
         return None
     runtime._turn_plan_holds[session.session_id] = (session.current_turn_id, holds + 1)
-    refusal = _refusal(active_plan(events))
+    previous = active_plan(events)
+    started = runtime._lifecycle_events(session.session_id, turn_id=session.current_turn_id,
+                                        kinds=(AgentEventKind.TURN_STARTED,))
+    refusal = _refusal(previous, from_earlier_request(previous, started, session.current_turn_id))
     return tuple((call, refusal) for call in waiting)

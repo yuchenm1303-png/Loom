@@ -731,7 +731,9 @@ class AgentRuntime:
         from .task_plan import plan_context
         # A plan outlives the turn that made it, but only its own events say what it is.
         plan = plan_context(self._lifecycle_events(session.session_id, kinds=(AgentEventKind.PLAN_UPDATED,)),
-                            session.current_turn_id)
+                            session.current_turn_id,
+                            started=self._lifecycle_events(session.session_id, turn_id=session.current_turn_id,
+                                                           kinds=(AgentEventKind.TURN_STARTED,)))
         if plan is not None:
             messages.append(plan)
         from .verification import verification_context

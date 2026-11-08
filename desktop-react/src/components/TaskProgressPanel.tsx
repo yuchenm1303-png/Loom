@@ -10,6 +10,8 @@ import "./task-progress-panel.css";
 
 interface TaskProgressPanelProps {
   steps: TaskMilestone[];
+  /** Set when the list belongs to an earlier request: the person's new message has no list of its own yet. */
+  earlierRequest?: string;
   open: boolean;
   onClose(): void;
 }
@@ -44,6 +46,8 @@ const COPY = {
     pendingFact: (count: number) => `待处理 ${count}`,
     dropped: "已放弃",
     droppedFact: (count: number) => `已放弃 ${count}`,
+    earlier: (request: string) => request ? `这份清单属于之前的请求「${request}」，这一轮还没有写自己的清单。`
+      : "这份清单属于之前的请求，这一轮还没有写自己的清单。",
   },
   en: {
     title: "Task progress",
@@ -74,11 +78,13 @@ const COPY = {
     pendingFact: (count: number) => `${count} pending`,
     dropped: "Dropped",
     droppedFact: (count: number) => `${count} dropped`,
+    earlier: (request: string) => request ? `This list is from an earlier request, “${request}”. This turn has no list of its own yet.`
+      : "This list is from an earlier request. This turn has no list of its own yet.",
   },
 } as const;
 
 /** Presentation only; milestone truth comes from durable update_plan. */
-export function TaskProgressPanel({ steps, open, onClose }: TaskProgressPanelProps) {
+export function TaskProgressPanel({ steps, earlierRequest, open, onClose }: TaskProgressPanelProps) {
   const language = useLoomLanguage();
   const copy = COPY[language];
   const presence = useMotionPresence(open, RETAIN.base);
@@ -150,6 +156,10 @@ export function TaskProgressPanel({ steps, open, onClose }: TaskProgressPanelPro
           </div>
         </div>
       </div>
+
+      {earlierRequest !== undefined ? <p className="task-plan-callout is-blocked" data-task-plan-earlier="true">
+        <CircleAlert size={12} aria-hidden="true" /><span>{copy.earlier(earlierRequest)}</span>
+      </p> : null}
 
       <div className={`task-plan-focus is-${currentTone}`}>
         <span className="task-plan-focus-label"><Activity size={12} aria-hidden="true" />{current ? copy.current : copy.allDone}</span>

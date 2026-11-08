@@ -1008,3 +1008,35 @@ def test_outside_a_goal_there_is_nothing_to_split(tmp_path):
             goal_lines.start(service, source, {"lines": [line("甲")]})
     finally:
         runtime.close()
+
+
+def test_a_new_message_is_told_the_old_list_is_not_its_own(tmp_path):
+    # Real run: asked to sum up, the model handed in the earlier request's list unchanged and went on editing.
+    tools, runs = exec_tool()
+    undone = {"plan": [{"step": "修正 README", "status": "in_progress"}, {"step": "冒烟终检", "status": "pending"}]}
+    service, runtime, platform, source, router = conversation(tmp_path, [
+        calling("update_plan", undone, "call-p1"), answer("先停在这")], tools=tools, input_text="修文档")
+    try:
+        router.lead += [calling("read_it", {}, "call-read"), answer("总结如下")]
+        service.turn_start({"threadId": source, "input": "总结一下我们现在的工作", "weave": True})
+        settle(service, source)
+        said = said_to_lead(platform)[-1]
+        assert "written for an earlier request" in said and "修文档" in said
+        assert "Task list from an earlier request" in said, "the list itself is labelled for the model too"
+        assert runs == [], "the read waited for this request's list"
+    finally:
+        runtime.close()
+
+
+def test_a_goal_turn_reads_its_list_as_its_own(tmp_path):
+    # Only the person's new message makes a list "earlier": the Host's own continuation of a goal does not.
+    undone = {"plan": [{"step": "实验", "status": "in_progress"}, {"step": "报告", "status": "pending"}]}
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, calling("update_plan", undone, "call-p1"), SOLO, answer("先到这"), answer("接着做")])
+    try:
+        tick(service, source)
+        said = said_to_lead(platform)[-1]
+        assert "Continue pursuing" in said or "durable Loom goal" in said, "this is the goal's own turn"
+        assert "Task list from an earlier request" not in said and "Current task milestones" in said
+    finally:
+        runtime.close()

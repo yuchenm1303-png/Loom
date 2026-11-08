@@ -22,6 +22,7 @@ interface FixtureState {
   open: boolean;
   archived: boolean;
   dropped?: boolean;
+  earlier?: boolean;
 }
 
 // A step the list left out unfinished, as the Host keeps it.
@@ -101,7 +102,7 @@ function Harness() {
         onOpenAccount={noop}
         onOpenSettings={noop}
       />
-      <TaskProgressPanel steps={steps} open={state.open} onClose={() => setState(current => ({ ...current, open: false }))} />
+      <TaskProgressPanel steps={steps} earlierRequest={state.earlier ? "修文档" : undefined} open={state.open} onClose={() => setState(current => ({ ...current, open: false }))} />
     </div>
   );
 }
@@ -115,6 +116,11 @@ const api = window as unknown as {
   setTaskPanelOpen(open: boolean): void;
   archiveTaskPlan(): void;
   showDropped(dropped: boolean): void;
+  showEarlier(earlier: boolean): void;
+};
+
+api.showEarlier = earlier => {
+  flushSync(() => update?.(state => ({ ...state, earlier })));
 };
 
 api.showDropped = dropped => {
