@@ -13,9 +13,12 @@ import { I18nProvider } from "../../src/i18n";
 import { applyThemePreference } from "../../src/theme";
 import type { TranscriptItem } from "../../src/types/loom";
 import "../../src/renderer-styles";
+import "../../src/mobile/mobile.css";
 
 applyThemePreference(new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light", { animate: false, syncNative: false });
 document.documentElement.dataset.loomReducedMotion = "false";
+const mobile = new URLSearchParams(location.search).has("mobile");
+if (mobile) document.documentElement.dataset.loomSurface = "mobile";
 const root = createRoot(document.getElementById("root")!);
 const decision = { title: "选择方案", allowCustomInput: true, options: [
   { id: "one", title: "第一个方案" }, { id: "two", title: "第二个方案" },
@@ -36,7 +39,7 @@ const api = {
     </I18nProvider></StrictMode>)); },
   presence(open: boolean, identity = "one") { flushSync(() => root.render(<StrictMode><Presence open={open} identity={identity} /></StrictMode>)); },
   plain(content: string, streaming: boolean) { flushSync(() => root.render(<StrictMode><MarkdownMessage content={content} streaming={streaming} /></StrictMode>)); },
-  turn(items: TranscriptItem[], running: boolean, threadId?: string) { flushSync(() => root.render(<StrictMode><I18nProvider><div className="app-shell" style={{ display: "block", height: "100vh", minHeight: 0 }}>
+  turn(items: TranscriptItem[], running: boolean, threadId?: string) { flushSync(() => root.render(<StrictMode><I18nProvider><div className={`app-shell${mobile ? " m-stage" : ""}`} style={{ display: "block", height: "100vh", minHeight: 0 }}>
     <div className="conversation-stage" style={{ height: "100%" }}>
     <Transcript key={threadId} threadId={threadId} items={items} running={running} currentTurnId="turn-1" onApproval={() => {}} />
     <TranscriptScrollController items={items} running={running} threadId={threadId ?? "thread-1"} currentTurnId="turn-1" />

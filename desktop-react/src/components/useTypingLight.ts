@@ -63,9 +63,15 @@ export function useTypingLight(root: RefObject<HTMLElement | null>, active: bool
   useLayoutEffect(() => {
     const highlights = registry();
     const element = root.current;
-    if (!highlights || !element || reduce) return;
     for (const id of timers.current) window.clearTimeout(id);
     timers.current = [];
+    if (!highlights || !element || reduce) {
+      if (owner === token) {
+        for (const band of BANDS) highlights?.delete(band.name);
+        owner = null;
+      }
+      return;
+    }
 
     const text = active ? lastText(element) : null;
     if (text) {

@@ -1,5 +1,5 @@
 import { Check, Copy, Maximize2 } from "./icons";
-import { isValidElement, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, isValidElement, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ImageLightbox } from "./ImageLightbox";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import { rehypeHighlightOnce } from "./markdownHighlight";
@@ -184,15 +184,16 @@ function LocalImagePreview({
   );
 }
 
+const ReceivingContext = createContext(false);
+
 function CodeBlock({
   children,
   workspace,
-  executionDisabled = false,
 }: {
   children?: ReactNode;
   workspace?: string;
-  executionDisabled?: boolean;
 }) {
+  const executionDisabled = useContext(ReceivingContext);
   const [copied, setCopied] = useState(false);
   const code = nodeText(children).replace(/\n$/, "");
   const language = languageLabel(children);
@@ -233,7 +234,7 @@ function CodeBlock({
   );
 }
 
-function markdownComponents(workspace?: string, executionDisabled = false): Components {
+function markdownComponents(workspace?: string): Components {
   return {
     p({ children }) {
       const imagePath = singleLineImagePath(nodeText(children));
@@ -293,7 +294,7 @@ function markdownComponents(workspace?: string, executionDisabled = false): Comp
       return <img {...props} src={src} alt={alt || ""} className={classes} loading="lazy" decoding="async" />;
     },
     pre({ children }) {
-      return <CodeBlock workspace={workspace} executionDisabled={executionDisabled}>{children}</CodeBlock>;
+      return <CodeBlock workspace={workspace}>{children}</CodeBlock>;
     },
   };
 }
@@ -313,21 +314,25 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   receiving: boolean;
   glow: boolean;
 }) {
-  const components = useMemo(() => markdownComponents(workspace, receiving), [workspace, receiving]);
+  // Network state must not change component types: doing so remounts every rich
+  // block on completion, losing scroll/copy/image state and replaying entrances.
+  const components = useMemo(() => markdownComponents(workspace), [workspace]);
   const root = useRef<HTMLDivElement>(null);
   // The edge of the text being written glows (the quiet reasoning copy does not).
   useTypingLight(root, glow && (streaming || receiving), content);
   return (
     <div ref={root} className={`markdown-body ${compact ? "markdown-compact" : ""} ${streaming ? "is-streaming" : ""} ${receiving ? "is-receiving" : ""}`} aria-busy={receiving}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex, rehypeHighlightOnce]}
-        components={components}
-        urlTransform={markdownUrlTransform}
-        skipHtml
-      >
-        {stickerAwareMarkdown(content)}
-      </ReactMarkdown>
+      <ReceivingContext.Provider value={receiving}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex, rehypeHighlightOnce]}
+          components={components}
+          urlTransform={markdownUrlTransform}
+          skipHtml
+        >
+          {stickerAwareMarkdown(content)}
+        </ReactMarkdown>
+      </ReceivingContext.Provider>
     </div>
   );
 });

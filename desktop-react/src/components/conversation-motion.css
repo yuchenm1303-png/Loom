@@ -143,6 +143,14 @@ html[data-loom-theme="light"] .transcript {
   animation: none !important;
 }
 
+/* Keep the completed live layout intact until its one parent fold takes it. */
+.turn-process.is-settling .pending-thinking-presence[data-completed="true"] {
+  grid-template-rows: 1fr;
+  opacity: 0;
+  pointer-events: none;
+}
+.pending-thinking-presence[data-completed="true"] * { animation: none !important; }
+
 .transcript-entry[data-restored="true"] :is(.user-link-card, .user-rich-code-block, .user-message-image-preview, .user-message-attachment-card, .user-message-media-preview) {
   animation: none !important;
 }

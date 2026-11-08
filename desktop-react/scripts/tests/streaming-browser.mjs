@@ -9,9 +9,10 @@ const browser = await chromium.launch({
 });
 try {
   const page = await browser.newPage();
+  page.setDefaultNavigationTimeout(60000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/streaming.html`);
+  await page.goto(`${process.env.LOOM_TEST_ORIGIN || "http://127.0.0.1:5173"}/scripts/fixtures/streaming.html`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => Boolean(window.renderStream));
   const frames = (count) => page.evaluate(async (n) => {
     for (let i = 0; i < n; i++) await new Promise(requestAnimationFrame);
@@ -52,6 +53,17 @@ try {
   assert.ok(await page.evaluate(() => window.oldCode === document.querySelector(".markdown-code-block")));
   assert.equal(await page.locator(".katex").count(), 1);
   assert.equal(await page.locator("table").count(), 1);
+  await page.evaluate((text) => {
+    window.oldCode = document.querySelector(".markdown-code-block");
+    window.oldTable = document.querySelector("table");
+    window.oldParagraph = document.querySelector(".markdown-body > p");
+    window.oldCode.dataset.preserved = "yes";
+    window.renderPlain(text + " appended", false);
+  }, rich);
+  await page.waitForFunction(() => !document.querySelector(".markdown-body.is-streaming"));
+  assert.ok(await page.evaluate(() => window.oldCode === document.querySelector(".markdown-code-block")
+    && window.oldTable === document.querySelector("table") && window.oldParagraph === document.querySelector(".markdown-body > p")),
+    "finishing a stream preserves rich blocks instead of remounting every Markdown component");
 
   await page.evaluate(() => { window.resetStream(); window.renderStream("<think>" + "思".repeat(800), true); });
   // Collapsed reasoning must not parse or mount an invisible Markdown tree.
@@ -118,7 +130,12 @@ try {
   });
 
 
+  await page.evaluate(() => { window.resetStream(); window.renderPlain("亮起的流式文字正在输出。", true); });
+  await page.waitForFunction(() => CSS.highlights.has("loom-type-0"));
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await frames(2);
+  assert.ok(await page.evaluate(() => !["loom-type-0", "loom-type-1", "loom-type-2"].some(key => CSS.highlights.has(key))),
+    "turning on reduced motion immediately clears the current typing highlights");
   await page.evaluate(() => { window.resetStream(); window.renderStream("中".repeat(800), true); });
   assert.equal(await length(), 800);
   await page.emulateMedia({ reducedMotion: "no-preference" });

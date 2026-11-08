@@ -321,10 +321,10 @@ function ReasoningBlock({
 }
 
 /** The standalone live capsule for the gaps no message or tool row explains. */
-function ThinkingCapsule() {
+function ThinkingCapsule({ active = true }: { active?: boolean }) {
   const copy = useRuntimeCopy();
   const phase = useContext(TurnPhaseContext);
-  const ref = useThinkingRegistration(true);
+  const ref = useThinkingRegistration(active);
   return (
     <div ref={ref} className="inline-thinking" role="status" aria-live="polite">
       <ThinkingGlyph />
@@ -1403,6 +1403,12 @@ function TurnProcess({
   if (capsuleVisible) handedOffRef.current = false;
   const renderCapsule = active && capsulePresence.mounted && !handedOff
     && !(capsulePresence.phase === "exiting" && handedOffRef.current);
+  // Completion owns one fold of the whole process. Removing the quiet-gap
+  // indicator first took a row out of that layout and jumped the final answer
+  // upward before the fold even began. Fade it while retaining its space.
+  const hadCapsule = useRef(false);
+  useLayoutEffect(() => { if (active) hadCapsule.current = renderCapsule; }, [active, renderCapsule]);
+  const completedCapsule = !active && live && hadCapsule.current;
 
   // Retain pixels through exit/reversal, then release hidden React trees. A
   // visited long conversation must return to its original folded DOM budget.
@@ -1486,9 +1492,9 @@ function TurnProcess({
                 </div>
               ) : null}
               <Sequence items={live ? handoff.current : items} handoff={live ? handoff : undefined} active={active} collapseEnded={live} messageIds={messageIds} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
-              {renderCapsule ? (
-                <div className="pending-thinking-presence" data-motion-phase={capsulePresence.phase} inert={!capsuleVisible}>
-                  <div className="pending-thinking-presence-inner"><ThinkingCapsule /></div>
+              {renderCapsule || completedCapsule ? (
+                <div className="pending-thinking-presence" data-motion-phase={capsulePresence.phase} data-completed={completedCapsule || undefined} aria-hidden={completedCapsule || undefined} inert={!capsuleVisible || completedCapsule}>
+                  <div className="pending-thinking-presence-inner"><ThinkingCapsule active={!completedCapsule} /></div>
                 </div>
               ) : null}
             </div>

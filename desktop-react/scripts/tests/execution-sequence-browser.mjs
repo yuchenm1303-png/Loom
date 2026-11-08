@@ -22,9 +22,11 @@ const rowGeometry = selector => document.querySelectorAll(selector).length && [.
 try {
   for (const theme of ["light", "dark"]) {
     const page = await browser.newPage({ viewport: { width: 1200, height: 1000 } });
+    page.setDefaultNavigationTimeout(60000);
+    await page.addInitScript(() => localStorage.setItem("loom.settings.language", "zh-CN"));
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
-    await page.goto(`${origin}/scripts/fixtures/runtime-motion.html?theme=${theme}`);
+    await page.goto(`${origin}/scripts/fixtures/runtime-motion.html?theme=${theme}`, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => Boolean(window.motionFixture));
     const render = (items, live = true) => page.evaluate(([items, live]) => window.motionFixture.turn(items, live), [items, live]);
     const rows = () => page.locator(".wv-step").count();
@@ -106,7 +108,8 @@ try {
     await render(reported);
     await page.locator('[data-message-id="report"]').waitFor({ state: "visible" });
     assert.equal(await page.locator('.wv-stage [data-message-id="report"]').count(), 0, "a message is not tucked into a tool group");
-    assert.equal(await page.locator('[data-message-id="report"] .assistant-message').evaluate(node => getComputedStyle(node).fontSize), "15px");
+    assert.equal(await page.locator('[data-message-id="report"] .assistant-message').evaluate(node => getComputedStyle(node).fontSize),
+      await page.locator('[data-message-id="intro"] .assistant-message').evaluate(node => getComputedStyle(node).fontSize), "reports use the conversation body size");
     const edge = await page.evaluate(() => {
       const left = element => { const range = document.createRange(); range.selectNodeContents(element); return range.getBoundingClientRect().left; };
       return { intro: left(document.querySelector('[data-message-id="intro"] .assistant-message')), report: left(document.querySelector('[data-message-id="report"] .assistant-message')) };
@@ -183,7 +186,9 @@ try {
     assert.deepEqual(await outline(), ["user", "intro", "group", "r", "group", "r2", "group"], "failure, reaction, failure, reaction, next try");
     assert.equal(await reactionNode.evaluate(node => node.isConnected && node === document.querySelector('[data-message-id="r"]')), true, "the sentence never moved or was redrawn");
     assert.equal(await page.locator(".process-notes-toggle").count(), 0, "nothing was held back, so there is no switch");
-    assert.equal(await page.locator('[data-message-id="r"]').evaluate(node => node.classList.contains("is-note") || getComputedStyle(node.querySelector(".assistant-message")).fontSize), "15px", "a message, not a note");
+    assert.equal(await page.locator('[data-message-id="r"]').evaluate(node => node.classList.contains("is-note")), false, "a message, not a note");
+    assert.equal(await page.locator('[data-message-id="r"] .assistant-message').evaluate(node => getComputedStyle(node).fontSize),
+      await page.locator('[data-message-id="intro"] .assistant-message').evaluate(node => getComputedStyle(node).fontSize));
     await page.evaluate(() => window.__observer.disconnect());
 
     // What is long enough, or has waited long enough, is the answer on its way and is shown as it streams.

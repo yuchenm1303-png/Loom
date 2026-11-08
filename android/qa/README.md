@@ -91,3 +91,14 @@ Updates carry the previous cap and goal start time, rejecting stale edits and pr
 The new `set_budget` / `resume_with_budget` actions require an updated desktop Host: older Hosts reject
 these names instead of falling through to legacy resume/doubling. Updating only the phone is insufficient.
 Run `node scripts/tests/goal-budget-controls.mjs` against Vite on 5199 for mobile and desktop controls.
+
+Conversation motion keeps Markdown component identities stable when receiving ends, so rich blocks retain
+local state and do not flash/remount. Live process tails publish at most every 220 ms even under continuous
+stdout, preserving the same text node instead of restarting an entrance for each line. Mobile tool rows
+have 44 px touch targets, persistent disclosure chevrons and one circular running mark; their labels stay
+still. Both reduced-motion preferences stop the mark, and changing the preference clears typing highlights.
+`node scripts/tests/mobile-conversation-flow.mjs` covers live output, rapid drawer reversals and completion
+at 320/390 px in both themes. The streaming browser test also checks rich-block identity at completion.
+The completion hold also retains the quiet-gap indicator's space while fading it out, then releases it
+with the process fold. It becomes inert and stops registering as thinking immediately, avoiding the
+one-row jump before the final answer. `execution-sequence-browser.mjs` checks this hold/fold frame by frame.

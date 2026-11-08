@@ -11,8 +11,8 @@ android {
         applicationId = "com.smirel.loom"
         minSdk = 29
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.1.4"
+        versionCode = 6
+        versionName = "0.1.5"
     }
 
     buildFeatures { buildConfig = true }

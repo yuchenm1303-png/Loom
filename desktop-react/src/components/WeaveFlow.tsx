@@ -115,11 +115,17 @@ function useThrottled<T>(value: T, ms: number): T {
   const [shown, setShown] = useState(value);
   const latest = useRef(value);
   latest.current = value;
+  const timer = useRef<number | null>(null);
   useEffect(() => {
-    if (value === shown) return;
-    const timer = window.setTimeout(() => setShown(latest.current), ms);
-    return () => window.clearTimeout(timer);
+    if (value === shown || timer.current !== null) return;
+    // Do not restart this timer on each output delta: a busy process would
+    // otherwise never publish its newest line until stdout went quiet.
+    timer.current = window.setTimeout(() => { timer.current = null; setShown(latest.current); }, ms);
   }, [ms, shown, value]);
+  useEffect(() => () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+  }, []);
   return shown;
 }
 
@@ -444,7 +450,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
           <div className="wv-sub-fold" data-open={sub ? "true" : "false"} data-settled={settledSubOnMount.current || !animate ? "true" : undefined} inert>
             <div className="wv-sub-inner">
               <div className={`wv-sub is-${subShown.kind}`}>
-                <span className="wv-sub-text" key={subShown.text}>{subShown.text}</span>
+                <span className="wv-sub-text">{subShown.text}</span>
               </div>
             </div>
           </div>
