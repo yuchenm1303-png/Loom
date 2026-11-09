@@ -109,137 +109,264 @@ const profile = { selection: "builtin:minimax", id: "minimax", kind: "builtin", 
   reasoning: { kind: "openai-effort", value: "medium", defaultValue: "medium", source: "catalog", options: [{ value: "low", label: "低" }, { value: "medium", label: "中" }, { value: "high", label: "高" }] } };
 const models = { primary: profile, profiles: [profile, { ...profile, selection: "builtin:ling", id: "ling", name: "Ling-3.0-flash", model: "Ling-3.0-flash", reasoning: null }], activeModelId: "minimax", current: { ...profile, provider: "openai" }, recentModels: [] };
 
-/* ?live=1 (or ?live=approval): a conversation whose next turn is played as the Host plays one,
-   event by event, with the same item shapes app_server.py emits: a thinking gap, streamed reasoning
-   and commentary, tool calls with streamed arguments, a process with live output, a diff, an
-   optional approval, then a streamed Markdown answer. Send any message in "首页加载变慢" to start it;
-   window.__shell.liveDone resolves when the turn has completed. */
+/* The Host, scripted. Sending in any conversation plays a turn the way app_server.py plays one, event by
+   event and with the same item shapes: a thinking gap, streamed reasoning and commentary, tool calls with
+   streamed arguments, a command with live output, a diff, then a streamed Markdown answer. A short message
+   ("你好") gets a short streamed reply with no tools.
+     - A thread in approval mode asks before the command; allow runs it, decline skips it.
+     - Steering while a turn runs lands as a "steering" user message at the next step boundary.
+     - The stop button interrupts: open items end "interrupted", the turn and thread too.
+     - "修复 Host git 挂起" resumes after its pending approval is answered; "长对话滚动性能" finishes its running
+       turn a moment after it is opened (not under automation, so the browser tests keep a still page).
+   ?live=1 adds the "首页加载变慢" conversation; ?live=approval puts it in approval mode.
+   window.__shell.liveDone resolves when the latest played turn has ended. */
 const LIVE = "thread-live";
 const live = params.get("live");
-const liveItems: Record<string, unknown>[] = [];
-let liveTurns: Array<{ id: string; threadId: string; status: string; startedAt: string; completedAt?: string; items: Record<string, unknown>[] }> = [];
-let approvalGate: (() => void) | null = null;
-const liveThread: ThreadRecord = { id: LIVE, title: "首页加载变慢", status: "completed", workspace: "D:/work/Loom", permissionMode: "approval", createdAt: at, updatedAt: new Date().toISOString(), active: true, weave: false, projectId: "p1" };
+const liveThread: ThreadRecord = { id: LIVE, title: "首页加载变慢", status: "completed", workspace: "D:/work/Loom", permissionMode: live === "approval" ? "approval" : "workspace", createdAt: at, updatedAt: new Date().toISOString(), active: true, weave: false, projectId: "p1" };
 if (live) threads.push(liveThread);
-const LIVE_REASONING = "用户说首页变慢了。先确认是哪一段慢：接口、打包体积还是渲染。先读入口文件，再跑一次性能脚本拿数字。";
-const LIVE_NOTE = "我先看一下首页的入口和数据请求，再跑一次性能脚本，拿到实际数字再改。";
-const LIVE_ANSWER = `## 结论
 
-首页慢在**首屏同时发了 6 个请求**，其中 \`/api/feed\` 平均 1.8 秒，并且阻塞了渲染。
+type SimTurn = { id: string; threadId: string; status: string; startedAt: string; completedAt?: string; items: Record<string, unknown>[] };
+type SimRun = { turn: SimTurn; stopped: boolean; steers: Array<{ text: string; inputId: string; submittedAt: string }>; decide: ((decision: string) => void) | null; approval: Record<string, unknown> | null };
+const histories = new Map<string, SimTurn[]>();
+const runs = new Map<string, SimRun>();
+class Stopped extends Error {}
+const now = () => new Date().toISOString();
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+let seed = 7;
+const chunk = () => { seed = (seed * 9301 + 49297) % 233280; return 1 + Math.floor((seed / 233280) * 7); };
+const PERF_LINES = ["> loom-web@1.4.0 check", "> node scripts/check.mjs", "", "warming up (3 runs)…", "run 1  frame 18.2 ms  ok", "run 2  frame 17.9 ms  ok", "run 3  frame 18.4 ms  ok", "slowest: deriveItems 14.1 ms", "120 tests passed", "done in 6.4s"];
+
+/** A thread's turns as thread/read returns them; turns played here are appended to the same list. */
+function history(threadId: string): SimTurn[] {
+  let list = histories.get(threadId);
+  if (!list) {
+    list = threadId === THREAD ? [longTurn] : ((showcase[threadId]?.() ?? []) as SimTurn[]);
+    histories.set(threadId, list);
+  }
+  return list;
+}
+const recordOf = (threadId: string) => threads.find((entry) => entry.id === threadId) ?? (threadId === LIVE ? liveThread : undefined);
+function notify(threadId: string, method: string, payload: Record<string, unknown>) {
+  emit({ type: "notification", payload: { method, params: { threadId, ...payload } } });
+}
+function setThread(threadId: string, patch: Partial<ThreadRecord>) {
+  const record = recordOf(threadId);
+  if (!record) return;
+  Object.assign(record, patch, { updatedAt: now() });
+  notify(threadId, "thread/updated", { thread: { ...record } });
+}
+function upsert(turn: SimTurn, item: Record<string, unknown>, method: "item/started" | "item/completed") {
+  const index = turn.items.findIndex((entry) => entry.id === item.id);
+  const full = { threadId: turn.threadId, turnId: turn.id, createdAt: now(), ...(index >= 0 ? turn.items[index] : {}), ...item, updatedAt: now() };
+  if (index >= 0) turn.items[index] = full; else turn.items.push(full);
+  notify(turn.threadId, method, { item: full });
+  return full;
+}
+async function wait(run: SimRun, ms: number) {
+  await sleep(ms);
+  if (run.stopped) throw new Stopped();
+}
+const activity = (run: SimRun, phase: string) => notify(run.turn.threadId, "turn/modelActivity", { turnId: run.turn.id, phase, active: false, contentGapSeconds: 0 });
+async function stream(run: SimRun, itemId: string, field: "text" | "reasoning", text: string, pace = 30) {
+  for (let cursor = 0; cursor < text.length;) {
+    const piece = text.slice(cursor, cursor += chunk());
+    const item = run.turn.items.find((entry) => entry.id === itemId)!;
+    item[field] = `${String(item[field] ?? "")}${piece}`;
+    notify(run.turn.threadId, "item/delta", { turnId: run.turn.id, itemId, delta: { [field]: piece } });
+    await wait(run, pace + (seed % 3) * 12);
+  }
+}
+let stepCount = 0;
+async function say(run: SimRun, phase: "commentary" | "final_answer", text: string, reasoning = "") {
+  const id = `assistant:${run.turn.id}:s${++stepCount}`;
+  upsert(run.turn, { id, type: "assistant_message", status: "streaming" }, "item/started");
+  if (reasoning) await stream(run, id, "reasoning", reasoning, 26);
+  await stream(run, id, "text", text, phase === "final_answer" ? 22 : 30);
+  upsert(run.turn, { id, type: "assistant_message", status: "completed", text, reasoning: reasoning || undefined, phase, stepId: id }, "item/completed");
+}
+/** Steering sent while the turn ran, delivered at a step boundary as the Host does. */
+function deliverSteers(run: SimRun) {
+  const delivered = run.steers.splice(0);
+  for (const steer of delivered) {
+    upsert(run.turn, { id: `user:${steer.inputId}`, type: "user_message", status: "completed", text: steer.text, source: "steering", inputId: steer.inputId, submittedAt: steer.submittedAt }, "item/completed");
+  }
+  return delivered.map((steer) => steer.text);
+}
+async function tool(run: SimRun, callId: string, toolName: string, args: Record<string, unknown>, result: () => Promise<Record<string, unknown>>) {
+  const id = `tool:${callId}`;
+  upsert(run.turn, { id, type: "tool_call", status: "streaming_arguments", callId, toolName }, "item/started");
+  const json = JSON.stringify(args);
+  for (let cursor = 0; cursor < json.length;) {
+    const piece = json.slice(cursor, cursor += 6);
+    notify(run.turn.threadId, "item/delta", { turnId: run.turn.id, itemId: id, delta: { kind: "tool_call_argument", callId, toolName, arguments: piece } });
+    await wait(run, 24);
+  }
+  upsert(run.turn, { id, type: "tool_call", status: "running", callId, toolName, arguments: args }, "item/completed");
+  activity(run, "running");
+  const output = await result();
+  upsert(run.turn, { id, type: "tool_call", status: "completed", callId, toolName, arguments: args, ok: true, ...output }, "item/completed");
+}
+async function runCommand(run: SimRun, command: string, lines: string[]) {
+  const id = `process:${run.turn.id}:${++stepCount}`;
+  upsert(run.turn, { id, type: "process", status: "running", processId: id, argv: command.split(" "), cwd: "D:/work/Loom", command, stdout: "" }, "item/started");
+  let out = "";
+  for (const line of lines) {
+    out += `${line}\n`;
+    upsert(run.turn, { id, stdout: out }, "item/completed");
+    await wait(run, 240);
+  }
+  upsert(run.turn, { id, status: "completed", stdout: out, returncode: 0 }, "item/completed");
+  return { content: out };
+}
+/** The approval card, then the person's answer. */
+async function ask(run: SimRun, callId: string, command: string): Promise<boolean> {
+  const decisions = ["accept", "acceptForSession", "acceptWithPrefixRule", "decline"];
+  const prefix = command.split(" ").slice(0, 2);
+  upsert(run.turn, { id: `tool:${callId}`, type: "tool_call", status: "started", callId, toolName: "exec", arguments: { command } }, "item/started");
+  upsert(run.turn, { id: `approval:${callId}`, type: "approval", status: "waiting", callId, toolName: "exec", effect: "sensitive", reason: command, availableDecisions: decisions, proposedPrefixRule: prefix, sessionScope: { kind: "prefix", prefix }, ruleSandbox: "policy" }, "item/started");
+  run.approval = { ...pendingApproval, requestId: `req-${callId}`, threadId: run.turn.threadId, turnId: run.turn.id, itemId: `tool:${callId}`, approvalItemId: `approval:${callId}`, callId, startedAtMs: Date.now(), arguments: { command }, reason: command, permissionMode: "approval", availableDecisions: decisions, proposedPrefixRule: prefix, sessionScope: { kind: "prefix", prefix } };
+  setThread(run.turn.threadId, { status: "waiting_approval" });
+  notify(run.turn.threadId, "approval/requested", { approval: run.approval });
+  const decision = await new Promise<string>((resolve) => { run.decide = resolve; });
+  run.decide = null; run.approval = null;
+  if (run.stopped) throw new Stopped();
+  const allowed = decision.startsWith("accept");
+  upsert(run.turn, { id: `approval:${callId}`, status: allowed ? "approved" : "declined" }, "item/completed");
+  setThread(run.turn.threadId, { status: "running" });
+  if (!allowed) upsert(run.turn, { id: `tool:${callId}`, status: "completed", ok: false, error: "用户拒绝了这次执行" }, "item/completed");
+  return allowed;
+}
+function finish(run: SimRun, status: "completed" | "interrupted") {
+  const { turn } = run;
+  if (status === "interrupted") {
+    for (const item of turn.items) {
+      if (/^(streaming|streaming_arguments|started|running|waiting)$/.test(String(item.status))) upsert(turn, { id: item.id, status: "interrupted", terminalReason: "interrupted" }, "item/completed");
+    }
+  }
+  Object.assign(turn, { status, completedAt: now() });
+  runs.delete(turn.threadId);
+  setThread(turn.threadId, { status, currentTurnId: turn.id });
+  notify(turn.threadId, "turn/completed", { turn: { id: turn.id, threadId: turn.threadId, status, startedAt: turn.startedAt, completedAt: turn.completedAt } });
+  Reflect.set(shell, "liveCompletedAt", performance.now());
+}
+/** Run a script against a turn; stopping it at any await ends the turn "interrupted". */
+async function drive(run: SimRun, script: (run: SimRun) => Promise<void>) {
+  runs.set(run.turn.threadId, run);
+  try { await script(run); finish(run, "completed"); } catch (cause) {
+    if (!(cause instanceof Stopped)) throw cause;
+    finish(run, "interrupted");
+  }
+}
+const quote = (text: string) => (text.length > 18 ? `${text.slice(0, 18)}…` : text);
+
+async function workScript(run: SimRun, input: string) {
+  const record = recordOf(run.turn.threadId);
+  activity(run, "waiting_model");
+  await wait(run, 1100);
+  if (input.replace(/\s/g, "").length <= 6) {
+    await say(run, "final_answer", `你好！我在${state.deviceName}上，随时可以开始。想让我看哪个项目、改什么？`, "简短的问候，直接回应即可。");
+    return;
+  }
+  await say(run, "commentary", `我先看一下相关代码，再跑一次检查拿到实际数字，确认之后再改。`,
+    `用户要「${quote(input)}」。先确认问题在哪：读入口文件、搜一下调用点，再跑检查脚本拿数字。`);
+  await tool(run, `read-${run.turn.id}`, "read_file", { path: "src/components/Transcript.tsx" }, async () => { await wait(run, 380); return { content: "export function Transcript({ turns }) { … }  (412 lines)" }; });
+  await tool(run, `grep-${run.turn.id}`, "grep", { pattern: "deriveItems\\(", path: "src" }, async () => { await wait(run, 300); return { content: "src/state/useTranscript.ts:88\nsrc/state/useTranscript.ts:131\nsrc/components/Transcript.tsx:57" }; });
+  const steered = deliverSteers(run);
+  activity(run, "waiting_model");
+  await wait(run, 800);
+  if (steered.length) await say(run, "commentary", `收到，按你补充的「${quote(steered.join("；"))}」一起处理。`);
+  const callId = `check-${run.turn.id}`;
+  const command = "npm run check";
+  let ran = true;
+  if (record?.permissionMode === "approval") {
+    ran = await ask(run, callId, command);
+    if (ran) {
+      upsert(run.turn, { id: `tool:${callId}`, status: "running" }, "item/completed");
+      const output = await runCommand(run, command, PERF_LINES);
+      upsert(run.turn, { id: `tool:${callId}`, status: "completed", ok: true, ...output }, "item/completed");
+    }
+  } else {
+    await tool(run, callId, "exec", { command }, () => runCommand(run, command, PERF_LINES));
+  }
+  steered.push(...deliverSteers(run));
+  activity(run, "waiting_model");
+  await wait(run, 900);
+  await tool(run, `patch-${run.turn.id}`, "apply_patch", { path: "src/state/useTranscript.ts" }, async () => { await wait(run, 260); return { content: "Updated 2 files" }; });
+  upsert(run.turn, { id: `diff:${run.turn.id}`, type: "file_edit", status: "completed", paths: ["src/state/useTranscript.ts", "src/components/Transcript.tsx"],
+    diff: "diff --git a/src/state/useTranscript.ts b/src/state/useTranscript.ts\n--- a/src/state/useTranscript.ts\n+++ b/src/state/useTranscript.ts\n@@ -85,3 +85,4 @@ export function useTranscript(turns: Turn[]) {\n-  const items = turns.flatMap(deriveItems);\n+  const done = useMemo(() => finished.map(deriveTurn), [finished]);\n+  const items = [...done.flat(), ...deriveTurn(live)];\n   return items;\ndiff --git a/src/components/Transcript.tsx b/src/components/Transcript.tsx\n--- a/src/components/Transcript.tsx\n+++ b/src/components/Transcript.tsx\n@@ -57,1 +57,1 @@\n-  const rows = useTranscript(turns, { subscribe: \"all\" });\n+  const rows = useTranscript(turns, { subscribe: \"live\" });\n" }, "item/completed");
+  activity(run, "waiting_model");
+  await wait(run, 900);
+  await say(run, "final_answer", `## 结论
+
+「${quote(input)}」已处理。问题出在**每次流式更新都重新整理整段对话**，轮数越多越慢。
 
 ### 改动
 
-1. \`HomePage.tsx\`：feed 改为首屏之后再取，先渲染骨架。
-2. \`api/client.ts\`：给 \`/api/profile\` 加了 60 秒缓存。
+1. \`useTranscript.ts\`：已完成的轮次只算一次，结果缓存。
+2. \`Transcript.tsx\`：只有正在进行的那一轮订阅增量。
 
 \`\`\`ts
-const feed = useDeferredQuery("/api/feed", { after: "first-paint" });
+const done = useMemo(() => finished.map(deriveTurn), [finished]);
 \`\`\`
 
 | 指标 | 修改前 | 修改后 |
 | --- | --- | --- |
-| 首屏时间 | 2.9 s | 1.1 s |
-| 请求数 | 6 | 3 |
+| 每帧耗时 | 18 ms | 4 ms |
+| 检查 | ${ran ? "通过" : "未运行"} | ${ran ? "通过" : "—"} |
+${steered.length ? `\n也按你中途补充的「${quote(steered.join("；"))}」做了调整。\n` : ""}${ran ? "" : "\n> 你拒绝了运行检查，所以改动还没有验证过。\n"}`);
+}
 
-性能脚本和单元测试都已通过。`;
-const PERF_LINES = ["> loom-web@1.4.0 perf", "> node scripts/perf.mjs --route /", "", "warming up (3 runs)…", "run 1  first paint 2.91s  requests 6", "run 2  first paint 2.87s  requests 6", "run 3  first paint 2.94s  requests 6", "slowest: GET /api/feed 1.82s (blocking)", "slowest: GET /api/profile 0.64s", "done in 9.4s"];
-const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-let seed = 7;
-const chunk = () => { seed = (seed * 9301 + 49297) % 233280; return 1 + Math.floor((seed / 233280) * 7); };
-function liveNotify(method: string, params: Record<string, unknown>) {
-  emit({ type: "notification", payload: { method, params: { threadId: LIVE, ...params } } });
+function startTurn(threadId: string, input: string) {
+  const turn: SimTurn = { id: `turn-${threadId}-${history(threadId).length + 1}`, threadId, status: "running", startedAt: now(), items: [] };
+  history(threadId).push(turn);
+  const run: SimRun = { turn, stopped: false, steers: [], decide: null, approval: null };
+  setThread(threadId, { status: "running", currentTurnId: turn.id, paused: false });
+  const done = (async () => {
+    await sleep(60);
+    notify(threadId, "turn/started", { turn: { id: turn.id, threadId, status: "running", startedAt: turn.startedAt } });
+    upsert(turn, { id: `user:${turn.id}`, type: "user_message", status: "completed", text: input, source: "user" }, "item/started");
+    await drive(run, (current) => workScript(current, input));
+  })();
+  Reflect.set(shell, "liveDone", done);
+  return turn;
 }
-function liveUpsert(item: Record<string, unknown>, method: "item/started" | "item/completed") {
-  const full = { threadId: LIVE, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...item };
-  const index = liveItems.findIndex((entry) => entry.id === full.id);
-  if (index >= 0) liveItems[index] = { ...liveItems[index], ...full }; else liveItems.push(full);
-  liveNotify(method, { item: full });
+
+/* "修复 Host git 挂起" waits on its push; answering the approval finishes it. */
+const longTurn: SimTurn = { id: "turn-1", threadId: THREAD, status: params.has("decision") || params.has("readability") ? "completed" : "running", startedAt: at, items };
+function resumeLongTurn(decision: string) {
+  const run: SimRun = { turn: longTurn, stopped: false, steers: [], decide: null, approval: null };
+  const allowed = decision.startsWith("accept");
+  void drive(run, async () => {
+    upsert(longTurn, { id: "approval:call-1", status: allowed ? "approved" : "declined" }, "item/completed");
+    setThread(THREAD, { status: "running" });
+    if (allowed) {
+      await tool(run, "call-1", "exec", { command: "git push origin main" }, () => runCommand(run, "git push origin main", ["Enumerating objects: 9, done.", "Writing objects: 100% (5/5), 1.21 KiB, done.", "To github.com:loom/loom.git", "   b8befa23..0ce8e2bf  main -> main"]));
+    } else {
+      upsert(longTurn, { id: "tool:call-1", type: "tool_call", toolName: "exec", callId: "call-1", status: "completed", ok: false, arguments: { command: "git push origin main" }, error: "用户拒绝了这次执行" }, "item/completed");
+    }
+    activity(run, "waiting_model");
+    await wait(run, 700);
+    await say(run, "final_answer", allowed ? "已推到 `main`（`b8befa23..0ce8e2bf`）。挂起的原因是 Host 的 git 子进程继承了 stdin，现在统一用 `DEVNULL`。" : "好的，没有推送。修改已经在本地提交，需要时再告诉我推送。");
+  });
 }
-async function liveStream(itemId: string, turnId: string, field: "text" | "reasoning", text: string, pace = 34) {
-  for (let at = 0; at < text.length;) {
-    const piece = text.slice(at, at += chunk());
-    const index = liveItems.findIndex((entry) => entry.id === itemId);
-    liveItems[index] = { ...liveItems[index], [field]: `${String(liveItems[index][field] ?? "")}${piece}` };
-    liveNotify("item/delta", { turnId, itemId, delta: { [field]: piece } });
-    await sleep(pace + (seed % 3) * 14);
-  }
-}
-async function liveTool(turnId: string, callId: string, toolName: string, args: Record<string, unknown>, run: () => Promise<Record<string, unknown>>) {
-  const id = `tool:${callId}`;
-  liveUpsert({ id, turnId, type: "tool_call", status: "streaming_arguments", callId, toolName }, "item/started");
-  const json = JSON.stringify(args);
-  for (let at = 0; at < json.length;) {
-    const piece = json.slice(at, at += 6);
-    liveNotify("item/delta", { turnId, itemId: id, delta: { kind: "tool_call_argument", callId, toolName, arguments: piece } });
-    await sleep(28);
-  }
-  liveUpsert({ id, turnId, type: "tool_call", status: "started", callId, toolName, arguments: args }, "item/completed");
-  await sleep(90);
-  liveUpsert({ id, turnId, type: "tool_call", status: "running", callId, toolName, arguments: args }, "item/completed");
-  liveNotify("turn/modelActivity", { turnId, phase: "running", active: false, contentGapSeconds: 0 });
-  const result = await run();
-  liveUpsert({ id, turnId, type: "tool_call", status: "completed", callId, toolName, arguments: args, ok: true, ...result }, "item/completed");
-}
-async function playLiveTurn(text: string) {
-  const turnId = `turn-live-${liveTurns.length + 1}`;
-  const startedAt = new Date().toISOString();
-  liveTurns.push({ id: turnId, threadId: LIVE, status: "running", startedAt, items: liveItems });
-  Object.assign(liveThread, { status: "running", currentTurnId: turnId });
-  await sleep(60);
-  liveNotify("turn/started", { turn: { id: turnId, threadId: LIVE, status: "running", startedAt } });
-  liveUpsert({ id: `user:${turnId}`, turnId, type: "user_message", status: "completed", text, source: "user" }, "item/started");
-  liveNotify("turn/modelActivity", { turnId, phase: "waiting_model", active: false, contentGapSeconds: 0 });
-  await sleep(1300);
-  // Step 1: reasoning, then a sentence of commentary, then tools.
-  const step1 = `assistant:${turnId}:s1`;
-  liveUpsert({ id: step1, turnId, type: "assistant_message", status: "streaming" }, "item/started");
-  await liveStream(step1, turnId, "reasoning", LIVE_REASONING, 30);
-  await liveStream(step1, turnId, "text", LIVE_NOTE);
-  liveUpsert({ id: step1, turnId, type: "assistant_message", status: "completed", text: LIVE_NOTE, reasoning: LIVE_REASONING, phase: "commentary", stepId: "s1" }, "item/completed");
-  await liveTool(turnId, "read-1", "read_file", { path: "src/pages/HomePage.tsx" }, async () => { await sleep(380); return { content: "export function HomePage() { … }  (212 lines)" }; });
-  await liveTool(turnId, "grep-1", "grep", { pattern: "useQuery\\(", path: "src" }, async () => { await sleep(300); return { content: "src/pages/HomePage.tsx:41\nsrc/pages/HomePage.tsx:58\nsrc/api/client.ts:12" }; });
-  liveNotify("turn/modelActivity", { turnId, phase: "waiting_model", active: false, contentGapSeconds: 0 });
-  await sleep(900);
-  const runPerf = async () => {
-    const pid = `process:p-${turnId}`;
-    liveUpsert({ id: pid, turnId, type: "process", status: "running", processId: "p1", argv: ["npm", "run", "perf"], cwd: "D:/work/Loom", command: "npm run perf", stdout: "" }, "item/started");
-    let out = "";
-    for (const line of PERF_LINES) { out += `${line}\n`; liveUpsert({ id: pid, turnId, type: "process", status: "running", command: "npm run perf", stdout: out }, "item/completed"); await sleep(260); }
-    liveUpsert({ id: pid, turnId, type: "process", status: "completed", command: "npm run perf", stdout: out, returncode: 0 }, "item/completed");
-    return { content: out };
-  };
-  if (live === "approval") {
-    const callId = "perf-1";
-    liveUpsert({ id: `tool:${callId}`, turnId, type: "tool_call", status: "started", callId, toolName: "exec", arguments: { command: "npm run perf" } }, "item/started");
-    liveUpsert({ id: `approval:${callId}`, turnId, type: "approval", status: "waiting", callId, toolName: "exec", arguments: { command: "npm run perf" }, effect: "sensitive", reason: "npm run perf", availableDecisions: ["accept", "acceptForSession", "decline"], sessionScope: { kind: "prefix", prefix: ["npm", "run"] } }, "item/started");
-    Object.assign(liveThread, { status: "waiting_approval" });
-    liveNotify("approval/requested", { approval: { ...pendingApproval, threadId: LIVE, turnId, itemId: `tool:${callId}`, approvalItemId: `approval:${callId}`, callId, requestId: "req-live", arguments: { command: "npm run perf" }, reason: "npm run perf", availableDecisions: ["accept", "acceptForSession", "decline"] } });
-    await new Promise<void>((resolve) => { approvalGate = resolve; });
-    Object.assign(liveThread, { status: "running" });
-    liveUpsert({ id: `approval:${callId}`, turnId, type: "approval", status: "approved", callId, toolName: "exec" }, "item/completed");
-    liveUpsert({ id: `tool:${callId}`, turnId, type: "tool_call", status: "running", callId, toolName: "exec", arguments: { command: "npm run perf" } }, "item/completed");
-    const result = await runPerf();
-    liveUpsert({ id: `tool:${callId}`, turnId, type: "tool_call", status: "completed", callId, toolName: "exec", arguments: { command: "npm run perf" }, ok: true, ...result }, "item/completed");
-  } else {
-    await liveTool(turnId, "perf-1", "exec", { command: "npm run perf" }, runPerf);
-  }
-  liveNotify("turn/modelActivity", { turnId, phase: "waiting_model", active: false, contentGapSeconds: 0 });
-  await sleep(1100);
-  await liveTool(turnId, "patch-1", "apply_patch", { path: "src/pages/HomePage.tsx" }, async () => { await sleep(260); return { content: "Updated 2 files" }; });
-  liveUpsert({ id: `diff:${turnId}`, turnId, type: "file_edit", status: "completed", paths: ["src/pages/HomePage.tsx", "src/api/client.ts"], diff: "diff --git a/src/pages/HomePage.tsx b/src/pages/HomePage.tsx\n--- a/src/pages/HomePage.tsx\n+++ b/src/pages/HomePage.tsx\n@@ -41,3 +41,3 @@\n-  const feed = useQuery(\"/api/feed\");\n+  const feed = useDeferredQuery(\"/api/feed\", { after: \"first-paint\" });\n" }, "item/completed");
-  liveNotify("turn/modelActivity", { turnId, phase: "waiting_model", active: false, contentGapSeconds: 0 });
-  await sleep(1000);
-  // Step 2: the answer.
-  const step2 = `assistant:${turnId}:s2`;
-  liveUpsert({ id: step2, turnId, type: "assistant_message", status: "streaming" }, "item/started");
-  await liveStream(step2, turnId, "text", LIVE_ANSWER, 26);
-  liveUpsert({ id: step2, turnId, type: "assistant_message", status: "completed", text: LIVE_ANSWER, phase: "final_answer", stepId: "s2" }, "item/completed");
-  await sleep(120);
-  const completedAt = new Date().toISOString();
-  liveTurns = liveTurns.map((turn) => turn.id === turnId ? { ...turn, status: "completed", completedAt } : turn);
-  Object.assign(liveThread, { status: "completed", currentTurnId: turnId });
-  liveNotify("turn/completed", { turn: { id: turnId, threadId: LIVE, status: "completed", startedAt, completedAt } });
-  Reflect.set(shell, "liveCompletedAt", performance.now());
+
+/* "长对话滚动性能" is mid-turn: once opened, its test run finishes and the answer streams in. */
+let runResumed = navigator.webdriver;
+function resumeRunTurn() {
+  if (runResumed) return;
+  runResumed = true;
+  const turn = history("thread-run").at(-1);
+  if (!turn || turn.status !== "running") return;
+  const run: SimRun = { turn, stopped: false, steers: [], decide: null, approval: null };
+  void drive(run, async () => {
+    await wait(run, 1500);
+    await runCommand(run, "npm test -- transcript", ["PASS src/state/useTranscript.test.ts", "PASS src/components/Transcript.test.tsx", "", "Tests: 24 passed, 24 total", "Time: 3.1 s"]);
+    upsert(turn, { id: `${turn.id}:run`, status: "completed", ok: true, content: "24 passed" }, "item/completed");
+    deliverSteers(run);
+    activity(run, "waiting_model");
+    await wait(run, 900);
+    await say(run, "final_answer", "图片预览改成**滚出视口后保留解码结果**，回到视口不再重新解码。\n\n- 滚动 200 轮对话时，图片解码从 46 次降到 0 次。\n- `Transcript` 相关的 24 个测试全部通过。", "测试已经过了，总结改动和数字。");
+  });
 }
 
 /* A full record for the plain conversations, so every message kind the phone draws has
@@ -340,15 +467,39 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "projectRun/approval": () => { buildOverview.agents.forEach((agent) => { agent.approval = null; }); return {}; },
   "thread/start": (args) => { const record: ThreadRecord = { ...threads[3], id: `new-${threads.length}`, title: "新对话", projectId: String(args.projectId || ""), workspace: String(args.workspace || workspace.path), status: "idle", weave: false }; threads.push(record); return { thread: record }; },
   "turn/start": (args) => {
-    if (args.threadId === LIVE) { const id = `turn-live-${liveTurns.length + 1}`; Reflect.set(shell, "liveDone", playLiveTurn(String(args.input ?? ""))); return { turn: { id, threadId: LIVE, status: "running", items: [] } }; }
-    return { turn: { id: `turn-${Date.now()}`, status: "running", items: [] } };
+    const threadId = String(args.threadId);
+    if (runs.has(threadId)) throw new Error("这个对话正在运行");
+    const turn = startTurn(threadId, String(args.input ?? ""));
+    return { turn: { id: turn.id, threadId, status: "running", items: [] } };
   },
-  "turn/steer": () => ({}),
+  "turn/interrupt": (args) => {
+    const threadId = String(args.threadId);
+    const run = runs.get(threadId);
+    if (run) { run.stopped = true; run.decide?.("stopped"); }
+    else {
+      const turn = history(threadId).find((entry) => entry.id === args.turnId && /^(running|waiting)/.test(entry.status));
+      if (!turn) return { requested: false, threadId, turnId: args.turnId ?? null };
+      finish({ turn, stopped: true, steers: [], decide: null, approval: null }, "interrupted");
+    }
+    return { requested: true, threadId, turnId: args.turnId, status: "interrupted" };
+  },
+  "turn/steer": (args) => {
+    const threadId = String(args.threadId);
+    const run = runs.get(threadId);
+    if (!run || run.turn.id !== args.turnId) throw new Error("turnId does not match the thread's current turn");
+    const steer = { text: String(args.input ?? "").trim(), inputId: String(args.clientInputId || `steer-${Date.now()}`), submittedAt: now() };
+    run.steers.push(steer);
+    return { threadId, turnId: run.turn.id, accepted: true, inputId: steer.inputId, duplicate: false, delivery: "next_safe_boundary", submittedAt: steer.submittedAt, applied: false, displayText: steer.text, attachments: [] };
+  },
   "thread/rename": (args) => { const record = threads.find((item) => item.id === args.threadId)!; record.title = String(args.title); return { thread: record }; },
   "thread/archive": (args) => { const record = threads.find((item) => item.id === args.threadId)!; record.archived = Boolean(args.archived); return { thread: record }; },
   "thread/read": (args) => {
     const record = threads.find((entry) => entry.id === args.threadId) ?? threads[0];
-    if (record.id !== THREAD) return { thread: record, turns: showcase[record.id]?.() ?? [], hasMoreTurns: false };
+    if (record.id === "thread-run") resumeRunTurn();
+    if (record.id !== THREAD || histories.has(THREAD)) {
+      const approval = runs.get(record.id)?.approval ?? (record.id === THREAD && longTurn.status === "running" && !runs.has(THREAD) ? pendingApproval : null);
+      return { thread: record, turns: history(record.id), pendingApproval: approval, hasMoreTurns: false };
+    }
     if (params.has("decision")) {  // a finished turn ending in a choice card (?decision=1)
       const card = JSON.stringify({ title: "后续研究路线", options: [{ id: "a", title: "深挖神经接收机", description: "单支路，证据连续" },
         { id: "b", title: "两条线并行", description: "共享 harness" }] });
@@ -366,14 +517,21 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
       ];
       return { thread: { ...record, status: "completed", weave: true }, hasMoreTurns: false, pendingApproval: null, turns: [{ id: "turn-1", threadId: THREAD, status: "completed", startedAt: at, completedAt: at, items: readableItems }] };
     }
-    return { thread: record, pendingApproval, hasMoreTurns: false, turns: [{ id: "turn-1", threadId: THREAD, status: "running", startedAt: at, items }] };
+    return { thread: record, pendingApproval, hasMoreTurns: false, turns: history(THREAD) };
   },
   "thread/set_permission_mode": (args) => {
     const record = threads.find((entry) => entry.id === args.threadId)!;
     record.permissionMode = String(args.permissionMode);
     return { thread: record };
   },
-  "approval/respond": () => { const gate = approvalGate; approvalGate = null; window.setTimeout(() => gate?.(), 120); return {}; },
+  "approval/respond": (args) => {
+    const threadId = String(args.threadId ?? "");
+    const decision = String(args.decision ?? "decline");
+    const run = runs.get(threadId);
+    if (run?.decide) { const decide = run.decide; window.setTimeout(() => decide(decision), 120); return {}; }
+    if (threadId === THREAD && longTurn.status === "running") { window.setTimeout(() => resumeLongTurn(decision), 120); return {}; }
+    throw new Error("This approval is no longer pending.");
+  },
   "tools/catalog": () => ({ tools: [] }),
   "thread/handoff_status": () => ({ incoming: null, outgoing: [] }),
 };
