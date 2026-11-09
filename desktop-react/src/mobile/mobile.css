@@ -808,7 +808,10 @@ html[data-loom-surface="mobile"] .m-round {
   transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-fast) var(--loom-ease-out);
 }
 /* Nothing to send: a neutral disc, not a half-transparent accent. */
-html[data-loom-surface="mobile"] .m-round.is-send:disabled { opacity: 1; background-color: var(--m-fill-strong, rgba(224, 230, 242, .1)); color: var(--loom-workspace-muted); }
+html[data-loom-surface="mobile"] .m-round.is-send:disabled { opacity: 1; background-color: var(--m-fill); color: var(--loom-workspace-muted); }
+/* The plane's ink leans up-right of its box, so it sits down-left of centre, and eases forward once there is something to send. */
+html[data-loom-surface="mobile"] .m-round.is-send svg { translate: -.6px .6px; transition: translate var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-round.is-send:disabled svg { translate: -1.5px 1.5px; }
 
 /* A choice card's foot on the phone: the hint repeats what the options already say, so one row holds
    "add your own" on the left and a light send pill on the right, both on the same centre line. */

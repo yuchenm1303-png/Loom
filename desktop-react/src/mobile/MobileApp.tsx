@@ -15,7 +15,6 @@ import {
   Archive,
   ArchiveRestore,
   ArrowDown,
-  ArrowUp,
   Blocks,
   Check,
   ChevronDown,
@@ -36,6 +35,7 @@ import {
   Play,
   Plus,
   RotateCw,
+  Send,
   ShieldCheck,
   Square,
   WifiOff,
@@ -711,7 +711,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
             {running && !text.trim() && !attachments.length ? (
               <button type="button" key="stop" className="m-round is-stop" aria-label="停止运行" disabled={!online} onClick={() => void loom.interrupt().catch(fail)}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
             ) : (
-              <button type="button" key="send" className="m-round is-send" aria-label={sending ? "正在发送" : "发送"} disabled={!online || sending || picking || buildBusy || thread?.archived || !attachmentsReady || (!text.trim() && !attachments.length)} onClick={() => void submit()}>{sending ? <i className="m-attachment-spinner" /> : <ArrowUp size={18} strokeWidth={2} />}</button>
+              <button type="button" key="send" className="m-round is-send" aria-label={sending ? "正在发送" : "发送"} disabled={!online || sending || picking || buildBusy || thread?.archived || !attachmentsReady || (!text.trim() && !attachments.length)} onClick={() => void submit()}>{sending ? <i className="m-attachment-spinner" /> : <Send size={18} strokeWidth={2} />}</button>
             )}
           </div>
         </div>
