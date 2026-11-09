@@ -4,7 +4,7 @@ import { AnimatedFold } from "../motion/AnimatedFold";
 import { MotionValue } from "./MotionRows";
 import { GoalBudgetControl } from "../components/GoalBudgetControl";
 import type { CurrentModel } from "../types/loom";
-import { BuildBranches, BranchCard, type BuildBranch } from "./BuildBranches";
+import { BuildBranches, BranchCard, BranchEmpty, BranchGroup, type BuildBranch } from "./BuildBranches";
 import { MobileGoalCard } from "./MobileGoalCard";
 import { latestTaskPlanInfo } from "../components/liveTaskProgress";
 import { toTurnTasks } from "../components/projectOverview";
@@ -19,15 +19,8 @@ import {
 } from "react";
 import {
   Blocks,
-  Bot,
   ChevronRight,
-  FileText,
-  GitBranch,
-  ListChecks,
   MessageSquareText,
-  RotateCw,
-  ShieldCheck,
-  Compass,
 } from "../components/icons";
 import {
   toFlowData,
@@ -45,35 +38,45 @@ import {
   type BuildSettings,
 } from "./mobileProjectState";
 
-const GLYPH = { size: 19, strokeWidth: 1.75 } as const;
-
+/** A labelled card on one branch page, or, for what cannot wait, a compact card in the dock above the rail. */
 function Section({
   title,
-  icon,
+  aside,
   tone,
   category,
   children,
 }: {
   title: string;
-  icon?: ReactNode;
+  aside?: ReactNode;
   tone?: "wait";
   category?: BuildBranch;
   children: ReactNode;
 }) {
-  return (
-    <BranchCard title={title} category={category} urgent={tone === "wait"}><section className={`m-card${tone ? ` is-${tone}` : ""}`}>
-      <div className="m-card-head">
-        {icon ? (
-          <span className={`m-tile${tone ? ` is-${tone}` : ""}`} aria-hidden="true">
-            {icon}
-          </span>
-        ) : null}
-        <div>
+  if (tone === "wait")
+    return (
+      <BranchCard urgent>
+        <section className="m-card is-wait">
           <h2>{title}</h2>
-        </div>
-      </div>
-      {children}
-    </section></BranchCard>
+          {children}
+        </section>
+      </BranchCard>
+    );
+  return (
+    <BranchCard category={category}>
+      <BranchGroup label={title} aside={aside}>
+        <div className="m-card">{children}</div>
+      </BranchGroup>
+    </BranchCard>
+  );
+}
+
+function StateMark({ state, label }: { state: string; label: string }) {
+  const tone = TONE[state];
+  return (
+    <span className={`m-state${tone ? ` is-${tone}` : ""}`}>
+      <i aria-hidden="true" />
+      {label}
+    </span>
   );
 }
 
@@ -398,8 +401,8 @@ export function MobileBuildPanel({
   );
   if (!threadId)
     return (
-      <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary="建造准备 · 描述目标后确认方案"><div className="m-build-panel"><BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
-        <section className="m-card m-start">
+      <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary="建造准备 · 描述目标后确认方案"><div className="m-build-panel">
+        <BranchCard category="budget"><section className="m-card m-start">
           <span className="m-tile is-accent is-large" aria-hidden="true">
             <Blocks size={24} strokeWidth={1.75} />
           </span>
@@ -415,18 +418,11 @@ export function MobileBuildPanel({
             hint={tokenHint(settings.tokens)}
             onChange={(value) => update("tokens", value)}
           />
-        </section>
-        <div className="m-rows">
-          <div className="m-row is-static">
-            <span className="m-row-icon" aria-hidden="true">
-              <GitBranch {...GLYPH} />
-            </span>
-            <span className="m-row-text">
-              <strong>工作目录</strong>
-              <small className="m-path">{workspace || "使用电脑默认目录"}</small>
-            </span>
-          </div>
-        </div>
+        </section></BranchCard>
+        <BranchEmpty category="tasks">建造开始后，任务和验收会显示在这里。</BranchEmpty>
+        <BranchEmpty category="agents">建造开始后，执行 Agent 会显示在这里。</BranchEmpty>
+        <BranchCard category="project"><BranchGroup label="工作目录"><div className="m-card"><p className="m-path">{workspace || "使用电脑默认目录"}</p></div></BranchGroup></BranchCard>
+        <BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
       </div></BuildBranches>
     );
   const data = overview
@@ -453,18 +449,14 @@ export function MobileBuildPanel({
   const tone = state ? TONE[state] : undefined;
   // While a build runs its folder is fixed, so the folder card steps below the live controls.
   const workspaceCard = overview ? (
-      <Section title="工作目录与 Git" icon={<GitBranch {...GLYPH} />}>
-        <p className="m-path">{overview.workspace?.path || workspace}</p>
-        <div className="m-actions">
-          <span className="m-badge">{overview.workspace?.branch || "尚无工作分支"}</span>
-          <span className={`m-badge${overview.workspace?.changeCount ? " is-wait" : ""}`}>
-            {overview.workspace?.changeCount ?? 0} 项未提交改动
-          </span>
-        </div>
+      <Section category="project" title="工作目录">
+        <dl className="m-kv">
+          <div><dt>路径</dt><dd className="m-path">{overview.workspace?.path || workspace}</dd></div>
+          <div><dt>分支</dt><dd>{overview.workspace?.branch || "尚无工作分支"}</dd></div>
+          <div><dt>未提交改动</dt><dd className={overview.workspace?.changeCount ? "is-wait" : undefined}>{overview.workspace?.changeCount ?? 0} 项</dd></div>
+        </dl>
         {workspaceLocked ? (
-          <p className="m-note">
-            建造期间工作目录保持固定；其他项目请新建建造。
-          </p>
+          <p className="m-note">建造期间目录固定，其他项目请新建建造。</p>
         ) : null}
         {overview.workspace?.status === "nested" ? (
           <p className="m-alert">
@@ -565,10 +557,11 @@ export function MobileBuildPanel({
       </Section>
   ) : null;
   return (
-    <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : goalOnly && goal ? goal.text : idle ? idleText : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"}><div className="m-build-panel" aria-label="建造控制面板"><BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
+    <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : goalOnly && goal ? goal.text : idle ? idleText : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"} refresh={{ busy: reading, disabled: !online || reading, run: () => void load(true) }}><div className="m-build-panel" aria-label="建造控制面板">
       {data?.attention && data.attention.action !== "approval" ? <Section title="建造需要处理" tone="wait"><p>{data.attention.reason}</p><button type="button" className="m-inline-button" onClick={() => onBranch("budget")}>处理预算与运行状态</button></Section> : null}
-      {turnPlan.steps.length ? <Section title={turnPlan.earlier ? "之前请求的任务" : "对话任务"}><ol className="m-build-list">{turnPlan.earlier ? <li key="earlier"><p>{turnPlan.request ? `这份清单属于之前的请求「${turnPlan.request}」，这一轮还没有写自己的清单。` : "这份清单属于之前的请求，这一轮还没有写自己的清单。"}</p></li> : null}{toTurnTasks(turnPlan.steps).map(task => <li key={task.id}>{TURN_STATE[task.state] || STATE[task.state]} · {task.title}{task.detail ? <p>{task.detail}</p> : null}</li>)}</ol></Section> : null}
-      <div className="m-build-head">
+      {turnPlan.steps.length ? <Section category="tasks" title={turnPlan.earlier ? "之前请求的任务" : "对话任务"}>{turnPlan.earlier ? <p className="m-note">{turnPlan.request ? `这份清单属于之前的请求「${turnPlan.request}」，这一轮还没有写自己的清单。` : "这份清单属于之前的请求，这一轮还没有写自己的清单。"}</p> : null}<ol className="m-steps">{toTurnTasks(turnPlan.steps).map(task => <li key={task.id}><span><strong>{task.title}</strong>{task.detail ? <small>{task.detail}</small> : null}</span><StateMark state={task.state} label={TURN_STATE[task.state] || STATE[task.state]} /></li>)}</ol></Section> : null}
+      {!turnPlan.steps.length && !(run && data?.phase === "live") ? <BranchEmpty category="tasks">建造开始后，任务和验收会显示在这里。</BranchEmpty> : null}
+      <BranchCard category="budget"><div className="m-build-head">
         <span className={`m-badge${tone ? ` is-${tone}` : ""}`}>
           <span
             className={`m-dot is-${tone === "run" ? "run" : tone === "wait" ? "wait" : tone === "on" ? "on" : "idle"}`}
@@ -576,24 +569,16 @@ export function MobileBuildPanel({
           />
           <MotionValue value={state || (idle ? "idle" : "loading")}>{state ? STATE[state] : idle ? idleText : "正在读取建造状态…"}</MotionValue>
         </span>
-        <button
-          type="button"
-          className="m-icon-button"
-          aria-label="刷新建造状态"
-          disabled={!online || reading}
-          onClick={() => void load(true)}
-        >
-          <RotateCw size={18} strokeWidth={1.75} spinning={reading} />
-        </button>
-      </div>
-        <BranchCard title="读取错误" urgent><AnimatedFold open={Boolean(readError)}><p className="m-alert" role="alert">
+        {run && data?.phase === "live" ? <span className="m-group-count">阶段 {data.milestone}</span> : null}
+      </div></BranchCard>
+        <BranchCard urgent><AnimatedFold open={Boolean(readError)}><p className="m-alert" role="alert">
           建造状态刷新失败：{readError}。当前显示上次读取的状态。
         </p></AnimatedFold></BranchCard>
-        <BranchCard title="操作错误" urgent><AnimatedFold open={Boolean(error)}><p className="m-alert" role="alert">
+        <BranchCard urgent><AnimatedFold open={Boolean(error)}><p className="m-alert" role="alert">
           {error}
         </p></AnimatedFold></BranchCard>
       {uncertain ? (
-        <Section title="操作结果待确认" tone="wait" icon={<RotateCw {...GLYPH} />}>
+        <Section title="操作结果待确认" tone="wait">
           <p>
             连接中断，电脑可能已经执行。先刷新状态，或使用同一操作编号查询重试。
           </p>
@@ -627,7 +612,7 @@ export function MobileBuildPanel({
       {overview ? (
         <>
           {run && overview.agents.some((agent) => agent.approval) ? (
-            <Section title="等待你的批准" tone="wait" icon={<ShieldCheck {...GLYPH} />}>
+            <Section title="等待你的批准" tone="wait">
               {overview.agents
                 .filter((agent) => agent.approval)
                 .map((agent) => (
@@ -672,9 +657,9 @@ export function MobileBuildPanel({
                 ))}
             </Section>
           ) : null}
-          {overview && (overview.conversationAgents?.length || !data?.agents.length) ? <Section category="agents" title="对话子 Agent" icon={<Bot {...GLYPH} />}><ConversationAgents overview={overview} online={online} onOpen={onOpenAgent} /></Section> : null}
+          {overview && (overview.conversationAgents?.length || !data?.agents.length) ? <Section category="agents" title="对话子 Agent"><ConversationAgents overview={overview} online={online} onOpen={onOpenAgent} /></Section> : null}
           {goal && overview.goal ? (
-            <BranchCard title="长目标"><MobileGoalCard goal={goal} raw={overview.goal}>
+            <BranchCard category="budget"><MobileGoalCard goal={goal} raw={overview.goal}>
               {overview.goal && overview.goal.phase !== "done" ? <GoalBudgetControl goal={overview.goal} disabled={disabled} canResume={goal.action === "resume"} onSubmit={(action, update) => act(() => window.loom.call("projectWeave/goal", { threadId, action: action === "resume" ? "resume_with_budget" : action, ...update }))} /> : null}
               {goal.action || goal.dismiss ? (
                 <div className="m-actions">
@@ -719,7 +704,7 @@ export function MobileBuildPanel({
           ) : null}
           {data?.phase !== "live" ? workspaceCard : null}
           {proposal ? (
-            <Section category="budget" title={proposal.title || "确认建造方案"} icon={<Blocks {...GLYPH} />}>
+            <Section category="budget" title={proposal.title || "确认建造方案"}>
               <p className="m-prewrap">{proposal.objective}</p>
               {fields}
               <label className="m-check">
@@ -792,7 +777,7 @@ export function MobileBuildPanel({
             </Section>
           ) : null}
           {!run && !proposal ? (
-            <section className="m-card m-start">
+            <BranchCard category="budget"><section className="m-card m-start">
               <span className="m-tile is-large" aria-hidden="true">
                 <MessageSquareText size={22} strokeWidth={1.75} />
               </span>
@@ -800,44 +785,42 @@ export function MobileBuildPanel({
               <p>
                 在底部描述目标，让电脑提出方案；方案出现后可设置并发、预算和执行轮次。
               </p>
-            </section>
+            </section></BranchCard>
           ) : null}
           {run && data?.phase === "live" ? (
             <>
-              <Section title={`阶段 ${data.milestone} · ${STATE[data.state]}`} icon={<Blocks {...GLYPH} />}>
-                {data.objective ? <p className="m-prewrap">{data.objective}</p> : null}
-                {data.narration.summary ? <p>{data.narration.summary}</p> : null}
-                {data.narration.text ? <p>{data.narration.text}</p> : null}
-                <dl className="m-build-stats">
-                  <div className="is-wide">
-                    <dt>
-                      整体 token · {readableCount(data.budget.tokens) || 0} / {readableCount(data.budget.tokenLimit)}
-                      <span className={`m-meter${tokenShare > 0.85 ? " is-high" : ""}`} aria-hidden="true">
-                        <i style={{ transform: `scaleX(${tokenShare})` }} />
-                      </span>
-                    </dt>
-                    <dd>
-                      {Math.round(tokenShare * 100)}% <small>已用</small>
-                    </dd>
+              <BranchCard category="budget"><section className="m-card m-run">
+                {data.objective ? <p className="m-run-goal m-prewrap">{data.objective}</p> : null}
+                {data.narration.summary ? <p className="m-run-line">{data.narration.summary}</p> : null}
+                {data.narration.text ? <p className="m-run-line">{data.narration.text}</p> : null}
+                <div className="m-run-usage">
+                  <div>
+                    <span>Token</span>
+                    <span><b>{readableCount(data.budget.tokens) || 0}</b> / {readableCount(data.budget.tokenLimit)} · {Math.round(tokenShare * 100)}%</span>
                   </div>
+                  <span className={`m-meter${tokenShare > 0.85 ? " is-high" : ""}`} aria-hidden="true">
+                    <i style={{ transform: `scaleX(${tokenShare})` }} />
+                  </span>
+                </div>
+                <dl className="m-run-stats">
                   <div>
                     <dt>本阶段轮次</dt>
                     <dd>
-                      {target?.episodesUsed} <small>/ {target?.maxEpisodes}</small>
+                      {target?.episodesUsed}<small> / {target?.maxEpisodes}</small>
                     </dd>
                   </div>
                   <div>
                     <dt>活跃 Agent</dt>
                     <dd>
-                      {data.agents.length} <small>/ 并发 {data.workers}</small>
+                      {data.agents.length}<small> / {data.workers}</small>
                     </dd>
                   </div>
-                  <div className="is-wide">
-                    <dt>已验收检查</dt>
+                  <div>
+                    <dt>已验收</dt>
                     <dd>{data.knowledge.checks}</dd>
                   </div>
                 </dl>
-                {data.attention ? (
+                {data.attention && data.attention.action !== "approval" ? (
                   <p className="m-alert">{data.attention.reason}</p>
                 ) : null}
                 <div className="m-actions">
@@ -917,8 +900,9 @@ export function MobileBuildPanel({
                     </button>
                   </div>
                 ) : null}
+              </section></BranchCard>
                 {data.controls.cancel ? (
-                  <div className="m-disclosures">
+                  <BranchCard category="budget"><div className="m-card">
                     <Disclosure title="调整当前阶段总预算并继续" anchor={budgetForm} open={budgetOpen} onOpenChange={setBudgetOpen}>
                       <div className="m-build-fields">
                         <NumberField
@@ -966,13 +950,9 @@ export function MobileBuildPanel({
                         应用预算并继续
                       </button>
                     </Disclosure>
-                  </div>
+                  </div></BranchCard>
                 ) : null}
-              </Section>
-              {data.agents.length ? <Section title="执行 Agent" icon={<Bot {...GLYPH} />}>
-                {!data.agents.length ? (
-                  <p className="m-note">当前没有活跃 Agent</p>
-                ) : null}
+              {data.agents.length ? <Section category="agents" title="执行 Agent">
                 {data.agents.length ? (
                   <div>
                     {data.agents.map((agent) => (
@@ -1006,28 +986,29 @@ export function MobileBuildPanel({
                 ) : null}
               </Section> : null}
               <Section
-                title={`任务与验收 · ${data.tasks.filter((task) => task.state === "integrated").length} / ${data.tasks.length}`}
-                icon={<ListChecks {...GLYPH} />}
+                category="tasks"
+                title="任务与验收"
+                aside={<span className="m-group-count">{data.tasks.filter((task) => task.state === "integrated").length} / {data.tasks.length}</span>}
               >
-                <ol className="m-build-list">
+                <ol className="m-build-list m-tasks">
                   {data.tasks.map((task) => (
                     <li key={task.id} className="m-task">
                       <Disclosure
                         title={task.title}
-                        aside={
-                          <span className={`m-badge${TONE[task.state] ? ` is-${TONE[task.state]}` : ""}`}>
-                            {STATE[task.state] ?? task.state}
-                          </span>
-                        }
+                        aside={<StateMark state={task.state} label={STATE[task.state] ?? task.state} />}
                       >
                         {task.detail ? <p className="m-prewrap">{task.detail}</p> : null}
-                        {run.plan
-                          .find((item) => item.id === task.id)
-                          ?.acceptance.map((criterion, index) => (
-                            <p key={index}>验收：{criterion}</p>
-                          ))}
+                        {run.plan.find((item) => item.id === task.id)?.acceptance.length ? (
+                          <ul className="m-accept" aria-label="验收标准">
+                            {run.plan
+                              .find((item) => item.id === task.id)
+                              ?.acceptance.map((criterion, index) => (
+                                <li key={index}>{criterion}</li>
+                              ))}
+                          </ul>
+                        ) : null}
                         {task.agentName ? (
-                          <p>执行者：{task.agentName}</p>
+                          <p className="m-note">执行者：{task.agentName}</p>
                         ) : null}
                       </Disclosure>
                     </li>
@@ -1037,7 +1018,7 @@ export function MobileBuildPanel({
                   <p>{data.outcome.summary || "建造已结束"}</p>
                 ) : null}
               </Section>
-              <Section title="追加建造指导" icon={<MessageSquareText {...GLYPH} />}>
+              <Section category="tasks" title="追加建造指导">
                 <label className="m-field">
                   之后的 Agent 都会收到
                   <textarea
@@ -1069,7 +1050,7 @@ export function MobileBuildPanel({
             </>
           ) : null}
           {data?.phase === "live" ? workspaceCard : null}
-          <Section title="建造参考资料" icon={<FileText {...GLYPH} />}>
+          <Section category="project" title="参考资料">
             {overview.program?.references?.length ? (
               <ul className="m-build-list">
                 {overview.program.references.map((item, index) => (
@@ -1080,13 +1061,13 @@ export function MobileBuildPanel({
                 ))}
               </ul>
             ) : (
-              <p className="m-note">可在底部添加文件，开始建造时一起传入。</p>
+              <p>点输入框旁的 + 添加文件，开始建造时一起传入。</p>
             )}
-            {overview.program && data?.controls.cancel ? (
+            {overview.program && data?.controls.cancel && attachments.length ? (
               <button
                 type="button"
                 className="m-button is-block"
-                disabled={disabled || !attachmentsReady || !attachments.length}
+                disabled={disabled || !attachmentsReady}
                 onClick={() =>
                   void act(async () => {
                     await window.loom.call("projectProgram/attach", {
@@ -1097,13 +1078,13 @@ export function MobileBuildPanel({
                   })
                 }
               >
-                将待发送附件加入建造资料
+                把 {attachments.length} 个待发送附件加入资料
               </button>
             ) : null}
           </Section>
-
         </>
       ) : null}
+      <BuildBranchDetails branch={branch} overview={overview} model={model} onModelSettings={onModelSettings} online={online} />
     </div></BuildBranches>
   );
 }
