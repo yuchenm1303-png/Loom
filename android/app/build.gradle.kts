@@ -3,6 +3,20 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Keep the phone client's own version aligned with the desktop Loom release it ships.
+val desktopPackage = rootProject.file("../desktop-react/package.json")
+val desktopVersion = desktopPackage.readText().let { text ->
+    Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.get(1)
+} ?: "0.1.196"
+
+fun desktopVersionCode(version: String): Int {
+    val parts = version.split(".")
+    val major = parts.getOrElse(0) { "0" }.toIntOrNull() ?: 0
+    val minor = parts.getOrElse(1) { "0" }.toIntOrNull() ?: 0
+    val patch = parts.getOrElse(2) { "0" }.toIntOrNull() ?: 0
+    return major * 100000 + minor * 1000 + patch
+}
+
 android {
     namespace = "com.smirel.loom"
     compileSdk = 36
@@ -11,8 +25,8 @@ android {
         applicationId = "com.smirel.loom"
         minSdk = 29
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.1.7"
+        versionCode = desktopVersionCode(desktopVersion)
+        versionName = desktopVersion
     }
 
     buildFeatures { buildConfig = true }
