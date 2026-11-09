@@ -636,23 +636,84 @@ html[data-loom-theme="light"] {
   scrollbar-width: thin;
 }
 
+/* A diff: file name, a quiet break per hunk, then rows of [line number | sign | code]. Code wraps inside its
+   own column, so a long line's continuation stays under its code instead of falling back to the gutter. */
 .wv-sheet-output.is-diff {
-  padding-inline: 0;
-  white-space: pre;
+  padding: 4px 0 6px;
+  white-space: normal;
   overflow-wrap: normal;
 }
 
+.wv-diff-file {
+  padding: 4px 11px 5px;
+  font-family: var(--loom-ui-font, inherit);
+  font-size: 11.5px;
+  color: var(--wv-ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wv-diff-file:not(:first-child) {
+  margin-top: 6px;
+  border-top: 1px solid var(--wv-line);
+  padding-top: 9px;
+}
+
+.wv-diff-hunk {
+  height: 1px;
+  margin: 5px 11px;
+  background: var(--wv-line);
+}
+
+.wv-diff-hunk.has-context {
+  height: auto;
+  margin: 4px 0 2px;
+  padding: 0 11px 0 calc(11px + 3.6ch + 1.6ch);
+  background: none;
+  color: var(--wv-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wv-diff-hunk code { font: inherit; }
+
 .wv-diff-line {
-  display: block;
-  padding: 0 11px;
+  display: grid;
+  grid-template-columns: 3.6ch 1.6ch minmax(0, 1fr);
+  padding-right: 11px;
+  padding-left: 11px;
+}
+
+.wv-diff-num {
+  color: var(--wv-faint);
+  opacity: .7;
+  text-align: right;
+  padding-right: .6ch;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.wv-diff-sign {
+  text-align: center;
+  user-select: none;
+}
+
+.wv-diff-code {
+  font: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.wv-diff-line.is-add { color: var(--wv-ok); background: color-mix(in srgb, var(--wv-ok) 9%, transparent); }
-.wv-diff-line.is-del { color: var(--wv-danger-text); background: color-mix(in srgb, var(--wv-danger) 9%, transparent); }
-.wv-diff-line.is-hunk { color: var(--wv-accent); }
-.wv-diff-line.is-meta { color: var(--wv-faint); }
+.wv-diff-line.is-add { background: color-mix(in srgb, var(--wv-ok) 10%, transparent); }
+.wv-diff-line.is-add .wv-diff-sign { color: var(--wv-ok); }
+.wv-diff-line.is-add .wv-diff-code { color: color-mix(in srgb, var(--wv-ok) 55%, var(--wv-ink)); }
+.wv-diff-line.is-del { background: color-mix(in srgb, var(--wv-danger) 10%, transparent); }
+.wv-diff-line.is-del .wv-diff-sign { color: var(--wv-danger-text); }
+.wv-diff-line.is-del .wv-diff-code { color: color-mix(in srgb, var(--wv-danger-text) 60%, var(--wv-ink)); }
+.wv-diff-line.is-add .wv-diff-num,
+.wv-diff-line.is-del .wv-diff-num { opacity: 1; }
 
 .wv-hint {
   display: flex;

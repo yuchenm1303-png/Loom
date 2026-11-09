@@ -121,9 +121,13 @@ try {
     assert.match(await page.locator(".wv-step").first().locator(".wv-sheet-output").innerText(), /6 passed/);
     await page.locator(".wv-step").nth(1).locator(".wv-row").click();
     await page.locator(".wv-step").nth(1).locator('.wv-detail[data-open="true"]').waitFor();
-    assert.equal(await page.locator(".wv-diff-line.is-add").innerText(), "+new line");
-    assert.equal(await page.locator(".wv-diff-line.is-del").innerText(), "-old line");
-    assert.equal(await page.locator(".wv-diff-line.is-hunk").count(), 1);
+    // Rows of [line number | sign | code]; the git plumbing lines are not shown, the file name is.
+    assert.equal(await page.locator(".wv-diff-line.is-add .wv-diff-code").innerText(), "new line");
+    assert.equal(await page.locator(".wv-diff-line.is-add .wv-diff-num").innerText(), "2");
+    assert.equal(await page.locator(".wv-diff-line.is-del .wv-diff-code").innerText(), "old line");
+    assert.equal(await page.locator(".wv-diff-line.is-del .wv-diff-sign").innerText(), "−");
+    assert.equal(await page.locator(".wv-diff-file").innerText(), "a.ts");
+    assert.doesNotMatch(await page.locator(".wv-sheet-output.is-diff").innerText(), /diff --git|\+\+\+|@@/);
 
     // A step appended to a live stage grows into its place: the stage's height never jumps, frame by frame.
     await page.evaluate(() => window.motionFixture.reset());

@@ -653,7 +653,12 @@ html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-node::before 
   border: 1px solid var(--wv-line); border-top-color: var(--wv-accent);
   border-radius: 50%; pointer-events: none; animation: m-tool-orbit 1.4s linear infinite;
 }
-html[data-loom-surface="mobile"] .m-stage .wv-sheet { margin-left: 0; border-radius: 12px; }
+/* Full width on the phone, so the card sits over the thread's rail: opaque and above it, so the rail stops at
+   the card instead of running through its edge. */
+html[data-loom-surface="mobile"] .m-stage .wv-sheet {
+  margin-left: 0; border-radius: 12px; position: relative; z-index: 1;
+  background: color-mix(in srgb, var(--wv-ink) 3.2%, var(--loom-canvas));
+}
 html[data-loom-surface="mobile"] .m-stage .wv-sheet-output { max-height: min(280px, 40dvh); overscroll-behavior: contain; }
 html[data-loom-surface="mobile"] .m-stage .wv-sub.is-tail .wv-sub-text { animation: none; }
 @keyframes m-tool-orbit { to { transform: rotate(360deg); } }

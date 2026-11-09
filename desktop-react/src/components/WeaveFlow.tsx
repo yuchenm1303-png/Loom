@@ -224,21 +224,60 @@ function BrowserScreenshotDetail({ paths, workspace }: { paths: string[]; worksp
 
 const DIFF_LINE_CAP = 500;
 
+type DiffRow =
+  | { kind: "file"; path: string }
+  | { kind: "hunk"; context: string }
+  | { kind: "add" | "del" | "ctx"; number: number | null; text: string };
+
+/** A unified diff as rows a person reads: the file it touches, a quiet break per hunk, and each line with its
+ *  line number and sign in a gutter. The git plumbing (`diff --git`, `index`, `---`/`+++`) is not shown. */
+function diffRows(text: string): DiffRow[] {
+  const rows: DiffRow[] = [];
+  const lines = text.split("\n");
+  let oldLine = 0, newLine = 0, inHunk = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const git = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if (git) { rows.push({ kind: "file", path: git[2] }); inHunk = false; continue; }
+    if (line.startsWith("--- ") && lines[index + 1]?.startsWith("+++ ")) {
+      const target = lines[index + 1].slice(4).trim().replace(/^b\//, "");
+      const path = target && target !== "/dev/null" ? target : line.slice(4).trim().replace(/^a\//, "");
+      if (rows.at(-1)?.kind !== "file") rows.push({ kind: "file", path });
+      index += 1; inHunk = false; continue;
+    }
+    const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@ ?(.*)$/);
+    if (hunk) { oldLine = Number(hunk[1]); newLine = Number(hunk[2]); inHunk = true; rows.push({ kind: "hunk", context: hunk[3] }); continue; }
+    if (!inHunk || /^(index |new file mode|deleted file mode|similarity |rename |\\ No newline)/.test(line)) continue;
+    if (line.startsWith("+")) rows.push({ kind: "add", number: newLine++, text: line.slice(1) });
+    else if (line.startsWith("-")) rows.push({ kind: "del", number: oldLine++, text: line.slice(1) });
+    else if (line || index < lines.length - 1) { rows.push({ kind: "ctx", number: newLine, text: line.slice(1) }); oldLine++; newLine++; }
+  }
+  return rows;
+}
+
 /** A diff with its additions and removals coloured, which is most of what reading one is. */
 function DiffView({ text }: { text: string }) {
-  const lines = text.split("\n");
-  const shown = lines.length > DIFF_LINE_CAP ? lines.slice(0, DIFF_LINE_CAP) : lines;
+  const rows = diffRows(text);
+  const shown = rows.length > DIFF_LINE_CAP ? rows.slice(0, DIFF_LINE_CAP) : rows;
   return (
-    <pre className="wv-sheet-output is-diff">
-      {shown.map((line, index) => {
-        const kind = line.startsWith("@@") ? "hunk"
-          : /^(diff --git|index |--- |\+\+\+ )/.test(line) ? "meta"
-            : line.startsWith("+") ? "add"
-              : line.startsWith("-") ? "del" : "";
-        return <span className={`wv-diff-line ${kind ? `is-${kind}` : ""}`.trim()} key={index}>{line || " "}</span>;
+    <div className="wv-sheet-output is-diff" role="group">
+      {shown.map((row, index) => {
+        if (row.kind === "file") return <div className="wv-diff-file" key={index}><PathText path={row.path} /></div>;
+        if (row.kind === "hunk") {
+          // The first hunk of a file needs no break; later ones get a rule, or the function they sit in.
+          if (!row.context && (index === 0 || shown[index - 1].kind === "file")) return null;
+          return <div className={`wv-diff-hunk${row.context ? " has-context" : ""}`} key={index} aria-hidden={!row.context}>{row.context ? <code>{row.context}</code> : null}</div>;
+        }
+        return (
+          <div className={`wv-diff-line is-${row.kind}`} key={index}>
+            <span className="wv-diff-num" aria-hidden="true">{row.number ?? ""}</span>
+            <span className="wv-diff-sign" aria-hidden="true">{row.kind === "add" ? "+" : row.kind === "del" ? "−" : ""}</span>
+            <code className="wv-diff-code">{row.text || " "}</code>
+          </div>
+        );
       })}
-      {lines.length > DIFF_LINE_CAP ? <span className="wv-diff-line is-meta">… {lines.length - DIFF_LINE_CAP}</span> : null}
-    </pre>
+      {rows.length > DIFF_LINE_CAP ? <div className="wv-diff-hunk"><code>… {rows.length - DIFF_LINE_CAP}</code></div> : null}
+    </div>
   );
 }
 
