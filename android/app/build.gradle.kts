@@ -47,6 +47,8 @@ android {
 val copyWeb by tasks.registering(Sync::class) {
     val page = rootProject.file("../desktop-react/dist-mobile")
     doFirst { check(page.resolve("mobile.html").exists()) { "Run npm run build:mobile in desktop-react first." } }
+    // Stickers are gitignored and prepared by build:mobile; a bundle built without them shows blank stickers.
+    doFirst { check((page.resolve("chat-stickers").listFiles { f -> f.name.endsWith(".webp") }?.size ?: 0) > 0) { "dist-mobile has no chat stickers: run npm run build:mobile in desktop-react." } }
     from(page)
     into(layout.buildDirectory.dir("generated/web/web"))
 }

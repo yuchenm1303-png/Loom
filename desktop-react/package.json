@@ -29,6 +29,7 @@
     "dev:ready:ufo": "node scripts/dev-ready-ufo.mjs",
     "predev": "npm run prepare:stickers",
     "prebuild:renderer": "npm run prepare:stickers",
+    "prebuild:mobile": "npm run prepare:stickers",
     "build:mobile": "vite build --config vite.mobile.config.ts",
     "build:renderer": "tsc --noEmit && vite build && node scripts/ui-build-baseline.mjs",
     "build:electron": "tsc -p tsconfig.electron.json && node scripts/configure-update-source.mjs",
