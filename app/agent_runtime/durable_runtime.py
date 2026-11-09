@@ -38,8 +38,9 @@ class DurableAgentRuntime(CoreAgentRuntime):
         claim_note = lambda session_id: (getattr(self, "goal_claim_note", None) or (lambda _: None))(session_id)  # noqa: E731
         pause = lambda session_id: (getattr(self, "goal_pause", None) or (lambda _: None))(session_id)  # noqa: E731
         claim_check = lambda session_id: (getattr(self, "goal_claim_check", None) or (lambda _: None))(session_id)  # noqa: E731
+        claim_owner = lambda session_id: (getattr(self, "goal_owns_claim", None) or (lambda _: False))(session_id)  # noqa: E731
         for tool in durable_thread_tools(self.durable_state, plan_store=self.store, claim_note=claim_note, pause=pause,
-                                         claim_check=claim_check):
+                                         claim_check=claim_check, claim_owner=claim_owner):
             if self.tools.get(tool.name) is None:
                 self.tools.register(tool)
         self._steered_usage_states: dict[str, dict[str, object]] = {}

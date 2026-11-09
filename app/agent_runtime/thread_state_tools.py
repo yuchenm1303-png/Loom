@@ -29,7 +29,7 @@ def _person_spoke(plan_store, context: ToolContext) -> bool:
 
 
 def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None, claim_note=None,
-                         pause=None, claim_check=None) -> tuple[AgentTool, ...]:
+                         pause=None, claim_check=None, claim_owner=None) -> tuple[AgentTool, ...]:
     """claim_note(session_id) -> text or None: what marking complete means here, when someone else decides it.
     A real lead was told "Durable goal marked complete." and reported "independently verified" before any check ran.
 
@@ -86,7 +86,10 @@ def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None, cla
                     "token_budget": current.token_budget, "tokens_used": current.tokens_used, "source": "model"})
             return ToolResult(ok=True, content=note or "Durable goal paused; nothing runs until the person resumes it.",
                               data={"objective": current.objective, "status": GoalStatus.PAUSED.value})
-        if status is GoalStatus.COMPLETE and plan_store is not None:
+        # A goal judged by an independent check is not held by its own task list: the list blocked real claims for
+        # unpassed step evidence while the check, which reads the open steps, decides what done means.
+        owned = status is GoalStatus.COMPLETE and claim_owner is not None and claim_owner(context.session_id)
+        if status is GoalStatus.COMPLETE and plan_store is not None and not owned:
             from .plan_state import active_plan, summary
             plan = active_plan(plan_store.events(context.session_id))
             if plan and summary(plan)["status"] != "passed":

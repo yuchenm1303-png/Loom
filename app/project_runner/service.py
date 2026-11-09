@@ -432,6 +432,7 @@ class ProjectServiceMixin(WorkspaceMixin):
         self.runtime.goal_claim_note = lambda session_id: goal.CLAIMED if self.weave_goals.get(session_id) else None
         self.runtime.goal_pause = lambda session_id: goal.pause_on_request(self, session_id)
         self.runtime.goal_claim_check = lambda session_id: goal.claim_check(self, session_id)
+        self.runtime.goal_owns_claim = lambda session_id: goal.owns_claim(self, session_id)
         reads = getattr(self.runtime, "tool_result_annotator", None)
         self.runtime.tool_result_annotator = lambda runtime, session, call, result: goal.annotate(
             self, session, reads(runtime, session, call, result) if reads else result)

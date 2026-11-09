@@ -35,6 +35,8 @@ from app.agent_runtime.tools import ToolResult
 from app.agent_runtime.turn_plan import PLAN_TOOLS
 from app.agent_runtime.tool_selection import WEAVE_PREFIX
 
+from .goal_common import LOOKUPS
+
 MIN_CRITERIA, MAX_CRITERIA = 3, 24
 MIN_PHASES, MAX_PHASES = 2, 10
 MIN_CRITERION, MAX_TEXT = 12, 600
@@ -43,13 +45,14 @@ MAX_NOTES, NOTES_SHOWN, MAX_NOTE = 60, 6, 2000
 MAX_HOLDS = 2
 KINDS = ("research", "software", "analysis", "writing", "other")
 FAILURE_KIND = "goal_charter_required"
-_FREE = PLAN_TOOLS | {"tool_search", "get_thread_state", "mark_thread_goal", "investigate"}
+_FREE = PLAN_TOOLS | LOOKUPS | {"tool_search", "get_thread_state", "mark_thread_goal", "investigate"}
 
 HELD = ("Not executed: this long goal has no charter yet. Before work that changes anything, call weave_charter: "
         "the deliverable a top expert in this field would hand in for this request, concrete acceptance criteria "
         "the check will hold it to, and the phases the time is spent in. Reading first is fine.")
 GUIDE = (
-    "Charter: before work that changes anything, write the goal's charter with weave_charter. Name the deliverable a "
+    "Charter: before work that changes anything, give the goal's charter (in weave_goal itself, or with "
+    "weave_charter; looking things up first is fine). Name the deliverable a "
     "top expert in the field would hand in for this request, not the least that answers it: for research a "
     "manuscript a referee could judge (the question and why it matters, related work and what is new, method, "
     "experiments against fair baselines with ablations and uncertainty, limitations) with code and data that "
@@ -208,6 +211,8 @@ def add_note(record, text, now=None):
         raise ValueError("A note says what you did, found, decided and what comes next.")
     notes = [*(record.get("notes") or ()), {"at": now or time.time(), "text": text}]
     record["notes"] = notes[-MAX_NOTES:]
+    record["notesWritten"] = record.get("notesWritten", 0) + 1  # the list is capped; this count is not
+    record["noteDue"] = False
 
 
 MAX_CLAIMS = 40
@@ -322,7 +327,11 @@ def hold(service, session, step, calls):
     if getattr(session, "weave", False) is not True:
         return None
     record = service.weave_goals.get(session.session_id)
-    if not record or record.get("phase") != "working" or charter_of(record) or record.get("charterGaveWay"):
+    if not record or record.get("phase") != "working":
+        return None
+    if charter_of(record):
+        return _note_hold(service, session, step, calls, record)
+    if record.get("charterGaveWay"):
         return None
 
     def free(call):
@@ -346,6 +355,37 @@ def hold(service, session, step, calls):
         service.weave_goals.put(session.session_id, record)
     refusal = ToolResult(False, HELD, {"failure_kind": FAILURE_KIND, "execution_status": "not_executed",
                                        "retry_policy": "write_the_charter"})
+    return tuple((call, refusal) for call in waiting)
+
+
+NOTE_HELD = ("Not executed: your last goal turn ended without a note. Write it first with weave_note (what you did, "
+             "found with the numbers, decided and why, what comes next, and current_phase), then reissue these calls.")
+NOTE_KIND = "goal_note_required"
+NOTE_HOLDS = 1  # 0 turns the hold off (the note is still asked for in the turn's context)
+
+
+def _free(step, call):
+    if call.name in _FREE or call.name.startswith(WEAVE_PREFIX):
+        return True
+    tool = step.tool_router.get(call.name) if step is not None else None
+    return tool is not None and tool.effect is ToolEffect.READ_ONLY and call.name != "spawn_agent"
+
+
+def _note_hold(service, session, step, calls, record):
+    """A note owed from the last goal turn holds the next changing batch, once: it guards nothing, it asks."""
+    if not NOTE_HOLDS or not record.get("noteDue") or record.get("noteHeld"):
+        return None
+    waiting = tuple(call for call in calls if not _free(step, call))
+    if not waiting:
+        return None
+    with service.project_runner.guard:
+        record = service.weave_goals.get(session.session_id)
+        if not record or not record.get("noteDue") or record.get("noteHeld"):
+            return None
+        record["noteHeld"] = True
+        service.weave_goals.put(session.session_id, record)
+    refusal = ToolResult(False, NOTE_HELD, {"failure_kind": NOTE_KIND, "execution_status": "not_executed",
+                                            "retry_policy": "write_the_note"})
     return tuple((call, refusal) for call in waiting)
 
 

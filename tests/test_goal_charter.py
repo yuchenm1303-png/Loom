@@ -344,3 +344,74 @@ def test_a_new_goal_keeps_where_the_last_one_ended_and_re_verifies_what_was_neve
         assert not goal_charter._inherits_unchecked({"previous": goal._carry(checked, "x")})
     finally:
         runtime.close()
+
+
+# --- fewer, sharper gates --------------------------------------------------------------------------------------------
+
+def test_looking_things_up_is_never_held_for_the_charter(tmp_path):
+    # Real run: four literature searches were refused before the charter, the opposite of "survey, then decide".
+    tools, runs = exec_tool()
+    service, runtime, platform, source = conversation(tmp_path, [
+        calling("weave_goal", {"objective": "研究一晚"}, "call-goal"), calling("web_search", {"q": "相关工作"}, "call-search"),
+        calling("run_it", {}, "call-run"), answer("先查了文献")], tools=(web_search(), *tools))
+    try:
+        said = "\n".join(said_to_lead(platform))
+        assert "五篇相关论文" in said, "the search ran with no charter yet"
+        assert not runs and goal_charter.HELD[:40] in said, "changing work still waits for the charter"
+    finally:
+        runtime.close()
+
+
+def test_weave_goal_takes_the_charter_in_the_same_call(tmp_path):
+    tools, runs = exec_tool()
+    service, runtime, platform, source = conversation(tmp_path, [
+        calling("weave_goal", {"objective": "研究一晚", **CHARTER}, "call-goal"), calling("run_it", {}, "call-run"),
+        answer("开始了")], tools=tools)
+    try:
+        record = service.weave_goals.get(source)
+        assert record["charter"]["deliverable"].startswith("一份可以给审稿人") and len(runs) == 1, "no second step, no hold"
+        assert "C5 (standard)" in "\n".join(said_to_lead(platform))
+        context = ToolContext(session_id=source, turn_id="t2", workspace=tmp_path)
+        runtime.set_goal_status(source, goal.GoalStatus.COMPLETE)
+        record["phase"] = "done"
+        service.weave_goals.put(source, record)
+        with pytest.raises(ValueError, match="acceptance criteria"):
+            runtime.tools.get("weave_goal").handler(context, {"objective": "下一个", **CHARTER, "criteria": ["太少"]})
+        assert service.weave_goals.get(source)["phase"] == "done", "a bad charter starts nothing"
+    finally:
+        runtime.close()
+
+
+def test_a_goal_claim_is_not_held_by_the_task_list_and_the_check_sees_what_it_left_open(tmp_path):
+    # Real goals: mark_thread_goal refused three times for unpassed step evidence, while the check decides what done is.
+    plan = calling("update_plan", {"plan": [{"step": "跑主实验", "status": "in_progress"},
+                                            {"step": "写报告", "status": "pending"}]}, "call-plan")
+    service, runtime, platform, source = research(tmp_path, start_with_charter(
+        plan, base.DONE, answer("做完了"), referee("needs_changes", major=["报告没写"])))
+    try:
+        assert service.weave_goals.get(source)["phase"] == "checking" or runtime.get_goal(source).status.value == "complete"
+        tick(service, source, 2)
+        checker = checker_texts(platform)[-1]
+        assert "still shows these steps unfinished" in checker and "写报告 (pending)" in checker
+    finally:
+        runtime.close()
+
+
+def test_a_goal_turn_that_wrote_no_note_owes_one_at_the_next_start(tmp_path):
+    tools, runs = exec_tool()
+    service, runtime, platform, source = conversation(tmp_path, [
+        calling("weave_goal", {"objective": "研究一晚", **CHARTER}, "call-goal"), answer("开始了"),
+        calling("run_it", {}, "call-run-1"), answer("第一轮做了实验，没写笔记"),
+        calling("run_it", {}, "call-run-2"),
+        calling("weave_note", {"text": "第一轮：基线误块率 0.031，三个种子；下一步做消融", "current_phase": 2}, "call-note"),
+        calling("run_it", {}, "call-run-3"), answer("第二轮")], tools=tools)
+    try:
+        tick(service, source)
+        assert service.weave_goals.get(source).get("noteDue") is not True, "the first goal turn owes nothing yet"
+        tick(service, source)
+        said = said_to_lead(platform)
+        assert any(goal.NOTE_DUE[:40] in text for text in said), "the next goal turn is told"
+        assert any(goal_charter.NOTE_HELD[:40] in text for text in said), "its first changing call waits, once"
+        assert len(runs) == 2 and service.weave_goals.get(source)["noteDue"] is False
+    finally:
+        runtime.close()

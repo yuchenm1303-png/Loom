@@ -6,6 +6,10 @@ import time
 from .budget import CACHED_WEIGHT
 
 RETRY_BASE, RETRY_MAX = 60, 1800
+# Looking things up changes nothing here. web_search is SENSITIVE (queries leave the machine), not READ_ONLY, and two
+# of the three goal gates held it: a real research goal had four literature searches refused before its charter,
+# the opposite of "survey first, then decide".
+LOOKUPS = frozenset({"web_search", "web_search_status", "web_fetch"})
 
 
 def charged(usage):

@@ -1041,3 +1041,26 @@ def test_a_goal_turn_reads_its_list_as_its_own(tmp_path):
         assert "Task list from an earlier request" not in said and "Current task milestones" in said
     finally:
         runtime.close()
+
+
+def test_a_check_must_be_a_command_line_not_a_description():
+    # Real lead: "运行 `python experiments/analyze.py` 退出码 0，且断言 ..." – the Host found no such run, both lines "not run".
+    prose = [line("甲", ["results/甲"], check="运行 `python experiments/analyze.py` 退出码 0，且断言摘要存在"),
+             line("乙", ["notes"], check="notes/audit_memo.md 存在；包含五个小节"),
+             line("丙", ["x"], check="Run the tests and ensure they pass")]
+    for item in prose:
+        with pytest.raises(ValueError, match="reads as a description"):
+            goal_lines._validated([item])
+    assert goal_lines._validated([line("丁", ["y"], check="python check.py 丁 --strict")])[0]["check"].startswith("python")
+
+
+def test_the_cpu_is_shared_by_as_many_heavy_lines_as_the_machine_has_room_for(monkeypatch):
+    # Real goal: two 8-thread trainings refused as "both need cpu" on a machine with 20 logical processors.
+    monkeypatch.setattr(goal_lines.os, "cpu_count", lambda: 20)
+    two = goal_lines._validated([line("甲", resource="cpu"), line("乙", resource="cores")])
+    assert [item["resource"] for item in two] == ["cpu", "cpu"]
+    with pytest.raises(ValueError, match="20 logical processors, room for 2"):
+        goal_lines._validated([line(name, resource="cpu") for name in "甲乙丙"])
+    monkeypatch.setattr(goal_lines.os, "cpu_count", lambda: 4)
+    with pytest.raises(ValueError, match="both need cpu"):
+        goal_lines._validated([line("甲", resource="cpu"), line("乙", resource="cpu")])

@@ -100,6 +100,8 @@ NO_LITERATURE = ("This is a research goal and no literature search ran in it (we
 NO_LEDGER = ("The claims ledger is empty: record each headline number with weave_claims (the claim, the exact command "
              "that reproduces it, the output file), then claim again.")
 CLAIM_HELD = "Not marked complete yet. "
+NOTE_DUE = ("Your last goal turn ended without a note. Before anything else, write it with weave_note (what you did, "
+            "found with the numbers, decided and why, what comes next, and current_phase).")
 TRACE_COMMANDS = 40
 CHECK_PREVIOUS = ("\nThe previous review asked for these changes; check each one was actually made, by what you see "
                   "in the workspace, not by the agent's word:\n{asked}\nThe agent's notes since then, its replies:\n{replies}\n")
@@ -215,6 +217,8 @@ def _context(service, thread_id, record):
         lines.append(record["deepen"])
     if record.get("reports"):
         lines.append(record["reports"])
+    if record.get("noteDue"):
+        lines.append(NOTE_DUE)
     if not goal_charter.charter_of(record):
         lines += previous_lines(record)
     elif (record.get("previous") or {}).get("objective"):
@@ -287,6 +291,8 @@ def _finish(service, thread_id, record, summary, checked):
 
 CHECK_DROPPED = ("\n\nThe agent's task list dropped these steps before they were finished, with the reason it gave. "
                  "Decide whether the goal still holds without them; a result that rests on work it dropped is not met:\n")
+CHECK_OPEN = ("\n\nThe agent's task list still shows these steps unfinished at its claim. Decide whether the goal "
+              "holds without them:\n")
 
 
 def _dropped_line(service, thread_id):
@@ -295,10 +301,23 @@ def _dropped_line(service, thread_id):
     from app.agent_runtime.plan_state import active_plan
     plan = active_plan(service.store.events(thread_id)) or {}
     dropped = plan.get("dropped") or ()
-    if not dropped:
-        return ""
-    return CHECK_DROPPED + "\n".join(f"- {item.get('step', '')[:240]} ({item.get('status', '')}): "
-                                     f"{item.get('reason', '')[:400] or 'no reason given'}" for item in dropped[-20:])
+    # In a goal the list no longer blocks a claim (the check decides), so what it left open reaches the check instead.
+    open_steps = [step for step in plan.get("plan") or () if step.get("status") in {"pending", "in_progress", "blocked"}]
+    text = ""
+    if dropped:
+        text += CHECK_DROPPED + "\n".join(f"- {item.get('step', '')[:240]} ({item.get('status', '')}): "
+                                          f"{item.get('reason', '')[:400] or 'no reason given'}" for item in dropped[-20:])
+    if open_steps:
+        text += CHECK_OPEN + "\n".join(f"- {step.get('step', '')[:240]} ({step.get('status')})"
+                                       + (f": {step['blocker'][:300]}" if step.get("blocker") else "")
+                                       for step in open_steps[:20])
+    return text
+
+
+def owns_claim(service, thread_id):
+    """Whether this conversation's claims are judged by a goal's independent check, not by its task list."""
+    record = service.weave_goals.get(thread_id)
+    return bool(record) and record.get("phase") in {"working", "checking"}
 
 
 def _previous_review(record):
@@ -617,6 +636,13 @@ def _continue(service, thread_id, record, session):
     if record["turns"] >= MAX_TURNS:
         return _stop(service, thread_id, record, GoalStatus.BLOCKED, f"Reached {MAX_TURNS} turns")
     note, turn_id = record["feedback"], str(uuid.uuid4())
+    # "End each goal turn with a note" was a prompt and was skipped: real goals ran hours with none. A goal turn that
+    # wrote none (one that only started lines is told to end at once, so it owes none) owes it at the next start.
+    written, rounds = record.get("notesWritten", 0), (record.get("lineStats") or {}).get("rounds", 0)
+    if (goal_charter.charter_of(record) and record.get("turns") and written == record.get("notesAtTurn")
+            and rounds == record.get("roundsAtTurn", rounds)):
+        record.update(noteDue=True, noteHeld=False)
+    record.update(notesAtTurn=written, roundsAtTurn=rounds)
     context = _context(service, thread_id, record)
     record.update(turns=record["turns"] + 1, feedback="", deepen="", reports="", goalTurn=turn_id)
     service.weave_goals.put(thread_id, record)

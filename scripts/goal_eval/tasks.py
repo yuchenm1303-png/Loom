@@ -17,6 +17,7 @@ import math
 import os
 from pathlib import Path
 import random
+import re
 import subprocess
 import sys
 import tempfile
@@ -436,6 +437,25 @@ def _config_theory(p):
     return 1 - (p * u + (1 - p) * u ** 3)
 
 
+# Open-ended, no time given, literature allowed: the shape of the real "深入研究一下 AI-RAN" request, small enough for
+# a CPU in an hour or two. What it exercises is the Host's research bar (standard criteria, literature, the claims
+# ledger, the checker's re-runs), so the grade only checks that a reviewable deliverable exists.
+OPEN_RESEARCH_PROMPT = (
+    "你先自己深入研究一下布隆过滤器（Bloom filter）的一个小问题：在相同内存预算下，哈希函数个数 k 偏离理论最优值时误判率怎样变化；"
+    "现实中的非理想哈希（比如 Python 内置 hash 加盐、简单的双重哈希 Kirsch–Mitzenmacher）会不会让经典误判率公式失准。"
+    "看看能不能做出一些有价值的结论，最好能写成别人能评审的东西。\n"
+    "只在这个文件夹里工作，只用 Python 标准库，不要装依赖；可以上网查文献。运行用的 Python：{python}\n")
+
+
+def grade_open_research(workspace):
+    report = next((path for path in workspace.rglob("*.md") if "readme" not in path.name.lower()), None)
+    text = report.read_text("utf-8", errors="replace") if report else ""
+    scripts = list(workspace.rglob("*.py"))
+    return [{"case": "report", "passed": len(text) > 1500, "why": f"{report} {len(text)} chars"},
+            {"case": "references", "passed": bool(re.search(r"https?://|arXiv|doi", text, re.I))},
+            {"case": "scripts", "passed": bool(scripts)}]
+
+
 def grade_phase(workspace):
     results = []
 
@@ -569,6 +589,7 @@ def grade_large(workspace):
 
 TASKS = {
     # Three unrelated parts in one goal: the size at which one conversation's cost should grow with the square of its steps.
+    "open_research": {"prompt": OPEN_RESEARCH_PROMPT, "prepare": None, "grade": grade_open_research},
     "large": {"prompt": LARGE_PROMPT, "prepare": prepare_bugs, "grade": grade_large},
     "toolkit": {"prompt": TOOLKIT_PROMPT, "prepare": None, "grade": grade_toolkit},
     "bugs": {"prompt": BUGS_PROMPT, "prepare": prepare_bugs, "grade": grade_bugs},

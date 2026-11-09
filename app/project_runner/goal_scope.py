@@ -13,17 +13,17 @@ from app.agent_runtime.durable_state import GoalStatus
 from app.agent_runtime.tools import ToolResult
 
 from . import goal_charter
+from .goal_common import LOOKUPS  # answering a question changes nothing here
 
 FAILURE_KIND = "goal_scope_required"
 MAX_HOLDS = 2  # refusals per request before the gate gives way
 GROW_AFTER = 30  # changing calls in a one-turn request before it is asked again
 MIN_REASON = 15
-LOOKUPS = frozenset({"web_search", "web_search_status"})  # answering a question changes nothing here
 
 HELD = ("Not executed: in build mode, decide this request's size before changing anything (reading is fine). "
         "If it is more than a quick task (research, experiments, a study, several steps that feed each other, "
         "anything worth an independent check, or work that should go on after this turn), call weave_goal now; no "
-        "time needs to be named, and then write its charter. Only if you can finish it well within this one turn, "
+        "time needs to be named, and give its charter in the same call. Only if you can finish it well within this one turn, "
         "call weave_one_turn with why. When unsure, it is a goal.")
 GREW = ("Not executed: this request was sized as one turn, but it has grown past a quick task ({count} changing "
         "actions so far). If it needs more, call weave_goal now; what you did carries over and the goal gets it "

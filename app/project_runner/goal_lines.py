@@ -25,6 +25,7 @@ sent back once. What the lead reads says whether each check passed.
 from __future__ import annotations
 
 import os
+import re
 import time
 
 from app.agent_runtime.contracts import AgentEventKind, AgentStatus, ToolEffect
@@ -32,7 +33,7 @@ from app.agent_runtime.tool_selection import WEAVE_PREFIX
 from app.agent_runtime.tools import ToolResult
 from app.agent_runtime.turn_plan import PLAN_TOOLS
 
-from .goal_common import charged, delay, span, time_left, transient
+from .goal_common import LOOKUPS, charged, delay, span, time_left, transient
 
 MODE_ENV = "LOOM_GOAL_LINES"
 MODES = ("lines", "prompt", "off")
@@ -51,8 +52,12 @@ MAX_LOST = 2  # restarts of the Host a line is carried through
 REPORT_CHARS = 6000
 OBJECTIVE_CHARS = 2000
 LIVE = {"running", "waiting", "reporting"}
-_FREE = PLAN_TOOLS | {"tool_search", "get_thread_state", "mark_thread_goal"}
+_FREE = PLAN_TOOLS | LOOKUPS | {"tool_search", "get_thread_state", "mark_thread_goal"}
 MAX_WAIT_HOLDS = 2
+CPU_PER_LINE = 8  # logical processors one heavy line (a training, a simulation) is taken to use
+SHARED_ALIASES = {"cores": "cpu", "compute": "cpu", "processor": "cpu", "cpus": "cpu"}
+PROSE_WORDS = frozenset({"run", "running", "runs", "check", "checks", "ensure", "verify", "confirm", "the", "a",
+                         "an", "all", "each", "every", "file", "files", "exit", "should", "must", "that", "test", "tests"})
 FAILURE_KIND = "goal_lines_required"
 
 GUIDE_LINES = (
@@ -149,18 +154,58 @@ def _validated(raw):
                              "such as its tests or a script that checks its results.")
         if len(check) > CHECK_CHARS:
             raise ValueError(f"The check of \"{title}\" is too long: give one command, at most {CHECK_CHARS} characters.")
+        if check and not _command_like(check):
+            raise ValueError(f"The check of \"{title}\" reads as a description, not a command. The Host finds it in the "
+                             "line's own runs by its exact text, so give the one command line the line must run, such "
+                             "as `python -m unittest discover tests` or `python scripts/check_results.py`; put what it "
+                             "asserts inside that script.")
+        resource = str(item.get("resource") or "").strip().lower()
         lines.append({"title": title[:120], "brief": brief, "writes": writes, "check": check,
-                      "resource": str(item.get("resource") or "").strip().lower()})
+                      "resource": SHARED_ALIASES.get(resource, resource)})
     for at, left in enumerate(lines):
         for right in lines[at + 1:]:
             shared = [a for a in left["writes"] for b in right["writes"] if _overlap(a, b)]
             if shared:
                 raise ValueError(f"\"{left['title']}\" and \"{right['title']}\" both write {shared[0]}. Lines run at the "
                                  "same time in one folder: give them separate paths, or do that part yourself.")
-            if left["resource"] and left["resource"] == right["resource"]:
-                raise ValueError(f"\"{left['title']}\" and \"{right['title']}\" both need {left['resource']}. Only one "
-                                 "can use it at a time: start one now and the other in a later round, or run them yourself.")
+    for resource, users in _by_resource(lines).items():
+        room = _room(resource)
+        if len(users) > room:
+            names = " and ".join(f"\"{line['title']}\"" for line in users[:3])
+            why = (f"this machine has {os.cpu_count() or 1} logical processors, room for {room} line(s) of about "
+                   f"{CPU_PER_LINE} threads each" if resource == "cpu" else "only one can use it at a time")
+            raise ValueError(f"{names} {'both' if len(users) == 2 else 'all'} need {resource}: {why}. Start {room} now and the rest in a later round, or "
+                             "run them yourself.")
     return lines
+
+
+def _by_resource(lines):
+    users = {}
+    for line in lines:
+        if line["resource"]:
+            users.setdefault(line["resource"], []).append(line)
+    return users
+
+
+def _room(resource):
+    """How many lines may use a resource at once. A GPU or a device is one at a time; the CPU is divided: a real
+    research goal was refused two trainings of 8 threads each on a machine with 20 logical processors."""
+    if resource != "cpu":
+        return 1
+    return max(1, (os.cpu_count() or 1) // CPU_PER_LINE)
+
+
+def _command_like(check):
+    """A command line, not prose: a real lead wrote "运行 `python experiments/analyze.py` 退出码 0，且断言 ...", and the
+    Host, which looks for the check's exact text among the line's runs, recorded both lines' checks as never run."""
+    # Chinese arguments are fine (a path under C:\Users\邹羽宸 is one); backticks, full-width punctuation and a first
+    # word that is Chinese or an instruction ("run", "ensure") are prose.
+    if re.search(r"[`\u3000-\u303f\uff01-\uff0f\uff1a-\uff20]", check):
+        return False
+    first = check.split()[0].lower().strip("\"'")
+    if re.match(r"[\u4e00-\u9fff]", first):
+        return False
+    return first not in PROSE_WORDS and not first.endswith((":", ","))
 
 
 def start(service, thread_id, arguments):

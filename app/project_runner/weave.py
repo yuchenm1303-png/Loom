@@ -63,9 +63,9 @@ GUIDE = (
     "choose; reading and answering need neither). It needs no repository and "
     "no click. The Host then brings "
     "you back after each turn in this conversation until you call mark_thread_goal, so end a turn freely and keep "
-    "going in the next. Use it instead of a proposal when the person will not be there to start one. Right after it, "
-    "write the goal's charter with weave_charter (the deliverable a top expert would hand in, its acceptance criteria, "
-    "its phases) and keep notes with weave_note. Mark complete only when the charter is met in substance: an "
+    "going in the next. Use it instead of a proposal when the person will not be there to start one. Give the goal's "
+    "charter in that same call (the deliverable a top expert would hand in, its acceptance criteria, its phases), or "
+    "right after with weave_charter, and keep notes with weave_note. Mark complete only when the charter is met in substance: an "
     "independent referee then reviews your claim against it and its findings come back to you. Pass hours when the person gave you a time: a night asks for a night's depth, and with much of "
     "it left a correct result is a reason to go further, not to stop. Mark blocked only when you cannot go on "
     "without the person. When the person asks to pause or stop a running goal, call mark_thread_goal with "
@@ -78,21 +78,12 @@ GUIDE = (
     "simple work: two or more short outcome steps in the person's language, one in_progress, the rest pending. Advance "
     "it alongside the calls that begin the next step (a completed step takes an outcome and evidence_refs naming a "
     "call_id), and finish it before your final answer.\n"
-    "Sub-agents: in an ordinary turn each one costs many times what the same reading costs you, so do the work "
-    "yourself by default, a scan or an investigation of an ordinary repository included. In a long goal your history "
-    "is re-sent on every step for hours: once the goal has grown the Host asks whether to split it into lines (each "
-    "goal turn says how), and investigate keeps long reading out of your history. Use spawn_agent when the person "
-    "asks for it, or "
-    "when the work has lines that do not depend on each other and can run at the same time, each worth many steps of "
-    "its own: subsystems of hundreds of files too large to read well in this turn, a literature survey beside an "
-    "experiment, a separate experiment, a fresh review of a finished result. Check this when you write the list. "
-    "Steps that feed each other in order, and runs competing for one GPU or one set of files, stay yours. The person "
-    "telling you to work on your own means without them, not without sub-agents. When you do: one agent per line, at "
-    "most four, each with a narrow brief (which "
-    "paths, what to find out, a short report) and history_mode none unless it needs this conversation. Name the agent "
-    "in its step of the list, leave what you delegated to them instead of reading it too, collect results with "
-    "wait_agent, and check only what your answer relies on. Sub-agents share your checkout, so writers get disjoint "
-    "files; overlapping edits are yours."
+    # The long "delegate when ..." advice that stood here never moved a model to delegate (209 chances in build
+    # mode, none taken); in a goal the Host's lines decide splitting, so only what an ordinary turn needs stays.
+    "Sub-agents: in an ordinary turn do the work yourself (each sub-agent costs many times what the same reading costs "
+    "you) unless the person asks for them; then spawn_agent, one per independent line, at most four, each with a narrow brief "
+    "and history_mode none, writers on disjoint files. In a long goal the Host asks whether to split it into lines "
+    "once it has grown, and investigate keeps long reading out of your history."
 )
 
 
@@ -157,6 +148,19 @@ def snap_budget(value):
     if type(value) is not int:
         return BUDGETS[2]
     return min(BUDGETS, key=lambda budget: abs(budget - value))
+
+
+CHARTER_KEYS = ("deliverable", "criteria", "phases", "kind")
+
+
+def charter_text(charter, changed):
+    """What the lead is told about the charter it wrote: every criterion the check will hold it to."""
+    listed = "\n".join(f"- {item['id']}{' (standard)' if item.get('origin') == 'standard' else ''}: {item['text']}"
+                       for item in charter["criteria"] if item["status"] != "dropped")
+    dropped = ("\nLeft out, kept as dropped with your reason: " + "; ".join(changed["dropped"])) if changed["dropped"] else ""
+    return (("Charter written." if changed["new"] else "Charter revised.") + " The independent check holds the work to "
+            f"these criteria:\n{listed}{dropped}\nPhase now: {charter['phases'][charter['current']]}. Give current_phase "
+            "in each weave_note, and end each goal turn with one.")
 
 
 def budget_for(service, session_id, suggested):
@@ -334,17 +338,28 @@ def tools(service):
         _, run = current_project(service, context.session_id)
         if run is not None:
             raise ValueError("A project is running in this conversation; steer it with weave_steer")
+        # Sizing the request and writing its charter were two refused steps in a row on every new goal; one call does both.
+        chartered = {key: arguments[key] for key in CHARTER_KEYS if key in arguments}
+        if chartered:
+            goal_charter.set_charter({}, chartered)  # what is wrong with it is said before anything starts
         budget = budget_for(service, context.session_id, arguments.get("token_budget"))
         try:
             hours = max(0.0, min(float(arguments.get("hours") or 0), goal.MAX_HOURS))
         except (TypeError, ValueError):
             hours = 0.0
         goal.start(service, context.session_id, objective, budget, hours)
+        written = ""
+        if chartered:
+            with service.project_runner.guard:
+                record = service.weave_goals.get(context.session_id)
+                goal_charter.set_charter(record, chartered)
+                service.weave_goals.put(context.session_id, record)
+            written = charter_text(record["charter"], {"new": True, "dropped": []}) + "\n"
         given = f" and {hours:g} h of the person's time" if hours else ""
         before = "\n".join(goal.previous_lines(service.weave_goals.get(context.session_id) or {}))
         return ToolResult(ok=True, content=f"Long goal started with a budget of {budget:,} tokens{given}. Carry on "
                           "working; the Host continues this conversation after each turn until you call "
-                          "mark_thread_goal.\n" + (before + "\n" if before else "") + goal_charter.GUIDE + "\n"
+                          "mark_thread_goal.\n" + written + (before + "\n" if before else "") + goal_charter.GUIDE + "\n"
                           + goal_lines.guide(),
                           data={"tokenBudget": budget, "hours": hours})
 
@@ -357,13 +372,8 @@ def tools(service):
             changed = goal_charter.set_charter(record, arguments)
             service.weave_goals.put(context.session_id, record)
         charter = record["charter"]
-        listed = "\n".join(f"- {item['id']}: {item['text']}" for item in charter["criteria"] if item["status"] != "dropped")
-        dropped = ("\nLeft out, kept as dropped with your reason: " + "; ".join(changed["dropped"])) if changed["dropped"] else ""
-        return ToolResult(ok=True, content=(
-            ("Charter written." if changed["new"] else "Charter revised.") + " The independent check holds the work to "
-            f"these criteria:\n{listed}{dropped}\nPhase now: {charter['phases'][charter['current']]}. Mark the next phase "
-            "with current_phase when you move on, and end each turn with weave_note."),
-            data={"criteria": len(charter["criteria"]), "phases": len(charter["phases"])})
+        return ToolResult(ok=True, content=charter_text(charter, changed),
+                          data={"criteria": len(charter["criteria"]), "phases": len(charter["phases"])})
 
     def one_turn(context, arguments):
         weave_session(context)
@@ -441,16 +451,28 @@ def tools(service):
                     "title": {"type": "string", "description": "A few words, in the person's language; the person sees it."},
                     "brief": {"type": "string", "description": "Self-contained: the objective, the files to read and where "
                               "to write, what to hand back, and the boundaries. The line sees none of this conversation."},
-                    "check": {"type": "string", "description": "Required when writes is not empty: one command that "
-                              "proves this line's part works, such as its tests or a script that checks its results. "
-                              "The line must pass it before it reports."},
+                    "check": {"type": "string", "description": "Required when writes is not empty: one command line, "
+                              "exactly as the line will run it (not a description), that proves its part works, such as "
+                              "its tests or a script that checks its results. The line must pass it before it reports."},
                     "writes": {"type": "array", "items": {"type": "string"}, "description": "Files or folders only this "
                                "line changes, relative to the workspace; [] when it only reads."},
-                    "resource": {"type": "string", "description": "Something only one line can use at a time, such as gpu."},
+                    "resource": {"type": "string", "description": "A shared resource this line leans on: gpu or a "
+                                 "device (one line at a time), or cpu for heavy computation (as many lines as this "
+                                 "machine has processors for, about 8 logical processors each)."},
                 }, "required": ["title", "brief", "writes"], "additionalProperties": False}},
                 "solo_reason": {"type": "string", "description": "Why you do this yourself, when lines is empty."},
             }, "additionalProperties": False},
             handler=lines, effect=ToolEffect.READ_ONLY),)
+    charter_properties = {
+        "deliverable": {"type": "string", "description": "What will be handed in, as an expert would deliver it, "
+                        "in the person's language: its parts, its form, what it shows."},
+        "criteria": {"type": "array", "minItems": goal_charter.MIN_CRITERIA, "maxItems": goal_charter.MAX_CRITERIA,
+                     "items": {"type": "string"}, "description": "Concrete acceptance criteria a checker can "
+                     "verify by reading and running, in the person's language."},
+        "phases": {"type": "array", "minItems": goal_charter.MIN_PHASES, "maxItems": goal_charter.MAX_PHASES,
+                   "items": {"type": "string"}, "description": "The planned phases in order, sized to the time."},
+        "kind": {"type": "string", "enum": list(goal_charter.KINDS)},
+    }
     goal_tools = (
         AgentTool(
             name="weave_charter",
@@ -458,14 +480,7 @@ def tools(service):
                          "in for this request, the acceptance criteria the independent check holds it to, and the phases "
                          "the time is spent in. Revising takes a reason; a criterion left out stays visible as dropped."),
             input_schema={"type": "object", "properties": {
-                "deliverable": {"type": "string", "description": "What will be handed in, as an expert would deliver it, "
-                                "in the person's language: its parts, its form, what it shows."},
-                "criteria": {"type": "array", "minItems": goal_charter.MIN_CRITERIA, "maxItems": goal_charter.MAX_CRITERIA,
-                             "items": {"type": "string"}, "description": "Concrete acceptance criteria a checker can "
-                             "verify by reading and running, in the person's language."},
-                "phases": {"type": "array", "minItems": goal_charter.MIN_PHASES, "maxItems": goal_charter.MAX_PHASES,
-                           "items": {"type": "string"}, "description": "The planned phases in order, sized to the time."},
-                "kind": {"type": "string", "enum": list(goal_charter.KINDS)},
+                **charter_properties,
                 "current_phase": {"type": "integer", "minimum": 0, "description": "Index of the phase now under way."},
                 "reason": {"type": "string", "description": "Required when revising: what changed and why."},
             }, "required": ["deliverable", "criteria", "phases"], "additionalProperties": False},
@@ -538,7 +553,9 @@ def tools(service):
             description=("Start a long goal in this conversation: the Host keeps it going turn after turn until you "
                          "call mark_thread_goal and an independent check agrees, or the budget runs out. No repository "
                          "or click needed. Call it first whenever the person gives you time or will not be watching, "
-                         "and for research or open-ended work with hours or a night to run."),
+                         "and for research or open-ended work with hours or a night to run. Give its charter in the "
+                         "same call (deliverable, criteria, phases, kind) when you can say it; otherwise write it next "
+                         "with weave_charter. Looking things up first is fine."),
             input_schema={"type": "object", "properties": {
                 "objective": {"type": "string", "description": "The complete goal and what done looks like, in the "
                               "person's language; an agent with no history will check your work against it."},
@@ -547,6 +564,7 @@ def tools(service):
                 "hours": {"type": "number", "description": "How long the person gave you, from their words "
                           "('一整晚' or 'overnight' is about 8, 'this afternoon' about 4); omit when they gave no time. "
                           "The work is sized to it and is not finished early only because it is correct."},
+                **charter_properties,
             }, "required": ["objective"], "additionalProperties": False},
             handler=start_goal, effect=ToolEffect.READ_ONLY),
         AgentTool(

@@ -243,12 +243,12 @@ def test_the_guide_asks_for_the_list_and_for_sub_agents():
 
 
 def test_the_guide_reaches_past_reading_a_repository():
-    # An overnight research goal in an empty folder met neither old condition: nothing to read, nobody asked.
-    assert "lines that do not depend on each other" in weave.GUIDE and "one GPU" in weave.GUIDE
-    assert "not without sub-agents" in weave.GUIDE
     # A proposal waits for a click, so unattended work starts by itself.
     assert "weave_goal" in weave.GUIDE and "no repository" in weave.GUIDE
-    assert "ordinary repository" in weave.GUIDE, "a scan stays with the agent"
+    # The long "delegate when ..." advice never moved a model to delegate; in a goal the Host's lines decide.
+    assert "do the work yourself" in weave.GUIDE and "the Host asks whether to split it into lines" in weave.GUIDE
+    assert "one GPU" not in weave.GUIDE and "not without sub-agents" not in weave.GUIDE
+    assert "charter in that same call" in weave.GUIDE
 
 
 def test_budget_suggestions_snap_to_the_hubs_choices():

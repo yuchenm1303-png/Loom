@@ -752,6 +752,11 @@ class TurnRunner:
                         verification_notice = ("运行时验收记录：先前修改仍缺少当前验收证据，界面或功能尚未确认通过。"
                                                if session.communication_language == "zh" else
                                                "Runtime verification: earlier changes still lack current acceptance evidence and remain unverified.")
+                owned = getattr(rt, "goal_owns_claim", None)
+                if verification_notice and callable(owned) and owned(session.session_id):
+                    # A long goal is judged by its independent check; the notice told the person a research turn's
+                    # training script was "unverified UI or behaviour" on turns the check had not reached yet.
+                    verification_notice = ""
                 if verification_notice:
                     session.final_text += "\n\n" + verification_notice
                 session.error = ""
