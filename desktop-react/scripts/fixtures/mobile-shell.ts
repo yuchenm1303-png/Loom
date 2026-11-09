@@ -431,9 +431,22 @@ function showcaseTurn(threadId: string, turnId: string, minutes: number, ask: st
     items.push({ ...base, id: `${turnId}:run`, type: "tool_call", status: "running", toolName: "exec", callId: `${turnId}-run`, arguments: { command: "npm test -- transcript" } });
     return { id: turnId, threadId, status: "running", startedAt: ago(minutes), items };
   }
+  const changes = params.get("changes");  // the changed-files card with one file, or a list long enough to fold (?changes=one|many)
+  if (changes) Object.assign(items.find((item) => item.type === "file_edit")!, changes === "one" ? ONE_CHANGE : MANY_CHANGES);
   items.push({ ...base, id: `${turnId}:final`, type: "assistant_message", status: "completed", phase: "final_answer", stepId: "s3", text: answer });
   return { id: turnId, threadId, status: "completed", startedAt: ago(minutes), completedAt: ago(minutes - 2), items };
 }
+// In the runtime's own shape: `---`/`+++` pairs, never a `diff --git` line.
+const plainDiff = (path: string, adds: number, dels: number) => `--- a/${path}\n+++ b/${path}\n@@ -10,${dels + 1} +10,${adds + 1} @@\n${Array.from({ length: dels }, (_, line) => `-  const removed${line} = oldValue;`).join("\n")}${dels ? "\n" : ""}${Array.from({ length: adds }, (_, line) => `+  const added${line} = nextValue;`).join("\n")}${adds ? "\n" : ""}   return value;`;
+const ONE_CHANGE = {
+  paths: ["desktop-react/src/components/settings/AccountDevicesPanel.tsx"],
+  diff: `--- /dev/null\n+++ b/desktop-react/src/components/settings/AccountDevicesPanel.tsx\n@@ -0,0 +1,3 @@\n+export function AccountDevicesPanel() {\n+  return <section className="devices" aria-label="已连接的设备，这一行故意写得很长，用来看窄屏下代码怎么折行" />;\n+}`,
+};
+const MANY_NAMES = ["src/state/useTranscript.ts", "src/components/Transcript.tsx", "src/components/a-very-long-component-file-name-that-will-not-fit-on-a-phone.tsx", "services/gateway/prod/deeply/nested/folder/structure/settings.ts", "src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"];
+const MANY_CHANGES = {
+  paths: [...MANY_NAMES, "docs/no-diff-recorded.md"],
+  diff: MANY_NAMES.map((path, index) => plainDiff(path, 12 - index, index % 3)).join("\n"),
+};
 const showcase: Record<string, () => unknown[]> = {
   "thread-run": () => [
     showcaseTurn("thread-run", "turn-8", 40, "长对话滚动很卡，200 轮以上就掉帧，帮我查一下原因并修好。", SHOWCASE_ANSWER),

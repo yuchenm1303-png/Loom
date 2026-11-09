@@ -3,7 +3,8 @@ import { canRenderArtifact } from "../artifactRenderers";
 import type { TranscriptItem } from "../types/loom";
 import { ChevronDown, ChevronRight } from "./icons";
 import { useRuntimeCopy } from "./runtimeCopy";
-import { collectFiles, type DiffFile } from "./turnChanges";
+import { collectFiles, folderText, type DiffFile } from "./turnChanges";
+import { MobileTurnChanges } from "../mobile/MobileTurnChanges";
 import "./turn-artifacts-preview.css";
 
 /** A list longer than this keeps its largest changes in view and folds the rest behind one row. */
@@ -30,11 +31,6 @@ function DiffStats({ additions, deletions }: { additions: number; deletions: num
   );
 }
 
-/** The folder, with a left-to-right mark at each end so the row can cut it from the left (CSS direction) without the dot or slash jumping sides. */
-function folder(dir: string): string {
-  return dir ? `\u200e${dir}\u200e` : "";
-}
-
 function FileRow({ file, label }: { file: DiffFile; label: string }) {
   return (
     <li>
@@ -49,7 +45,7 @@ function FileRow({ file, label }: { file: DiffFile; label: string }) {
       >
         <span className="tc-file-text">
           <span className="tc-file-name">{file.name}</span>
-          <span className="tc-file-dir" title={file.dir ? file.displayPath : undefined}>{folder(file.dir)}</span>
+          <span className="tc-file-dir" title={file.dir ? file.displayPath : undefined}>{folderText(file.dir)}</span>
         </span>
         <DiffStats additions={file.additions} deletions={file.deletions} />
       </button>
@@ -71,6 +67,7 @@ export function TurnArtifactsPreview({ items, workspace }: { items: TranscriptIt
   const moreId = useId();
 
   if (!files.length) return null;
+  if (document.documentElement.dataset.loomSurface === "mobile") return <MobileTurnChanges files={files} />;
 
   const primary = files[0];
   const single = files.length === 1;
@@ -103,7 +100,7 @@ export function TurnArtifactsPreview({ items, workspace }: { items: TranscriptIt
               <span className="tc-lead">{copy.changedFilesLead(files.length, kind)}</span>
               <strong className="tc-subject">{copy.changedFilesSubject(files.length, primary.name)}</strong>
             </span>
-            {single && primary.dir ? <span className="tc-dir" title={primary.displayPath}>{folder(primary.dir)}</span> : null}
+            {single && primary.dir ? <span className="tc-dir" title={primary.displayPath}>{folderText(primary.dir)}</span> : null}
           </span>
         </button>
 

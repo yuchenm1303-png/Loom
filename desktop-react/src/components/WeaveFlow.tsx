@@ -256,7 +256,7 @@ function diffRows(text: string): DiffRow[] {
 }
 
 /** A diff with its additions and removals coloured, which is most of what reading one is. */
-function DiffView({ text }: { text: string }) {
+export function DiffView({ text }: { text: string }) {
   const rows = diffRows(text);
   const shown = rows.length > DIFF_LINE_CAP ? rows.slice(0, DIFF_LINE_CAP) : rows;
   return (

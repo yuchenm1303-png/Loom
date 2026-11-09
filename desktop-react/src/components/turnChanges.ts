@@ -18,7 +18,14 @@ export type DiffFile = {
   editCount: number;
   /** Order of the snapshot that last changed this file. */
   lastChange: number;
+  /** This file's chunk of the latest snapshot that holds it ("" when the diff did not mention it). */
+  diff: string;
 };
+
+/** The folder, with a left-to-right mark at each end so a row can cut it from the left (CSS direction) without the dot or slash jumping sides. */
+export function folderText(dir: string): string {
+  return dir ? `‎${dir}‎` : "";
+}
 
 function normalizePath(value: string): string {
   return String(value || "")
@@ -134,6 +141,7 @@ export function collectFiles(items: TranscriptItem[]): DiffFile[] {
         deletions: value.deletions,
         editCount: value.editCount,
         lastChange: value.lastChange,
+        diff: value.chunk,
       };
     })
     .sort((a, b) => (b.additions + b.deletions) - (a.additions + a.deletions) || a.displayPath.localeCompare(b.displayPath));

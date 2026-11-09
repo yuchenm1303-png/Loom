@@ -183,7 +183,7 @@ def test_the_card_reads_the_runtimes_diff_through_the_one_splitter() -> None:
     assert "function splitDiffByFile" not in activity
     assert "diff --git a" not in changes
     assert "diff --git a" not in card
-    assert 'import { collectFiles, type DiffFile } from "./turnChanges";' in card
+    assert 'import { collectFiles, folderText, type DiffFile } from "./turnChanges";' in card
     assert "function collectFiles" not in card
     # What is counted and named is pinned by a unit test of the pure logic.
     assert (ROOT / "desktop-react" / "scripts" / "tests" / "turn-changes.test.mjs").exists()
