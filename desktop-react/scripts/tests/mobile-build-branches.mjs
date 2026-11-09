@@ -11,7 +11,7 @@ try {
     const errors = []; page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`${origin}/scripts/fixtures/mobile.html`);
     await page.getByRole("navigation", { name: "主导航" }).getByRole("button", { name: "建造", exact: true }).click();
-    await page.getByText("Loom 账号页重做", { exact: true }).click();
+    await page.locator('.m-body[data-side="0"]').getByText("Loom 账号页重做", { exact: true }).click();
     const ports = page.getByRole("navigation", { name: "建造支路" }); await ports.waitFor();
     assert.equal(await ports.getByRole("button").count(), 5);
     assert.equal(await ports.locator('[aria-expanded="true"]').count(), 0);

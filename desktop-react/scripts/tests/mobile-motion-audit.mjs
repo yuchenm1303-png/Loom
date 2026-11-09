@@ -34,6 +34,7 @@ try {
   await page.evaluate(() => { window.rowA = document.querySelector('[data-id="a"]'); window.stateA = window.rowA.querySelector('.m-motion-value'); window.motionAudit.rows([{ id: "a", state: "运行中" }, { id: "b", state: "运行中" }]); });
   assert.ok(await page.evaluate(() => window.stateA === document.querySelector('[data-id="a"] .m-motion-value')), "unchanged polls do not replay status motion");
   await page.evaluate(() => window.motionAudit.rows([{ id: "b", state: "运行中" }, { id: "a", state: "运行中" }]));
+  assert.ok(await page.evaluate(() => document.querySelector('[data-id="a"]').closest(".m-motion-row").getAnimations().some(animation => animation.effect.getKeyframes().some(frame => String(frame.transform).includes("translateY")))), "a row that changes place glides to it");
   assert.deepEqual(await page.locator('#audit-rows [data-id]').evaluateAll(nodes => nodes.map(node => node.dataset.id)), ["b", "a"], "live order is respected without recreating rows");
   await page.evaluate(() => window.motionAudit.rows([{ id: "b", state: "已完成" }]));
   assert.ok(await page.locator('[data-id="a"]').evaluate(el => Boolean(el.closest('[inert][aria-hidden="true"]'))), "removed rows stop accepting input immediately");

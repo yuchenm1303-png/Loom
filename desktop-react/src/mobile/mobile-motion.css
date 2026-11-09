@@ -1,21 +1,193 @@
-/* Marks may move; copy keeps its baseline. Rows and forms own one height motion. */
+/* The phone's motion, all of it. mobile.css says where things are; this file says how they get there, on the renderer's
+   scale (motion-tokens.css), and tests/test_mobile_motion_contract.py keeps it the only place.
+
+   The language, top to bottom:
+     Stack    a conversation slides over the list; list and screen are one mover on one clock, both ways.
+     Pages    tabs are peers: the old page leaves toward where it sits, the new one comes from where it sits.
+     Sheets   rise on a spring, follow the finger when dragged, fall from wherever they are.
+     Marks    a selection travels on a spring (motion.ts); glyphs land; words fade in place.
+     Room     made by layout on one fold clock; a list that first appears is simply there.
+     Press    the control itself washes, under the finger, and lets go softly.
+     Loops    on the scale's periods, compositor only, stopped when nobody can see them.
+
+   No @starting-style and no bare linear(): the phone's WebView can be far behind Chrome. An entrance is a `[data-from]`
+   state that motion.ts plays through, and a spring has an ordinary curve to fall back on. */
+html[data-loom-surface="mobile"] {
+  --m-settle: var(--loom-ease-out);
+  --m-lively: var(--loom-ease-out);
+  --m-soft: var(--loom-ease-out);
+  --m-press-wash: rgba(255, 255, 255, .07);
+  --m-page-shift: 14px;
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  html[data-loom-surface="mobile"] {
+    --m-settle: var(--loom-spring-settle);
+    --m-lively: var(--loom-spring-lively);
+    --m-soft: var(--loom-spring-soft);
+  }
+}
+
+/* Stack ------------------------------------------------------------------------------------------------- */
+.m-app { animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
+.m-shell { transition: transform var(--loom-dur-flow-out) var(--loom-ease-exit), opacity var(--loom-dur-flow-out) var(--loom-ease-exit); }
+.m-shell[data-covered] { transform: translateX(-22%); opacity: .55; transition: transform var(--loom-dur-panel) var(--m-settle), opacity var(--loom-dur-panel) var(--m-settle); }
+.m-screen { transform: translateX(0); transition: transform var(--loom-dur-panel) var(--m-settle); }
+.m-screen[data-phase="exiting"] { pointer-events: none; transform: translateX(100%); transition: transform var(--loom-dur-flow-out) var(--loom-ease-exit); }
+.m-screen[data-from] { transform: translateX(100%); transition: none; }
+/* Another conversation opened on the same screen (a sub-agent): the screen stays, its content changes. */
+.m-thread.is-swapped { animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
+
+/* Pages -------------------------------------------------------------------------------------------------- */
+.m-body { opacity: 1; visibility: visible; transform: none; transition: opacity var(--loom-dur-base) var(--loom-ease-out) var(--loom-stagger), transform var(--loom-dur-flow) var(--loom-ease-out), visibility 0s; }
+.m-body[data-side="-1"], .m-body[data-side="1"] { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit), transform var(--loom-dur-fast-out) var(--loom-ease-exit), visibility 0s linear var(--loom-dur-fast-out); }
+.m-body[data-side="-1"] { transform: translateX(calc(var(--m-page-shift) * -1)); }
+.m-body[data-side="1"] { transform: translateX(var(--m-page-shift)); }
+/* A page's blocks come up in reading order the first time it has something to show. */
+.m-body > * { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.m-body > :nth-child(2) { animation-delay: var(--loom-stagger); }
+.m-body > :nth-child(n + 3) { animation-delay: calc(var(--loom-stagger) * 2); }
+.m-project-view { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.m-swap-face.is-fresh { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) calc(var(--loom-dur-fast-out) * .4) backwards; }
+.m-swap-face.is-leaving { animation: m-fade-away var(--loom-dur-fast-out) var(--loom-ease-exit) forwards; }
+.m-motion-value { animation: m-value-change var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.m-empty, .m-offline, .m-note, .m-pair { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.m-sheet .m-note { animation: none; }
+/* What was loading gives way to what loaded; the same fade answers a pane coming back from `hidden`. */
+.m-stage { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+
+/* Sheets ------------------------------------------------------------------------------------------------- */
+html[data-loom-surface="mobile"] .m-scrim { opacity: calc(1 - var(--m-sheet-pull, 0) * .85); transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-sheet-host[data-from] > .m-scrim { opacity: 0; transition: none; }
+html[data-loom-surface="mobile"] [data-phase="exiting"] > .m-scrim { opacity: 0; transition: opacity var(--loom-dur-flow-out) var(--loom-ease-exit); }
+.m-sheet { transform: translateY(0); transition: transform var(--loom-dur-panel) var(--m-settle); }
+[data-phase="exiting"] > .m-sheet { pointer-events: none; transform: translateY(100%); transition: transform var(--loom-dur-flow-out) var(--loom-ease-exit); }
+.m-sheet-host[data-from] > .m-sheet { transform: translateY(100%); transition: none; }
+.m-sheet-host[data-drag] > .m-sheet, html[data-loom-surface="mobile"] .m-sheet-host[data-drag] > .m-scrim { transition: none; }
+.m-sheet-head { touch-action: none; }
+.m-grip { transition: background-color var(--loom-dur-fast) var(--loom-ease-out); }
+.m-sheet-host[data-drag] .m-grip { background: rgba(224, 230, 242, .42); }
+
+/* Marks -------------------------------------------------------------------------------------------------- */
+.m-nav button[aria-current="page"] i svg { animation: m-glyph-land var(--loom-dur-slow) var(--m-lively); }
+.m-nav-badge { animation: m-mark-settle var(--loom-dur-slow) var(--m-soft); }
+.m-nav-badge[data-phase="exiting"] { animation: m-mark-leave var(--loom-dur-fast-out) var(--loom-ease-exit) forwards; }
+.m-nav-badge-count { display: block; animation: m-fade var(--loom-dur-fast) var(--loom-ease-out); }
+.m-logo { animation: m-mark-settle var(--loom-dur-slow) var(--m-soft); }
+.m-choice > svg:not(.m-chevron), .m-row > svg:not(.m-chevron) { animation: m-glyph-land var(--loom-dur-slow) var(--m-lively); }
+.m-round-glyph { display: grid; place-items: center; animation: m-glyph-swap var(--loom-dur-base) var(--m-soft); }
+html[data-loom-surface="mobile"] .m-approval-jump { animation: m-pill-lift var(--loom-dur-base) var(--m-soft); }
+html[data-loom-surface="mobile"] .m-approval-jump[data-phase="exiting"] { animation: m-pill-drop var(--loom-dur-fast-out) var(--loom-ease-exit) forwards; }
+.m-confirm-code span { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.m-confirm-code span:nth-child(2) { animation-delay: var(--loom-stagger); }
+.m-confirm-code span:nth-child(3) { animation-delay: calc(var(--loom-stagger) * 2); }
+.m-confirm-code span:nth-child(4) { animation-delay: calc(var(--loom-stagger) * 3); }
+.m-confirm-code span:nth-child(5) { animation-delay: calc(var(--loom-stagger) * 4); }
+.m-confirm-code span:nth-child(6) { animation-delay: calc(var(--loom-stagger) * 5); }
+.m-pair .m-steps li { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.m-pair .m-steps li:nth-child(2) { animation-delay: var(--loom-stagger); }
+.m-pair .m-steps li:nth-child(3) { animation-delay: calc(var(--loom-stagger) * 2); }
+.m-branch-capsule { transition: opacity var(--loom-dur-fast) var(--loom-ease-out); }
+.m-branch-body { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
+html[data-loom-surface="mobile"] .m-branch-ports button, html[data-loom-surface="mobile"] .m-branch-ports button svg { transition: color var(--loom-dur-fast) var(--loom-ease-out); }
+.m-meter > i, .m-goal-bar span { transition: transform var(--loom-dur-slow) var(--loom-ease-out); }
+.m-goal-phases li, .m-goal-mark { transition: background-color var(--loom-dur-base) var(--loom-ease-out), color var(--loom-dur-base) var(--loom-ease-out); }
+.m-goal-state { transition: color var(--loom-dur-base) var(--loom-ease-out); }
+
+/* Colour answers a state ---------------------------------------------------------------------------------- */
+.m-dot { transition: background-color var(--loom-dur-base) var(--loom-ease-out), border-color var(--loom-dur-base) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-badge { transition: color var(--loom-dur-base) var(--loom-ease-out), background-color var(--loom-dur-base) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-nav button { transition: color var(--loom-dur-base) var(--loom-ease-out); }
+.m-nav button i { transition: color var(--loom-dur-base) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-segments button { transition: color var(--loom-dur-fast) var(--loom-ease-out), background-color var(--loom-dur-fast) var(--loom-ease-out); }
+.m-choice strong { transition: color var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-disclosure-head { transition: color var(--loom-dur-base) var(--loom-ease-out); }
+.m-disclosure-chevron { transition: color var(--loom-dur-base) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] :is(.m-button, .m-icon-button, .m-round-tool, .m-attachment-action, .m-inline-button, .m-tool) { transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-round { transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-round.is-send svg { transition: translate var(--loom-dur-fast) var(--loom-ease-out); }
+.m-search { transition: box-shadow var(--loom-dur-fast) var(--loom-ease-out); }
+.m-composer-box { transition: box-shadow var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-composer-box textarea { transition: height var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-field input, html[data-loom-surface="mobile"] .m-field textarea { transition: box-shadow var(--loom-dur-fast) var(--loom-ease-out); }
+
+/* Room --------------------------------------------------------------------------------------------------- */
 .m-motion-row { display: grid; min-width: 0; flex: none; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-move), opacity var(--loom-dur-fast-out) var(--loom-ease-exit); }
-.m-motion-row[data-open="true"] { grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-move), opacity var(--loom-dur-base) var(--loom-ease-out) 40ms; }
+.m-motion-row[data-open="true"] { grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-move), opacity var(--loom-dur-base) var(--loom-ease-out) var(--loom-stagger); }
+.m-motion-row[data-from] { grid-template-rows: 0fr; opacity: 0; transition: none; }
 .m-motion-row-clip { min-width: 0; min-height: 0; overflow: clip; }
-.m-motion-value { animation: m-value-arrive var(--loom-dur-base) var(--loom-ease-out) backwards; }
-.m-project-view { animation: m-value-arrive var(--loom-dur-base) var(--loom-ease-out) backwards; }
 .m-motion-row + .m-motion-row .m-agent-card { border-top: 1px solid var(--loom-workspace-line); }
-.m-rows > .m-motion-row { animation: none; border-top: 0 !important; }
+.m-rows > .m-motion-row { border-top: 0 !important; }
 .m-rows > .m-motion-row + .m-motion-row .m-row { border-top: 1px solid var(--loom-workspace-line); }
-.m-body > .loom-fold { animation: none; }
 .m-attachment-list:has(> .m-motion-row) { gap: 0; }
 .m-attachment-list > .m-motion-row .m-motion-row-content { padding-block: 3px; }
-html[data-loom-surface="mobile"] :is(.m-button, .m-icon-button, .m-round-tool, .m-attachment-action) { transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-fast) var(--loom-ease-out); }
-html[data-loom-surface="mobile"] :is(.m-button:not(.is-primary):not(.is-wait), .m-icon-button, .m-round-tool, .m-attachment-action):active:not(:disabled) { background-color: var(--loom-workspace-selection); }
-html[data-loom-surface="mobile"] .m-badge { transition: color var(--loom-dur-base) var(--loom-ease-out), background-color var(--loom-dur-base) var(--loom-ease-out); }
-@starting-style { .m-motion-row[data-open="true"] { grid-template-rows: 0fr; opacity: 0; } }
-@keyframes m-value-arrive { from { opacity: .35; } }
-@media (prefers-reduced-motion: reduce) {
-  .m-motion-row, .m-motion-value, .m-project-view { animation: none !important; transition: none !important; }
+/* The words go first, quickly, then the room closes; opening, the room leads and the words follow. */
+.m-disclosure-body { transition: grid-template-rows var(--loom-dur-flow-out) var(--loom-ease-exit) var(--loom-dur-fast-out), visibility 0s linear calc(var(--loom-dur-flow-out) + var(--loom-dur-fast-out)); }
+.m-disclosure-inner { transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit); }
+.m-disclosure[data-open] > .m-disclosure-body { transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-out), visibility 0s; }
+.m-disclosure[data-open] > .m-disclosure-body .m-disclosure-inner { transition: opacity var(--loom-dur-base) var(--loom-ease-out) calc(var(--loom-dur-flow) * .3); }
+.m-goal-clamp[data-settling] p { display: block; }
+
+/* Press -------------------------------------------------------------------------------------------------- */
+/* The wash is a layer of its own, so letting go can fade (a background-image cannot) and a filled button keeps its fill. */
+html[data-loom-surface="mobile"] :is(.m-row, .m-choice, .m-wait-card, .m-button, .m-icon-button, .m-tool, .m-round-tool, .m-disclosure-head, .m-inline-button, .m-attachment-action, .m-sheet-close, .m-new button, .m-round) { position: relative; background-image: none !important; }
+html[data-loom-surface="mobile"] :is(.m-row, .m-choice, .m-wait-card, .m-button, .m-icon-button, .m-tool, .m-round-tool, .m-disclosure-head, .m-inline-button, .m-attachment-action, .m-sheet-close, .m-new button, .m-round)::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--m-press-wash); opacity: 0; pointer-events: none;
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out);
 }
-html[data-loom-reduced-motion="true"] :is(.m-motion-row, .m-motion-value, .m-project-view) { animation: none !important; transition: none !important; }
+html[data-loom-surface="mobile"] .m-round::after { inset: 3px; }
+html[data-loom-surface="mobile"] :is(.m-row, .m-choice, .m-wait-card, .m-button, .m-icon-button, .m-tool, .m-round-tool, .m-disclosure-head, .m-inline-button, .m-attachment-action, .m-sheet-close, .m-new button, .m-round)[data-pressed]::after { opacity: 1; transition: none; }
+/* The chip's button is 44 tall for the thumb; its press belongs to the 30px words. */
+.m-chip > span { transition: background-color var(--loom-dur-base) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-segments.is-capsule button { background-image: none !important; }
+html[data-loom-surface="mobile"] .m-chip[data-pressed] > span { background-color: var(--m-press-wash); transition: none; }
+/* Controls that came from the desktop's components take the same marking through press.css's wash. */
+html[data-loom-surface="mobile"] .m-stage :is(button, summary, [role="button"], [role="radio"])[data-pressed]:not(:disabled, [data-press="none"]) { background-image: linear-gradient(var(--loom-press-wash), var(--loom-press-wash)); }
+
+/* Loops -------------------------------------------------------------------------------------------------- */
+.m-dot.is-run::after, .m-dot.is-wait::after, .m-goal[data-tone="run"] .m-goal-state i::after { animation: m-dot-breathe var(--loom-period-breathe) var(--loom-ease-inout) infinite; }
+.m-goal[data-tone="run"] .m-goal-state i { position: relative; color: var(--m-on); }
+.m-goal[data-tone="run"] .m-goal-state i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: currentColor; opacity: 0; pointer-events: none; }
+.m-skeleton { animation: m-skeleton-breathe var(--loom-period-skeleton) var(--loom-ease-inout) infinite; }
+html[data-loom-surface="mobile"] .m-round-tool[aria-busy="true"] svg { animation: li-spin var(--ic-t-spin) linear infinite; }
+.m-attachment-spinner { animation: li-spin var(--ic-t-spin) linear infinite; }
+/* A page nobody can see keeps no clock running. */
+:is(.m-body:not([data-side="0"]), .m-shell[data-covered]) :is(.m-skeleton, .m-dot::after, .m-round-tool svg) { animation-play-state: paused; }
+
+/* The shared transcript, on the phone ----------------------------------------------------------------------- */
+html[data-loom-surface="mobile"] .m-stage .approval-card { animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-verb { animation: none; }
+html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-halo { animation: none; }
+html[data-loom-surface="mobile"] .m-stage .wv-sub.is-tail .wv-sub-text { animation: none; }
+/* A running verb holds still on the phone, but its birth fade must stay in the same animation list: dropping it while
+   running and restoring it on completion replayed the fade (90ms of a blank verb) every time a step finished. */
+html[data-loom-surface="mobile"] .m-stage .wv-step[data-born="live"] .wv-row.is-executing .wv-verb { animation: wv-fade-in var(--loom-dur-base) var(--loom-ease-out) 90ms backwards; }
+/* The thinking bead is a 6px dot here; arriving 120ms before its words it read as a stray dot. The words follow almost at once. */
+html[data-loom-surface="mobile"] .m-stage .inline-thinking .thinking-shimmer {
+  animation:
+    loom-thinking-label-in var(--loom-dur-base) var(--loom-ease-out) calc(var(--thinking-lead, 0ms) + 30ms) backwards,
+    var(--thinking-sweep);
+}
+
+@keyframes m-fade { from { opacity: 0; } }
+@keyframes m-fade-away { to { opacity: 0; } }
+@keyframes m-value-change { from { opacity: .35; } }
+@keyframes m-pill-lift { from { opacity: 0; transform: translate(-50%, 10px); } }
+@keyframes m-pill-drop { to { opacity: 0; transform: translate(-50%, 10px); } }
+@keyframes m-glyph-land { from { transform: scale(.78); } }
+@keyframes m-glyph-swap { from { opacity: 0; transform: scale(.55); } }
+@keyframes m-mark-settle { from { opacity: 0; transform: scale(.8); } }
+@keyframes m-mark-leave { to { opacity: 0; transform: scale(.6); } }
+@keyframes m-dot-breathe { 0% { opacity: .5; transform: scale(.6); } 60%, 100% { opacity: 0; transform: scale(2.3); } }
+@keyframes m-skeleton-breathe { 50% { opacity: .5; } }
+
+/* Reduced motion. The scale's clock collapses by itself; what is left is what has no clock of its own to collapse. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-loom-surface="mobile"] :is(.m-dot, .m-goal-state i)::after,
+  html[data-loom-surface="mobile"] :is(.m-skeleton, .m-attachment-spinner, .m-round-tool[aria-busy="true"] svg, .m-motion-row, .m-motion-value, .m-project-view, .m-swap-face),
+  html[data-loom-surface="mobile"] .m-stage .wv-step[data-born="live"] .wv-row.is-executing .wv-verb { animation: none !important; }
+  .m-motion-row, .m-body { transition: none !important; }
+}
+html[data-loom-surface="mobile"][data-loom-reduced-motion="true"] :is(.m-dot, .m-goal-state i)::after,
+html[data-loom-surface="mobile"][data-loom-reduced-motion="true"] :is(.m-skeleton, .m-attachment-spinner, .m-round-tool[aria-busy="true"] svg, .m-motion-row, .m-motion-value, .m-project-view, .m-swap-face),
+html[data-loom-surface="mobile"][data-loom-reduced-motion="true"] .m-stage .wv-step[data-born="live"] .wv-row.is-executing .wv-verb { animation: none !important; }
+html[data-loom-surface="mobile"][data-loom-reduced-motion="true"] :is(.m-motion-row, .m-body) { transition: none !important; }

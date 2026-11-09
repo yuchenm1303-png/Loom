@@ -1,4 +1,6 @@
-/* The phone's own layout, on the renderer's type ladder and motion scale. The transcript
+@import "./mobile-motion.css";
+
+/* The phone's own layout, on the renderer's type ladder. Motion is mobile-motion.css's. The transcript
    keeps the desktop rules (so nothing is lost or truncated); only its frame changes here.
 
    One ladder for the whole phone:
@@ -26,17 +28,6 @@ html[data-loom-surface="mobile"] {
   --m-radius: 18px;
   --m-radius-control: 12px;
   --m-mono: var(--loom-font-mono, "Cascadia Code", "JetBrains Mono", monospace);
-  /* A WebView without linear() would drop the whole transition, so springs are an upgrade. */
-  --m-settle: var(--loom-ease-out);
-  --m-lively: var(--loom-ease-out);
-  --m-soft: var(--loom-ease-out);
-}
-@supports (transition-timing-function: linear(0, 1)) {
-  html[data-loom-surface="mobile"] {
-    --m-settle: var(--loom-spring-settle);
-    --m-lively: var(--loom-spring-lively);
-    --m-soft: var(--loom-spring-soft);
-  }
 }
 html[data-loom-surface="mobile"], html[data-loom-surface="mobile"] body, html[data-loom-surface="mobile"] #root {
   height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none;
@@ -54,29 +45,25 @@ html[data-loom-surface="mobile"] button:disabled { cursor: default; }
 html[data-loom-surface="mobile"] button:focus-visible, html[data-loom-surface="mobile"] summary:focus-visible { outline: 2px solid var(--m-run); outline-offset: 2px; }
 
 /* Shell */
-.m-app { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--loom-workspace-navigation); animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
+.m-app { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--loom-workspace-navigation); }
 .m-shell {
   flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--loom-workspace-canvas);
-  transition: transform var(--loom-dur-flow-out) var(--loom-ease-out), opacity var(--loom-dur-flow-out) var(--loom-ease-out);
+
 }
-/* The list stays alive under a conversation and slides back a little, as a stack does. */
-.m-shell[data-covered] { transform: translateX(-22%); opacity: .55; transition-duration: var(--loom-dur-flow); }
 .m-screen {
   position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--loom-workspace-canvas);
   box-shadow: -14px 0 30px rgba(0, 0, 0, .28);
-  transform: translateX(0); transition: transform var(--loom-dur-flow) var(--loom-ease-out);
 }
-.m-screen[data-phase="exiting"] { pointer-events: none; transform: translateX(100%); transition: transform var(--loom-dur-flow-out) var(--loom-ease-exit); }
-@starting-style { .m-screen:not([data-phase="exiting"]) { transform: translateX(100%); } }
 
 /* Tab header: a large title, and the computer's state as one quiet pill beside it. */
 .m-head { flex: none; display: flex; align-items: center; gap: 12px; padding: 18px var(--m-gutter) 10px; }
-.m-head h1 { min-width: 0; flex: 1; margin: 0; font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -.01em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
+.m-head h1 { min-width: 0; flex: 1; margin: 0; font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -.01em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .m-status { flex: 0 1 auto; min-width: 0; max-width: 58%; box-sizing: border-box; margin: 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px 0 10px; border-radius: 14px; background: var(--m-fill); font-size: 13px; font-weight: 500; color: var(--loom-workspace-secondary); }
 .m-status.is-off { color: var(--loom-workspace-muted); }
 .m-status > span:not(.m-dot) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .m-head h1 { flex: 1 1 auto; }
-.m-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 6px var(--m-gutter) 20px; display: flex; flex-direction: column; gap: 24px; }
+.m-pages { position: relative; flex: 1; min-height: 0; }
+.m-body { position: absolute; inset: 0; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; padding: 6px var(--m-gutter) 20px; display: flex; flex-direction: column; gap: 24px; }
 
 /* Lists */
 .m-group { display: flex; flex: none; flex-direction: column; gap: 8px; }
@@ -120,13 +107,12 @@ html[data-loom-surface="mobile"] button.m-row:disabled { opacity: 1; }
 .m-badge.is-run { background: var(--m-run-soft); color: var(--m-run); }
 .m-badge.is-on { background: rgba(127, 209, 174, .12); color: var(--m-on); }
 .m-badge.is-bad { background: var(--m-bad-soft); color: var(--m-bad); }
-.m-dot { position: relative; display: block; width: 8px; height: 8px; flex: none; box-sizing: border-box; border-radius: 50%; background: var(--loom-workspace-muted); transition: background-color var(--loom-dur-base) var(--loom-ease-out); }
+.m-dot { position: relative; display: block; width: 8px; height: 8px; flex: none; box-sizing: border-box; border-radius: 50%; background: var(--loom-workspace-muted); }
 .m-dot.is-idle { opacity: .55; }
 .m-dot.is-run { background: none; border: 2px solid var(--m-run); }
-/* A live state breathes: the ring grows and fades on the compositor, nothing repaints. */
 .m-dot.is-run::after, .m-dot.is-wait::after {
   content: ""; position: absolute; inset: -2px; border-radius: 50%; background: currentColor; opacity: 0; pointer-events: none;
-  animation: m-dot-breathe calc(var(--loom-dur-slow) * 4) var(--loom-ease-inout) infinite;
+
 }
 .m-dot.is-run { color: var(--m-run); }
 .m-dot.is-wait { color: var(--m-wait); }
@@ -152,12 +138,10 @@ html[data-loom-surface="mobile"] .m-search input {
 .m-search input::placeholder { color: var(--loom-workspace-muted); }
 .m-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
 .m-search:focus-within { box-shadow: 0 0 0 1.5px var(--loom-workspace-line) inset; }
-html[data-loom-surface="mobile"] .m-round-tool { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 22px; background: var(--m-surface); color: var(--loom-workspace-secondary); transition: opacity var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-round-tool { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 22px; background: var(--m-surface); color: var(--loom-workspace-secondary); }
 html[data-loom-surface="mobile"] .m-round-tool:disabled { opacity: .45; }
-html[data-loom-surface="mobile"] .m-round-tool[aria-busy="true"] svg { animation: li-spin var(--ic-t-spin) linear infinite; }
 
 /* States */
-.m-empty, .m-offline, .m-confirm, .m-note { animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
 .m-empty { flex: 1; min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 32px; text-align: center; }
 .m-empty span { width: 56px; height: 56px; margin-bottom: 6px; display: grid; place-items: center; border-radius: 18px; background: var(--m-surface); color: var(--loom-workspace-secondary); }
 .m-empty strong { font-size: 18px; font-weight: 600; }
@@ -192,43 +176,40 @@ html[data-loom-surface="mobile"] .m-new button {
 html[data-loom-surface="mobile"] .m-nav button {
   position: relative; z-index: 1; min-width: 0; padding: 8px 0 7px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px;
   color: var(--loom-workspace-muted);
-  transition: color var(--loom-dur-base) var(--loom-ease-out);
+
 }
 html[data-loom-surface="mobile"] .m-nav button:focus-visible { outline: 0; }
 html[data-loom-surface="mobile"] .m-nav button:focus-visible i { box-shadow: 0 0 0 2px var(--m-run); }
-.m-nav button i { position: relative; width: 60px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 16px; font-style: normal; color: rgba(187, 193, 204, .78); transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-base) var(--loom-ease-out); }
+.m-nav button i { position: relative; width: 60px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 16px; font-style: normal; color: rgba(187, 193, 204, .78); }
 /* Words never move; the glyph gives a little under the finger (icon-motion.css) and the pill takes the wash. */
-html[data-loom-surface="mobile"] .m-nav button:is(:hover, :active, :focus) { background: transparent !important; box-shadow: none; }
+html[data-loom-surface="mobile"] .m-nav button:is(:hover, :focus) { background: transparent !important; box-shadow: none; }
 html[data-loom-surface="mobile"] .m-nav button i,
-html[data-loom-surface="mobile"] .m-nav button:is(:hover, :active, :focus) i { background: transparent !important; }
+html[data-loom-surface="mobile"] .m-nav button:is(:hover, :focus) i { background: transparent !important; }
 .m-nav button span { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .02em; }
 html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] { color: var(--loom-workspace-ink); }
 html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] span { font-weight: 600; }
 html[data-loom-surface="mobile"] .m-nav button[aria-current="page"] i { color: var(--m-run); }
-.m-nav button[aria-current="page"] i svg { animation: m-glyph-spring var(--loom-dur-slow) var(--m-lively); }
 /* Waiting approvals ride on the 现在 icon, so they are seen from every tab. */
 .m-nav-badge {
   position: absolute; top: 0; left: calc(50% + 5px); min-width: 17px; height: 17px; box-sizing: border-box; padding: 0 4px;
   display: grid; place-items: center; border-radius: 9px; box-shadow: 0 0 0 2px var(--loom-workspace-navigation);
   background: var(--m-wait); color: #241a06; font-size: 12px; font-weight: 650; line-height: 17px; font-variant-numeric: tabular-nums;
-  animation: m-mark-settle var(--loom-dur-slow) var(--m-soft);
+
 }
 /* One selection that travels, rather than one that blinks out here and in there. */
 .m-nav > .m-glider {
   position: absolute; left: 6px; top: 8px; width: calc((100% - 12px) / 5); height: 32px; pointer-events: none;
   transform: translateX(calc(var(--m-index) * 100%));
-  transition: transform var(--loom-dur-flow) var(--m-settle);
+
 }
 .m-nav > .m-glider::before { content: none; }
 .m-nav-pill { position: absolute; left: 50%; top: 0; width: 60px; height: 32px; margin-left: -30px; border-radius: 999px; background: var(--m-run-soft); transform-origin: center; box-shadow: inset 0 1px 0 rgba(220,210,255,.08); }
-html[data-loom-reduced-motion] .m-nav > .m-glider { transition: none; }
-@media (prefers-reduced-motion: reduce) { .m-nav > .m-glider { transition: none; } }
 
 /* Buttons: one shape, three weights. Icons sit beside the words, never on top of them. */
 html[data-loom-surface="mobile"] .m-button {
   min-height: 48px; box-sizing: border-box; padding: 0 18px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   border-radius: 14px; background: var(--m-fill-strong); color: var(--loom-workspace-ink); font-size: 15px; font-weight: 600; text-align: center;
-  transition: opacity var(--loom-dur-fast) var(--loom-ease-out), background-color var(--loom-dur-fast) var(--loom-ease-out);
+
 }
 html[data-loom-surface="mobile"] .m-button svg { flex: none; }
 html[data-loom-surface="mobile"] .m-button:disabled { opacity: .42; }
@@ -238,12 +219,11 @@ html[data-loom-surface="mobile"] .m-button.is-danger { background: var(--m-bad-s
 html[data-loom-surface="mobile"] .m-button.is-block { width: 100%; }
 
 /* Pairing */
-.m-pair { animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
 .m-pair { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 24px 20px 20px; box-sizing: border-box; overflow-y: auto; }
 .m-pair-center { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
 .m-pair h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -.01em; }
 .m-pair p { margin: 0; font-size: 15px; line-height: 1.6; color: var(--loom-workspace-secondary); }
-.m-logo { width: 64px; height: 64px; margin-bottom: 14px; border-radius: 18px; filter: drop-shadow(0 8px 24px rgba(140, 120, 245, .35)); animation: m-mark-settle var(--loom-dur-slow) var(--m-soft); }
+.m-logo { width: 64px; height: 64px; margin-bottom: 14px; border-radius: 18px; filter: drop-shadow(0 8px 24px rgba(140, 120, 245, .35)); }
 .m-steps { margin: 22px 0 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--m-radius); background: var(--m-surface); }
 .m-steps li { counter-increment: step; min-height: 58px; box-sizing: border-box; padding: 10px 16px; display: flex; align-items: center; gap: 14px; font-size: 15px; line-height: 1.45; }
 .m-steps li + li { border-top: 1px solid var(--loom-workspace-line); }
@@ -252,12 +232,7 @@ html[data-loom-surface="mobile"] .m-button.is-block { width: 100%; }
 .m-eyebrow { color: var(--loom-workspace-muted) !important; font-size: 14px !important; }
 .m-confirm-code { display: flex; margin: 10px 0 18px; padding: 14px 22px; border-radius: 20px; background: var(--m-surface); font-family: var(--m-mono); font-size: 32px; font-weight: 600; letter-spacing: 4px; font-variant-numeric: tabular-nums; }
 /* The digits are read one by one, so they arrive one by one. */
-.m-confirm-code span { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
-.m-confirm-code span:nth-child(2) { animation-delay: var(--loom-stagger); }
-.m-confirm-code span:nth-child(3) { animation-delay: calc(var(--loom-stagger) * 2); margin-right: .5em; }
-.m-confirm-code span:nth-child(4) { animation-delay: calc(var(--loom-stagger) * 3); }
-.m-confirm-code span:nth-child(5) { animation-delay: calc(var(--loom-stagger) * 4); }
-.m-confirm-code span:nth-child(6) { animation-delay: calc(var(--loom-stagger) * 5); }
+.m-confirm-code span:nth-child(3) { margin-right: .5em; }
 .m-pair.is-confirming h1 { font-size: 24px; }
 .m-waiting { display: flex; align-items: center; gap: 8px; margin-top: 14px !important; color: var(--loom-workspace-muted) !important; font-size: 14px !important; }
 
@@ -265,7 +240,7 @@ html[data-loom-surface="mobile"] .m-button.is-block { width: 100%; }
 .m-thread { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .m-thread-head { flex: none; display: flex; align-items: center; gap: 2px; min-height: 56px; padding: 4px 6px 4px 2px; }
 .m-thread-head > div { min-width: 0; flex: 1; text-align: center; }
-.m-thread-head h1 { margin: 0; font-size: 16px; line-height: 1.35; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
+.m-thread-head h1 { margin: 0; font-size: 16px; line-height: 1.35; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .m-thread-head p { margin: 2px 0 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: var(--loom-workspace-muted); }
 html[data-loom-surface="mobile"] .m-icon-button { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 22px; color: var(--loom-workspace-secondary); }
 html[data-loom-surface="mobile"] .m-icon-button:disabled { opacity: .42; }
@@ -293,7 +268,6 @@ html[data-loom-surface="mobile"] .m-stage.is-blank { justify-content: center; }
 
 /* The approval card: same choices as the desktop, stacked for a thumb. */
 html[data-loom-surface="mobile"] .m-stage .approval-card {
-  animation: m-fade var(--loom-dur-base) var(--loom-ease-out);
   display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 10px; row-gap: 14px; align-items: start;
   padding: 16px; border: 1px solid var(--m-wait-line); border-radius: var(--m-radius); background: var(--m-wait-soft); box-shadow: none;
 }
@@ -313,9 +287,8 @@ html[data-loom-surface="mobile"] .m-approval-jump {
   position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); min-height: 44px; padding: 0 16px;
   display: flex; align-items: center; gap: 6px; border-radius: 22px; background: var(--m-wait); color: #241a06; font-size: 14px; font-weight: 600;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
-  animation: m-pill-lift var(--loom-dur-base) var(--m-soft);
+
 }
-html[data-loom-surface="mobile"] .m-approval-jump[data-phase="exiting"] { animation: m-pill-drop var(--loom-dur-fast-out) var(--loom-ease-exit) forwards; }
 
 /* Composer */
 .m-composer { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; background: var(--loom-workspace-canvas); }
@@ -333,8 +306,7 @@ html[data-loom-surface="mobile"] .m-approval-jump[data-phase="exiting"] { animat
 .m-attachment[data-status="error"] { border-color: var(--m-wait-line); }
 .m-attachment[data-status="error"] .m-attachment-status { color: var(--m-wait-ink); }
 .m-attachment-action { display: grid; place-items: center; width: 44px; height: 44px; flex: none; padding: 0; color: var(--loom-workspace-secondary); }
-.m-attachment-spinner { display: inline-block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: li-spin var(--ic-t-spin) linear infinite; flex: none; }
-@media (prefers-reduced-motion: reduce) { .m-attachment-spinner { animation: none; } }
+.m-attachment-spinner { display: inline-block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; flex: none; }
 html[data-loom-surface="mobile"] .m-stage .user-message-attachment-card { width: min(100%, 320px); max-width: 100%; min-height: 64px; padding: 12px; text-align: left; }
 html[data-loom-surface="mobile"] .m-stage .user-message-file-copy strong { font-size: 13px; line-height: 1.4; }
 html[data-loom-surface="mobile"] .m-stage .user-message-file-copy > span { font-size: 12px; line-height: 1.5; letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; }
@@ -344,13 +316,13 @@ html[data-loom-surface="mobile"] .m-alert { white-space: pre-line; overflow-wrap
 .m-composer-box {
   display: flex; flex-direction: column; border-radius: 24px; background: var(--m-surface);
   box-shadow: 0 0 0 1px var(--loom-workspace-line) inset;
-  transition: box-shadow var(--loom-dur-fast) var(--loom-ease-out);
+
 }
 .m-composer-box:focus-within { box-shadow: 0 0 0 1px rgba(181, 167, 245, .35) inset; }
 html[data-loom-surface="mobile"] .m-composer-box textarea {
   width: 100%; min-height: 44px; max-height: 132px; box-sizing: border-box; padding: 13px 18px 4px; resize: none;
   border: 0; outline: 0; background: none; font-size: 16px; line-height: 1.45;
-  transition: height var(--loom-dur-fast) var(--loom-ease-out);
+
 }
 .m-composer-box textarea::placeholder { color: var(--loom-workspace-muted); }
 .m-composer-tools { display: flex; align-items: center; gap: 2px; padding: 0 5px 5px; }
@@ -360,12 +332,11 @@ html[data-loom-surface="mobile"] .m-chip {
   font-size: 13px; color: var(--loom-workspace-secondary);
 }
 .m-chip > span { min-width: 0; height: 30px; padding: 0 9px 0 10px; display: flex; align-items: center; gap: 5px; border-radius: 15px; background: var(--m-fill); }
-.m-chip b { min-width: 0; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
+.m-chip b { min-width: 0; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .m-chip svg { flex: none; }
 html[data-loom-surface="mobile"] .m-round {
   width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 50%;
-  transition: opacity var(--loom-dur-fast) var(--loom-ease-out);
-  animation: m-mark-settle var(--loom-dur-flow) var(--m-soft);
+
 }
 html[data-loom-surface="mobile"] .m-round.is-send { background-color: var(--m-run); color: var(--m-on-run); }
 html[data-loom-surface="mobile"] .m-round.is-stop { background-color: var(--loom-workspace-ink); color: var(--loom-workspace-canvas); }
@@ -373,20 +344,13 @@ html[data-loom-surface="mobile"] .m-round:disabled, .m-tool:disabled { opacity: 
 
 /* Bottom sheets: a grip, a title row with its close, then the content. */
 .m-sheet-host { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; justify-content: flex-end; }
-html[data-loom-surface="mobile"] .m-scrim { flex: 1; min-height: 72px; background: rgba(4, 5, 8, .62); opacity: 1; transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
-html[data-loom-surface="mobile"] [data-phase="exiting"] > .m-scrim { opacity: 0; transition: opacity var(--loom-dur-flow-out) var(--loom-ease-exit); }
+html[data-loom-surface="mobile"] .m-scrim { flex: 1; min-height: 72px; background: rgba(4, 5, 8, .62); }
 .m-sheet {
   max-height: 88%; overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; margin-top: -20px;
   padding: 0 var(--m-gutter) calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px;
-  border-radius: 24px 24px 0 0; background: var(--m-sheet); box-shadow: 0 -1px 0 var(--loom-workspace-line);
-  transform: translateY(0); transition: transform var(--loom-dur-flow) var(--loom-ease-out);
+  border-radius: 24px 24px 0 0; background: var(--m-sheet); box-shadow: 0 -1px 0 var(--loom-workspace-line), 0 64px 0 var(--m-sheet);
 }
 .m-sheet:focus { outline: 0; }
-[data-phase="exiting"] > .m-sheet { pointer-events: none; transform: translateY(100%); transition: transform var(--loom-dur-flow-out) var(--loom-ease-exit); }
-@starting-style {
-  .m-sheet-host:not([data-phase="exiting"]) > .m-sheet { transform: translateY(100%); }
-  html[data-loom-surface="mobile"] .m-sheet-host:not([data-phase="exiting"]) > .m-scrim { opacity: 0; }
-}
 .m-sheet-head { position: sticky; top: 0; z-index: 1; flex: none; margin: 0 calc(var(--m-gutter) * -1) 2px; padding: 8px 8px 4px var(--m-gutter); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; background: var(--m-sheet); }
 .m-grip { grid-column: 1 / -1; justify-self: center; width: 36px; height: 4px; margin-bottom: 6px; border-radius: 2px; background: rgba(224, 230, 242, .22); }
 .m-sheet-head h2 { min-width: 0; margin: 0; font-size: 18px; font-weight: 600; line-height: 1.35; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -396,22 +360,22 @@ html[data-loom-surface="mobile"] .m-sheet-close { min-height: 44px; min-width: 6
 .m-sheet .m-search, .m-sheet .m-segments, .m-sheet .m-round-tool { background: var(--m-raised); }
 html[data-loom-surface="mobile"] .m-choice {
   width: 100%; min-height: 58px; box-sizing: border-box; padding: 9px 14px 9px 16px; display: flex; align-items: center; gap: 12px; text-align: left;
-  transition: background-color var(--loom-dur-fast) var(--loom-ease-out);
+
 }
 .m-choice > span:not(.m-row-icon):not(.m-tile) { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .m-choice strong { font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
 .m-choice small { font-size: 13px; line-height: 1.4; color: var(--loom-workspace-muted); overflow-wrap: anywhere; }
 .m-choice[aria-checked="true"] strong { color: var(--m-run); font-weight: 600; }
-.m-choice > svg:not(.m-chevron), .m-row > svg:not(.m-chevron) { flex: none; color: var(--m-run); animation: m-glyph-spring var(--loom-dur-slow) var(--m-lively); }
+.m-choice > svg:not(.m-chevron), .m-row > svg:not(.m-chevron) { flex: none; color: var(--m-run); }
 .m-choice em { flex: none; font-style: normal; font-size: 12px; color: var(--loom-workspace-muted); }
 html[data-loom-surface="mobile"] .m-choice:disabled { opacity: .5; }
 .m-segments { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; padding: 3px; border-radius: 14px; background: var(--m-surface); }
-html[data-loom-surface="mobile"] .m-segments button { position: relative; min-height: 44px; border-radius: 11px; font-size: 14px; font-weight: 500; color: var(--loom-workspace-muted); transition: color var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-segments button { position: relative; min-height: 44px; border-radius: 11px; font-size: 14px; font-weight: 500; color: var(--loom-workspace-muted); }
 html[data-loom-surface="mobile"] .m-segments button[aria-checked="true"], html[data-loom-surface="mobile"] .m-segments button[aria-pressed="true"] { color: var(--loom-workspace-ink); font-weight: 600; }
 .m-segments > .m-glider {
   position: absolute; left: 3px; top: 3px; bottom: 3px; width: calc((100% - 6px - (var(--m-count) - 1) * 3px) / var(--m-count)); border-radius: 11px; background: #2c3039; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); pointer-events: none;
   transform: translateX(calc(var(--m-index) * (100% + 3px)));
-  transition: transform var(--loom-dur-flow) var(--m-settle);
+
 }
 .m-segments.is-compact button { min-height: 36px; font-size: 13px; }
 .m-segments.is-compact { padding: 3px; }
@@ -419,55 +383,21 @@ html[data-loom-surface="mobile"] .m-segments button[aria-checked="true"], html[d
 .m-segments.is-capsule > .m-glider { background: transparent; box-shadow: none; border-radius: 999px; }
 .m-segment-pill { display: block; width: 100%; height: 100%; border-radius: 999px; background: #2c3039; box-shadow: inset 0 1px 0 rgba(224,220,255,.06), 0 1px 2px rgba(0,0,0,.18); transform-origin: center; }
 html[data-loom-surface="mobile"] .m-segments.is-capsule button,
-html[data-loom-surface="mobile"] .m-segments.is-capsule button:is(:hover, :active, :focus) { border-radius: 999px; background: transparent !important; box-shadow: none; }
+html[data-loom-surface="mobile"] .m-segments.is-capsule button:is(:hover, :focus) { border-radius: 999px; background: transparent !important; box-shadow: none; }
 html[data-loom-surface="mobile"] .m-segments.is-capsule button:focus-visible { outline: 2px solid var(--m-run); outline-offset: -3px; }
-html[data-loom-reduced-motion="true"] .m-segments.is-capsule > .m-glider { transition: none; }
-@media (prefers-reduced-motion: reduce) { .m-segments.is-capsule > .m-glider { transition: none; } }
 
 /* Room in the flow is made by layout and takes a short fold both ways. */
 .m-fold { flex: none; }
 
 /* A screen with nothing to show yet keeps its shape. */
-.m-skeleton { display: flex; flex-direction: column; gap: 12px; animation: m-skeleton-breathe calc(var(--loom-dur-slow) * 3) var(--loom-ease-inout) infinite; }
+.m-skeleton { display: flex; flex-direction: column; gap: 12px; }
 .m-skeleton i { display: block; height: 14px; border-radius: 7px; background: var(--m-surface); }
 .m-skeleton i:nth-child(3n + 1) { width: 86%; }
 .m-skeleton i:nth-child(3n + 2) { width: 100%; }
 .m-skeleton i:nth-child(3n) { width: 62%; }
 
-/* A list reads top to bottom, so it arrives that way. Fades only: these rows carry words. */
-.m-body > *, .m-rows > * { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
-.m-body > :nth-child(2) { animation-delay: calc(var(--loom-stagger) * 2); }
-.m-body > :nth-child(n + 3) { animation-delay: calc(var(--loom-stagger) * 4); }
-.m-rows > :nth-child(2) { animation-delay: var(--loom-stagger); }
-.m-rows > :nth-child(3) { animation-delay: calc(var(--loom-stagger) * 2); }
-.m-rows > :nth-child(n + 4) { animation-delay: calc(var(--loom-stagger) * 3); }
-.m-steps li { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
-.m-steps li:nth-child(2) { animation-delay: calc(var(--loom-stagger) * 2); }
-.m-steps li:nth-child(3) { animation-delay: calc(var(--loom-stagger) * 4); }
 
-@keyframes m-fade { from { opacity: 0; } }
-@keyframes m-fade-away { to { opacity: 0; } }
-@keyframes m-screen-push { from { transform: translateX(100%); } }
-@keyframes m-screen-back { to { transform: translateX(100%); } }
-@keyframes m-sheet-up { from { transform: translateY(100%); } }
-@keyframes m-sheet-down { to { transform: translateY(100%); } }
-@keyframes m-pill-lift { from { opacity: 0; transform: translate(-50%, 10px); } }
-@keyframes m-pill-drop { to { opacity: 0; transform: translate(-50%, 10px); } }
-@keyframes m-glyph-spring { from { transform: scale(.72); } }
-@keyframes m-mark-settle { from { opacity: 0; transform: scale(.8); } }
-@keyframes m-fold-open { from { grid-template-rows: 0fr; opacity: 0; } }
-@keyframes m-fold-close { to { grid-template-rows: 0fr; opacity: 0; } }
-@keyframes m-dot-breathe { 0% { opacity: .5; transform: scale(.6); } 60%, 100% { opacity: 0; transform: scale(2.3); } }
-@keyframes m-skeleton-breathe { 50% { opacity: .5; } }
 
-/* Loops stop outright: the scale collapses their clock to a flicker otherwise. */
-html[data-loom-reduced-motion="true"] .m-dot::after, html[data-loom-reduced-motion="true"] .m-skeleton { animation: none; }
-@media (prefers-reduced-motion: reduce) {
-  .m-dot.is-run::after, .m-dot.is-wait::after, .m-skeleton, .m-round-tool[aria-busy="true"] svg { animation: none; }
-}
-
-/* A sheet's content rides in with the sheet. */
-.m-sheet .m-rows > * { animation: none; }
 
 /* Cards, fields and disclosures: the building blocks of projects and builds. */
 .m-thread > [hidden] { display: none !important; }
@@ -493,7 +423,7 @@ html[data-loom-reduced-motion="true"] .m-dot::after, html[data-loom-reduced-moti
 html[data-loom-surface="mobile"] .m-field input, html[data-loom-surface="mobile"] .m-field textarea {
   box-sizing: border-box; width: 100%; min-width: 0; min-height: 46px; border: 0; border-radius: var(--m-radius-control);
   background: var(--m-fill); color: var(--loom-workspace-ink); padding: 11px 13px; font: inherit; font-size: 16px; font-weight: 400; outline: 0;
-  box-shadow: 0 0 0 1px transparent inset; transition: box-shadow var(--loom-dur-fast) var(--loom-ease-out);
+  box-shadow: 0 0 0 1px transparent inset;
 }
 html[data-loom-surface="mobile"] .m-field input:focus, html[data-loom-surface="mobile"] .m-field textarea:focus { box-shadow: 0 0 0 1.5px rgba(181, 167, 245, .5) inset; }
 html[data-loom-surface="mobile"] .m-field input:disabled, html[data-loom-surface="mobile"] .m-field textarea:disabled { opacity: .55; }
@@ -512,7 +442,7 @@ html[data-loom-surface="mobile"] .m-back { margin-left: -8px; padding-right: 12p
 .m-back-row .m-icon-button { margin-right: -10px; color: var(--loom-workspace-muted); }
 .m-build-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .m-meter { display: block; height: 4px; margin-top: 8px; border-radius: 2px; background: var(--m-fill-strong); overflow: hidden; }
-.m-meter > i { display: block; height: 100%; border-radius: 2px; background: var(--m-run); transform-origin: left; transition: transform var(--loom-dur-slow) var(--loom-ease-out); }
+.m-meter > i { display: block; height: 100%; border-radius: 2px; background: var(--m-run); transform-origin: left; }
 .m-meter.is-high > i { background: var(--m-wait); }
 /* Disclosure (Disclosure.tsx). Opening: the room grows on one flow clock while the words fade in
    a beat behind it. Closing: the words go first, quickly, then the room folds on the shorter exit
@@ -523,7 +453,7 @@ html[data-loom-surface="mobile"] .m-disclosure-head {
   width: calc(100% + 16px); min-height: 48px; box-sizing: border-box; margin: 0 -8px; padding: 10px 8px;
   display: flex; align-items: center; gap: 10px; border-radius: 12px; text-align: left;
   font-size: 15px; font-weight: 500; line-height: 1.45; color: var(--loom-workspace-secondary);
-  transition: color var(--loom-dur-base) var(--loom-ease-out);
+
 }
 html[data-loom-surface="mobile"] .m-disclosure-head:focus-visible { outline: 0; box-shadow: 0 0 0 2px var(--m-run) inset; }
 html[data-loom-surface="mobile"] .m-disclosure[data-open] > .m-disclosure-head { color: var(--loom-workspace-ink); }
@@ -533,15 +463,15 @@ html[data-loom-surface="mobile"] .m-disclosure[data-open] > .m-disclosure-head {
 .m-disclosure[data-open] > .m-disclosure-head .m-disclosure-chevron { color: var(--loom-workspace-secondary); }
 .m-disclosure-body {
   display: grid; grid-template-rows: 0fr; visibility: hidden;
-  transition: grid-template-rows var(--loom-dur-flow-out) var(--loom-ease-exit) var(--loom-dur-fast-out), visibility 0s linear calc(var(--loom-dur-flow-out) + var(--loom-dur-fast-out));
+
 }
 .m-disclosure-body > div { min-height: 0; overflow: hidden; }
 .m-disclosure-inner {
   display: flex; flex-direction: column; gap: 12px; padding: 2px 0 14px; opacity: 0;
-  transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
+
 }
-.m-disclosure[data-open] > .m-disclosure-body { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows var(--loom-dur-flow) var(--loom-ease-out), visibility 0s; }
-.m-disclosure[data-open] > .m-disclosure-body .m-disclosure-inner { opacity: 1; transition: opacity var(--loom-dur-base) var(--loom-ease-out) calc(var(--loom-dur-flow) * .3); }
+.m-disclosure[data-open] > .m-disclosure-body { grid-template-rows: 1fr; visibility: visible; }
+.m-disclosure[data-open] > .m-disclosure-body .m-disclosure-inner { opacity: 1; }
 .m-disclosure-inner > * { margin: 0; }
 .m-disclosure-inner p { font-size: 14px; line-height: 1.6; color: var(--loom-workspace-secondary); overflow-wrap: anywhere; }
 .m-disclosure-inner .m-field + .m-button { margin-top: 2px; }
@@ -565,7 +495,6 @@ html[data-loom-surface="mobile"] .m-disclosure[data-open] > .m-disclosure-head {
 .m-changes > .m-disclosure, .m-changes > .m-changes-static, .m-changes-more .m-disclosure, .m-changes-more .m-changes-static { border-top: 1px solid var(--loom-workspace-line); }
 .m-changes > .m-disclosure:first-child, .m-changes > .m-changes-static:first-child { border-top: 0; }
 html[data-loom-surface="mobile"] .m-changes .m-disclosure-head { width: 100%; min-height: 52px; margin: 0; padding: 8px 10px 8px 14px; border-radius: 0; line-height: 1.3; color: inherit; --loom-press-wash: var(--m-fill); }
-html[data-loom-surface="mobile"] .m-changes .m-disclosure-head:active { background: var(--m-fill); }
 .m-changes .m-disclosure-chevron { width: 16px; height: 16px; opacity: .7; }
 .m-changes .m-disclosure-inner { padding: 0; gap: 0; }
 .m-changes-label { min-width: 0; display: grid; gap: 2px; }
@@ -625,19 +554,18 @@ html[data-loom-surface="mobile"] .m-build-summary {
 .m-branch-ports { position: relative; display: flex; padding: 4px; }
 html[data-loom-surface="mobile"] .m-branch-ports button {
   position: relative; z-index: 1; flex: 1 1 0; min-width: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 5px;
-  border-radius: 16px; font-size: 13px; color: var(--loom-workspace-muted); transition: color var(--loom-dur-fast) var(--loom-ease-out);
+  border-radius: 16px; font-size: 13px; color: var(--loom-workspace-muted);
 }
-html[data-loom-surface="mobile"] .m-branch-ports button svg { flex: none; width: 16px; height: 16px; transition: color var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-branch-ports button svg { flex: none; width: 16px; height: 16px; }
 html[data-loom-surface="mobile"] .m-branch-ports button[aria-expanded="true"] { color: var(--loom-workspace-ink); }
 html[data-loom-surface="mobile"] .m-branch-ports button[aria-expanded="true"] svg { color: var(--m-run); }
 @media (max-width: 340px) { html[data-loom-surface="mobile"] .m-branch-ports button svg { display: none; } }
-.m-branch-capsule { position: absolute; left: 0; top: 4px; height: 44px; pointer-events: none; transition: transform 420ms cubic-bezier(.22,.8,.25,1), width 420ms cubic-bezier(.22,.8,.25,1), opacity 140ms ease; }
+.m-branch-capsule { position: absolute; left: 0; top: 4px; height: 44px; pointer-events: none; }
 .m-branch-capsule > span { display: block; width: 100%; height: 100%; border-radius: 16px; background: var(--loom-workspace-selection); }
 
 .m-branch-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; min-height: 52px; padding: 4px 6px 4px var(--m-gutter); background: var(--loom-canvas); }
 .m-branch-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 18px; line-height: 1.4; font-weight: 600; }
 .m-branch-head .m-icon-button { color: var(--loom-workspace-muted); }
-.m-branch-body { animation: m-fade var(--loom-dur-base) var(--loom-ease-out); }
 .m-branch-content .m-build-panel { gap: 20px; padding-top: 4px; }
 .m-branch-empty { margin: 0; padding: 40px 24px; text-align: center; font-size: 13px; line-height: 1.6; color: var(--loom-workspace-muted); }
 .m-group-count { flex: none; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--loom-workspace-muted); }
@@ -721,9 +649,6 @@ html[data-loom-surface="mobile"] .m-card.m-model-row:disabled { opacity: .55; }
 .m-build-dock > .is-wait .m-code { padding: 8px 10px; font-size: 12px !important; }
 .m-build-dock > .m-alert { order: -1; max-height: 90px; overflow-y: auto; }
 .m-build-dock .m-approval-item { gap: 8px; }
-@media (prefers-reduced-motion: reduce) { .m-branch-capsule { transition: none; } .m-branch-body { animation: none; } }
-html[data-loom-reduced-motion="true"] .m-branch-capsule { transition: none; }
-html[data-loom-reduced-motion="true"] .m-branch-body { animation: none; }
 
 /* Phone reading geometry: reclaim desktop gutters and nested process indents. */
 /* Live copy stays on its baseline; only the tool's small status ring moves. */
@@ -734,12 +659,11 @@ html[data-loom-surface="mobile"] .m-stage {
 }
 html[data-loom-surface="mobile"] .m-stage .wv-stage { --wv-row: 44px; --wv-mid: 22px; --wv-node: 24px; }
 html[data-loom-surface="mobile"] .m-stage .wv-row { padding: 0 6px 0 0; border-radius: 10px; }
-html[data-loom-surface="mobile"] .m-stage .wv-row:active { background: var(--loom-workspace-hover); }
 html[data-loom-surface="mobile"] .m-stage .wv-chevron-cell { opacity: .6; }
 html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-verb {
-  background: none; -webkit-text-fill-color: currentColor; color: var(--wv-ink-2); animation: none;
+  background: none; -webkit-text-fill-color: currentColor; color: var(--wv-ink-2);
 }
-html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-halo { animation: none; opacity: .35; transform: scale(.8); }
+html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-halo { opacity: .35; transform: scale(.8); }
 /* Full width on the phone, so the card sits over the thread's rail: opaque and above it, so the rail stops at
    the card instead of running through its edge. */
 html[data-loom-surface="mobile"] .m-stage .wv-sheet {
@@ -747,7 +671,6 @@ html[data-loom-surface="mobile"] .m-stage .wv-sheet {
   background: color-mix(in srgb, var(--wv-ink) 3.2%, var(--loom-canvas));
 }
 html[data-loom-surface="mobile"] .m-stage .wv-sheet-output { max-height: min(280px, 40dvh); overscroll-behavior: contain; }
-html[data-loom-surface="mobile"] .m-stage .wv-sub.is-tail .wv-sub-text { animation: none; }
 html[data-loom-surface="mobile"] .m-stage .transcript-scroll { padding-inline: 16px; scrollbar-gutter: auto; }
 html[data-loom-surface="mobile"] .m-stage .transcript { width: 100%; max-width: none; margin-inline: 0; padding: 18px 0 26px; gap: 24px; box-sizing: border-box; }
 html[data-loom-surface="mobile"] .conversation-stage[data-has-entries]::before,
@@ -791,26 +714,9 @@ html[data-loom-surface="mobile"] .m-stage .wv-row { border-radius: 8px; }
 html[data-loom-surface="mobile"] .m-stage .wv-line { border-radius: 8px; }
 html[data-loom-surface="mobile"] .m-stage .wv-sub { padding-bottom: 4px; line-height: 17px; }
 html[data-loom-surface="mobile"] .m-stage .turn-process-header { min-height: 34px; }
-/* A running verb holds still on the phone, but its birth fade must stay in the same animation list:
-   dropping it while running and restoring it on completion replayed the fade (90ms of a blank verb)
-   every time a step finished. */
-html[data-loom-surface="mobile"] .m-stage .wv-step[data-born="live"] .wv-row.is-executing .wv-verb {
-  animation: wv-fade-in var(--loom-dur-base) var(--loom-ease-out) 90ms backwards;
-}
-/* The thinking bead is a 6px dot here; arriving 120ms before its words it read as a stray dot.
-   The words follow almost at once. */
-html[data-loom-surface="mobile"] .m-stage .inline-thinking .thinking-shimmer {
-  animation:
-    loom-thinking-label-in var(--loom-dur-base) var(--loom-ease-out) calc(var(--thinking-lead, 0ms) + 30ms) backwards,
-    var(--thinking-sweep);
-}
 /* The composer sits clear of the gesture bar; while the keyboard is up it gives that room back. */
 .m-composer { padding-bottom: 16px; }
 .m-composer:focus-within { padding-bottom: 8px; }
-html[data-loom-surface="mobile"][data-loom-reduced-motion="true"] .m-stage .wv-step[data-born="live"] .wv-row.is-executing .wv-verb { animation: none; }
-@media (prefers-reduced-motion: reduce) {
-  html[data-loom-surface="mobile"] .m-stage .wv-step[data-born="live"] .wv-row.is-executing .wv-verb { animation: none; }
-}
 
 /* Bottom of a conversation, 2026-11-08. The dock and the composer painted the canvas tone over the page's
    darker one: a grey band from the status line down. They sit on the page now; the status line is a quiet
@@ -818,8 +724,6 @@ html[data-loom-surface="mobile"][data-loom-reduced-motion="true"] .m-stage .wv-s
 html[data-loom-surface="mobile"] .m-thread { background: var(--loom-canvas); }
 html[data-loom-surface="mobile"] .m-build-dock,
 html[data-loom-surface="mobile"] .m-composer { background: transparent; }
-  flex: 0 0 auto; min-height: 40px; padding: 0 13px; gap: 6px; border-radius: 16px; font-size: 13px; letter-spacing: .01em;
-}
 /* The composer is the one strong surface: a hairline, a soft lift, the tools on one quiet row. */
 html[data-loom-surface="mobile"] .m-composer { padding-top: 8px; }
 html[data-loom-surface="mobile"] .m-composer-box {
@@ -837,8 +741,6 @@ html[data-loom-surface="mobile"] .m-chip > span {
   height: 30px; padding: 0 8px; gap: 4px; border-radius: 15px;
   background: transparent; box-shadow: none; color: var(--loom-workspace-secondary);
 }
-/* The button is 44 tall for the thumb; the press belongs to the 30px words, not that square. */
-html[data-loom-surface="mobile"] .m-chip:active:not(:disabled) > span { background-image: linear-gradient(var(--loom-press-wash), var(--loom-press-wash)); }
 html[data-loom-surface="mobile"] .m-chip > span svg { color: var(--loom-workspace-muted); }
 .m-chip b { display: flex; align-items: baseline; gap: 6px; }
 .m-chip-mode { flex: none; font-weight: 400; color: var(--loom-workspace-muted); }
@@ -846,12 +748,12 @@ html[data-loom-surface="mobile"] .m-chip > span svg { color: var(--loom-workspac
 /* Send and stop are the same disc, so the swap doesn't jump: a 44px button for the thumb, painted 38px. */
 html[data-loom-surface="mobile"] .m-round {
   padding: 3px; background-clip: content-box;
-  transition: background-color var(--loom-dur-fast) var(--loom-ease-out), color var(--loom-dur-fast) var(--loom-ease-out), opacity var(--loom-dur-fast) var(--loom-ease-out);
+
 }
 /* Nothing to send: a neutral disc, not a half-transparent accent. */
 html[data-loom-surface="mobile"] .m-round.is-send:disabled { opacity: 1; background-color: var(--m-fill); color: var(--loom-workspace-muted); }
 /* The plane's ink leans up-right of its box, so it sits down-left of centre, and eases forward once there is something to send. */
-html[data-loom-surface="mobile"] .m-round.is-send svg { translate: -.6px .6px; transition: translate var(--loom-dur-fast) var(--loom-ease-out); }
+html[data-loom-surface="mobile"] .m-round.is-send svg { translate: -.6px .6px; }
 html[data-loom-surface="mobile"] .m-round.is-send:disabled svg { translate: -1.5px 1.5px; }
 
 /* A choice card's foot on the phone: the hint repeats what the options already say, so one row holds
@@ -878,10 +780,9 @@ html[data-loom-surface="mobile"] .m-stage .decision-submit svg { flex: none; }
 html[data-loom-surface="mobile"] .m-goal-title h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.25; }
 .m-goal-state { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 1.4; color: var(--loom-workspace-secondary); }
 .m-goal-state i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--loom-workspace-muted); }
-.m-goal[data-tone="run"] .m-goal-state i { background: var(--m-on); box-shadow: 0 0 0 3px rgba(127, 209, 174, .16); animation: m-goal-breathe 2.4s ease-in-out infinite; }
+.m-goal[data-tone="run"] .m-goal-state i { background: var(--m-on); box-shadow: 0 0 0 3px rgba(127, 209, 174, .16); }
 .m-goal[data-tone="wait"] .m-goal-state i { background: var(--m-wait); }
 .m-goal[data-tone="run"] .m-tile { color: var(--m-run); background: var(--m-run-soft, rgba(181, 167, 245, .14)); }
-@keyframes m-goal-breathe { 50% { box-shadow: 0 0 0 5px rgba(127, 209, 174, .06); } }
 
 .m-goal-meter { display: grid; gap: 7px; padding: 11px 12px 12px; border-radius: 12px; background: var(--m-fill); }
 .m-goal-meter-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; font-size: 12px; line-height: 1.3; color: var(--loom-workspace-muted); font-variant-numeric: tabular-nums; }
@@ -917,5 +818,10 @@ html[data-loom-surface="mobile"] .m-goal-more { display: block; min-height: 30px
 .m-goal-criteria li[data-state="dropped"] .m-goal-criterion > span { color: var(--loom-workspace-muted); text-decoration: line-through; text-decoration-color: rgba(224, 230, 242, .25); }
 .m-goal .goal-budget-control { padding-top: 4px; border-top: 1px solid var(--loom-workspace-line); }
 .m-goal > .m-actions { margin: 0; }
-@media (prefers-reduced-motion: reduce) { .m-goal[data-tone="run"] .m-goal-state i { animation: none; } }
-html[data-loom-reduced-motion="true"] .m-goal[data-tone="run"] .m-goal-state i { animation: none; }
+
+/* Words that change in place share one cell (Swap, MotionRows.tsx). */
+.m-swap { display: grid; min-width: 0; }
+.m-swap-face { grid-area: 1 / 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.m-wait-list { margin-block: -4px; }
+.m-wait-list .m-motion-row-content { padding-block: 4px; }
+.m-page-alert { margin: 6px var(--m-gutter) 0; }

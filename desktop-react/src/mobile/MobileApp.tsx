@@ -3,7 +3,9 @@ import { NavCapsule } from "./NavCapsule";
 import { ThreadHandoffPanel } from "../components/ThreadHandoffPanel";
 import { useHandoffNavigation } from "../state/useHandoffNavigation";
 import { AnimatedFold } from "../motion/AnimatedFold";
-import { MotionRows, MotionValue } from "./MotionRows";
+import { MotionRows, MotionValue, Swap } from "./MotionRows";
+import { playEntrance, useSheetDrag } from "./motion";
+import { recordSendOrigin } from "../sendFlight";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { AttachmentQueue, MAX_ATTACHMENTS } from "./attachmentQueue";
 import { AttachmentTray } from "./AttachmentTray";
@@ -168,6 +170,9 @@ function Sheet({ open, label, title, onClose, children }: { open: boolean; label
   const { mounted, phase } = useMotionPresence(open, RETAIN.flow);
   const content = useLatchedWhile(open, children);
   const panel = useRef<HTMLElement>(null);
+  const host = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => { if (mounted) playEntrance(host.current); }, [mounted]);
+  useSheetDrag(panel, host, open && mounted, onClose);
   useLayoutEffect(() => {
     if (!open || !mounted) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -182,8 +187,8 @@ function Sheet({ open, label, title, onClose, children }: { open: boolean; label
   }, [open, onClose]);
   if (!mounted) return null;
   return (
-    <div className="m-sheet-host" data-phase={phase} inert={!open}>
-      <button type="button" className="m-scrim" aria-label="关闭" onClick={onClose} />
+    <div ref={host} className="m-sheet-host" data-phase={phase} inert={!open}>
+      <button type="button" className="m-scrim" data-press="none" aria-label="关闭" onClick={onClose} />
       <section ref={panel} tabIndex={-1} className="m-sheet" role="dialog" aria-modal="true" aria-label={label} onKeyDown={(event) => {
         if (event.key === "Escape") { event.preventDefault(); onClose(); }
         if (event.key === "Tab") {
@@ -284,26 +289,31 @@ function Now({ threads, onOpen }: { threads: ThreadRecord[]; onOpen(thread: Thre
   const running = threads.filter((thread) => thread.status === "running");
   const recent = threads.filter((thread) => !threadBusy(thread)).slice(0, 8);
   if (!threads.length) return <Empty icon={<MessagesSquare size={24} strokeWidth={1.5} />} title="还没有对话" hint="发一个任务，电脑就会开始工作。" />;
+  // A thread changes group as it works: it folds out of one and into the other, and an emptied group folds with it.
   return (
     <>
-      {waiting.length ? (
+      <AnimatedFold open={waiting.length > 0} appear={false}>
         <section className="m-group">
           <h2 className="is-wait">需要你 · {waiting.length}</h2>
-          {waiting.map((thread) => (
-            <button type="button" className="m-wait-card" key={thread.id} onClick={() => onOpen(thread)}>
-              <span className="m-tile is-wait" aria-hidden="true"><ShieldCheck size={19} strokeWidth={1.75} /></span>
-              <span className="m-row-text"><strong>{thread.title || "新对话"}</strong><small>{[placeOf(thread.workspace), "有操作等你确认"].filter(Boolean).join(" · ")}</small></span>
-              <span>查看</span>
-            </button>
-          ))}
+          <div className="m-wait-list">
+            <MotionRows items={waiting} itemKey={(thread) => thread.id}>{(thread) => (
+              <button type="button" className="m-wait-card" onClick={() => onOpen(thread)}>
+                <span className="m-tile is-wait" aria-hidden="true"><ShieldCheck size={19} strokeWidth={1.75} /></span>
+                <span className="m-row-text"><strong>{thread.title || "新对话"}</strong><small>{[placeOf(thread.workspace), "有操作等你确认"].filter(Boolean).join(" · ")}</small></span>
+                <span>查看</span>
+              </button>
+            )}</MotionRows>
+          </div>
         </section>
-      ) : null}
-      {running.length ? (
+      </AnimatedFold>
+      <AnimatedFold open={running.length > 0} appear={false}>
         <Group title={`运行中 · ${running.length}`} tone="run">
-          {running.map((thread) => <ThreadRow key={thread.id} thread={thread} onOpen={() => onOpen(thread)} />)}
+          <MotionRows items={running} itemKey={(thread) => thread.id}>{(thread) => <ThreadRow thread={thread} onOpen={() => onOpen(thread)} />}</MotionRows>
         </Group>
-      ) : null}
-      {recent.length ? <Group title="最近">{recent.map((thread) => <ThreadRow key={thread.id} thread={thread} onOpen={() => onOpen(thread)} />)}</Group> : null}
+      </AnimatedFold>
+      <AnimatedFold open={recent.length > 0} appear={false}>
+        <Group title="最近"><MotionRows items={recent} itemKey={(thread) => thread.id}>{(thread) => <ThreadRow thread={thread} onOpen={() => onOpen(thread)} />}</MotionRows></Group>
+      </AnimatedFold>
     </>
   );
 }
@@ -389,7 +399,6 @@ function Controls({ open, loom, online, onClose }: { open: boolean; loom: Loom; 
             aria-label="推理强度"
             style={{ "--m-count": reasoning.options.length, "--m-index": Math.max(0, reasoning.options.findIndex((option) => option.value === reasoningValue)) } as CSSProperties}
           >
-            <i className="m-glider" aria-hidden="true" />
             {reasoning.options.map((option) => (
               <button type="button" role="radio" disabled={!online || busy} aria-checked={option.value === reasoningValue} key={option.value} onClick={() => attempt(() => loom.setReasoning(reasoning.kind, option.value))}>
                 {option.label ?? option.value}
@@ -519,7 +528,7 @@ function useApprovalOffscreen(active: boolean): boolean {
   return offscreen;
 }
 
-function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, onMode, onOpenAgent }: { loom: Loom; space: Space; online: boolean; connecting: boolean; draftWorkspace?: string; onBack(): void; onMode(mode: Space): void; onOpenAgent(id: string): void }) {
+function ThreadView({ loom, space, online, connecting, draftWorkspace, swapped, onBack, onMode, onOpenAgent }: { loom: Loom; space: Space; online: boolean; connecting: boolean; draftWorkspace?: string; swapped: boolean; onBack(): void; onMode(mode: Space): void; onOpenAgent(id: string): void }) {
   const thread = loom.active?.thread;
   const handoffNavigation = { current: loom.openThread };
   const handoffError = useHandoffNavigation(loom.openingThreadId || thread?.id, handoffNavigation);
@@ -575,6 +584,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
   const approvalOffscreen = useApprovalOffscreen(waitingApproval);
   const approvalJump = useMotionPresence(approvalOffscreen, RETAIN.fast);
   const fieldHeight = useRef(0);
+  const glyphKind = sending ? "sending" : running && !text.trim() && !attachments.length ? "stop" : "send";
   const fail = (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause));
 
   const handleApproval = useCallback(async (item: TranscriptItem, decision: ApprovalDecision, feedback?: string) => {
@@ -601,11 +611,15 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
     const sent = attachments.map((item) => ({ path: item.path!, name: item.file.name }));
     sendLock.current = true;
     setSending(true); setError("");
+    // The message leaves from where it is drawn: the transcript flies it up once it has its entry (sendFlight.ts).
+    recordSendOrigin(field.current);
+    const request = loom.send(body, sent, undefined, { weave: space === "build", ...(space === "build" ? { weaveBudget } : {}) });
+    setText("");
     try {
-      await loom.send(body, sent, undefined, { weave: space === "build", ...(space === "build" ? { weaveBudget } : {}) });
-      if (alive.current) { setText(""); queue.clear(); }
+      await request;
+      if (alive.current) queue.clear();
     } catch (cause) {
-      if (alive.current) fail(cause);
+      if (alive.current) { setText(body); fail(cause); }
     } finally { sendLock.current = false; if (alive.current) setSending(false); }
   };
 
@@ -637,13 +651,13 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
   const mode = thread?.permissionMode || loom.draftPermissionMode || "approval";
   const blank = !loom.items.length && !opening;
   return (
-    <div className="m-thread">
+    <div className={`m-thread${swapped ? " is-swapped" : ""}`}>
       <Fold open={offlineNotice}><p className="m-banner" role="status">{connecting ? "正在重新连接…" : "电脑离线，暂时不能操作"}</p></Fold>
       <header className="m-thread-head">
         <button type="button" className="m-icon-button" aria-label="返回" onClick={onBack}><ChevronLeft size={24} strokeWidth={1.75} /></button>
         <div>
-          <h1 key={thread?.title ?? space}>{opening ? "正在打开…" : thread?.title || (space === "build" ? "新建造" : "新任务")}</h1>
-          <p><span className={`m-dot is-${!online ? "idle" : running ? "run" : "on"}`} aria-hidden="true" />{!online ? "电脑离线" : running ? "正在运行" : space === "build" ? "建造" : "对话"}{thread?.workspace ? ` · ${placeOf(thread.workspace)}` : draftWorkspace ? ` · ${placeOf(draftWorkspace)}` : ""}</p>
+          <h1><Swap id={opening ? "opening" : thread?.title || space}>{opening ? "正在打开…" : thread?.title || (space === "build" ? "新建造" : "新任务")}</Swap></h1>
+          <p><span className={`m-dot is-${!online ? "idle" : running ? "run" : "on"}`} aria-hidden="true" /><MotionValue value={!online ? "off" : running ? "run" : space}>{!online ? "电脑离线" : running ? "正在运行" : space === "build" ? "建造" : "对话"}</MotionValue>{thread?.workspace ? ` · ${placeOf(thread.workspace)}` : draftWorkspace ? ` · ${placeOf(draftWorkspace)}` : ""}</p>
         </div>
         <button type="button" className="m-icon-button" aria-label="对话详情与操作" disabled={opening || sending || buildBusy} onClick={() => setDetails(true)}><Ellipsis size={22} /></button>
       </header>
@@ -708,11 +722,18 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
                 <ChevronDown size={12} strokeWidth={2} />
               </span>
             </button>
-            {running && !text.trim() && !attachments.length ? (
-              <button type="button" key="stop" className="m-round is-stop" aria-label="停止运行" disabled={!online} onClick={() => void loom.interrupt().catch(fail)}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
-            ) : (
-              <button type="button" key="send" className="m-round is-send" aria-label={sending ? "正在发送" : "发送"} disabled={!online || sending || picking || buildBusy || thread?.archived || !attachmentsReady || (!text.trim() && !attachments.length)} onClick={() => void submit()}>{sending ? <i className="m-attachment-spinner" /> : <Send size={18} strokeWidth={2} />}</button>
-            )}
+            {/* Send and stop are one disc: its colour turns, and only the glyph inside is replaced. */}
+            <button
+              type="button"
+              className={`m-round is-${glyphKind === "stop" ? "stop" : "send"}`}
+              aria-label={glyphKind === "stop" ? "停止运行" : glyphKind === "sending" ? "正在发送" : "发送"}
+              disabled={glyphKind === "stop" ? !online : !online || sending || picking || buildBusy || thread?.archived || !attachmentsReady || (!text.trim() && !attachments.length)}
+              onClick={() => { if (glyphKind === "stop") void loom.interrupt().catch(fail); else void submit(); }}
+            >
+              <span className="m-round-glyph" key={glyphKind}>
+                {glyphKind === "stop" ? <Square size={14} strokeWidth={2} fill="currentColor" /> : glyphKind === "sending" ? <i className="m-attachment-spinner" /> : <Send size={18} strokeWidth={2} />}
+              </span>
+            </button>
           </div>
         </div>
       </footer>
@@ -742,19 +763,20 @@ function ConnectionLog({ open, onClose }: { open: boolean; onClose(): void }) {
   );
 }
 
-function More({ shell }: { shell: ShellState }) {
+function More({ shell, active }: { shell: ShellState; active: boolean }) {
   const [confirming, setConfirming] = useState(false);
   const [devices, setDevices] = useState<AccountDevices | null>(null);
   const [log, setLog] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!active) return;
     let live = true;
     fetchAccountDevices()
       .then((next) => { if (live) setDevices(next); })
       .catch((cause) => { if (live) setError(cause instanceof Error ? cause.message : String(cause)); });
     return () => { live = false; };
-  }, [shell.socket]);
+  }, [shell.socket, active]);
 
   // The relay knows who is online right now; the account remembers everyone else.
   const liveIds = new Set(shell.devices.map((device) => device.id));
@@ -816,17 +838,18 @@ function More({ shell }: { shell: ShellState }) {
         </button>
       </Group>
       <Group title="这部手机">
-        {confirming ? (
-          <div className="m-confirm" key="confirm">
+        <AnimatedFold open={confirming} appear={false}>
+          <div className="m-confirm">
             <p>解除后这部手机不能再控制电脑，需要重新扫码配对。</p>
             <div>
               <button type="button" className="m-button" onClick={() => setConfirming(false)}>取消</button>
               <button type="button" className="m-button is-danger" onClick={unpair}>解除配对</button>
             </div>
           </div>
-        ) : (
+        </AnimatedFold>
+        <AnimatedFold open={!confirming} appear={false}>
           <button type="button" className="m-row is-danger" onClick={() => setConfirming(true)}><span className="m-row-icon is-danger" aria-hidden="true"><LogOut {...ICON} /></span><span className="m-row-text"><strong>解除配对</strong></span></button>
-        )}
+        </AnimatedFold>
       </Group>
       <p className="m-note">移除其他手机、修改模型密钥和账号，都要在电脑上操作。</p>
       <ConnectionLog open={log} onClose={() => setLog(false)} />
@@ -834,14 +857,50 @@ function More({ shell }: { shell: ShellState }) {
   );
 }
 
+/** The conversations of one tab: its own search box, and its own place when you come back to it. */
+function ThreadList({ loom, kind, online, threads, onOpen, onError }: { loom: Loom; kind: Space; online: boolean; threads: ThreadRecord[]; onOpen(thread: ThreadRecord): void; onError(message: string): void }) {
+  const [query, setQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const list = searchThreads(threads, query);
+  const archived = loom.threadView === "archived";
+  return (
+    <>
+      <div className="m-toolbar">
+        <div className="m-toolbar-row">
+          <SearchField value={query} onChange={setQuery} label={`搜索${kind === "build" ? "建造" : "对话"}`} placeholder="搜索标题或工作目录" />
+          <button type="button" className="m-round-tool" aria-label="刷新列表" disabled={!online || refreshing} onClick={() => { setRefreshing(true); void loom.refreshThreads().catch((cause) => onError(String(cause))).finally(() => setRefreshing(false)); }}><RotateCw size={18} strokeWidth={1.75} spinning={refreshing} /></button>
+        </div>
+        <div className="m-segments is-compact is-capsule" role="radiogroup" aria-label="列表范围" style={{ "--m-count": 2, "--m-index": archived ? 1 : 0 } as CSSProperties}>
+          <NavCapsule index={archived ? 1 : 0} variant="segment" />
+          {(["active", "archived"] as const).map((view) => (
+            <button type="button" role="radio" key={view} aria-checked={archived === (view === "archived")} disabled={!online} onClick={() => { if (archived !== (view === "archived")) void loom.setThreadView(view).catch((cause) => onError(String(cause))); }}>{view === "archived" ? "已归档" : "进行中"}</button>
+          ))}
+        </div>
+      </div>
+      <AnimatedFold open={Boolean(list.length)} fade={false} appear={false}>
+        <Group><MotionRows items={list} itemKey={(thread) => thread.id}>{(thread) => <ThreadRow thread={thread} onOpen={() => onOpen(thread)} />}</MotionRows></Group>
+      </AnimatedFold>
+      <AnimatedFold open={!list.length} appear={false}>
+        <Empty icon={kind === "build" ? <Blocks size={24} strokeWidth={1.5} /> : <MessagesSquare size={24} strokeWidth={1.5} />} title={query ? "没有匹配的对话" : archived ? "没有已归档的对话" : kind === "build" ? "还没有建造" : "还没有对话"} />
+      </AnimatedFold>
+    </>
+  );
+}
+
+function waitingShown(threads: ThreadRecord[]): number {
+  return threads.filter((thread) => !thread.parentThreadId && thread.status === "waiting_approval").length;
+}
+
 function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void }) {
   const loom = useLoom();
   const [tab, setTab] = useState<Tab>("now");
   const [open, setOpen] = useState<Space | null>(null);
   const [viewKey, setViewKey] = useState(0);
-  const [query, setQuery] = useState("");
+  const [viewSwapped, setViewSwapped] = useState(false);
+  const [visited, setVisited] = useState<ReadonlySet<Tab>>(() => new Set<Tab>(["now"]));
+  if (!visited.has(tab)) setVisited(new Set(visited).add(tab));
+  const pages = useRef(new Map<Tab, HTMLElement>());
   const [navigationError, setNavigationError] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
   const [draftWorkspace, setDraftWorkspace] = useState("");
   const [spaces, setSpaces] = useState<Record<string, Space>>(() => {
     try { const stored = JSON.parse(localStorage.getItem(`loom.mobile.spaces:${shell.deviceId}`) || "{}"); return Object.fromEntries(Object.entries(stored).filter(([, mode]) => mode === "chat" || mode === "build")) as Record<string, Space>; } catch { return {}; }
@@ -851,6 +910,10 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   const online = shell.socket === "open" && shell.online;
   const offlineNotice = useHeld(!online, OFFLINE_NOTICE_MS);
   const screen = useMotionPresence(Boolean(open), RETAIN.flow);
+  const screenElement = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => { if (screen.mounted) playEntrance(screenElement.current); }, [screen.mounted]);
+  const badge = useMotionPresence(waitingShown(loom.threads) > 0, RETAIN.fast);
+  const badgeCount = useLatchedWhile(waitingShown(loom.threads) > 0, waitingShown(loom.threads));
   const space = useLatchedWhile(Boolean(open), open ?? "chat");
   const chosenSpace = useLatchedWhile(Boolean(choosing), choosing ?? "chat");
 
@@ -883,6 +946,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
 
   const openThread = (thread: ThreadRecord) => {
     setViewKey((key) => key + 1);
+    setViewSwapped(false);
     setOpen(modeOf(thread));
     setNavigationError("");
     void loom.openThread(thread.id).catch((cause) => setNavigationError(cause instanceof Error ? cause.message : String(cause)));
@@ -890,6 +954,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
 
   const begin = (space: Space, workspace?: string, projectId?: string) => {
     setViewKey((key) => key + 1);
+    setViewSwapped(false);
     setChoosing(null);
     setOpen(space);
     setDraftWorkspace(workspace || "");
@@ -909,51 +974,53 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   }, [open]);
 
   const waitingCount = threads.filter((thread) => thread.status === "waiting_approval").length;
-  const list = searchThreads(threads.filter((thread) => modeOf(thread) === (tab === "build" ? "build" : "chat")), query);
-  const showOffline = offlineNotice && !threads.length && tab !== "more";
+  const tabIndex = TABS.findIndex((entry) => entry.key === tab);
   const loading = online && loom.connection === "connecting" && !threads.length;
   const title = tab === "now" ? shell.deviceName || "Loom" : TABS.find((entry) => entry.key === tab)?.label;
   return (
     <div className="m-app">
       <div className="m-shell" data-covered={open ? "" : undefined} inert={Boolean(open)}>
         <header className="m-head">
-          <h1 key={title}>{title}</h1>
+          <h1><Swap id={title ?? ""}>{title}</Swap></h1>
           <p className={`m-status${online ? "" : " is-off"}`} role="status" aria-label={`${shell.deviceName || "电脑"}${online ? "在线" : shell.socket === "connecting" ? "连接中" : "离线"}`}>
             <span className={`m-dot is-${online ? "on" : shell.socket === "connecting" ? "run" : "idle"}`} aria-hidden="true" />
-            {tab === "now" ? null : <span>{shell.deviceName || "电脑"} · </span>}{online ? "在线" : shell.socket === "connecting" ? "连接中" : "离线"}
+            {tab === "now" ? null : <span>{shell.deviceName || "电脑"} · </span>}<MotionValue value={online ? "on" : shell.socket}>{online ? "在线" : shell.socket === "connecting" ? "连接中" : "离线"}</MotionValue>
           </p>
         </header>
         <Fold open={offlineNotice && threads.length > 0}><p className="m-banner" role="status">{shell.socket === "connecting" ? "正在重新连接…" : "电脑离线，下面是离线前的内容"}</p></Fold>
-        <main className="m-body" key={tab}>
-          <Fold open={Boolean(navigationError)}><p className="m-alert" role="alert">{navigationError}</p></Fold>
-          {showOffline ? <Offline shell={shell} cached={cached} /> : null}
-          {loading ? <Skeleton rows={5} /> : null}
-          {!showOffline && !loading && tab === "now" ? <Now threads={threads} onOpen={openThread} /> : null}
-          {!showOffline && !loading && (tab === "chat" || tab === "build") ? (
-            <><div className="m-toolbar">
-              <div className="m-toolbar-row">
-                <SearchField value={query} onChange={setQuery} label={`搜索${tab === "build" ? "建造" : "对话"}`} placeholder="搜索标题或工作目录" />
-                <button type="button" className="m-round-tool" aria-label="刷新列表" disabled={!online || refreshing} onClick={() => { setRefreshing(true); void loom.refreshThreads().catch((cause) => setNavigationError(String(cause))).finally(() => setRefreshing(false)); }}><RotateCw size={18} strokeWidth={1.75} spinning={refreshing} /></button>
-              </div>
-              <div className="m-segments is-compact is-capsule" role="radiogroup" aria-label="列表范围" style={{ "--m-count": 2, "--m-index": loom.threadView === "archived" ? 1 : 0 } as CSSProperties}>
-                <NavCapsule index={loom.threadView === "archived" ? 1 : 0} variant="segment" />
-                {(["active", "archived"] as const).map((view) => (
-                  <button type="button" role="radio" key={view} aria-checked={(loom.threadView === "archived") === (view === "archived")} disabled={!online} onClick={() => { if ((loom.threadView === "archived") !== (view === "archived")) void loom.setThreadView(view).catch((cause) => setNavigationError(String(cause))); }}>{view === "archived" ? "已归档" : "进行中"}</button>
-                ))}
-              </div>
-            </div><AnimatedFold open={Boolean(list.length)} fade={false}>
-              <Group><MotionRows items={list} itemKey={thread => thread.id}>{thread => <ThreadRow thread={thread} onOpen={() => openThread(thread)} />}</MotionRows></Group>
-            </AnimatedFold><AnimatedFold open={!list.length}>
-              <Empty icon={tab === "build" ? <Blocks size={24} strokeWidth={1.5} /> : <MessagesSquare size={24} strokeWidth={1.5} />} title={query ? "没有匹配的对话" : loom.threadView === "archived" ? "没有已归档的对话" : tab === "build" ? "还没有建造" : "还没有对话"} />
-            </AnimatedFold></>
-          ) : null}
-          {tab === "projects" ? <MobileProjects loom={loom} online={online} threads={threads} onOpen={openThread} onBegin={(mode, project) => begin(mode, project.root, project.id)} /> : null}
-          {tab === "more" ? <More shell={shell} /> : null}
+        <Fold open={Boolean(navigationError)}><p className="m-alert m-page-alert" role="alert">{navigationError}</p></Fold>
+        <main className="m-pages">
+          {TABS.map(({ key, label }, index) => {
+            const showOffline = offlineNotice && !threads.length && key !== "more";
+            const lists = key === "chat" || key === "build";
+            return (
+              <section
+                key={key}
+                className="m-body"
+                aria-label={label}
+                aria-hidden={tab !== key}
+                inert={tab !== key}
+                data-side={Math.sign(index - tabIndex)}
+                ref={(node) => { if (node) pages.current.set(key, node); else pages.current.delete(key); }}
+              >
+                {visited.has(key) ? (
+                  <>
+                    {showOffline ? <Offline shell={shell} cached={cached} /> : null}
+                    {loading && key !== "more" && key !== "projects" ? <Skeleton rows={5} /> : null}
+                    {!showOffline && !loading && key === "now" ? <Now threads={threads} onOpen={openThread} /> : null}
+                    {!showOffline && !loading && lists ? <ThreadList loom={loom} kind={key} online={online} threads={threads.filter((thread) => modeOf(thread) === key)} onOpen={openThread} onError={setNavigationError} /> : null}
+                    {key === "projects" ? <MobileProjects loom={loom} online={online} threads={threads} onOpen={openThread} onBegin={(mode, project) => begin(mode, project.root, project.id)} /> : null}
+                    {key === "more" ? <More shell={shell} active={tab === "more"} /> : null}
+                  </>
+                ) : null}
+              </section>
+            );
+          })}
         </main>
         <Fold open={tab !== "more" && tab !== "projects" && online}>
           <div className="m-new">
             <button type="button" onClick={() => setChoosing(tab === "build" ? "build" : "chat")}>
-              <span key={tab}>{tab === "build" ? "开始一个建造" : `给${shell.deviceName || "电脑"}一个新任务`}</span>
+              <span><Swap id={tab === "build" ? "build" : "task"}>{tab === "build" ? "开始一个建造" : `给${shell.deviceName || "电脑"}一个新任务`}</Swap></span>
               <i aria-hidden="true"><Plus size={18} strokeWidth={2.25} /></i>
             </button>
           </div>
@@ -961,10 +1028,10 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
         <nav className="m-nav" aria-label="主导航" style={{ "--m-index": TABS.findIndex((entry) => entry.key === tab) } as CSSProperties}>
           <NavCapsule index={TABS.findIndex((entry) => entry.key === tab)} />
           {TABS.map(({ key, label, icon: Icon }) => (
-            <button type="button" key={key} data-press="none" aria-label={key === "now" && waitingCount ? `${label}，${waitingCount} 项等你批准` : undefined} aria-current={tab === key ? "page" : undefined} onClick={() => { setTab(key); setQuery(""); if ((key === "now" || key === "projects") && loom.threadView === "archived") void loom.setThreadView("active").catch((cause) => setNavigationError(String(cause))); }}>
+            <button type="button" key={key} data-press="none" aria-label={key === "now" && waitingCount ? `${label}，${waitingCount} 项等你批准` : undefined} aria-current={tab === key ? "page" : undefined} onClick={() => { if (tab === key) pages.current.get(key)?.scrollTo({ top: 0, behavior: "smooth" }); setTab(key); if ((key === "now" || key === "projects") && loom.threadView === "archived") void loom.setThreadView("active").catch((cause) => setNavigationError(String(cause))); }}>
               <i aria-hidden="true">
                 <Icon size={21} strokeWidth={tab === key ? 2 : 1.75} />
-                {key === "now" && waitingCount ? <b className="m-nav-badge">{waitingCount > 9 ? "9+" : waitingCount}</b> : null}
+                {key === "now" && badge.mounted ? <b className="m-nav-badge" data-phase={badge.phase}><span className="m-nav-badge-count" key={badgeCount}>{badgeCount > 9 ? "9+" : badgeCount}</span></b> : null}
               </i>
               <span>{label}</span>
             </button>
@@ -972,8 +1039,8 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
         </nav>
       </div>
       {screen.mounted ? (
-        <div className="m-screen" data-phase={screen.phase} inert={!open}>
-          <ThreadView key={viewKey} loom={loom} space={space} online={online} draftWorkspace={draftWorkspace} connecting={shell.socket === "connecting"} onBack={() => setOpen(null)} onMode={setOpen} onOpenAgent={(id) => { setViewKey((key) => key + 1); setOpen("chat"); void loom.openThread(id).catch((cause) => setNavigationError(String(cause))); }} />
+        <div ref={screenElement} className="m-screen" data-phase={screen.phase} inert={!open}>
+          <ThreadView key={viewKey} loom={loom} space={space} online={online} draftWorkspace={draftWorkspace} swapped={viewSwapped} connecting={shell.socket === "connecting"} onBack={() => setOpen(null)} onMode={setOpen} onOpenAgent={(id) => { setViewKey((key) => key + 1); setViewSwapped(true); setOpen("chat"); void loom.openThread(id).catch((cause) => setNavigationError(String(cause))); }} />
         </div>
       ) : null}
       <ProjectChooser open={Boolean(choosing)} loom={loom} online={online} onClose={() => setChoosing(null)} onChoose={(workspace, projectId) => begin(chosenSpace, workspace, projectId)} />

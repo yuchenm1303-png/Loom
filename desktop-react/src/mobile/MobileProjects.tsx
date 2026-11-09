@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { AnimatedFold } from "../motion/AnimatedFold";
-import "./mobile-motion.css";
 import {
   Blocks,
   ChevronLeft,

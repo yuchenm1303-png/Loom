@@ -17,6 +17,7 @@ import {
   RotateCw,
 } from "../components/icons";
 import { useReducedMotion } from "../motion/useReducedMotion";
+import { runCapsule, type CapsuleRun } from "./motion";
 
 /** Five branches, all on the rail at once. Everything a build can show has one home among them:
  *  run = state, budget, model and quota; tasks = tasks, guidance, scope; project = folder and references;
@@ -103,10 +104,12 @@ export function BuildBranches({
   children: ReactNode;
 }) {
   const rail = useRef<HTMLElement>(null);
+  const carrier = useRef<HTMLElement>(null);
   const capsule = useRef<HTMLSpanElement>(null);
+  const capsuleRun = useRef<CapsuleRun | null>(null);
+  const painted = useRef<{ left: number; width: number } | null>(null);
   const reduced = useReducedMotion();
   const [position, setPosition] = useState({ left: 0, width: 0 });
-  const previous = useRef<BuildBranch | null>(null);
   useLayoutEffect(() => {
     const nav = rail.current;
     if (!nav || !dock) return;
@@ -118,23 +121,23 @@ export function BuildBranches({
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(nav);
-    let animation: Animation | undefined;
-    if (branch && previous.current !== branch && !reduced)
-      animation = capsule.current?.animate(
-        [
-          { transform: "scale(1)" },
-          { transform: "scale(1.12,.9)", offset: 0.32 },
-          { transform: "scale(.97,1.025)", offset: 0.78 },
-          { transform: "scale(1)" },
-        ],
-        { duration: 420, easing: "cubic-bezier(.2,.7,.2,1)" },
-      );
-    previous.current = branch;
     return () => {
       observer.disconnect();
-      animation?.cancel();
     };
-  }, [branch, dock, reduced]);
+  }, [branch, dock]);
+  // The capsule travels only between two selections: opening the rail from nothing, it fades in where it belongs.
+  useLayoutEffect(() => {
+    const element = carrier.current;
+    const shape = capsule.current;
+    const before = painted.current;
+    painted.current = branch ? position : null;
+    if (!element || !shape || !branch || !before || reduced || (before.left === position.left && before.width === position.width)) return;
+    const flying = capsuleRun.current?.carrier.playState === "running";
+    const from = flying ? new DOMMatrixReadOnly(getComputedStyle(element).transform).m41 : before.left;
+    const fromWidth = flying ? element.getBoundingClientRect().width : before.width;
+    capsuleRun.current = runCapsule({ carrier: element, pill: shape, from, to: position.left, width: position.width, fromWidth, previous: capsuleRun.current });
+  }, [branch, position, reduced]);
+  useLayoutEffect(() => () => { capsuleRun.current?.carrier.cancel(); capsuleRun.current?.pill.cancel(); }, []);
   useLayoutEffect(() => {
     if (!branch) return;
     const back = (event: Event) => {
@@ -197,6 +200,7 @@ export function BuildBranches({
                   <i
                     className="m-branch-capsule"
                     aria-hidden="true"
+                    ref={carrier}
                     style={{
                       width: position.width,
                       transform: `translateX(${position.left}px)`,

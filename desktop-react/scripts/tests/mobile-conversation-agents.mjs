@@ -12,7 +12,7 @@ try {
   async function open(extra = "") {
     await page.goto(`${origin}/scripts/fixtures/mobile.html?goalagents=1${extra}`, { waitUntil: "domcontentloaded" });
     await page.getByRole("navigation", { name: "主导航" }).getByRole("button", { name: "建造", exact: true }).click();
-    await page.getByText("Loom 账号页重做", { exact: true }).click();
+    await page.locator('.m-body[data-side="0"]').getByText("Loom 账号页重做", { exact: true }).click();
     await page.getByRole("navigation", { name: "建造支路" }).getByRole("button", { name: "Agent", exact: true }).click();
   }
   await open();

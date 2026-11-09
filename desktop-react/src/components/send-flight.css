@@ -104,13 +104,13 @@
 }
 
 /* The real entry while its message is in the air. */
-:root .app-shell .transcript-entry.entry-user_message[data-flight="flying"] {
+:root :is(.app-shell, .m-app) .transcript-entry.entry-user_message[data-flight="flying"] {
   visibility: hidden;
 }
-:root .app-shell .transcript-entry.entry-user_message[data-flight] {
+:root :is(.app-shell, .m-app) .transcript-entry.entry-user_message[data-flight] {
   animation: none !important;
 }
-:root .app-shell .transcript-entry.entry-user_message[data-flight] :is(.user-message, .user-message-copy-shell,
+:root :is(.app-shell, .m-app) .transcript-entry.entry-user_message[data-flight] :is(.user-message, .user-message-copy-shell,
   .user-link-card, .user-rich-code-block, .user-message-image-preview, .user-message-attachment-card, .user-message-media-preview) {
   animation: none !important;
 }
@@ -149,12 +149,12 @@
 
 /* The capsule that follows the message: its row is there from the first frame (so the page does not grow once the
    message has landed), it fades in as the message arrives, and the bead springs just before. */
-.app-shell .turn-block[data-flight="flying"] .pending-thinking-presence[data-motion-phase] {
+:is(.app-shell, .m-app) .turn-block[data-flight="flying"] .pending-thinking-presence[data-motion-phase] {
   grid-template-rows: 1fr;
   opacity: 0;
   transition: none;
 }
-.app-shell .turn-block[data-flight] .turn-process.is-live .turn-process-content > .pending-thinking-presence:first-child .inline-thinking {
+:is(.app-shell, .m-app) .turn-block[data-flight] .turn-process.is-live .turn-process-content > .pending-thinking-presence:first-child .inline-thinking {
   --thinking-lead: var(--flight-lead, 300ms);
 }
 

@@ -6,8 +6,10 @@ import "../renderer-styles";
 import "./mobile.css";
 import { MobileApp } from "./MobileApp";
 import { installMobileBridge } from "./mobileBridge";
+import { installTouchPress } from "./motion";
 
 installMobileBridge();
+installTouchPress();
 // The shared transcript takes its language from here; the phone's own screens are Chinese.
 try { if (!window.localStorage.getItem("loom.settings.language")) window.localStorage.setItem("loom.settings.language", "zh-CN"); } catch {}
 bootstrapDocumentLanguage();

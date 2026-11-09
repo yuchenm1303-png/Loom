@@ -62,6 +62,80 @@ check(Math.abs(landed - tabLeft) < 1, "and lands on its tab", `${landed} vs ${ta
 await page.locator(".m-nav button").nth(0).click();
 await page.waitForTimeout(600);
 
+// Tab pages: nothing blinks through empty, a list does not unfold, a page keeps its place
+await page.evaluate(() => document.querySelectorAll(".m-nav button")[1].click());
+await page.waitForTimeout(600);
+const pageOf = (index) => `document.querySelectorAll(".m-pages > .m-body")[${index}]`;
+const crossing = await page.evaluate(async (first) => {
+  const rows = () => document.querySelectorAll(".m-pages > .m-body")[2].querySelectorAll(".m-motion-row");
+  document.querySelectorAll(".m-nav button")[2].click();
+  const trail = [];
+  for (let frame = 0; frame < 30; frame += 1) {
+    await new Promise(requestAnimationFrame);
+    const pages = [...document.querySelectorAll(".m-pages > .m-body")];
+    const row = rows()[0];
+    trail.push({ total: pages.reduce((sum, item) => sum + Number(getComputedStyle(item).opacity), 0), height: row ? Math.round(row.getBoundingClientRect().height) : null });
+  }
+  return trail;
+});
+check(crossing.every((frame, index) => index === 0 || frame.total > .35), "a tab change never shows an empty page", String(Math.min(...crossing.map((frame) => frame.total)).toFixed(2)));
+const heights = crossing.map((frame) => frame.height).filter((value) => value !== null);
+check(new Set(heights).size === 1, "a list that first appears does not unfold", String([...new Set(heights)]));
+await page.waitForTimeout(500);
+await page.evaluate(() => { document.querySelectorAll(".m-pages > .m-body")[2].scrollTop = 0; });
+const forward = await page.evaluate(() => [...document.querySelectorAll(".m-pages > .m-body")].map((item) => item.dataset.side));
+check(forward.join() === "-1,-1,0,1,1", "each page rests on its own side of the current one", forward.join());
+await page.locator(".m-nav button").nth(0).click();
+await page.waitForTimeout(600);
+
+// The capsule: one spring, stretched by its own speed, itself again when it stops
+const capsule = await page.evaluate(async () => {
+  document.querySelectorAll(".m-nav button")[3].click();
+  const trail = [];
+  for (let frame = 0; frame < 45; frame += 1) {
+    await new Promise(requestAnimationFrame);
+    const pill = document.querySelector(".m-nav-pill");
+    const matrix = new DOMMatrixReadOnly(getComputedStyle(pill).transform);
+    trail.push({ x: new DOMMatrixReadOnly(getComputedStyle(pill.parentElement).transform).m41, sx: matrix.a, sy: matrix.d });
+  }
+  const pill = document.querySelector(".m-nav-pill");
+  const [a] = pill.getAnimations(), [b] = pill.parentElement.getAnimations();
+  return { trail, sameClock: !a || !b || a.effect.getTiming().duration === b.effect.getTiming().duration };
+});
+check(capsule.sameClock, "the capsule's stretch and travel share one clock");
+check(Math.max(...capsule.trail.map((f) => f.sx)) > 1.1, "it stretches at speed", String(Math.max(...capsule.trail.map((f) => f.sx)).toFixed(3)));
+check(capsule.trail.every((f) => f.sx >= f.sy), "and only ever lengthens along its travel");
+await page.waitForTimeout(400);
+const rest = await page.locator(".m-nav-pill").evaluate((pill) => getComputedStyle(pill).transform);
+check(rest === "none" || rest === "matrix(1, 0, 0, 1, 0, 0)", "and is its own shape at rest", rest);
+await page.evaluate(() => document.querySelectorAll(".m-nav button")[0].click());
+await page.waitForTimeout(80);
+await page.evaluate(() => document.querySelectorAll(".m-nav button")[4].click());
+await page.waitForTimeout(800);
+const interrupted = await page.evaluate(() => [document.querySelector(".m-nav > .m-glider").getBoundingClientRect().left, document.querySelectorAll(".m-nav button")[4].getBoundingClientRect().left]);
+check(Math.abs(interrupted[0] - interrupted[1]) < 1, "a capsule redirected in flight lands on the last tab", interrupted.join(" vs "));
+await page.locator(".m-nav button").nth(0).click();
+await page.waitForTimeout(700);
+
+// A finger is answered at once; a scroll is not a press
+const touchPage = await page.context().newCDPSession(page);
+const touch = (type, points) => touchPage.send("Input.dispatchTouchEvent", { type, touchPoints: points.map(([x, y]) => ({ x, y })) });
+const pressAt = await page.locator(".m-wait-card").evaluate((card) => { const box = card.getBoundingClientRect(); return [box.left + 40, box.top + box.height / 2]; });
+await page.evaluate(() => { window.__noOpen = (event) => { event.stopPropagation(); event.preventDefault(); }; document.querySelector(".m-wait-card").addEventListener("click", window.__noOpen, true); });
+await touch("touchStart", [pressAt]);
+const shown = await page.waitForFunction(() => document.querySelector(".m-wait-card").hasAttribute("data-pressed"), null, { timeout: 400 }).then(() => true, () => false);
+check(shown, "a finger on a control shows at once");
+await touch("touchMove", [[pressAt[0], pressAt[1] + 40]]);
+await page.waitForTimeout(40);
+check(!(await page.locator(".m-wait-card").evaluate((el) => el.hasAttribute("data-pressed"))), "and lets go when the touch becomes a scroll");
+await touch("touchEnd", []);
+await touch("touchStart", [pressAt]);
+await touch("touchEnd", []);
+check(await page.locator(".m-wait-card").evaluate((el) => el.hasAttribute("data-pressed")), "a quick tap is still seen");
+await page.waitForTimeout(200);
+check(!(await page.locator(".m-wait-card").evaluate((el) => el.hasAttribute("data-pressed"))), "and clears");
+await page.evaluate(() => document.querySelector(".m-wait-card").removeEventListener("click", window.__noOpen, true));
+
 // Pushing a conversation
 const pushed = await sample(page, ".m-screen", left, `() => document.querySelector(".m-wait-card").click()`);
 check(distinct(pushed) > 5, "a conversation slides in", `from ${present(pushed)[0]} in ${distinct(pushed)} steps`);
@@ -87,13 +161,47 @@ const reversedSheet = await page.evaluate(async () => {
 });
 check(reversedSheet.same && Math.abs(reversedSheet.before - reversedSheet.after) < 80, "a sheet reverses from its current position", JSON.stringify(reversedSheet));
 await page.waitForTimeout(400);
-const segments = await sample(page, ".m-reasoning-options button:nth-of-type(3)", "(element) => getComputedStyle(element).color", `() => document.querySelectorAll(".m-segments button")[2].click()`, 30);
+const segments = await sample(page, ".m-reasoning-options button:nth-of-type(3)", "(element) => getComputedStyle(element).color", `() => document.querySelectorAll(".m-reasoning-options button")[2].click()`, 30);
 check(distinct(segments) > 2, "the reasoning choice fades to its selected state", `in ${distinct(segments)} steps`);
 await page.waitForTimeout(300);
 const falling = await sample(page, ".m-sheet", top, `() => document.querySelector(".m-scrim").click()`, 45);
 check(distinct(falling) > 5, "a sheet falls instead of vanishing", `in ${distinct(falling)} steps`);
 await page.waitForTimeout(400);
 check(await page.locator(".m-sheet-host").count() === 0, "and is removed after its exit");
+
+// A sheet follows the finger
+const dragSession = await page.context().newCDPSession(page);
+const drag = (type, points) => dragSession.send("Input.dispatchTouchEvent", { type, touchPoints: points.map(([x, y]) => ({ x, y })) });
+await page.evaluate(() => document.querySelector(".m-chip").click());
+await page.waitForTimeout(600);
+const restTop = await page.locator(".m-sheet").evaluate((el) => el.getBoundingClientRect().top);
+const grip = [195, restTop + 22];
+await drag("touchStart", [grip]);
+for (const dy of [10, 30, 60, 90]) { await drag("touchMove", [[grip[0], grip[1] + dy]]); await page.waitForTimeout(30); }
+const pulled = await page.locator(".m-sheet").evaluate((el) => el.getBoundingClientRect().top);
+check(Math.abs(pulled - restTop - 90) < 3, "a sheet follows the finger", String(pulled - restTop));
+const thinned = await page.locator(".m-scrim").evaluate((el) => Number(getComputedStyle(el).opacity));
+check(thinned < 1 && thinned > .5, "and the scrim thins with it", String(thinned));
+await page.waitForTimeout(200);
+await drag("touchEnd", []);
+await page.waitForTimeout(600);
+const sprang = await page.locator(".m-sheet").evaluate((el) => el.getBoundingClientRect().top);
+check(Math.abs(sprang - restTop) < 1, "a short pull springs back", String(sprang - restTop));
+await drag("touchStart", [grip]);
+for (let dy = 40; dy <= 400; dy += 90) { await drag("touchMove", [[grip[0], grip[1] + dy]]); await page.waitForTimeout(16); }
+await drag("touchEnd", []);
+const dropping = await page.locator(".m-sheet").evaluate((el) => el.getBoundingClientRect().top);
+check(dropping > restTop + 300, "a long pull falls from where the finger left it", String(dropping - restTop));
+await page.waitForTimeout(500);
+check(await page.locator(".m-sheet-host").count() === 0, "and closes the sheet");
+
+// Send and stop are one disc
+const discBefore = await page.evaluate(() => { window.__disc = document.querySelector(".m-round"); return window.__disc.className; });
+await page.locator(".m-composer textarea").fill("x");
+await page.waitForTimeout(250);
+const discAfter = await page.evaluate(() => ({ same: window.__disc === document.querySelector(".m-round"), className: window.__disc.className }));
+check(discAfter.same && discBefore !== discAfter.className, "send and stop are one disc that changes", discBefore + " -> " + discAfter.className);
+await page.locator(".m-composer textarea").fill("");
 
 // A stalled window produces no frames; a closing surface must not wait for one forever.
 await page.evaluate(() => document.querySelector(".m-chip").click());
@@ -136,7 +244,7 @@ check(distinct(growing) > 3, "the field grows instead of jumping", `${present(gr
 await page.locator(".m-composer textarea").fill("");
 
 // Going back
-const leaving = await sample(page, ".m-screen", left, `() => document.querySelector(".m-icon-button").click()`, 40);
+const leaving = await sample(page, ".m-screen", left, `() => document.querySelector(".m-screen .m-icon-button").click()`, 40);
 check(distinct(leaving) > 5, "a conversation slides away", `in ${distinct(leaving)} steps`);
 await page.waitForTimeout(400);
 check(await page.locator(".m-screen").count() === 0, "and is removed after its exit");
@@ -145,12 +253,12 @@ check(await page.locator(".m-shell").evaluate((element) => element.getBoundingCl
 // Interrupted moves end where the last touch says
 await page.evaluate(() => document.querySelector(".m-wait-card").click());
 await page.waitForTimeout(90);
-await page.evaluate(() => document.querySelector(".m-icon-button").click());
+await page.evaluate(() => document.querySelector(".m-screen .m-icon-button").click());
 await page.waitForTimeout(700);
 check(await page.locator(".m-screen").count() === 0, "back during the push ends on the list");
 await page.evaluate(() => document.querySelector(".m-wait-card").click());
 await page.waitForTimeout(450);
-await page.evaluate(() => document.querySelector(".m-icon-button").click());
+await page.evaluate(() => document.querySelector(".m-screen .m-icon-button").click());
 await page.waitForTimeout(90);
 await page.evaluate(() => document.querySelector(".m-wait-card").click());
 await page.waitForTimeout(700);
@@ -174,7 +282,7 @@ check(stillLoops === 0, "reduced motion stops every loop", String(stillLoops));
 await still.evaluate(() => document.querySelector(".m-wait-card").click());
 await still.waitForTimeout(500);
 check(await still.locator(".m-screen").evaluate((element) => element.getBoundingClientRect().left) === 0, "reduced motion still arrives");
-await still.evaluate(() => document.querySelector(".m-icon-button").click());
+await still.evaluate(() => document.querySelector(".m-screen .m-icon-button").click());
 await still.waitForTimeout(200);
 check(await still.locator(".m-screen").count() === 0, "reduced motion leaves at once");
 await still.context().close();

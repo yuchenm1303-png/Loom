@@ -267,7 +267,7 @@ function markComposerSent(): void {
 }
 
 function ensureLayer(): HTMLElement | null {
-  const shell = document.querySelector<HTMLElement>(".app-shell");
+  const shell = document.querySelector<HTMLElement>(".app-shell, .m-app");
   if (!shell) return null;
   let layer = shell.querySelector<HTMLElement>(":scope > .send-flight-layer");
   if (!layer) {

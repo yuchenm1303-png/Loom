@@ -1,4 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
+import { DUR, EASE } from "../motion/tokens";
+import { useReducedMotion } from "../motion/useReducedMotion";
 import { Check, Circle, Compass, Minus, X } from "../components/icons";
 import type { FlowData } from "../components/ProjectFlow";
 import type { LongGoal } from "../components/projectOverview";
@@ -12,10 +15,25 @@ const MARK = { running: <Circle size={12} strokeWidth={2} />, done: <Check size=
 
 function Clamp({ lines, children, className = "" }: { lines: number; children: ReactNode; className?: string }) {
   const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotion();
+  // Clamping is not something CSS can animate: the height is measured on both sides and played between them. Closing
+  // keeps the full text painted until the room has closed over it, so no line is cut before it goes.
+  const toggle = () => {
+    const root = box.current;
+    const text = root?.querySelector("p");
+    if (!root || !text || reduced) { setOpen(!open); return; }
+    const from = text.offsetHeight;
+    flushSync(() => setOpen(!open));
+    const to = text.offsetHeight;
+    if (open) root.setAttribute("data-settling", "");
+    const motion = text.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: DUR.flow, easing: EASE.move });
+    motion.onfinish = motion.oncancel = () => root.removeAttribute("data-settling");
+  };
   return (
-    <div className={`m-goal-clamp ${className}`} data-open={open || undefined} style={{ ["--m-lines" as string]: lines }}>
+    <div ref={box} className={`m-goal-clamp ${className}`} data-open={open || undefined} style={{ ["--m-lines" as string]: lines }}>
       <p>{children}</p>
-      <button type="button" className="m-goal-more" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "收起" : "展开"}</button>
+      <button type="button" className="m-goal-more" aria-expanded={open} onClick={toggle}>{open ? "收起" : "展开"}</button>
     </div>
   );
 }

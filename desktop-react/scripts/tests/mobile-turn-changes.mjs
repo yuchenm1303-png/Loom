@@ -24,7 +24,7 @@ async function open(query, width) {
   await page.waitForTimeout(1200);
   await page.locator(".m-nav button").nth(1).click();
   await page.waitForTimeout(400);
-  await page.getByText("升级 Electron 44").first().click();
+  await page.locator('.m-body[data-side="0"]').getByText("升级 Electron 44").first().click();
   const card = page.locator(".m-changes").first();
   await card.waitFor();
   await card.scrollIntoViewIfNeeded();

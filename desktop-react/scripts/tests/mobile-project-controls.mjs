@@ -47,7 +47,7 @@ try {
   await page.waitForFunction(() => window.__shell.calls.some((call) => call.args[0] === "project/set_instructions"));
   assert.deepEqual((await calls(page, "project/set_instructions")).at(-1), { projectId: "p1", instructions: "构建完成后运行测试。" });
 
-  await page.getByText("Loom 账号页重做", { exact: true }).click();
+  await page.locator('.m-body[data-side="0"]').getByText("Loom 账号页重做", { exact: true }).click();
   await page.getByRole("button", { name: "仅允许这次", exact: true }).waitFor();
   await shot(page, "03-live-build-and-approval");
   await page.getByRole("button", { name: "仅允许这次", exact: true }).click();
@@ -84,7 +84,7 @@ try {
 
   const proposal = await open("?proposal=1", 320, 700);
   await proposal.getByRole("navigation").getByRole("button", { name: "建造", exact: true }).click();
-  await proposal.getByText("Loom 账号页重做", { exact: true }).click();
+  await proposal.locator('.m-body[data-side="0"]').getByText("Loom 账号页重做", { exact: true }).click();
   await proposal.getByRole("navigation", { name: "建造支路" }).getByRole("button", { name: "运行", exact: true }).click();
   await proposal.getByLabel("总 token 预算", { exact: true }).fill("750000");
   await proposal.getByLabel("并发 Agent 数", { exact: true }).fill("3");

@@ -5,8 +5,10 @@
 .loom-fold[data-open="true"] > .loom-fold-clip > .loom-fold-content { opacity: 1; transition: opacity var(--loom-dur-base) var(--loom-ease-out) 60ms; }
 .loom-fold[data-fade="false"] > .loom-fold-clip > .loom-fold-content { opacity: 1; transition: none; }
 @starting-style {
-  .loom-fold[data-open="true"] { grid-template-rows: 0fr; }
-  .loom-fold[data-open="true"][data-fade="true"] > .loom-fold-clip > .loom-fold-content { opacity: 0; }
+  .loom-fold[data-open="true"][data-appear="true"] { grid-template-rows: 0fr; }
+  .loom-fold[data-open="true"][data-appear="true"][data-fade="true"] > .loom-fold-clip > .loom-fold-content { opacity: 0; }
 }
+.loom-fold[data-from] { grid-template-rows: 0fr; transition: none; }
+.loom-fold[data-from][data-fade="true"] > .loom-fold-clip > .loom-fold-content { opacity: 0; transition: none; }
 @media (prefers-reduced-motion: reduce) { .loom-fold, .loom-fold-content { transition: none !important; } }
 html[data-loom-reduced-motion="true"] :is(.loom-fold, .loom-fold-content) { transition: none !important; }
