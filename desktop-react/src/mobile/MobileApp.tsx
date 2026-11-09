@@ -758,9 +758,11 @@ function More({ shell }: { shell: ShellState }) {
   const liveIds = new Set(shell.devices.map((device) => device.id));
   const known = devices?.computers ?? [];
   const computers = [
-    ...shell.devices.map((device) => ({ id: device.id ?? "", name: device.name ?? "", platform: device.platform ?? "", online: true, seen: 0 })),
-    ...known.filter((computer) => !liveIds.has(computer.id)).map((computer) => ({ id: computer.id, name: computer.name, platform: computer.platform, online: false, seen: computer.last_seen_at })),
+    ...shell.devices.map((device) => ({ id: device.id ?? "", name: device.name ?? "", platform: device.platform ?? "", version: device.version ?? "", online: true, seen: 0 })),
+    ...known.filter((computer) => !liveIds.has(computer.id)).map((computer) => ({ id: computer.id, name: computer.name, platform: computer.platform, version: computer.version ?? "", online: false, seen: computer.last_seen_at })),
   ];
+  const currentComputer = computers.find((device) => device.id === shell.deviceId) ?? computers[0];
+  const desktopVersion = (currentComputer?.version || shell.devices.find((device) => device.id === shell.deviceId)?.version || "").trim();
 
   return (
     <>
@@ -772,6 +774,10 @@ function More({ shell }: { shell: ShellState }) {
             {device.id === shell.deviceId ? <Check size={18} strokeWidth={2} /> : device.online ? <ChevronRight className="m-chevron" size={18} strokeWidth={1.75} /> : null}
           </button>
         )) : <p className="m-rows-note">没有在线的电脑。</p>}
+        <div className="m-row is-static">
+          <span className="m-row-icon" aria-hidden="true"><Monitor {...ICON} /></span>
+          <span className="m-row-text"><strong>电脑版 Loom</strong><small>{desktopVersion ? `v${desktopVersion.replace(/^v/, "")}` : "未连接"}</small></span>
+        </div>
       </Group>
       {devices?.phones.length ? (
         <Group title="受信任的手机">
