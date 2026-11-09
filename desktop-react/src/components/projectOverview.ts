@@ -457,8 +457,10 @@ export function toCharter(goal: LongGoal, lang: "zh" | "en" = "zh"): NonNullable
   const charter = goal.charter;
   if (!charter) return undefined;
   const en = lang === "en";
-  const words = en ? { open: "To do", met: "Met", unmet: "Not met", dropped: "Dropped", review: (n: number) => `review ${n}` }
-    : { open: "待完成", met: "已达标", unmet: "未达标", dropped: "已放弃", review: (n: number) => `第 ${n} 轮评审` };
+  const words = en ? { open: "To do", met: "Met", unmet: "Not met", dropped: "Dropped", review: (n: number) => `review ${n}`, standard: "standard" }
+    : { open: "待完成", met: "已达标", unmet: "未达标", dropped: "已放弃", review: (n: number) => `第 ${n} 轮评审`, standard: "通用标准" };
+  // The Host's bar for the kind of work ("standard") and review rounds are named; the lead's own criteria carry no tag.
+  const origin = (value: string) => value === "standard" ? words.standard : value.replace(/^review (\d+)$/, (_, n) => words.review(Number(n)));
   const states = { open: "running", met: "done", unmet: "failed", dropped: "failed" } as const;
   // The Host names a review's revision round in English; say it in the person's language.
   const phase = (charter.phases[charter.current] || "").replace(/^Revision round (\d+)$/, (_, n) => en ? `Revision round ${n}` : `第 ${n} 轮修改`);
@@ -468,7 +470,7 @@ export function toCharter(goal: LongGoal, lang: "zh" | "en" = "zh"): NonNullable
   return {
     deliverable: charter.deliverable, where,
     items: charter.criteria.map((item) => ({ title: item.text, state: states[item.status] || "running",
-      label: item.origin !== "charter" ? `${words[item.status] || item.status} · ${item.origin.replace(/^review (\d+)$/, (_, n) => words.review(Number(n)))}` : words[item.status] || item.status })),
+      label: item.origin !== "charter" ? `${words[item.status] || item.status} · ${origin(item.origin)}` : words[item.status] || item.status })),
   };
 }
 

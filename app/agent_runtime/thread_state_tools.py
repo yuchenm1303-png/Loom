@@ -29,7 +29,7 @@ def _person_spoke(plan_store, context: ToolContext) -> bool:
 
 
 def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None, claim_note=None,
-                         pause=None) -> tuple[AgentTool, ...]:
+                         pause=None, claim_check=None) -> tuple[AgentTool, ...]:
     """claim_note(session_id) -> text or None: what marking complete means here, when someone else decides it.
     A real lead was told "Durable goal marked complete." and reported "independently verified" before any check ran.
 
@@ -91,6 +91,10 @@ def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None, cla
             plan = active_plan(plan_store.events(context.session_id))
             if plan and summary(plan)["status"] != "passed":
                 raise ValueError("active plan has incomplete or unpassed acceptance; reconcile it before completing the goal")
+        if status is GoalStatus.COMPLETE and claim_check is not None:
+            refusal = claim_check(context.session_id)
+            if refusal:
+                raise ValueError(refusal)
         goal = store.set_goal_status(context.session_id, status)
         context.emit(
             AgentEventKind.GOAL_UPDATED,

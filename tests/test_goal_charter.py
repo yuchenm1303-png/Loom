@@ -13,8 +13,10 @@ from test_project_goal_lines import exec_tool, said_to_lead
 
 @pytest.fixture(autouse=True)
 def runtime_with_sub_agents(monkeypatch):
+    from app.agent_runtime import turn_plan
     from app.agent_runtime.multi_agent_runtime import MultiAgentRuntime
     monkeypatch.setattr(base.test_app_server, "DurableAgentRuntime", MultiAgentRuntime)
+    monkeypatch.setattr(turn_plan, "MAX_HOLDS", 0)  # the task list has its own tests; here the research work just runs
 
 
 CHARTER = {"deliverable": "一份可以给审稿人评判的研究稿：问题与动机、相关工作与新意、方法、与公平基线的对比实验（含消融和不确定度）、局限，"
@@ -24,9 +26,30 @@ CHARTER = {"deliverable": "一份可以给审稿人评判的研究稿：问题�
            "phases": ["文献与新意", "方向试点", "主实验", "写作与自审"], "kind": "research"}
 
 
+LEAD_CRITERIA = len(CHARTER["criteria"])
+STANDARD_RESEARCH = len(goal_charter.STANDARD["research"])
+ALL = LEAD_CRITERIA + STANDARD_RESEARCH  # the lead's criteria, then the Host's for research
+CLAIMS = {"claims": [{"claim": "主结果误块率 0.012（95% 置信区间 0.010–0.014）", "command": "python eval.py --seed 0 1 2",
+                      "output": "results/eval.json"}]}
+
+
+def web_search():
+    """A literature search the test model can call: research claims need one in the goal."""
+    from app.agent_runtime.contracts import ToolEffect
+    from app.agent_runtime.tools import AgentTool, ToolResult
+    return AgentTool(name="web_search", description="Search the web.", input_schema={
+        "type": "object", "properties": {}, "additionalProperties": True},
+        handler=lambda _context, _arguments: ToolResult(ok=True, content="五篇相关论文", data={}), effect=ToolEffect.READ_ONLY)
+
+
 def start_with_charter(*after):
     return [calling("weave_goal", {"objective": "研究一晚", "hours": 8}, "call-goal"),
-            calling("weave_charter", CHARTER, "call-charter"), *after]
+            calling("weave_charter", CHARTER, "call-charter"), calling("web_search", {"q": "相关工作"}, "call-search"),
+            calling("weave_claims", CLAIMS, "call-claims"), *after]
+
+
+def research(tmp_path, responses):
+    return conversation(tmp_path, responses, tools=(web_search(),))
 
 
 # --- the charter itself -------------------------------------------------------------------------------------------
@@ -62,7 +85,7 @@ def test_a_review_round_becomes_criteria_and_a_phase_of_the_charter():
     record = {}
     goal_charter.set_charter(record, CHARTER)
     added = goal_charter.add_review_round(record, 1, ["在第三个信道模型下验证结论是否稳健", "短"])
-    assert [item["id"] for item in added] == ["C5"] and added[0]["origin"] == "review 1"
+    assert [item["id"] for item in added] == [f"C{ALL + 1}"] and added[0]["origin"] == "review 1"
     charter = record["charter"]
     assert charter["phases"][-1] == "Revision round 1" and charter["current"] == len(charter["phases"]) - 1
 
@@ -111,7 +134,7 @@ def test_work_that_changes_things_waits_for_the_charter(tmp_path):
 
 
 def test_the_lead_reads_its_charter_and_notes_every_goal_turn(tmp_path):
-    service, runtime, platform, source = conversation(tmp_path, start_with_charter(
+    service, runtime, platform, source = research(tmp_path, start_with_charter(
         calling("weave_note", {"text": "试点了三个方向，温度头最有希望：误块率从 0.031 降到 0.012，选它", "current_phase": 1}, "call-note"),
         answer("第一轮到这"), answer("第二轮")))
     try:
@@ -136,10 +159,10 @@ def test_the_referee_judges_each_criterion_and_its_requests_come_back_as_a_revie
     rejected = referee("needs_changes", criteria=[{"id": "C1", "met": True, "evidence": "六篇"},
                                                  {"id": "C2", "met": False, "evidence": "没有置信区间"}],
                        major=["主结果没有置信区间"], minor=["图 2 缺单位"])
-    service, runtime, platform, source = conversation(tmp_path, start_with_charter(
+    service, runtime, platform, source = research(tmp_path, start_with_charter(
         base.DONE, answer("做完了"), rejected,
-        calling("weave_note", {"text": "回复审稿：主结果补了 95% 置信区间（bootstrap 1000 次）；图 2 补了单位"}, "call-reply"),
-        base.DONE, answer("改好了"), referee("passed", criteria=[{"id": f"C{n}", "met": True} for n in range(1, 5)])))
+        calling("weave_note", {"text": "回复审稿：主结果补了 95% 置信区间（bootstrap 1000 次）；图 2 补了单位", "current_phase": 3}, "call-reply"),
+        base.DONE, answer("改好了"), referee("passed", criteria=[{"id": f"C{n}", "met": True} for n in range(1, ALL + 1)])))
     try:
         tick(service, source, 2)
         record = service.weave_goals.get(source)
@@ -162,9 +185,9 @@ def test_the_referee_judges_each_criterion_and_its_requests_come_back_as_a_revie
 
 
 def test_a_sound_result_with_time_left_gets_a_revision_round_in_the_charter(tmp_path):
-    passed = referee("passed", criteria=[{"id": f"C{n}", "met": True} for n in range(1, 5)],
+    passed = referee("passed", criteria=[{"id": f"C{n}", "met": True} for n in range(1, ALL + 1)],
                      deeper=["在第三个信道模型下验证结论是否稳健", "补一张误块率随信噪比变化的完整曲线"])
-    service, runtime, platform, source = conversation(tmp_path, start_with_charter(
+    service, runtime, platform, source = research(tmp_path, start_with_charter(
         base.DONE, answer("做完了"), passed, answer("开始修改轮")))
     try:
         tick(service, source, 3)
@@ -173,7 +196,7 @@ def test_a_sound_result_with_time_left_gets_a_revision_round_in_the_charter(tmp_
         assert [item["text"] for item in added] == ["在第三个信道模型下验证结论是否稳健", "补一张误块率随信噪比变化的完整曲线"]
         assert record["charter"]["phases"][-1] == "Revision round 1" and record["deepens"] == 1
         said = said_to_lead(platform)[-1]
-        assert "Review round 1" in said and "not new work" in said and "C5" in said
+        assert "Review round 1" in said and "not new work" in said and f"C{ALL + 1}" in said
         assert state(service, source)["status"] == "active"
     finally:
         runtime.close()
@@ -191,10 +214,10 @@ def test_a_goal_from_before_charters_still_gets_its_revision_requests(tmp_path):
 
 
 def test_the_hub_sees_the_charter_and_the_reviews(tmp_path):
-    service, runtime, platform, source = conversation(tmp_path, start_with_charter(answer("开始")))
+    service, runtime, platform, source = research(tmp_path, start_with_charter(answer("开始")))
     try:
         view = state(service, source)
-        assert view["charter"]["kind"] == "research" and len(view["charter"]["criteria"]) == 4
+        assert view["charter"]["kind"] == "research" and len(view["charter"]["criteria"]) == ALL
         assert view["charter"]["phases"][0] == "文献与新意" and view["reviews"] == []
     finally:
         runtime.close()
@@ -211,5 +234,113 @@ def test_charter_and_notes_belong_to_a_running_goal(tmp_path):
             runtime.tools.get("weave_charter").handler(context, CHARTER)
         with pytest.raises(ValueError, match="running long goal"):
             runtime.tools.get("weave_note").handler(context, {"text": "这是一条足够长的笔记，说明做了什么"})
+    finally:
+        runtime.close()
+
+
+# --- the Host's bar: standard criteria, the claims ledger, the checker's evidence ----------------------------------
+
+def test_a_research_charter_gets_the_standard_criteria_and_the_lead_cannot_drop_them():
+    # Real goal: the lead chartered "new report sections"; one seed, no literature, and the check judged only that.
+    record = {}
+    goal_charter.set_charter(record, CHARTER)
+    standard = [item for item in record["charter"]["criteria"] if item["origin"] == "standard"]
+    assert len(standard) == STANDARD_RESEARCH and standard[0]["text"].startswith("相关工作与新意")
+    assert any("排除实现错误" in item["text"] for item in standard), "a negative result must rule out a bug"
+    goal_charter.set_charter(record, {**CHARTER, "criteria": CHARTER["criteria"][:3], "reason": "时间不够"})
+    after = {item["text"]: item["status"] for item in record["charter"]["criteria"]}
+    assert all(after[item["text"]] == "open" for item in standard), "a revision leaves the Host's criteria alone"
+    assert len([text for text in after if text in {item["text"] for item in standard}]) == STANDARD_RESEARCH
+    lines = goal_charter.checker_lines(record)
+    assert "(standard)" in lines and "set by the Host" in lines
+
+
+def test_the_standard_criteria_follow_the_kind_and_the_language():
+    english = {"deliverable": "A tested command-line tool that converts the logs, with documentation and examples.",
+               "criteria": ["Converts every sample log", "Handles empty input", "Runs on Windows"],
+               "phases": ["Build", "Test"], "kind": "software"}
+    record = {}
+    goal_charter.set_charter(record, english)
+    texts = [item["text"] for item in record["charter"]["criteria"] if item["origin"] == "standard"]
+    assert len(texts) == len(goal_charter.STANDARD["software"]) and texts[0].startswith("Tests:")
+    other = {}
+    goal_charter.set_charter(other, {**english, "kind": "writing"})
+    assert not [item for item in other["charter"]["criteria"] if item["origin"] == "standard"]
+
+
+def test_a_note_names_the_phase_and_moves_it(tmp_path):
+    # Real goal: current_phase was optional, never given, and the hub showed the first phase all night.
+    service, runtime, platform, source = research(tmp_path, start_with_charter(answer("开始")))
+    try:
+        context = ToolContext(session_id=source, turn_id="t", workspace=tmp_path)
+        with pytest.raises(ValueError, match="current_phase"):
+            runtime.tools.get("weave_note").handler(context, {"text": "跑完了基线，误块率 0.031，下一步做消融"})
+        result = runtime.tools.get("weave_note").handler(context, {"text": "跑完了基线，误块率 0.031，下一步做消融",
+                                                                   "current_phase": 2})
+        assert "主实验" in result.content and service.weave_goals.get(source)["charter"]["current"] == 2
+    finally:
+        runtime.close()
+
+
+def test_a_research_claim_without_literature_or_ledger_goes_back_then_reaches_the_checker_with_the_gaps(tmp_path):
+    held = [calling("weave_goal", {"objective": "研究一晚", "hours": 8}, "call-goal"),
+            calling("weave_charter", CHARTER, "call-charter"), base.DONE, answer("做完了"),
+            calling("mark_thread_goal", {"status": "complete"}, "call-done-2"), answer("还是做完了"),
+            calling("mark_thread_goal", {"status": "complete"}, "call-done-3"), answer("真的做完了"),
+            referee("needs_changes", major=["没有文献"])]
+    service, runtime, platform, source = conversation(tmp_path, held)
+    try:
+        said = "\n".join(said_to_lead(platform))
+        assert "no literature search ran" in said and "claims ledger is empty" in said
+        assert runtime.get_goal(source).status.value == "active", "a held claim does not count"
+        tick(service, source, 3)
+        checker = checker_texts(platform)
+        assert checker and "claimed completion although the Host found this missing" in checker[-1]
+        assert "no literature search ran" in checker[-1]
+    finally:
+        runtime.close()
+
+
+def test_a_claim_moves_to_the_last_phase_and_the_checker_reruns_the_ledger_and_sees_the_commands(tmp_path):
+    from app.agent_runtime.contracts import ToolEffect
+    from app.agent_runtime.tools import AgentTool, ToolResult
+    run = AgentTool(name="exec_it", description="Run a command.", input_schema={
+        "type": "object", "properties": {}, "additionalProperties": True}, effect=ToolEffect.MUTATING,
+        handler=lambda _context, _arguments: ToolResult(ok=True, content="exit=0", data={
+            "argv": ["python", "eval.py", "--seed", "0"], "returncode": 0}))
+    service, runtime, platform, source = conversation(tmp_path, start_with_charter(
+        calling("exec_it", {}, "call-exec"), base.DONE, answer("做完了"), referee("needs_changes", major=["置信区间太宽"])),
+        tools=(web_search(), run))
+    try:
+        record = service.weave_goals.get(source)
+        assert record["charter"]["current"] == len(CHARTER["phases"]) - 1 and record["literature"] is True
+        tick(service, source, 2)
+        checker = checker_texts(platform)[-1]
+        assert "Claims ledger the agent recorded" in checker and "python eval.py --seed 0 1 2" in checker
+        assert "Commands the work ran during this goal" in checker and "[0] python eval.py --seed 0" in checker
+    finally:
+        runtime.close()
+
+
+def test_a_new_goal_keeps_where_the_last_one_ended_and_re_verifies_what_was_never_checked(tmp_path):
+    # Real conversation: a goal ended "complete" with no check, and the next goal built on its results unread.
+    service, runtime, platform, source = research(tmp_path, start_with_charter(
+        calling("weave_note", {"text": "信道估计器全面落后 LS：误块率 0.40 对 0.17，结论是 MSE 更可行", "current_phase": 2},
+                "call-note"), answer("先到这")))
+    try:
+        record = service.weave_goals.get(source)
+        record["phase"] = "done"
+        service.weave_goals.put(source, record)
+        runtime.set_goal_status(source, goal.GoalStatus.COMPLETE)
+        context = ToolContext(session_id=source, turn_id="t2", workspace=tmp_path)
+        result = runtime.tools.get("weave_goal").handler(context, {"objective": "下一阶段：BLER 感知的信道估计"})
+        assert "WITHOUT an independent check" in result.content and "信道估计器全面落后 LS" in result.content
+        fresh = service.weave_goals.get(source)
+        assert fresh["previous"]["checked"] is False and fresh["literature"] is True and "notes" not in fresh
+        goal_charter.set_charter(fresh, CHARTER)
+        inherited = [item for item in fresh["charter"]["criteria"] if item["text"].startswith("继承的结果")]
+        assert len(inherited) == 1 and inherited[0]["origin"] == "standard"
+        checked = {**record, "checked": True}
+        assert not goal_charter._inherits_unchecked({"previous": goal._carry(checked, "x")})
     finally:
         runtime.close()

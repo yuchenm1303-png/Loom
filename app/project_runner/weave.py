@@ -341,9 +341,11 @@ def tools(service):
             hours = 0.0
         goal.start(service, context.session_id, objective, budget, hours)
         given = f" and {hours:g} h of the person's time" if hours else ""
+        before = "\n".join(goal.previous_lines(service.weave_goals.get(context.session_id) or {}))
         return ToolResult(ok=True, content=f"Long goal started with a budget of {budget:,} tokens{given}. Carry on "
                           "working; the Host continues this conversation after each turn until you call "
-                          "mark_thread_goal.\n" + goal_charter.GUIDE + "\n" + goal_lines.guide(),
+                          "mark_thread_goal.\n" + (before + "\n" if before else "") + goal_charter.GUIDE + "\n"
+                          + goal_lines.guide(),
                           data={"tokenBudget": budget, "hours": hours})
 
     def write_charter(context, arguments):
@@ -374,11 +376,29 @@ def tools(service):
             record = service.weave_goals.get(context.session_id)
             if record is None or record.get("phase") == "done":
                 raise ValueError("weave_note belongs to a running long goal.")
+            charter = goal_charter.charter_of(record)
+            phase = arguments.get("current_phase")
+            # Optional, it was never given: a real goal's hub showed its first phase for the whole run.
+            if charter and not (isinstance(phase, int) and 0 <= phase < len(charter["phases"])):
+                raise ValueError("Give current_phase, the index of the phase now under way: "
+                                 + "; ".join(f"{at} = {name}" for at, name in enumerate(charter["phases"])))
             goal_charter.add_note(record, arguments.get("text"))
-            if isinstance(arguments.get("current_phase"), int):
-                goal_charter.advance_phase(record, arguments["current_phase"])
+            if charter:
+                goal_charter.advance_phase(record, phase)
             service.weave_goals.put(context.session_id, record)
-        return ToolResult(ok=True, content="Noted. Every goal turn shows your latest notes.", data={})
+        now = f" Phase now: {charter['phases'][charter['current']]}." if charter else ""
+        return ToolResult(ok=True, content="Noted. Every goal turn shows your latest notes." + now, data={})
+
+    def claims(context, arguments):
+        weave_session(context)
+        with service.project_runner.guard:
+            record = service.weave_goals.get(context.session_id)
+            if record is None or record.get("phase") == "done":
+                raise ValueError("weave_claims belongs to a running long goal.")
+            kept = goal_charter.set_claims(record, arguments.get("claims"))
+            service.weave_goals.put(context.session_id, record)
+        return ToolResult(ok=True, content=f"Claims ledger now holds {len(kept)} claim(s); the check re-runs their "
+                          "commands. Send the whole list each time: it replaces the last one.", data={"claims": len(kept)})
 
     def lines(context, arguments):
         weave_session(context)
@@ -457,10 +477,25 @@ def tools(service):
                          "notes; the checker reads the ones written after its last review."),
             input_schema={"type": "object", "properties": {
                 "text": {"type": "string", "description": "The note, in the person's language."},
-                "current_phase": {"type": "integer", "minimum": 0, "description": "Index of the phase now under way, "
-                                  "when it changed."},
+                "current_phase": {"type": "integer", "minimum": 0, "description": "Index of the charter's phase now "
+                                  "under way (0 is the first); required once the charter is written."},
             }, "required": ["text"], "additionalProperties": False},
             handler=note, effect=ToolEffect.READ_ONLY),
+        AgentTool(
+            name="weave_claims",
+            description=("Record the long goal's claims ledger: each headline claim or number in the deliverable, the "
+                         "exact command that reproduces it, and the file where it appears. The independent check "
+                         "re-runs these commands. Research and analysis goals need it before a claim of completion. "
+                         "Send the whole list each time; it replaces the last one."),
+            input_schema={"type": "object", "properties": {
+                "claims": {"type": "array", "minItems": 1, "maxItems": goal_charter.MAX_CLAIMS, "items": {
+                    "type": "object", "properties": {
+                        "claim": {"type": "string", "description": "The claim with its number, as the deliverable states it."},
+                        "command": {"type": "string", "description": "The exact command that reproduces it, from the workspace."},
+                        "output": {"type": "string", "description": "The file (and place in it) where the number appears."},
+                    }, "required": ["claim", "command", "output"], "additionalProperties": False}},
+            }, "required": ["claims"], "additionalProperties": False},
+            handler=claims, effect=ToolEffect.READ_ONLY),
         AgentTool(
             name="weave_one_turn",
             description=("Size the person's request as a quick task you will finish well in this turn, so no long goal "

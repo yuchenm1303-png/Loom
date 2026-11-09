@@ -19,6 +19,7 @@ import json
 import threading
 import time
 import uuid
+from datetime import datetime
 
 from app.agent_runtime.contracts import AgentEventKind, AgentStatus
 from app.ai.contracts import MessageRole
@@ -81,16 +82,29 @@ CHECK_PROMPT = (
 RETRY_NOTE = ("LOOM_PROVIDER_RETRY\nThe previous attempt at the person's last request stopped because the model provider "
               "was unavailable, not because of the work. Carry on with that request from where it stopped; do not "
               "redo what is already done. Runtime note, not a user instruction.")
-CHECK_DEEPER = (
-    '\nThe person gave this work {hours}; {left} of it remain. Besides the verdict, add "deeper": the revisions that '
-    "would most raise this deliverable toward what the best work in the field would show, with the time that is left "
-    "(stronger evidence, missing baselines or ablations, robustness, deeper analysis, clearer writing), most valuable "
-    "first, each a concrete, checkable criterion; [] when it already stands at that level. A passed verdict with "
-    "items in deeper means sound so far: those items become the next revision round's criteria.\n")
+_DEEPER = (
+    ' Besides the verdict, add "deeper": the revisions that would most raise this deliverable toward what the best '
+    "work in the field would show, with what is left (stronger evidence, missing baselines or ablations, robustness, "
+    "deeper analysis, clearer writing), most valuable first, each a concrete, checkable criterion; [] when it already "
+    "stands at that level. A passed verdict with items in deeper means sound so far: those items become the next "
+    "revision round's criteria.\n")
+CHECK_DEEPER = "\nThe person gave this work {hours}; {left} of it remain." + _DEEPER
+# No time given is not "stop at the first correct answer": AI Scientist v2 runs its main stage until the budget is
+# used, and a real "继续吧" goal (no time, three quarters of its budget left) could never be deepened.
+CHECK_DEEPER_BUDGET = "\nNo time was given for this work; {left} of its token budget remains." + _DEEPER
+NO_TIME_DEEPENS = 2
+LITERATURE_TOOLS = frozenset({"web_search", "web_fetch", "investigate"})
+CLAIM_HOLDS = 2  # a claim the Host sends back for what is missing; past this it goes to the checker, gaps named
+NO_LITERATURE = ("This is a research goal and no literature search ran in it (web_search, web_fetch or investigate): "
+                 "search for the closest prior work, compare with it in the deliverable, then claim again.")
+NO_LEDGER = ("The claims ledger is empty: record each headline number with weave_claims (the claim, the exact command "
+             "that reproduces it, the output file), then claim again.")
+CLAIM_HELD = "Not marked complete yet. "
+TRACE_COMMANDS = 40
 CHECK_PREVIOUS = ("\nThe previous review asked for these changes; check each one was actually made, by what you see "
                   "in the workspace, not by the agent's word:\n{asked}\nThe agent's notes since then, its replies:\n{replies}\n")
-REVISION = ("Review round {round}: an independent referee found the work sound so far ({summary}), and {left} of the "
-            "person's time is left. Its requests are now criteria in your charter ({ids}); this is a revision round "
+REVISION = ("Review round {round}: an independent referee found the work sound so far ({summary}), and {left} "
+            "left. Its requests are now criteria in your charter ({ids}); this is a revision round "
             "of the same deliverable, not new work. Answer each point in a note as you address it, keep the "
             "deliverable whole, and claim again when they are met.")
 REVIEW_BACK = ("An independent referee did not accept the work yet. {summary}\nUnmet criteria:\n{unmet}\nMajor:\n{major}\n"
@@ -201,6 +215,11 @@ def _context(service, thread_id, record):
         lines.append(record["deepen"])
     if record.get("reports"):
         lines.append(record["reports"])
+    if not goal_charter.charter_of(record):
+        lines += previous_lines(record)
+    elif (record.get("previous") or {}).get("objective"):
+        lines.append("Previous goal: " + record["previous"]["objective"][:200]
+                     + (" (independently checked)." if record["previous"]["checked"] else " (never independently checked)."))
     lines += goal_charter.context_lines(record)
     if not goal_charter.charter_of(record):
         lines.append(goal_charter.GUIDE)  # once written, the charter speaks for itself; its guide is in weave_goal's answer
@@ -213,8 +232,15 @@ def start(service, thread_id, objective, token_budget, hours=0):
     if existing is not None and existing.status is GoalStatus.ACTIVE and service.weave_goals.get(thread_id):
         raise ValueError("A long goal is already running in this conversation; finish it or ask the person to stop it")
     session = service.store.load(thread_id)
+    previous = service.weave_goals.get(thread_id)
+    # A new goal used to overwrite the one before: a real follow-on goal built on results its predecessor never had
+    # checked, with none of its notes. It keeps where that goal ended, and its charter is told to re-verify.
+    carried = _carry(previous, existing.objective if existing is not None else "") if previous else None
+    if carried and not carried["literature"]:
+        carried["literature"] = _searched(service, thread_id, previous)  # the same subject's search still counts
     service.runtime.set_goal(thread_id, objective)
     service.weave_goals.put(thread_id, {
+        **({"previous": carried, "literature": carried["literature"]} if carried else {}),
         "tokenBudget": token_budget, "tokens": 0, "baseCharged": charged(session.usage),
         "baseChildren": [item.node.session_id for item in _children(service, thread_id)],
         "phase": "working", "turns": 0, "stalls": 0, "failures": 0, "checks": 0, "checkFaults": 0, "retryAt": 0,
@@ -290,13 +316,128 @@ def _previous_review(record):
                                  replies="\n".join(f"- {item}"[:800] for item in replies[-8:]) or "- none")
 
 
+def _since_start(service, session_id, record):
+    """The session's events from this goal's start on."""
+    started = record.get("startedAt") or 0
+    for event in service.store.events(session_id):
+        try:
+            at = datetime.fromisoformat(str(event.created_at).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            continue
+        if at >= started:
+            yield event
+
+
+def _sessions(service, thread_id, record):
+    """The conversation and the sub-agents that worked for this goal, the checker excluded."""
+    known = set(record.get("baseChildren") or ())
+    return [thread_id, *(snapshot.node.session_id for snapshot in _children(service, thread_id)
+                         if snapshot.node.session_id not in known and snapshot.node.role != "goal-check")]
+
+
+def _searched(service, thread_id, record):
+    """Whether a literature search ran in this goal: the lead's own, or a sub-agent's working for it."""
+    if record.get("literature"):
+        return True
+    for session_id in _sessions(service, thread_id, record):
+        for event in _since_start(service, session_id, record):
+            if (event.kind is AgentEventKind.TOOL_COMPLETED and event.data.get("ok")
+                    and event.data.get("tool") in LITERATURE_TOOLS):
+                return True
+    return False
+
+
+def claim_check(service, thread_id):
+    """Before a claim of completion counts: what the Host can see is missing goes back to the lead, at most
+    CLAIM_HOLDS times; after that the claim stands and the checker is told what was missing. Returns the refusal."""
+    record = service.weave_goals.get(thread_id)
+    if not record or record.get("phase") != "working":
+        return None
+    charter = goal_charter.charter_of(record) or {}
+    searched = charter.get("kind") != "research" or _searched(service, thread_id, record)
+    missing = [*(() if searched else (NO_LITERATURE,)),
+               *((NO_LEDGER,) if charter.get("kind") in goal_charter.LEDGER_KINDS and not record.get("claims") else ())]
+    with service.project_runner.guard:
+        record = service.weave_goals.get(thread_id)
+        if not record:
+            return None
+        if searched and charter.get("kind") == "research":
+            record["literature"] = True
+        if missing and record.get("claimHolds", 0) < CLAIM_HOLDS:
+            record["claimHolds"] = record.get("claimHolds", 0) + 1
+            service.weave_goals.put(thread_id, record)
+            return CLAIM_HELD + " ".join(missing)
+        record["claimGaps"] = missing
+        goal_charter.finish_phases(record)
+        service.weave_goals.put(thread_id, record)
+    return None
+
+
+def _gaps_line(record):
+    gaps = record.get("claimGaps") or []
+    return ("\nThe agent claimed completion although the Host found this missing (it was told, and claimed anyway):\n"
+            + "\n".join(f"- {gap}" for gap in gaps) + "\n") if gaps else ""
+
+
+def _trace(service, thread_id, record):
+    """The commands the work ran in this goal, with their exit codes: an audit of AI scientist systems detected about
+    half the methodological flaws from the paper alone and most of them with the code and logs."""
+    seen = {}
+    for session_id in _sessions(service, thread_id, record):
+        for event in _since_start(service, session_id, record):
+            if event.kind not in {AgentEventKind.TOOL_COMPLETED, AgentEventKind.TOOL_FAILED}:
+                continue
+            data = event.data.get("data") if isinstance(event.data.get("data"), dict) else {}
+            command = " ".join(goal_lines._command(data).split())
+            if not command or data.get("running") or data.get("returncode") is None:
+                continue
+            seen.pop(command, None)  # newest run last
+            seen[command] = data.get("returncode")
+    if not seen:
+        return ""
+    runs = list(seen.items())[-TRACE_COMMANDS:]
+    return ("\nCommands the work ran during this goal (latest run of each, oldest first; exit code). Use them to see "
+            "what produced each reported number, with which seed, data and settings; a reported number that no command "
+            "produced counts against it:\n" + "\n".join(f"- [{code}] {command[:300]}" for command, code in runs) + "\n")
+
+
+def _carry(previous, objective):
+    """What a new goal keeps of the one before it in the same conversation."""
+    charter = goal_charter.charter_of(previous) or {}
+    return {"objective": str(objective or "")[:600], "checked": bool(previous.get("checked")),
+            "ended": str(previous.get("reason") or previous.get("summary") or "")[:400],
+            "worked": bool(previous.get("turns") or previous.get("notes") or previous.get("tokens")),
+            "literature": bool(previous.get("literature")),
+            "notes": [str(note.get("text") or "")[:500] for note in (previous.get("notes") or [])[-4:]],
+            "open": [item["text"][:300] for item in charter.get("criteria") or () if item.get("status") in {"open", "unmet"}][:8]}
+
+
+def previous_lines(record):
+    """The goal before this one in the conversation, for the lead: where it ended and whether anyone checked it."""
+    previous = record.get("previous")
+    if not previous:
+        return []
+    how = ("it passed an independent check" if previous["checked"] else
+           "it ended WITHOUT an independent check, so its results are unverified: re-verify what you build on")
+    lines = [f"Previous goal in this conversation: {previous['objective']}\nHow it ended: {how}."
+             + (f" ({previous['ended']})" if previous.get("ended") else "")]
+    if previous.get("open"):
+        lines.append("Criteria it left open or unmet:\n" + "\n".join(f"- {text}" for text in previous["open"]))
+    if previous.get("notes"):
+        lines.append("Its last notes:\n" + "\n".join(f"- {text}" for text in previous["notes"]))
+    return lines
+
+
 def _spawn_checker(service, thread_id, record, objective):
     service._prepare_turn(service.store.load(thread_id))  # the conversation's model, freshly connected
+    _charge(service, thread_id, record)
     deeper = ""
     if record.get("hours") and _left(record) > 0:
         deeper = CHECK_DEEPER.format(hours=f"{record['hours']:g} h", left=_span(_left(record)))
+    elif not record.get("hours") and _room_to_deepen(record):
+        deeper = CHECK_DEEPER_BUDGET.format(left=f"{1 - record['tokens'] / max(1, record['tokenBudget']):.0%}")
     task = (CHECK_PROMPT + objective + goal_charter.checker_lines(record) + _previous_review(record) + deeper
-            + _dropped_line(service, thread_id))
+            + _dropped_line(service, thread_id) + _gaps_line(record) + _trace(service, thread_id, record))
     snapshot = service.runtime.agent_control.spawn(thread_id, task, role="goal-check", history_mode="none", background=True)
     record.update(phase="checking", checkerId=snapshot.node.session_id, checkerPressed=False, checkerFailingSince=0,
                   checkerAttempts=0, checkerRetryAt=0)
@@ -380,7 +521,7 @@ def _collect(service, thread_id, record, objective):
             record["deepens"] += 1
             review["deeper"] = deeper[:8]
             added = goal_charter.add_review_round(record, record["deepens"], deeper[:8])
-            text = REVISION.format(round=record["deepens"], summary=summary[:600], left=_span(_left(record)),
+            text = REVISION.format(round=record["deepens"], summary=summary[:600], left=_room_left(record),
                                    ids=", ".join(item["id"] for item in added) or "none new")
             if not goal_charter.charter_of(record):  # a goal from before charters: the requests travel as text
                 text += "\n" + "\n".join(f"- {item}" for item in deeper[:8])
@@ -411,11 +552,24 @@ def _collect(service, thread_id, record, objective):
     return True
 
 
-def _should_deepen(record, deeper):
+def _room_to_deepen(record):
+    """Whether a sound result still has room for a revision round: the person's time when they gave one, else the
+    budget alone, for fewer rounds."""
     hours = record.get("hours") or 0
-    return bool(deeper and hours and record.get("deepens", 0) < MAX_DEEPENS
-                and _left(record) > DEEPEN_TIME_LEFT * hours * 3600
-                and record["tokens"] < (1 - DEEPEN_BUDGET_LEFT) * record["tokenBudget"])
+    budget = record["tokens"] < (1 - DEEPEN_BUDGET_LEFT) * record["tokenBudget"]
+    if hours:
+        return budget and record.get("deepens", 0) < MAX_DEEPENS and _left(record) > DEEPEN_TIME_LEFT * hours * 3600
+    return budget and record.get("deepens", 0) < NO_TIME_DEEPENS
+
+
+def _room_left(record):
+    if record.get("hours"):
+        return f"{_span(_left(record))} of the person's time is"
+    return f"{1 - record['tokens'] / max(1, record['tokenBudget']):.0%} of the token budget is"
+
+
+def _should_deepen(record, deeper):
+    return bool(deeper) and _room_to_deepen(record)
 
 
 def _made_progress(service, thread_id, turn):

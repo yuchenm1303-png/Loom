@@ -38,8 +38,8 @@ PASSED = answer(json.dumps({"verdict": "passed", "summary": "跑过了，结果�
 REJECTED = answer(json.dumps({"verdict": "needs_changes", "summary": "结果不成立", "issues": ["评估脚本跑不通"]}))
 
 
-def conversation(tmp_path, responses):
-    service, runtime, platform, _, source = build(tmp_path, responses)
+def conversation(tmp_path, responses, tools=()):
+    service, runtime, platform, _, source = build(tmp_path, responses, tools=tools)
     service.turn_start({"threadId": source, "input": "你有一整晚", "weave": True})
     settle(service, source)
     return service, runtime, platform, source
@@ -708,22 +708,40 @@ def test_a_correct_result_with_most_of_the_night_left_goes_deeper(tmp_path):
         runtime.close()
 
 
-@pytest.mark.parametrize("change", ["no time given", "time nearly up", "budget nearly used", "deepened enough"])
+@pytest.mark.parametrize("change", ["no time and deepened enough", "no time and budget nearly used", "time nearly up",
+                                    "budget nearly used", "deepened enough"])
 def test_a_pass_finishes_when_there_is_no_room_to_go_deeper(tmp_path, change):
-    start = START if change == "no time given" else NIGHT
+    start = START if change.startswith("no time") else NIGHT
     service, runtime, _, source = conversation(tmp_path, [start, DONE, answer("做完了"), DEEPER])
     try:
         record = service.weave_goals.get(source)
         if change == "time nearly up":
             record["startedAt"] -= 7 * 3600
-        elif change == "budget nearly used":
+        elif change.endswith("budget nearly used"):
             record["baseCharged"] -= 0.8 * record["tokenBudget"]
         elif change == "deepened enough":
             record["deepens"] = goal.MAX_DEEPENS
+        elif change == "no time and deepened enough":
+            record["deepens"] = goal.NO_TIME_DEEPENS
         service.weave_goals.put(source, record)
         tick(service, source, 3)
         final = state(service, source)
         assert final["status"] == "complete" and final["checked"] is True, change
+    finally:
+        runtime.close()
+
+
+def test_with_no_time_given_a_sound_result_with_budget_left_still_goes_deeper(tmp_path):
+    # Real "继续吧" goal: no time given, three quarters of the budget left, and no revision round could ever start.
+    service, runtime, platform, source = conversation(tmp_path, [START, DONE, answer("做完了"), DEEPER, answer("加了消融")])
+    try:
+        tick(service, source, 2)
+        record = service.weave_goals.get(source)
+        assert record["deepens"] == 1 and record["phase"] == "working"
+        checker = [text for text in said_in(platform) if "You are an independent checker" in text]
+        assert checker and "No time was given" in checker[0] and "of its token budget remains" in checker[0]
+        tick(service, source)
+        assert any("再加一组消融实验" in text and "of the token budget is left" in text for text in said_in(platform))
     finally:
         runtime.close()
 
