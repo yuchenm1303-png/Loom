@@ -699,17 +699,19 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, onBack, o
           }} />
           <div className="m-composer-tools">
             <button type="button" className="m-tool" aria-label={picking ? "正在选择附件" : "添加附件"} title="添加文件或图片 · 单个最大 10 MB，最多 10 个" disabled={!online || picking || sending || buildBusy || thread?.archived || attachments.length >= MAX_ATTACHMENTS} onClick={() => void attach()}><Plus {...ICON} /></button>
-            <button type="button" className="m-chip" disabled={sending || buildBusy || opening} onClick={() => setControls(true)}>
+            <button type="button" className="m-chip" data-press="none" disabled={sending || buildBusy || opening} onClick={() => setControls(true)}>
               <span>
-                <ShieldCheck size={14} strokeWidth={1.9} />
-                <b key={`${mode}:${loom.models?.current?.selection ?? ""}`}>{MODE_COPY[mode]?.name ?? mode} · {loom.models?.current?.name || loom.models?.current?.model || "模型"}</b>
-                <ChevronDown size={14} strokeWidth={1.75} />
+                <b key={`${mode}:${loom.models?.current?.selection ?? ""}`}>
+                  <span className="m-chip-mode">{MODE_COPY[mode]?.name ?? mode}</span>{" "}
+                  <span className="m-chip-model">{loom.models?.current?.name || loom.models?.current?.model || "模型"}</span>
+                </b>
+                <ChevronDown size={12} strokeWidth={2} />
               </span>
             </button>
             {running && !text.trim() && !attachments.length ? (
               <button type="button" key="stop" className="m-round is-stop" aria-label="停止运行" disabled={!online} onClick={() => void loom.interrupt().catch(fail)}><Square size={14} strokeWidth={2} fill="currentColor" /></button>
             ) : (
-              <button type="button" key="send" className="m-round is-send" aria-label={sending ? "正在发送" : "发送"} disabled={!online || sending || picking || buildBusy || thread?.archived || !attachmentsReady || (!text.trim() && !attachments.length)} onClick={() => void submit()}>{sending ? <i className="m-attachment-spinner" /> : <ArrowUp size={19} strokeWidth={2.25} />}</button>
+              <button type="button" key="send" className="m-round is-send" aria-label={sending ? "正在发送" : "发送"} disabled={!online || sending || picking || buildBusy || thread?.archived || !attachmentsReady || (!text.trim() && !attachments.length)} onClick={() => void submit()}>{sending ? <i className="m-attachment-spinner" /> : <ArrowUp size={18} strokeWidth={2} />}</button>
             )}
           </div>
         </div>
