@@ -141,6 +141,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     return {};
   },
   "project/list": () => ({ projects, unfiledThreadCount: 0 }),
+  "thread/handoff_status": () => ({ incoming: null, outgoing: [] }),
   "thread/read": args => {
     const id = String(args.threadId);
     navigation.reads.push(id);

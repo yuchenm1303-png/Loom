@@ -15,7 +15,7 @@
  * Styles: project-mode-toggle.css (stage, shell, composer) and project-flow.css (the hub's cards and cables).
  * Reduced motion: an instant swap. */
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { DUR, DUR_OUT, SPRING } from "../motion/tokens";
+import { DUR, DUR_OUT, RETAIN_MARGIN_MS, SPRING } from "../motion/tokens";
 import { prefersReducedMotionNow } from "../motion/useReducedMotion";
 
 export type Mode = "chat" | "project";
@@ -29,8 +29,18 @@ const pane = () => document.querySelector(".pf-toggle")?.closest<HTMLElement>(".
 const CLEAR = "rgba(0, 0, 0, 0) 0px 0px 0px 0px";
 /** How long the parked shell waits for the other view to be drawn once its conversation is open (a hub's overview may still be loading). */
 const WAIT_MS = 1500;
-/** Where each end's box was last seen, in this pane's geometry: for the conversation it belongs to, and for its mode. */
+/** The stage width under which the hub's columns stack (`@container pf-stage` in project-flow.css). */
+const HUB_ALONE_BELOW = 820;
+/** Where each end's box was last seen, in this pane's geometry: for the conversation it belongs to, and for its mode.
+ *  The modes' boxes are kept across launches: guessed instead, the first switch of every launch stopped short and hopped. */
 const seen = new Map<string, Look>();
+const SEEN_KEY = "loom.modeMorphSeen";
+const SEEN_KEPT = 12;
+try {
+  for (const [key, value] of JSON.parse(localStorage.getItem(SEEN_KEY) || "[]") as [string, Look][]) {
+    if (value?.box?.width && value.center && Array.isArray(value.shadow)) seen.set(key, value);
+  }
+} catch { /* private window, or something else wrote it */ }
 
 function look(node: HTMLElement) {
   const box = node.getBoundingClientRect(), style = getComputedStyle(node);
@@ -48,21 +58,31 @@ const seenKey = (mode: Mode, place = "") => {
   return `${Math.round(box?.left ?? 0)},${Math.round(box?.width ?? 0)},${Math.round(box?.height ?? 0)}:${mode}:${place}`;
 };
 function remember(mode: Mode, place: string | undefined, seenLook: Look) {
-  seen.set(seenKey(mode), seenLook);
+  const general = seenKey(mode);
+  seen.delete(general);  // the newest last, so that the oldest are the ones dropped below
+  seen.set(general, seenLook);
   if (place) seen.set(seenKey(mode, place), seenLook);
+  try {
+    const modes = [...seen].filter(([key]) => key.endsWith(":"));
+    localStorage.setItem(SEEN_KEY, JSON.stringify(modes.slice(-SEEN_KEPT)));
+  } catch { /* private window */ }
 }
 
 /** Where the other end will be. Never seen in this pane's size: laid out as the hub and the composer lay themselves out;
  *  the shell settles on the real box when it is drawn. */
 function expected(mode: Mode, place: string | undefined, from: Look): Look {
-  const known = (place && seen.get(seenKey(mode, place))) || seen.get(seenKey(mode));
+  // A build space with no conversation yet opens a new, empty hub: it stands apart from where the last one with a thread stood.
+  const known = (place && seen.get(seenKey(mode, place))) || (place || mode === "chat" ? seen.get(seenKey(mode)) : undefined);
   if (known) return known;
   const area = pane()?.getBoundingClientRect();
   if (!area) return from;
-  const width = mode === "project" ? Math.max(340, Math.min(460, area.width * .4)) : Math.min(860, area.width - 64);
-  const height = mode === "project" ? 171 : 107;
-  const top = mode === "project" ? area.top + area.height / 2 - 10 : area.bottom - 38 - height;
-  const left = area.left + (area.width - width) / 2;
+  // Three columns (the right one wider than the left), or the hub alone across a narrow stage.
+  const stacked = area.width < HUB_ALONE_BELOW;
+  const width = mode === "project" ? (stacked ? area.width - 64 : Math.max(340, Math.min(460, area.width * .4))) : Math.min(860, area.width - 64);
+  const height = mode === "project" ? 195 : 107;
+  // A hub under a thread stands low in the stage; an empty one in the middle of it.
+  const top = mode === "chat" ? area.bottom - 38 - height : place ? area.top + area.height * .62 : area.top + area.height / 2 - height / 2 - 16;
+  const left = area.left + (area.width - width) / 2 - (mode === "project" && !stacked ? 12 : 0);
   return { ...from, box: { ...from.box, left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` },
            center: { x: left + width / 2, y: top + height / 2 } };
 }
@@ -118,6 +138,7 @@ function mark(phase: MorphPhase | null) {
   for (const [selector, name] of [[".project-mode-stage", "morph"], [".conversation-stage", "modeMorph"], [".composer-stage", "modeMorph"]] as const) {
     for (const node of pane()?.querySelectorAll<HTMLElement>(`:scope > ${selector}`) ?? []) {
       if (phase) node.dataset[name] = phase; else delete node.dataset[name];
+      if (phase && name === "morph") node.dataset.carried = "";
     }
   }
 }
@@ -183,8 +204,8 @@ export function useModeMorph() {
       enter(toBuild ? "landed" : "arrive");
       carried.remove();
       shell.current = null;
-      // To build, the cables grow for a flow step and the cards follow a press later; to chat, the contents fade in.
-      await after(toBuild ? DUR.flow + DUR.press : DUR.base);
+      // To build, the cables grow and the cards come up as they reach them; to chat, the contents fade in.
+      await after(toBuild ? DUR_OUT.fast + DUR.base + RETAIN_MARGIN_MS : DUR.base);
       if (current()) stop();
     } catch (cause) {
       stop();

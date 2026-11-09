@@ -21,11 +21,17 @@ const trace = (index) => page => page.evaluate(async (index) => {
       const hub = document.querySelector(".project-mode-stage .pf-composer");
       const composer = document.querySelector(".composer-stage .composer");
       const scroller = document.querySelector(".transcript-scroll");
+      const stageNode = document.querySelector(".project-mode-stage");
+      const bodies = [...document.querySelectorAll(".pf-cable-body")];
+      const sockets = [...document.querySelectorAll(".pf-socket")];
       frames.push({ t: performance.now() - t0, phase: morph ? morph.dataset.morph || morph.dataset.modeMorph : null, shell: box(shell),
         hubMounted: Boolean(document.querySelector(".project-mode-stage")), chatMounted: Boolean(document.querySelector(".conversation-stage")),
         hubShown: hub && getComputedStyle(hub).visibility === "visible" ? box(hub) : null,
         composerShown: composer && getComputedStyle(composer).visibility === "visible" ? box(composer) : null,
         transcript: shows(scroller), scroll: scroller?.scrollTop,
+        stage: stageNode ? Number(getComputedStyle(stageNode).opacity) : null,
+        cables: bodies.length, cableLeft: bodies.length ? Math.max(...bodies.map((node) => 1 + parseFloat(getComputedStyle(node).strokeDashoffset) / 100)) : null,
+        socket: sockets.length ? Math.max(...sockets.map((node) => Number(getComputedStyle(node).opacity))) : null,
         thumb: new DOMMatrix(getComputedStyle(document.querySelector(".pf-toggle-thumb")).transform).m41 });
       quiet = !morph && !shell && performance.now() - t0 > 100 ? quiet + 1 : 0;
       if (quiet > 10 || performance.now() - t0 > 6000) resolve(); else requestAnimationFrame(tick);
@@ -99,6 +105,24 @@ try {
       assert.ok(seen.some((frame) => frame.transcript > .1 && frame.transcript < .9), `${name}: it fades in`);
     }
 
+    if (index === 1) {
+      // The cables grow out of the hub as it lands, and the finished hub is not faded in once more when the carry ends.
+      // (On a warm hub the cables may be drawn a frame after the landing: they grow from then.)
+      const landing = frames.findIndex((frame) => frame.phase === "landed" && frame.cables);
+      assert.ok(landing >= 0 && frames[landing].cables, `${name}: it lands on a hub with cables`);
+      assert.ok(frames[landing].cableLeft < .5, `${name}: the cables are not all there on landing (${frames[landing].cableLeft})`);
+      assert.ok(frames.at(-1).cableLeft > .99, `${name}: they reach their cards`);
+      frames.slice(landing).forEach((frame) => assert.equal(frame.stage, 1, `${name}: the hub stays shown at ${Math.round(frame.t)} ms (${frame.phase})`));
+    } else {
+      // No cable or socket stays behind while the shell carries the box away: the cards are gone, nothing would be at their ends.
+      const away = frames.filter((frame) => frame.phase === "sink" && frame.cables && frame.shell && frame.t - flying[0].t > 70);
+      assert.ok(away.length, `${name}: the hub is still mounted under the shell`);
+      away.forEach((frame) => {
+        assert.ok(frame.cableLeft < .05, `${name}: a cable is still out at ${Math.round(frame.t)} ms (${frame.cableLeft})`);
+        assert.ok(frame.socket < .05, `${name}: a socket still shows at ${Math.round(frame.t)} ms (${frame.socket})`);
+      });
+    }
+
     // The thumb travels to the chosen item.
     const thumbs = frames.map((frame) => frame.thumb);
     const travel = Math.abs(thumbs.at(-1) - thumbs[0]);
@@ -106,6 +130,14 @@ try {
     assert.ok(Math.max(...thumbs.slice(1).map((value, at) => Math.abs(value - thumbs[at]))) < travel * .6, `${name}: the thumb travels, it does not jump`);
     await page.waitForTimeout(300);
   }
+  // The next launch knows where the hub stands: the shell goes there in one flight, it does not stop short and hop.
+  await open(page);
+  const relaunched = await trace(1)(page);
+  const inAir = relaunched.filter((frame) => frame.shell);
+  const swapped = relaunched.find((frame) => frame.hubMounted);
+  const afterSwap = inAir.filter((frame) => frame.t >= swapped.t).map((frame) => frame.shell);
+  assert.ok(afterSwap.length, "relaunched: the shell is parked over the swap");
+  assert.ok(afterSwap.every((box) => Math.hypot(box[0] - afterSwap[0][0], box[1] - afterSwap[0][1]) < 1.5), "relaunched: the shell does not hop after it has parked");
   await page.close();
 
   // A row of the new list chosen while the shell is in the air is where this goes: the landing must not overrule it.
@@ -137,5 +169,5 @@ try {
   assert.equal(await third.evaluate(() => Number(getComputedStyle(document.querySelector(".conversation-stage > *")).opacity)), 1, "and shows again");
   await third.close();
   assert.deepEqual(errors, []);
-  console.log("Mode carry: the shell leaves at once, views swap at rest, the hand-over has no gap, the transcript fades in hidden, the thumb travels, a chosen row stays");
+  console.log("Mode carry: no cable stays behind, the hub does not fade twice, the landing spot survives a relaunch, the shell leaves at once, views swap at rest, the hand-over has no gap, the transcript fades in hidden, the thumb travels, a chosen row stays");
 } finally { await browser.close(); }

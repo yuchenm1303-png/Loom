@@ -89,8 +89,10 @@
 /* Each a stacking context of its own, so nothing inside them (the composer raises its parts) comes over the stage. */
 .conversation-stage[data-mode-morph],
 .composer-stage[data-mode-morph] { z-index: 0; }
-/* It is drawn just as the shell hands over: its own fade would show the canvas through the hand-over. */
-.project-mode-stage[data-morph] { z-index: 2; grid-column: 1; animation: none; }
+.project-mode-stage[data-morph] { z-index: 2; grid-column: 1; }
+/* It is drawn just as the shell hands over: its own fade would show the canvas through the hand-over. `data-carried`
+   outlives the phases: lifting `animation: none` when the carry ends would play the fade then, over a finished hub. */
+.project-mode-stage:is([data-morph], [data-carried]) { animation: none; }
 
 /* The transcript leaves with the composer's contents and comes back with them: the shell travels over an empty canvas,
    and the views can swap under it unseen. */
@@ -100,7 +102,7 @@
 }
 .conversation-stage[data-mode-morph="arrive"] > * { transition: opacity var(--loom-dur-base) var(--loom-ease-out); }
 /* The hub is built as the shell lands, so its cards have no entrance behind them: they follow the cables in. */
-.project-mode-stage[data-morph="landed"] .pf-slot { animation: pf-mode-fade var(--loom-dur-base) var(--loom-ease-out) var(--loom-dur-press) backwards; }
+.project-mode-stage[data-morph="landed"] .pf-slot { animation: pf-mode-fade var(--loom-dur-base) var(--loom-ease-out) var(--loom-dur-fast-out) backwards; }
 
 /* Everything around the composer too (the project's git bar): the box alone stays for the shell to take. */
 .composer-stage:is([data-mode-morph="lift"], [data-mode-morph="rise"], [data-mode-morph="unplug"], [data-mode-morph="sink"]) .composer > *,

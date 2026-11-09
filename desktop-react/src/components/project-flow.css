@@ -1711,23 +1711,27 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 /* The 对话 / 建造 switch (modeMorph.ts) carries the chat composer into the hub and back.
    lift / rise: the hub and everything around it wait unseen while the shell travels; nothing
    plays yet (animation: none), so their entrances start on landing.
-   landed: the hub's contents fade in, the cables grow out of it, the cards follow a press later.
-   unplug / sink: the cards and the hub's contents fade, the cables retract into the hub, then
-   the hub hands its box to the shell. */
+   landed: the hub's contents fade in, the cables grow out of it, each card comes up as its cable reaches it.
+   unplug / sink: the cards and the hub's contents fade and the cables retract into the hub, all
+   in the time it takes before the hub hands its box to the shell: no cable is left behind with
+   nothing at its end. */
 .project-mode-stage:is([data-morph="lift"], [data-morph="rise"]) :is(.pf-composer, .pf-slot, .pf-thread, .pf-cables, .pf-cable-body, .pf-flow, .pf-loom) {
   visibility: hidden;
   animation: none;
 }
 .project-mode-stage[data-morph="landed"] :is(.pf-composer > *, .pf-thread) { animation: pf-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
-.project-mode-stage[data-morph="landed"] .pf-slot { transition-delay: var(--loom-dur-press); }
-.project-mode-stage[data-morph="landed"] .pf-loom { animation-delay: var(--loom-dur-press); }
-.project-mode-stage:is([data-morph="unplug"], [data-morph="sink"], [data-morph="arrive"]) :is(.pf-slot, .pf-thread, .pf-loom, .pf-socket, .pf-flow, .pf-composer > *) {
+.project-mode-stage[data-morph="landed"] .pf-cable-body { animation: pf-cable-grow var(--loom-dur-base) var(--loom-ease-glide) backwards; }
+.project-mode-stage[data-morph="landed"] .pf-socket { animation: pf-fade var(--loom-dur-press) var(--loom-ease-out) backwards; }
+.project-mode-stage[data-morph="landed"] .pf-slot { transition-delay: var(--loom-dur-fast-out); }
+.project-mode-stage[data-morph="landed"] .pf-loom { animation-delay: var(--loom-dur-fast-out); }
+@keyframes pf-cable-grow { from { stroke-dashoffset: -100; } }
+.project-mode-stage:is([data-morph="unplug"], [data-morph="sink"], [data-morph="arrive"]) :is(.pf-slot, .pf-thread, .pf-loom, .pf-socket, .pf-flow, .pf-pulse, .pf-composer > *) {
   opacity: 0;
   transition: opacity var(--loom-dur-fast-out) var(--loom-ease-exit);
 }
 .project-mode-stage:is([data-morph="unplug"], [data-morph="sink"], [data-morph="arrive"]) .pf-cable-body {
   stroke-dashoffset: -100;
-  transition: stroke-dashoffset var(--loom-dur-base-out) var(--loom-ease-exit);
+  transition: stroke-dashoffset var(--loom-dur-fast-out) var(--loom-ease-exit);
 }
 .project-mode-stage:is([data-morph="sink"], [data-morph="arrive"]) .pf-composer { visibility: hidden; }
 

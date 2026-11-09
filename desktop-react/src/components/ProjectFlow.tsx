@@ -485,7 +485,8 @@ function useCables(stage: React.RefObject<HTMLDivElement | null>, hub: React.Ref
       next.set(item.id, { x1: item.x1, y1: item.y1, y2, turn });
       const reveal = still ? 1 : cableBirthProgress(item.card);
       if (reveal < 1) following = true;
-      out.push({ ...cablePath(item, y2, turn), reveal });
+      // Only a birth owns the offset: a finished cable's inline 0 would outrank the exits in project-flow.css.
+      out.push({ ...cablePath(item, y2, turn), reveal: reveal < 1 ? reveal : undefined });
     }
     shown.current = next;
     if (hubProgress >= 1) { hubClock.current = null; }
