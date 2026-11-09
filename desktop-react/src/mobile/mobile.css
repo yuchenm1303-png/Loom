@@ -648,11 +648,6 @@ html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-verb {
   background: none; -webkit-text-fill-color: currentColor; color: var(--wv-ink-2); animation: none;
 }
 html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-halo { animation: none; opacity: .35; transform: scale(.8); }
-html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-node::before {
-  content: ""; position: absolute; width: 22px; height: 22px; box-sizing: border-box; left: 50%; top: 50%; margin: -11px 0 0 -11px;
-  border: 1px solid var(--wv-line); border-top-color: var(--wv-accent);
-  border-radius: 50%; pointer-events: none; animation: m-tool-orbit 1.4s linear infinite;
-}
 /* Full width on the phone, so the card sits over the thread's rail: opaque and above it, so the rail stops at
    the card instead of running through its edge. */
 html[data-loom-surface="mobile"] .m-stage .wv-sheet {
@@ -661,11 +656,6 @@ html[data-loom-surface="mobile"] .m-stage .wv-sheet {
 }
 html[data-loom-surface="mobile"] .m-stage .wv-sheet-output { max-height: min(280px, 40dvh); overscroll-behavior: contain; }
 html[data-loom-surface="mobile"] .m-stage .wv-sub.is-tail .wv-sub-text { animation: none; }
-@keyframes m-tool-orbit { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-node::before { animation: none; }
-}
-html[data-loom-surface="mobile"][data-loom-reduced-motion="true"] .m-stage .wv-row.is-executing .wv-node::before { animation: none; }
 html[data-loom-surface="mobile"] .m-stage .transcript-scroll { padding-inline: 16px; scrollbar-gutter: auto; }
 html[data-loom-surface="mobile"] .m-stage .transcript { width: 100%; max-width: none; margin-inline: 0; padding: 18px 0 26px; gap: 24px; box-sizing: border-box; }
 html[data-loom-surface="mobile"] .conversation-stage[data-has-entries]::before,
@@ -712,7 +702,6 @@ html[data-loom-surface="mobile"] .m-stage .wv-stage { --wv-row: 34px; --wv-mid: 
 html[data-loom-surface="mobile"] .m-stage .wv-row { border-radius: 8px; }
 html[data-loom-surface="mobile"] .m-stage .wv-line { border-radius: 8px; }
 html[data-loom-surface="mobile"] .m-stage .wv-sub { padding-bottom: 4px; line-height: 17px; }
-html[data-loom-surface="mobile"] .m-stage .wv-row.is-executing .wv-node::before { width: 20px; height: 20px; margin: -10px 0 0 -10px; }
 html[data-loom-surface="mobile"] .m-stage .turn-process-header { min-height: 34px; }
 /* A running verb holds still on the phone, but its birth fade must stay in the same animation list:
    dropping it while running and restoring it on completion replayed the fade (90ms of a blank verb)

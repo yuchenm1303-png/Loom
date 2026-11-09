@@ -34,9 +34,8 @@ try {
     assert.ok(await page.evaluate(() => window.tailNode === document.querySelector(".wv-sub-text")), "output deltas preserve the tail node, preventing repeated fade-in");
     await page.evaluate(() => clearInterval(window.outputTimer));
     assert.ok(!/shimmer/.test(await page.locator(".wv-verb").evaluate(el => getComputedStyle(el).animationName)), "tool copy stays still while its status mark moves: no shimmer, only its one birth fade");
-    const ring = await row.locator(".wv-node").evaluate(el => { const css = getComputedStyle(el, "::before"); return { width: css.width, height: css.height, animation: css.animationName }; });
-    assert.equal(ring.width, ring.height);
-    assert.equal(ring.animation, "m-tool-orbit");
+    const ring = await row.locator(".wv-node").evaluate(el => getComputedStyle(el, "::before").animationName);
+    assert.equal(ring, "none", "a running step on the phone has no spinning ring around its glyph");
     await row.click();
     await page.locator('.wv-detail[data-open="true"] .wv-sheet-output').waitFor();
     for (let i = 0; i < 4; i++) await row.click();
