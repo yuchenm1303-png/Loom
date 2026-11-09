@@ -302,6 +302,7 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   },
   "approval/respond": () => { const gate = approvalGate; approvalGate = null; window.setTimeout(() => gate?.(), 120); return {}; },
   "tools/catalog": () => ({ tools: [] }),
+  "thread/handoff_status": () => ({ incoming: null, outgoing: [] }),
 };
 
 const state = {
