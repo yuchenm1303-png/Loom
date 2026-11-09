@@ -7,9 +7,35 @@ from .durable_state import DurableThreadStateStore, GoalStatus
 from .tools import AgentTool, ToolContext, ToolResult
 
 
-def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None, claim_note=None) -> tuple[AgentTool, ...]:
+PAUSE_REFUSED = (
+    "Only the person can pause a goal: no message of theirs reached this turn, so this goal turn keeps working. "
+    "Do not tell the person the goal is paused."
+)
+
+
+def _person_spoke(plan_store, context: ToolContext) -> bool:
+    """Whether the person's own words reached this turn: the message that started it, or one sent while it ran.
+    A goal turn the Host started itself has neither, and must not be able to stop its own goal."""
+    turn_events = getattr(plan_store, "turn_events", None)
+    if plan_store is None or not callable(turn_events):
+        return True  # nothing to tell turns apart by; the person's own runtime, not a goal driver
+    for event in turn_events(context.session_id, context.turn_id):
+        source = str(event.data.get("source") or "")
+        if event.kind is AgentEventKind.TURN_STARTED and source != "goal":
+            return True
+        if event.kind is AgentEventKind.USER_MESSAGE and source == "steering":
+            return True
+    return False
+
+
+def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None, claim_note=None,
+                         pause=None) -> tuple[AgentTool, ...]:
     """claim_note(session_id) -> text or None: what marking complete means here, when someone else decides it.
-    A real lead was told "Durable goal marked complete." and reported "independently verified" before any check ran."""
+    A real lead was told "Durable goal marked complete." and reported "independently verified" before any check ran.
+
+    pause(session_id) -> text or None: stops the goal the way the person's own stop does, when a driver owns it.
+    A real lead was asked "请先暂停一下", answered "已暂停" with no way to pause, and the driver started the next
+    goal turn a few seconds later."""
     def get_state(context: ToolContext, _arguments: dict[str, Any]) -> ToolResult:
         goal = store.get_goal(context.session_id)
         queue = store.list_queue(context.session_id)
@@ -44,8 +70,22 @@ def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None, cla
 
     def mark_goal(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         status = GoalStatus(str(arguments["status"]))
-        if status not in {GoalStatus.COMPLETE, GoalStatus.BLOCKED}:
-            raise ValueError("model may only mark a durable goal complete or blocked")
+        if status not in {GoalStatus.COMPLETE, GoalStatus.BLOCKED, GoalStatus.PAUSED}:
+            raise ValueError("model may only mark a durable goal complete, blocked or paused")
+        if status is GoalStatus.PAUSED:
+            if not _person_spoke(plan_store, context):
+                raise ValueError(PAUSE_REFUSED)
+            current = store.get_goal(context.session_id)
+            if current is None:
+                raise ValueError("this conversation has no durable goal to pause")
+            note = pause(context.session_id) if pause is not None else None
+            if note is None:
+                current = store.set_goal_status(context.session_id, status)
+                context.emit(AgentEventKind.GOAL_UPDATED, {
+                    "objective": current.objective, "status": current.status.value,
+                    "token_budget": current.token_budget, "tokens_used": current.tokens_used, "source": "model"})
+            return ToolResult(ok=True, content=note or "Durable goal paused; nothing runs until the person resumes it.",
+                              data={"objective": current.objective, "status": GoalStatus.PAUSED.value})
         if status is GoalStatus.COMPLETE and plan_store is not None:
             from .plan_state import active_plan, summary
             plan = active_plan(plan_store.events(context.session_id))
@@ -88,13 +128,16 @@ def durable_thread_tools(store: DurableThreadStateStore, *, plan_store=None, cla
         AgentTool(
             name="mark_thread_goal",
             description=(
-                "Mark the current durable Loom goal complete or blocked. Use complete only when the goal is "
-                "actually finished; use blocked only when further progress requires an external dependency."
+                "Mark the current durable Loom goal complete, blocked or paused. Use complete only when the goal is "
+                "actually finished; use blocked only when further progress requires an external dependency; use "
+                "paused when the person asks to pause or stop the goal, in the turn where they ask. A goal keeps "
+                "running after your turn ends until this succeeds, so never tell the person it is paused, stopped "
+                "or finished unless this call returned ok."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "status": {"type": "string", "enum": ["complete", "blocked"]},
+                    "status": {"type": "string", "enum": ["complete", "blocked", "paused"]},
                 },
                 "required": ["status"],
                 "additionalProperties": False,

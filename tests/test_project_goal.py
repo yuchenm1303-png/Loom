@@ -207,6 +207,40 @@ def test_a_goal_waiting_for_an_approval_says_so(tmp_path):
         runtime.close()
 
 
+PAUSE = calling("mark_thread_goal", {"status": "paused"}, "call-pause")
+
+
+def test_the_person_asking_to_pause_stops_the_goal(tmp_path):
+    # Real run: "请先暂停一下" was answered "已暂停" with no way to pause, and the next goal turn began seconds later.
+    service, runtime, platform, source = conversation(tmp_path, [START, answer("0"), PAUSE, answer("已暂停"), answer("不该发生")])
+    try:
+        service.turn_start({"threadId": source, "input": "请先暂停一下", "weave": True})
+        settle(service, source)
+        assert runtime.get_goal(source).status is GoalStatus.PAUSED
+        assert state(service, source)["reason"] == goal.PAUSED_ASKED
+        said = json.dumps([message.content for message in platform.requests[-1].messages], ensure_ascii=False, default=str)
+        assert goal.PAUSED_NOTE[:30] in said, "the lead is told it really is paused"
+        before = len(platform.requests)
+        tick(service, source, 3)
+        assert len(platform.requests) == before, "a paused goal starts no turn"
+        goal.control(service, {"threadId": source, "action": "resume"})
+        tick(service, source)
+        assert len(platform.requests) == before + 1, "the person's resume brings it back"
+    finally:
+        runtime.close()
+
+
+def test_a_goal_turn_cannot_pause_its_own_goal(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [START, answer("0"), PAUSE, answer("我停了")])
+    try:
+        tick(service, source)
+        assert runtime.get_goal(source).status is GoalStatus.ACTIVE, "no person asked; the Host keeps the goal going"
+        said = json.dumps([message.content for message in platform.requests[-1].messages], ensure_ascii=False, default=str)
+        assert "Only the person can pause" in said
+    finally:
+        runtime.close()
+
+
 def test_turns_without_a_tool_stop_as_stalled(tmp_path):
     service, runtime, platform, source = conversation(tmp_path, [START, answer("0"), answer("1"), answer("2"), answer("3")])
     try:

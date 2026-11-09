@@ -232,6 +232,25 @@ def _stop(service, thread_id, record, status, reason):
     return True
 
 
+PAUSED_ASKED = "Paused at the person's request"
+PAUSED_NOTE = ("Goal paused: nothing runs until the person resumes it from the goal card. Tell them it is paused and "
+               "where it stands, and do not start new work in this turn.")
+
+
+def pause_on_request(service, thread_id):
+    """The person asked the lead to pause: stopped as the card's own stop does, its lines with it. The running turn
+    is the lead's reply to that request, so it is left to finish; the driver starts no turn after it."""
+    with service.project_runner.guard:
+        record = service.weave_goals.get(thread_id)
+        if not record:
+            return None
+        if record.get("phase") == "done":
+            raise ValueError("This goal is already finished")
+        record["handledTurn"] = service.store.load(thread_id).current_turn_id
+        _stop(service, thread_id, record, GoalStatus.PAUSED, PAUSED_ASKED)
+    return PAUSED_NOTE
+
+
 def _finish(service, thread_id, record, summary, checked):
     record.update(phase="done", summary=summary[:2000], checked=checked, reason="")
     goal_lines.stop_all(service, thread_id, record, "the goal finished")
