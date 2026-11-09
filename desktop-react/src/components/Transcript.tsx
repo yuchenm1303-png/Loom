@@ -1828,7 +1828,12 @@ export const Transcript = memo(function Transcript({ threadId, items, running, c
   // A conversation opens with its newest turns; the older ones of the window mount once the page has been quiet for a
   // moment (not while a turn runs), or as soon as the reader scrolls toward them.
   const firstMountedBlock = useProgressiveTurns(blockKeys, threadId, scrollRef, Boolean(running));
-  const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
+  // While a new message is on its way, the thread still names the previous turn as current until turn/start answers.
+  // That turn is finished: it must not count as active, or it would re-open its live layout and show a second
+  // "thinking" row for as long as the round trip takes (long enough to see on a phone).
+  const sendingNewTurn = turnBlocks.some((block) => block.kind === "turn" && block.id !== String(currentTurnId ?? "")
+    && block.items.some((item) => item.type === "user_message" && item.status === "sending"));
+  const activeTurnId = running && currentTurnId && !sendingNewTurn ? String(currentTurnId) : "";
   const decisionInteractiveItemId = useMemo(() => {
     if (running || promptDisabled || !onPrompt) return "";
     for (let index = items.length - 1; index >= 0; index -= 1) {

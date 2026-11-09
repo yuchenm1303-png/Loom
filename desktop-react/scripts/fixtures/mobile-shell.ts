@@ -6,6 +6,7 @@
  *
  *   ?unpaired=1    the pairing screen; window.__shell.pairing(progress) drives it
  *   ?offline=1     the computer is offline
+ *   ?latency=600   each Host call answers after this many ms (a phone on a real network; default 10)
  *
  * window.__shell.calls records every invoke, window.__shell.state(patch) changes the
  * connection, window.__shell.biometric sets the fingerprint answer.
@@ -14,6 +15,7 @@ import type { ProjectRecord, ThreadRecord } from "../../src/types/loom";
 import type { ProjectOverview } from "../../src/components/projectOverview";
 const params = new URLSearchParams(window.location.search);
 const THREAD = "thread-long";
+const LATENCY = Math.max(10, Number(params.get("latency")) || 10);
 const at = new Date(Date.now() - 180_000).toISOString();
 const LONG_LINE = `const items = useMemo(() => turns.flatMap((turn) => deriveItems(turn, approvals, presentation, modelActivity, optimisticSteers)), [turns, approvals, presentation]);`;
 const ANSWER = `## 原因
@@ -587,7 +589,7 @@ window.LoomShell = {
       }
       emit({ type: "invoke_result", id, result });
       } catch (cause) { emit({ type: "invoke_result", id, error: { code: "RPC_ERROR", message: cause instanceof Error ? cause.message : String(cause) } }); }
-    }, 10);
+    }, operation === "call" ? LATENCY : 10);
   },
   startPairing: () => shell.pairing({ state: "scanning" }),
   cancelPairing: () => shell.pairing({ state: "cancelled" }),
