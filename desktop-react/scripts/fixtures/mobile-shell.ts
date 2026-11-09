@@ -242,6 +242,79 @@ async function playLiveTurn(text: string) {
   Reflect.set(shell, "liveCompletedAt", performance.now());
 }
 
+/* A full record for the plain conversations, so every message kind the phone draws has
+   something to look at: the person's message, reasoning, commentary, file reads, a search,
+   a command with output, a failed command, a diff, and a Markdown answer. "长对话滚动性能"
+   ends in a turn still running; "升级 Electron 44" is all finished. */
+const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+const SHOWCASE_ANSWER = `## 结论
+
+长对话卡顿来自**每次流式更新都重排整段对话**。改成按轮缓存之后，200 轮的对话每帧从 18 ms 降到 4 ms。
+
+### 改动
+
+1. \`useTranscript.ts\`：已完成的轮次只算一次，结果缓存。
+2. \`Transcript.tsx\`：只有正在进行的那一轮订阅增量。
+3. 新增 \`perf/long-thread.mjs\`，回归时直接跑。
+
+\`\`\`ts
+const done = useMemo(() => finished.map(deriveTurn), [finished]);
+\`\`\`
+
+| 轮数 | 修改前 | 修改后 |
+| --- | --- | --- |
+| 50 | 6 ms | 3 ms |
+| 200 | 18 ms | 4 ms |
+
+> 还有一处没动：图片预览在滚动时会重新解码，下次再看。
+
+测试全部通过。`;
+const ELECTRON_ANSWER = `已升级到 **Electron 44**，打包和启动都验证过了。
+
+- \`package.json\`：electron 36 → 44，electron-builder 同步升级。
+- CSP 改为主进程响应头，渲染层不再写 meta。
+- 关掉了 \`RunAsNode\` 和 \`EnableNodeCliInspectArguments\` 两个 fuse。
+
+安装包体积从 92 MB 变为 96 MB。`;
+function showcaseTurn(threadId: string, turnId: string, minutes: number, ask: string, answer: string, running = false) {
+  const base = { threadId, turnId, createdAt: ago(minutes), updatedAt: ago(minutes) };
+  const items: Record<string, unknown>[] = [
+    { ...base, id: `${turnId}:u`, type: "user_message", status: "completed", text: ask, source: "user" },
+    { ...base, id: `${turnId}:s1`, type: "assistant_message", status: "completed", phase: "commentary", stepId: "s1",
+      reasoning: "先确认慢在哪：是渲染、布局还是数据整理。读一下对话组件，再用性能脚本拿数字。", text: "我先看对话组件怎么整理每一轮，再跑一次性能脚本拿实际数字。" },
+    { ...base, id: `${turnId}:read`, type: "tool_call", status: "completed", ok: true, toolName: "read_file", callId: `${turnId}-read`,
+      arguments: { path: "src/components/Transcript.tsx" }, content: "export function Transcript({ turns }) { … }  (412 lines)" },
+    { ...base, id: `${turnId}:grep`, type: "tool_call", status: "completed", ok: true, toolName: "grep", callId: `${turnId}-grep`,
+      arguments: { pattern: "deriveItems\\(", path: "src" }, content: "src/state/useTranscript.ts:88\nsrc/state/useTranscript.ts:131\nsrc/components/Transcript.tsx:57" },
+    { ...base, id: `${turnId}:fail`, type: "tool_call", status: "completed", ok: false, toolName: "exec", callId: `${turnId}-fail`,
+      arguments: { command: "npm run perf:long" }, error: "npm ERR! Missing script: \"perf:long\"" },
+    { ...base, id: `${turnId}:proc`, type: "process", status: "completed", processId: `${turnId}-p`, argv: ["node", "perf/long-thread.mjs"], cwd: "D:/work/Loom",
+      command: "node perf/long-thread.mjs --turns 200", returncode: 0,
+      stdout: "warming up (3 runs)…\nturns 50   frame 6.1 ms\nturns 200  frame 18.4 ms\nslowest: deriveItems 14.2 ms\ndone in 6.2s\n" },
+    { ...base, id: `${turnId}:s2`, type: "assistant_message", status: "completed", phase: "commentary", stepId: "s2",
+      text: "数字确认了：200 轮时每帧 18 ms，其中 14 ms 在 `deriveItems`。开始改。" },
+    { ...base, id: `${turnId}:patch`, type: "tool_call", status: "completed", ok: true, toolName: "apply_patch", callId: `${turnId}-patch`,
+      arguments: { path: "src/state/useTranscript.ts" }, content: "Updated 2 files" },
+    { ...base, id: `${turnId}:diff`, type: "file_edit", status: "completed", paths: ["src/state/useTranscript.ts", "src/components/Transcript.tsx"],
+      diff: "diff --git a/src/state/useTranscript.ts b/src/state/useTranscript.ts\n--- a/src/state/useTranscript.ts\n+++ b/src/state/useTranscript.ts\n@@ -85,4 +85,5 @@\n-  const items = turns.flatMap(deriveItems);\n+  const done = useMemo(() => finished.map(deriveTurn), [finished]);\n+  const items = [...done.flat(), ...deriveTurn(live)];\n   return items;\n" },
+  ];
+  if (running) {
+    items.push({ ...base, id: `${turnId}:run`, type: "tool_call", status: "running", toolName: "exec", callId: `${turnId}-run`, arguments: { command: "npm test -- transcript" } });
+    return { id: turnId, threadId, status: "running", startedAt: ago(minutes), items };
+  }
+  items.push({ ...base, id: `${turnId}:final`, type: "assistant_message", status: "completed", phase: "final_answer", stepId: "s3", text: answer });
+  return { id: turnId, threadId, status: "completed", startedAt: ago(minutes), completedAt: ago(minutes - 2), items };
+}
+const showcase: Record<string, () => unknown[]> = {
+  "thread-run": () => [
+    showcaseTurn("thread-run", "turn-8", 40, "长对话滚动很卡，200 轮以上就掉帧，帮我查一下原因并修好。", SHOWCASE_ANSWER),
+    showcaseTurn("thread-run", "turn-9", 3, "再把图片预览滚动时重新解码的问题也处理一下。", "", true),
+  ],
+  "thread-done": () => [
+    showcaseTurn("thread-done", "turn-e1", 30, "把 Electron 升到 44，顺便把 CSP 和 fuse 理一下。", ELECTRON_ANSWER),
+  ],
+};
+
 const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "thread/list": (args) => ({ threads: threads.filter((item) => !item.parentThreadId && (args.view === "all" || Boolean(item.archived) === (args.view === "archived")) && (!args.projectId || item.projectId === args.projectId)), counts: { active: threads.filter((item) => !item.archived).length, archived: threads.filter((item) => item.archived).length, all: threads.length } }),
   "project/list": () => { if (shell.failProjects) throw new Error("项目读取暂时失败"); return { projects, unfiledThreadCount: 0 }; },
@@ -275,7 +348,7 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "thread/archive": (args) => { const record = threads.find((item) => item.id === args.threadId)!; record.archived = Boolean(args.archived); return { thread: record }; },
   "thread/read": (args) => {
     const record = threads.find((entry) => entry.id === args.threadId) ?? threads[0];
-    if (record.id !== THREAD) return { thread: record, turns: [], hasMoreTurns: false };
+    if (record.id !== THREAD) return { thread: record, turns: showcase[record.id]?.() ?? [], hasMoreTurns: false };
     if (params.has("decision")) {  // a finished turn ending in a choice card (?decision=1)
       const card = JSON.stringify({ title: "后续研究路线", options: [{ id: "a", title: "深挖神经接收机", description: "单支路，证据连续" },
         { id: "b", title: "两条线并行", description: "共享 harness" }] });
