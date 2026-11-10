@@ -1,16 +1,47 @@
 /* Rolling text (RollText.tsx, and the same keyframes for a counter's digit and a block that changes in place).
    The old words are lifted away and the new come up from below, on one spot; each character a little behind the one
-   before it. Words that change their place are an exception to "text fades and does not move", asked for by the
+   before it, and the new ones spring. Words that change their place are an exception to "text fades and does not move", asked for by the
    designer and measured off a recording: the travel is a third of the text's own height, never more. */
 .roll { display: inline-grid; min-width: 0; }
 .roll-line { grid-area: 1 / 1; min-width: 0; white-space: pre; }
 .roll-out { pointer-events: none; }
 .roll-ch { display: inline-block; white-space: pre; }
 .roll-out .roll-ch { animation: loom-roll-away var(--loom-dur-press) var(--loom-ease-exit) both; }
-.roll-line.is-rising .roll-ch { animation: loom-roll-rise var(--loom-dur-base) var(--loom-ease-out) backwards; }
+.roll-line.is-rising .roll-ch { animation: loom-roll-rise var(--loom-dur-slow) linear backwards; }
 
 @keyframes loom-roll-away { to { opacity: 0; filter: blur(var(--roll-blur, 2px)); transform: translateY(calc(var(--roll-rise, .3em) * -1)); } }
-@keyframes loom-roll-rise { from { opacity: 0; filter: blur(var(--roll-blur, 2px)); transform: translateY(var(--roll-rise, .3em)); } }
+/* The new characters rise like a spring: 16% past the place and back (damping ratio 0.5, 16 rad/s), sampled below
+   because a stylesheet has no spring. Measured off the recording: they overshoot by about a sixth of their travel, are
+   at the top ~85ms after crossing the place and rest by ~500ms. Opacity and blur settle early and do not bounce. */
+@keyframes loom-roll-rise {
+  0% { opacity: 0.00; filter: blur(calc(var(--roll-blur, 2px) * 1.00)); transform: translateY(calc(var(--roll-rise, .3em) * 1.000)); }
+  3.8% { opacity: 0.12; filter: blur(calc(var(--roll-blur, 2px) * 0.88)); transform: translateY(calc(var(--roll-rise, .3em) * 0.954)); }
+  7.7% { opacity: 0.25; filter: blur(calc(var(--roll-blur, 2px) * 0.75)); transform: translateY(calc(var(--roll-rise, .3em) * 0.838)); }
+  11.5% { opacity: 0.37; filter: blur(calc(var(--roll-blur, 2px) * 0.63)); transform: translateY(calc(var(--roll-rise, .3em) * 0.681)); }
+  15.4% { opacity: 0.50; filter: blur(calc(var(--roll-blur, 2px) * 0.50)); transform: translateY(calc(var(--roll-rise, .3em) * 0.508)); }
+  19.2% { opacity: 0.62; filter: blur(calc(var(--roll-blur, 2px) * 0.38)); transform: translateY(calc(var(--roll-rise, .3em) * 0.338)); }
+  23.1% { opacity: 0.75; filter: blur(calc(var(--roll-blur, 2px) * 0.25)); transform: translateY(calc(var(--roll-rise, .3em) * 0.185)); }
+  26.9% { opacity: 0.87; filter: blur(calc(var(--roll-blur, 2px) * 0.13)); transform: translateY(calc(var(--roll-rise, .3em) * 0.058)); }
+  30.8% { opacity: 1.00; filter: blur(calc(var(--roll-blur, 2px) * 0.00)); transform: translateY(calc(var(--roll-rise, .3em) * -0.039)); }
+  34.6% { transform: translateY(calc(var(--roll-rise, .3em) * -0.106)); }
+  38.5% { transform: translateY(calc(var(--roll-rise, .3em) * -0.146)); }
+  42.3% { transform: translateY(calc(var(--roll-rise, .3em) * -0.162)); }
+  46.2% { transform: translateY(calc(var(--roll-rise, .3em) * -0.160)); }
+  50% { transform: translateY(calc(var(--roll-rise, .3em) * -0.144)); }
+  53.8% { transform: translateY(calc(var(--roll-rise, .3em) * -0.120)); }
+  57.7% { transform: translateY(calc(var(--roll-rise, .3em) * -0.092)); }
+  61.5% { transform: translateY(calc(var(--roll-rise, .3em) * -0.064)); }
+  65.4% { transform: translateY(calc(var(--roll-rise, .3em) * -0.038)); }
+  69.2% { transform: translateY(calc(var(--roll-rise, .3em) * -0.016)); }
+  73.1% { transform: translateY(calc(var(--roll-rise, .3em) * 0.002)); }
+  76.9% { transform: translateY(calc(var(--roll-rise, .3em) * 0.014)); }
+  80.8% { transform: translateY(calc(var(--roll-rise, .3em) * 0.022)); }
+  84.6% { transform: translateY(calc(var(--roll-rise, .3em) * 0.026)); }
+  88.5% { transform: translateY(calc(var(--roll-rise, .3em) * 0.026)); }
+  92.3% { transform: translateY(calc(var(--roll-rise, .3em) * 0.025)); }
+  96.2% { transform: translateY(calc(var(--roll-rise, .3em) * 0.021)); }
+  100% { transform: translateY(calc(var(--roll-rise, .3em) * 0)); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .roll-out { display: none; }

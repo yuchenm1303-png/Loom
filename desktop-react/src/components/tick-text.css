@@ -2,7 +2,7 @@
  * Keyframes in roll-text.css; the rest of the text stays still. */
 .tick-text { position: relative; display: inline-block; white-space: pre; font-variant-numeric: tabular-nums; }
 .tick-slot { position: relative; display: inline-block; }
-.tick-in { display: inline-block; animation: loom-roll-rise var(--loom-dur-fast) var(--loom-ease-out) 60ms backwards; }
+.tick-in { display: inline-block; animation: loom-roll-rise var(--loom-dur-slow) linear 60ms backwards; }
 .tick-ghost { position: absolute; inset: 0 auto auto 0; pointer-events: none; animation: loom-roll-away var(--loom-dur-press) var(--loom-ease-exit) both; }
 @media (prefers-reduced-motion: reduce) {
   .tick-in { animation: none; }

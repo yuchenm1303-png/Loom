@@ -7,7 +7,7 @@ import "./roll-text.css";
  * A line of words that changes by rolling: the old words are lifted away and the new ones come up from below to the
  * same place, character by character from the left (a wave, not a block). Measured off a recording of a status row:
  * each old character leaves in `press` while it rises about a third of its height and blurs; the new one starts a
- * beat after, from the same distance below, and takes `base`; the next character is 11ms behind, at most 280ms over
+ * beat after, from the same distance below, and springs into place over `slow` (past it by a sixth of its travel, then back); the next character is 11ms behind, at most 280ms over
  * the whole line. The line keeps its place the whole time (nothing is made room for by layout), and at rest it is
  * one plain text node, so a list of many titles costs nothing.
  */
@@ -39,7 +39,7 @@ export function RollText({ identity, text, className = "" }: { identity: string;
   useEffect(() => {
     if (state.outgoing === null) return;
     const longest = Math.max(Array.from(state.outgoing).length, Array.from(latest.current).length);
-    const ms = (longest - 1) * spread(longest) + NEW_AFTER_MS + DUR.base + RETAIN_MARGIN;
+    const ms = (longest - 1) * spread(longest) + NEW_AFTER_MS + DUR.slow + RETAIN_MARGIN;
     const timer = window.setTimeout(() => setState((value) => ({ ...value, outgoing: null })), ms);
     return () => window.clearTimeout(timer);
   }, [state.identity, state.outgoing]);

@@ -7,7 +7,7 @@
 /* A block that changes in place and is not plain text: the old is lifted away, the new comes up from below (keyframes in
    roll-text.css). Plain text rolls per character (RollText). */
 .crossfade--soft > .crossfade-out { animation: loom-roll-away var(--loom-dur-press) var(--loom-ease-exit) both; }
-.crossfade--soft > .crossfade-in { animation: loom-roll-rise var(--loom-dur-base) var(--loom-ease-out) 90ms backwards; }
+.crossfade--soft > .crossfade-in { animation: loom-roll-rise var(--loom-dur-slow) linear 90ms backwards; }
 @media (prefers-reduced-motion: reduce) {
   .crossfade-out { display: none; }
   .crossfade-in { animation: none; }

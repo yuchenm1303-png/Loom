@@ -48,7 +48,7 @@ html[data-loom-surface="mobile"] {
 .m-body > :nth-child(n + 3) { animation-delay: calc(var(--loom-stagger) * 2); }
 .m-project-view { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 /* Words that change in place blur across: the old go while the new come up over them (keyframes in crossfade.css). */
-.m-swap-face.is-fresh { animation: loom-roll-rise var(--loom-dur-base) var(--loom-ease-out) 90ms backwards; }
+.m-swap-face.is-fresh { animation: loom-roll-rise var(--loom-dur-slow) linear 90ms backwards; }
 .m-swap-face.is-leaving { animation: loom-roll-away var(--loom-dur-press) var(--loom-ease-exit) forwards; }
 .m-motion-value { display: inline-block; min-width: 0; max-width: 100%; }
 .m-empty, .m-offline, .m-note, .m-pair { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
