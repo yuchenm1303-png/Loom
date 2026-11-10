@@ -3,7 +3,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { RETAIN } from "../motion/tokens";
 import { prefersReducedMotionNow as prefersReducedMotion } from "../motion/useReducedMotion";
-import { advanceFollow, snapScrollOffset, TargetFlow, type FollowState } from "./followMotion";
+import { advanceFollow, PHONE_FOLLOW_SCALE, snapScrollOffset, TargetFlow, type FollowState } from "./followMotion";
 import "./transcript-scroll-stability.css";
 
 interface TranscriptScrollControllerProps {
@@ -367,7 +367,7 @@ function TranscriptScrollControllerState({
       // Content growing frame by frame is stayed with even while travelling: the gentle glide is for a view that is
       // going somewhere, not for one whose bottom edge is being drawn out under it.
       const flowing = flowRef.current.flowing(now);
-      const next = advanceFollow(motion, target, seconds, travelling && !flowing ? "travel" : "live", flowing);
+      const next = advanceFollow(motion, target, seconds, travelling && !flowing ? "travel" : "live", flowing, document.documentElement.dataset.loomSurface === "mobile" ? PHONE_FOLLOW_SCALE : 1);
       motion.position = next.position;
       motion.velocity = next.velocity;
       settled = next.settled;

@@ -73,9 +73,16 @@ export class TargetFlow {
   }
 }
 
-export function followStiffness(profile: FollowProfile, gap: number, flowing = false): number {
+/**
+ * The phone's spring is stiffer. A step of new content there is 24-76px on a screen a third the height, and the
+ * desktop's 180ms glide left the newest line below the fold for that long before sliding it up: each sync read as a
+ * bounce. At this scale a gap closes in about 80ms, a handful of frames, and the line is barely seen to travel.
+ */
+export const PHONE_FOLLOW_SCALE = 2.4;
+
+export function followStiffness(profile: FollowProfile, gap: number, flowing = false, scale = 1): number {
   const boost = Math.min(MAX_BOOST, Math.max(0, Math.abs(gap) - GAP_FREE_PX) / GAP_RAMP_PX);
-  return STIFFNESS[profile] * (1 + boost) * (flowing ? FLOW_STIFFNESS_FACTOR : 1);
+  return STIFFNESS[profile] * (1 + boost) * (flowing ? FLOW_STIFFNESS_FACTOR : 1) * scale;
 }
 
 /** The integration step: the stiffness is re-read this often, so a frame's length does not change the curve. */
@@ -96,6 +103,7 @@ export function advanceFollow(
   seconds: number,
   profile: FollowProfile,
   flowing = false,
+  scale = 1,
 ): FollowState & { settled: boolean } {
   let remaining = Math.min(FOLLOW_MAX_FRAME_S, Math.max(0, Number.isFinite(seconds) ? seconds : 0));
   let { position, velocity } = state;
@@ -109,7 +117,7 @@ export function advanceFollow(
     remaining -= dt;
     const error = position - target;
     const toward = error === 0 ? 0 : -velocity * Math.sign(error);
-    const w = Math.max(followStiffness(profile, error, flowing), toward > 0 ? toward / Math.abs(error) : 0);
+    const w = Math.max(followStiffness(profile, error, flowing, scale), toward > 0 ? toward / Math.abs(error) : 0);
     const decay = Math.exp(-w * dt);
     const carry = velocity + w * error;
     position = target + (error + carry * dt) * decay;
