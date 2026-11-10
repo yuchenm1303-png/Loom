@@ -1,3 +1,4 @@
+import { Crossfade } from "./Crossfade";
 import "./model-input-notice.css";
 import {
   ArrowUpRight,
@@ -328,7 +329,7 @@ function ThinkingCapsule({ active = true }: { active?: boolean }) {
   return (
     <div ref={ref} className="inline-thinking" role="status" aria-live="polite">
       <ThinkingGlyph />
-      <span className="thinking-shimmer">{turnPhaseLabel(phase, copy.lang) ?? copy.thinking}</span>
+      <Crossfade soft identity={turnPhaseLabel(phase, copy.lang) ?? copy.thinking}><span className="thinking-shimmer">{turnPhaseLabel(phase, copy.lang) ?? copy.thinking}</span></Crossfade>
     </div>
   );
 }

@@ -458,3 +458,9 @@ html[data-loom-theme="light"] .live-reasoning.is-thinking .live-reasoning-copy::
 :root[data-loom-reduced-motion="true"] .thinking-shimmer {
   background-position: 98% 0;
 }
+
+/* The words of the live capsule change by blurring across (Crossfade soft). Each face carries its own light band;
+   the label's birth fade belongs to the first appearance only, the crossing supplies the fade after that. */
+.inline-thinking .crossfade > .crossfade-in .thinking-shimmer,
+.inline-thinking .crossfade > .crossfade-out .thinking-shimmer { animation: var(--thinking-sweep); }
+html[data-loom-surface="mobile"] .m-stage .inline-thinking .crossfade > :is(.crossfade-in, .crossfade-out) .thinking-shimmer { animation: var(--thinking-sweep); }

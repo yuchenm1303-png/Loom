@@ -86,6 +86,12 @@ export function MotionValue({ value, children }: { value: string; children: Reac
   return <span className="m-motion-value"><Crossfade soft identity={value}>{children}</Crossfade></span>;
 }
 
+/** Plain text that may change in place (a title, a meta line): the old and the new blur across on the same spot and a
+ *  line that is too long still ends in an ellipsis. */
+export function MorphText({ text }: { text: string }) {
+  return <span className="m-morph"><Crossfade soft identity={text}>{text}</Crossfade></span>;
+}
+
 type Face = { id: string; node: ReactNode; fresh: boolean };
 /**
  * Words that change in place: the old ones go quickly while the new ones come up over them, in the same cell, so a

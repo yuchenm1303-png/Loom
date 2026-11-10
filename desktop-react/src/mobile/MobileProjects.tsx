@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MorphText } from "./MotionRows";
 import { AnimatedFold } from "../motion/AnimatedFold";
 import {
   Blocks,
@@ -306,12 +307,12 @@ export function MobileProjects({
                       )}
                     </span>
                     <span className="m-row-text">
-                      <strong>{thread.title || "新对话"}</strong>
+                      <strong><MorphText text={thread.title || "新对话"} /></strong>
                     </span>
                     {state.tone ? (
-                      <span className={`m-badge is-${state.tone}`}>{state.text}</span>
+                      <span className={`m-badge is-${state.tone}`}><MorphText text={state.text} /></span>
                     ) : (
-                      <small>{state.text}</small>
+                      <small><MorphText text={state.text} /></small>
                     )}
                   </button>
                 );

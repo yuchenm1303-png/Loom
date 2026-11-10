@@ -3,7 +3,8 @@ import { NavCapsule } from "./NavCapsule";
 import { ThreadHandoffPanel } from "../components/ThreadHandoffPanel";
 import { useHandoffNavigation } from "../state/useHandoffNavigation";
 import { AnimatedFold } from "../motion/AnimatedFold";
-import { MotionRows, MotionValue, Swap } from "./MotionRows";
+import { MorphText, MotionRows, MotionValue, Swap } from "./MotionRows";
+import { TickText } from "../components/TickText";
 import { playEntrance, useSheetDrag } from "./motion";
 import { recordSendOrigin } from "../sendFlight";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
@@ -265,13 +266,13 @@ function ThreadRow({ thread, onOpen }: { thread: ThreadRecord; onOpen(): void })
   return (
     <button type="button" className="m-row" onClick={onOpen}>
       <span className={`m-dot is-${state}`} aria-hidden="true" />
-      <span className="m-row-text"><strong>{thread.title || "新对话"}</strong>{meta ? <small>{meta}</small> : null}</span>
+      <span className="m-row-text"><strong><MorphText text={thread.title || "新对话"} /></strong>{meta ? <small><MorphText text={meta} /></small> : null}</span>
       {state === "wait" ? <span className="m-badge is-wait"><MotionValue value={state}>等你批准</MotionValue></span> : state === "run" ? <span className="m-badge is-run"><MotionValue value={state}>{thread.weave ? "建造中" : "工作中"}</MotionValue></span> : null}
     </button>
   );
 }
 
-function Group({ title, tone, children }: { title?: string; tone?: "wait" | "run"; children: ReactNode }) {
+function Group({ title, tone, children }: { title?: ReactNode; tone?: "wait" | "run"; children: ReactNode }) {
   return (
     <section className="m-group">
       {title ? <h2 className={tone ? `is-${tone}` : undefined}>{title}</h2> : null}
@@ -294,12 +295,12 @@ function Now({ threads, onOpen }: { threads: ThreadRecord[]; onOpen(thread: Thre
     <>
       <AnimatedFold open={waiting.length > 0} appear={false}>
         <section className="m-group">
-          <h2 className="is-wait">需要你 · {waiting.length}</h2>
+          <h2 className="is-wait">需要你 · <TickText value={String(waiting.length)} /></h2>
           <div className="m-wait-list">
             <MotionRows items={waiting} itemKey={(thread) => thread.id}>{(thread) => (
               <button type="button" className="m-wait-card" onClick={() => onOpen(thread)}>
                 <span className="m-tile is-wait" aria-hidden="true"><ShieldCheck size={19} strokeWidth={1.75} /></span>
-                <span className="m-row-text"><strong>{thread.title || "新对话"}</strong><small>{[placeOf(thread.workspace), "有操作等你确认"].filter(Boolean).join(" · ")}</small></span>
+                <span className="m-row-text"><strong><MorphText text={thread.title || "新对话"} /></strong><small><MorphText text={[placeOf(thread.workspace), "有操作等你确认"].filter(Boolean).join(" · ")} /></small></span>
                 <span>查看</span>
               </button>
             )}</MotionRows>
@@ -307,7 +308,7 @@ function Now({ threads, onOpen }: { threads: ThreadRecord[]; onOpen(thread: Thre
         </section>
       </AnimatedFold>
       <AnimatedFold open={running.length > 0} appear={false}>
-        <Group title={`运行中 · ${running.length}`} tone="run">
+        <Group title={<>运行中 · <TickText value={String(running.length)} /></>} tone="run">
           <MotionRows items={running} itemKey={(thread) => thread.id}>{(thread) => <ThreadRow thread={thread} onOpen={() => onOpen(thread)} />}</MotionRows>
         </Group>
       </AnimatedFold>
@@ -1031,7 +1032,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
             <button type="button" key={key} data-press="none" aria-label={key === "now" && waitingCount ? `${label}，${waitingCount} 项等你批准` : undefined} aria-current={tab === key ? "page" : undefined} onClick={() => { if (tab === key) pages.current.get(key)?.scrollTo({ top: 0, behavior: "smooth" }); setTab(key); if ((key === "now" || key === "projects") && loom.threadView === "archived") void loom.setThreadView("active").catch((cause) => setNavigationError(String(cause))); }}>
               <i aria-hidden="true">
                 <Icon size={21} strokeWidth={tab === key ? 2 : 1.75} />
-                {key === "now" && badge.mounted ? <b className="m-nav-badge" data-phase={badge.phase}><span className="m-nav-badge-count" key={badgeCount}>{badgeCount > 9 ? "9+" : badgeCount}</span></b> : null}
+                {key === "now" && badge.mounted ? <b className="m-nav-badge" data-phase={badge.phase}><span className="m-nav-badge-count"><TickText value={badgeCount > 9 ? "9+" : String(badgeCount)} /></span></b> : null}
               </i>
               <span>{label}</span>
             </button>
