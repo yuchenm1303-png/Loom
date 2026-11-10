@@ -3,6 +3,7 @@
  *   ?reviewed=1  a review round came back (an unmet criterion, a review criterion)
  *   ?lines=1     parallel lines are running
  *   ?paused=1    the goal is paused
+ *   ?records=1   the 记录 page of a goal: its notes, claims ledger and reviews
  *   ?depth=1     a research goal mid-way: criteria the lead marked met, its chosen direction, a mid-course review
  */
 import { createRoot } from "react-dom/client";
@@ -11,6 +12,7 @@ import { applyThemePreference } from "../../src/theme";
 import "../../src/renderer-styles";
 import "../../src/mobile/mobile.css";
 import { MobileGoalCard } from "../../src/mobile/MobileGoalCard";
+import { GoalRecords } from "../../src/mobile/GoalRecords";
 import { toGoal, type LongGoal } from "../../src/components/projectOverview";
 
 window.localStorage.setItem("loom.settings.language", "zh-CN");
@@ -45,6 +47,13 @@ const raw: LongGoal = {
   ...(depth ? { directions: { state: "chosen" as const, candidates: ["AI 信道估计器", "链路自适应联合优化", "高 SNR 鸿沟"], ranking: [1, 3, 2], chosen: 1, reason: "" },
                earlyReview: { state: "done" as const, summary: "证据单薄", reject: 2, added: ["C7"] } } : {}),
 };
+raw.records = {
+  notes: [{ at: Date.now() / 1000 - 3600, text: "本轮完成跨信道可部署复验：CDL-A/B/C 与 30 km/h 四个条件全部落盘。\n学习型斜率极差仅 0.004/dB，温度曲线是接收机属性。" },
+          { at: Date.now() / 1000 - 600, text: "按中途评审改正取整规则：ceil 在 c=16 反了 95 倍，改为四舍五入并加测试锁住。" }],
+  claims: [{ claim: "CDL-A 3 km/h：可部署曲线修复 17 块、弄坏 0 块（McNemar p≈1.5e-5）", command: "python src/check_deploy.py --json results/deploy_calib.json", output: "results/deploy_calib.json points[*].sources.nr" }],
+  reviews: [{ round: 0, verdict: "early_review", at: Date.now() / 1000 - 1800, summary: "理论核正确但属教科书结果；统计口径有实质错误。",
+              major: ["整数 k 的取整方向说反了", "每格 3 个种子却用 60 万次查询算 z"], minor: [], requests: ["三个以上随机种子重跑并给出种子级置信区间"] }],
+};
 const goal = toGoal(raw)!;
 
 createRoot(document.getElementById("root")!).render(
@@ -53,6 +62,7 @@ createRoot(document.getElementById("root")!).render(
       <MobileGoalCard goal={goal} raw={raw}>
         <div className="m-actions"><button type="button" className="m-button">{raw.status === "paused" ? "继续目标" : "暂停目标"}</button></div>
       </MobileGoalCard>
+      {params.has("records") ? <div style={{ marginTop: 24 }}><GoalRecords goal={raw} /></div> : null}
     </div>
   </I18nProvider>,
 );

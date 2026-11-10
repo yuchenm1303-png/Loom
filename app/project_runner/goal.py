@@ -1007,4 +1007,4 @@ def view(service, thread_id):
             "retryKind": (record.get("checkerRetryKind") if phase == "checking" else record.get("retryKind")) or "provider",
             "hours": record.get("hours") or 0, "deepens": record.get("deepens", 0),
             "agents": _working_agents(service, thread_id, record), "lines": goal_lines.view(record),
-            **goal_charter.view(record), **goal_depth.view(record)}
+            **goal_charter.view(record), **goal_charter.records(record), **goal_depth.view(record)}

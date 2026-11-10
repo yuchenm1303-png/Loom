@@ -399,6 +399,25 @@ def _note_hold(service, session, step, calls, record):
     return tuple((call, refusal) for call in waiting)
 
 
+NOTES_VIEWED, NOTE_VIEW_CHARS = 12, 1200
+
+
+def records(record):
+    """What the goal wrote down, for the person: its notes, its claims ledger and each review's findings. The phone's
+    记录 page read only a project's records, and a six-hour goal with notes and 14 claims showed three empty cards."""
+    record = record or {}
+    clip = lambda items, count, size: [str(item)[:size] for item in (items or ())][:count]  # noqa: E731
+    return {"records": {
+        "notes": [{"at": note.get("at", 0), "text": str(note.get("text") or "")[:NOTE_VIEW_CHARS]}
+                  for note in (record.get("notes") or [])[-NOTES_VIEWED:]],
+        "claims": [{"claim": item["claim"], "command": item["command"][:300], "output": item["output"][:200]}
+                   for item in (record.get("claims") or [])[:MAX_CLAIMS]],
+        "reviews": [{"round": item.get("round"), "verdict": item.get("verdict"), "at": item.get("at", 0),
+                     "summary": str(item.get("summary") or "")[:800], "major": clip(item.get("major"), 8, 400),
+                     "minor": clip(item.get("minor"), 6, 300), "requests": clip(item.get("deeper"), 8, 400)}
+                    for item in (record.get("reviews") or [])[-6:]]}}
+
+
 def view(record):
     charter = charter_of(record)
     reviews = [{"round": item.get("round"), "verdict": item.get("verdict"), "summary": item.get("summary", "")[:400],

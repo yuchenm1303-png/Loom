@@ -9,6 +9,7 @@ import {
 import { ChevronRight, RotateCw } from "../components/icons";
 import { BranchGroup, type BuildBranch } from "./BuildBranches";
 import { Disclosure } from "./Disclosure";
+import { GoalRecords } from "./GoalRecords";
 
 function Quota({ selection, online }: { selection: string; online: boolean }) {
   const usage = useModelUsage(selection);
@@ -141,6 +142,8 @@ export function BuildBranchDetails({
     ) : null;
   }
   if (branch === "records") {
+    // A long goal is not a project: its records are its notes, its claims ledger and its reviews.
+    if (!run && overview?.goal) return <GoalRecords goal={overview.goal} />;
     const receipt =
       overview?.integration?.deliveryReceipt || run?.deliveryReceipt;
     const notes = run?.knowledge?.notes ?? [];

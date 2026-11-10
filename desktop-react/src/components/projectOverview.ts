@@ -474,6 +474,9 @@ export interface LongGoal {
                  ranking: number[]; chosen: number; reason: string };
   /** The mid-course referee: what it found, and the criteria its requests added. */
   earlyReview?: { state: "" | "running" | "done" | "failed"; summary: string; reject: number; added: string[] };
+  /** What the goal wrote down: its latest notes, its claims ledger and each review's findings (records page). */
+  records?: { notes: { at: number; text: string }[]; claims: { claim: string; command: string; output: string }[];
+              reviews: { round: number; verdict: string; at: number; summary: string; major: string[]; minor: string[]; requests: string[] }[] };
 }
 export interface GoalCharter {
   deliverable: string; kind: string; phases: string[]; current: number;

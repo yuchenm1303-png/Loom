@@ -431,6 +431,25 @@ def test_the_lead_marks_criteria_it_believes_met_and_the_check_alone_passes_them
         runtime.close()
 
 
+def test_the_person_can_read_what_the_goal_wrote_down(tmp_path):
+    service, runtime, _, source, _, _ = research(tmp_path, [
+        START, calling("weave_directions", {"skip_reason": "用户明确指定了只做 LLR 温度标定这一个方向，原话如此，不必比较"}, "call-skip"),
+        calling("weave_note", {"text": "第一轮：跨信道复验完成，学习型斜率极差 0.004/dB", "current_phase": 1}, "call-note"),
+        calling("weave_claims", CLAIMS, "call-claims"), answer("好")])
+    try:
+        record = service.weave_goals.get(source)
+        record["reviews"] = [{"round": 0, "verdict": "early_review", "summary": "证据单薄", "major": ["只有一个随机种子"],
+                              "minor": [], "deeper": ["三个种子重跑"], "at": 1.0, "unmet": []}]
+        service.weave_goals.put(source, record)
+        shown = goal.view(service, source)["records"]
+        assert [note["text"] for note in shown["notes"]] == ["第一轮：跨信道复验完成，学习型斜率极差 0.004/dB"]
+        assert shown["claims"] == [{"claim": "主结果误块率 0.012", "command": "python eval.py --seed 0", "output": "results/eval.json"}]
+        assert shown["reviews"][0]["major"] == ["只有一个随机种子"] and shown["reviews"][0]["requests"] == ["三个种子重跑"]
+        assert isinstance(goal.view(service, source)["notes"], int), "the count the hub reads stays"
+    finally:
+        runtime.close()
+
+
 def test_a_goal_records_the_machine_and_tells_the_lead(tmp_path, monkeypatch):
     monkeypatch.setattr(goal_depth, "probe", lambda workspace: {"cpus": 16, "gpus": ["NVIDIA GeForce RTX 3070 Ti, 8192 MiB"],
                                                                 "memoryGb": 32, "diskFreeGb": 120.5})

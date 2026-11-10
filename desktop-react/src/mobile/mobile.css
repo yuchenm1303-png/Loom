@@ -481,6 +481,8 @@ html[data-loom-surface="mobile"] .m-disclosure[data-open] > .m-disclosure-head {
 /* A stack of disclosures under a card's main content shares hairlines, as a list does. */
 .m-disclosures { margin-top: 6px !important; border-top: 1px solid var(--loom-workspace-line); }
 .m-disclosures > .m-disclosure + .m-disclosure { border-top: 1px solid var(--loom-workspace-line); }
+/* A goal's notes, claims and reviews (GoalRecords.tsx): one row each, hairlines between, as a list. */
+.m-goal-records > .m-disclosure + .m-disclosure { border-top: 1px solid var(--loom-workspace-line); }
 .m-card > .m-disclosure:only-child > .m-disclosure-head { margin-block: -6px; }
 .m-card > .m-disclosure:only-child[data-open] > .m-disclosure-head { margin-bottom: 4px; }
 .m-card > .m-disclosure:only-child .m-disclosure-inner { padding-bottom: 0; gap: 0; }
