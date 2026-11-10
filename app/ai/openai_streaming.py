@@ -14,6 +14,9 @@ from .provider_catalog import ProviderAdapter
 from .stream_diagnostics import ChatStreamDiagnostics
 
 
+_MIN_WINDOW_OVERLAP = 3
+
+
 def _normalize_compatible_text_fragment(accumulated: str, fragment: str) -> tuple[str, str]:
     """Turn non-standard cumulative OpenAI-compatible snapshots into deltas.
 
@@ -29,6 +32,16 @@ def _normalize_compatible_text_fragment(accumulated: str, fragment: str) -> tupl
     """
     if accumulated and len(fragment) > len(accumulated) and fragment.startswith(accumulated):
         return fragment[len(accumulated):], fragment
+    # Sliding-window relays resend the last few tokens in front of the new one,
+    # which shows up as every word repeated several times. Drop a re-sent
+    # prefix that is a suffix of what is already assembled, but only when it is
+    # long enough (3+ chars) and the fragment still carries new text.
+    if accumulated and len(fragment) > _MIN_WINDOW_OVERLAP:
+        limit = min(len(accumulated), len(fragment) - 1)
+        for size in range(limit, _MIN_WINDOW_OVERLAP - 1, -1):
+            if accumulated.endswith(fragment[:size]):
+                fresh = fragment[size:]
+                return fresh, accumulated + fresh
     return fragment, accumulated + fragment
 
 

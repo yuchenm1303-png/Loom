@@ -1077,3 +1077,19 @@ def test_official_openai_replay_reasoning_is_not_published_as_visible_reasoning(
 
     assert not any(event.kind is StreamEventKind.REASONING_DELTA for event in events)
     assert backend.last_stream_metadata()["reasoning"] == "replay-only state"
+
+
+def test_compatible_sliding_window_resends_do_not_repeat_words():
+    from app.ai.openai_streaming import _normalize_compatible_text_fragment as normalize
+
+    accumulated = emitted = ""
+    for fragment in ["抓到6处", "抓到6处稿件", "6处稿件残留", "稿件残留与2处"]:
+        delta, accumulated = normalize(accumulated, fragment)
+        emitted += delta
+    assert emitted == accumulated == "抓到6处稿件残留与2处"
+    # Ordinary repeated short deltas stay untouched.
+    accumulated = emitted = ""
+    for fragment in ["哈哈", "哈哈", "11", "11"]:
+        delta, accumulated = normalize(accumulated, fragment)
+        emitted += delta
+    assert emitted == "哈哈哈哈1111"
