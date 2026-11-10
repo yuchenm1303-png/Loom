@@ -73,7 +73,8 @@ def test_both_composer_surfaces_opt_in() -> None:
     base = read(COMPONENTS / "ComposerBase.tsx")
     steering = read(COMPONENTS / "Composer.tsx")
 
-    assert '<div className="composer-wrap composer-refined" ref={composerRootRef}>' in base
+    root = next(line for line in base.splitlines() if 'className="composer-wrap composer-refined"' in line)
+    assert '<div ' in root and 'ref={composerRootRef}' in root
     assert 'className="composer-wrap composer-refined live-steering-composer"' in steering
     # The permission chip carries its mode, so unrestricted access can look different.
     assert 'data-mode={permissionMode || "approval"}' in base

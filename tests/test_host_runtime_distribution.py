@@ -33,7 +33,10 @@ def test_runtime_and_ui_ship_in_the_complete_installer() -> None:
     main = (ROOT / "desktop-react/electron/main.ts").read_text(encoding="utf-8")
     assert "resolveHostPythonExecutable" in main
     assert "resolveHostBrowserExtensionRoot" in main
-    assert "window.loadFile(builtIndex)" in main
+    # A complete packaged renderer remains the fallback; the verified UI updater now selects its document.
+    assert 'pathToFileURL(path.join(DESKTOP_ROOT, "dist", "index.html")).href' in main
+    assert "return currentUiDocument(" in main
+    assert "await window.loadURL(document.url)" in main
     assert "loadUpdatedRenderer" not in main
     entry = (ROOT / "desktop-react/electron/entry.ts").read_text(encoding="utf-8")
     assert "selectApplication" not in entry

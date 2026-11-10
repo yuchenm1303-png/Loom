@@ -1016,7 +1016,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 /* The long goal is a branch card: its line, its stop, its budget and what it committed to, never over the conversation. */
 .pf-goal-card .pf-goal { display: grid; gap: 10px; min-width: 0; font-size: 12px; color: var(--pl-secondary); overflow-x: hidden; }
 .pf-goal-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--pl-ink); }
-.pf-goal-card .pf-goal-head .pf-attention-text { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-goal-card .pf-goal-head .pf-attention-text { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Stopped by the Host: the line wraps whole (it says what to decide) and the reason sits under it, clamped. */
 .pf-goal-card .pf-goal[data-attention] .pf-goal-head { align-items: flex-start; }
 .pf-goal-card .pf-goal[data-attention] .pf-goal-head .pf-attention-dot { margin-top: 5px; }
@@ -1038,7 +1038,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 }
 /* The checker's model: one quiet row under the budget, the field reads as text until opened. */
 .pf-goal-checker { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.pf-goal-checker small { flex: none; color: var(--pl-muted); font-size: 11px; }
+.pf-goal-checker small { flex: none; color: var(--pl-muted); font-size: 11.5px; }
 .pf-goal-checker select {
   flex: 1;
   min-width: 0;
@@ -1053,7 +1053,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
   text-overflow: ellipsis;
 }
 .pf-goal-checker select:focus-visible { outline: 1px solid var(--pf-live); outline-offset: 1px; }
-.pf-goal-checker-error { margin: 0; color: var(--pf-warn); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.pf-goal-checker-error { margin: 0; color: var(--pf-warn); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
 .pf-goal-card .pf-goal-lines { padding-left: 2px; }
 .pf-goal-card .goal-budget-control { font-size: 12px; }
 .pf-goal-card .goal-budget-control p { margin: 0; }
@@ -1061,12 +1061,12 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-goal-card .goal-budget-meter { padding-left: 14px; }
 /* The charter under the meter: what it delivers, where the work is, and the criteria it is held to. */
 .pf-goal-card .pf-goal-charter { display: grid; gap: 8px; min-width: 0; padding-top: 10px; border-top: 1px solid var(--pl-line); }
-.pf-goal-charter small { color: var(--pl-muted); font-size: 10.5px; letter-spacing: .04em; }
+.pf-goal-charter small { color: var(--pl-muted); font-size: 11.5px; letter-spacing: .04em; }
 .pf-goal-deliverable { display: grid; gap: 3px; min-width: 0; }
 .pf-goal-deliverable p { margin: 0; color: var(--pl-ink); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .pf-goal-charter .pf-goal-where { justify-self: start; max-width: 100%; box-sizing: border-box; padding: 2px 8px; border-radius: 999px;
-  background: color-mix(in srgb, var(--pl-ink) 6%, transparent); color: var(--pl-secondary); font-size: 11px; line-height: 1.6;
+  background: color-mix(in srgb, var(--pl-ink) 6%, transparent); color: var(--pl-secondary); font-size: 11.5px; line-height: 1.6;
   overflow-wrap: anywhere; }
 .pf-goal-criteria-head { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px; }
 .pf-goal-criteria-head small:last-child { font-variant-numeric: tabular-nums; }
@@ -1093,7 +1093,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-goal-lines li[data-state="reporting"] i,
 .pf-goal-lines li[data-state="failed"] i { background: var(--pf-warn); }
 .pf-goal-lines span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pf-goal-lines-head { flex-basis: 100%; margin: 4px 0 0 16px; color: var(--pl-muted); font-size: 11px; }
+.pf-goal-lines-head { flex-basis: 100%; margin: 4px 0 0 16px; color: var(--pl-muted); font-size: 11.5px; }
 .pf-goal-lines .pf-line-expandable { display: block; }
 .pf-line-more { min-width: 0; }
 .pf-line-more summary { display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; list-style: none; }
@@ -1108,7 +1108,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-line-report { max-height: 180px; overflow: auto; white-space: pre-wrap; }
 .pf-line-files { color: var(--pl-muted); }
 .pf-line-files b { font-weight: 500; color: var(--pl-secondary); }
-.pf-goal-lines small { flex: none; color: var(--pl-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.pf-goal-lines small { flex: none; color: var(--pl-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
 /* Uncommitted changes before a start: the attention line, opened into the files and one commit. */
 .pf-dirty { display: grid; gap: 4px; align-items: stretch; }
@@ -1623,7 +1623,7 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 .pf-task[data-state="review"] .pf-task-mark { background: color-mix(in srgb, var(--pf-live) 18%, transparent); color: var(--pf-live); }
 .pf-task[data-state="rework"] .pf-task-mark { color: var(--pf-warn); }
 /* Dropped: left out unfinished, not waiting. Quiet, struck through, no well, under its own small heading. */
-.pf-task-dropped-head { display: block; margin: 6px 2px 0; color: var(--pl-faint); font-size: 11px; }
+.pf-task-dropped-head { display: block; margin: 6px 2px 0; color: var(--pl-faint); font-size: 11.5px; }
 .pf-task[data-dropped] { padding-block: 2px; }
 .pf-task[data-dropped] .pf-task-mark { background: transparent; color: var(--pl-faint); animation: none; }
 .pf-task[data-dropped] .pf-task-title { color: var(--pl-muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--pl-muted) 55%, transparent); }
@@ -1672,9 +1672,9 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
 /* A finished sub-agent keeps its card, quieter than a working one; failed ones keep the warning colour on the mark only. */
 .pf-agent-well[data-done] .pf-agent-line strong { color: var(--pl-secondary); }
 .pf-agent-more { grid-column: 1 / -1; min-width: 0; margin-top: 2px; }
-.pf-agent-more summary { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; color: var(--pl-muted); font-size: 11px; cursor: pointer; list-style: none; user-select: none; }
+.pf-agent-more summary { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; color: var(--pl-muted); font-size: 11.5px; cursor: pointer; list-style: none; user-select: none; }
 .pf-agent-more summary::-webkit-details-marker { display: none; }
-.pf-agent-more summary::after { content: "▾"; font-size: 9px; transition: transform var(--loom-dur-base) var(--loom-ease-out); }
+.pf-agent-more summary::after { content: "▾"; font-size: 11.5px; transition: transform var(--loom-dur-base) var(--loom-ease-out); }
 .pf-agent-more[open] summary::after { transform: rotate(180deg); }
 .pf-agent-more summary:hover { color: var(--pl-ink); }
 .pf-agent-more p { margin: 4px 0 0; max-height: 160px; overflow: auto; color: var(--pl-secondary); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }

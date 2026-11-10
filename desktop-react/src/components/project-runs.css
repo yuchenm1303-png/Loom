@@ -6,7 +6,7 @@
 .project-runs h3 { font-size:14px; }
 .project-runs header { display:grid; gap:7px; }
 .project-runs header>p:last-child,.project-runs .pr-muted { color:var(--sr-ink-3,#969ca7); }
-.project-runs .pr-eyebrow { font-size:11px; letter-spacing:.1em; color:var(--sr-ink-3,#969ca7); }
+.project-runs .pr-eyebrow { font-size:11.5px; letter-spacing:.1em; color:var(--sr-ink-3,#969ca7); }
 .project-runs button { font:inherit; border:1px solid var(--sr-line,rgba(127,127,127,.25)); background:var(--sr-card,rgba(127,127,127,.06)); color:inherit; border-radius:8px; padding:7px 12px; cursor:pointer; -webkit-app-region:no-drag; }
 .project-runs button:hover:not(:disabled) { background:var(--sr-hover,rgba(127,127,127,.12)); }
 .project-runs button:disabled { opacity:.45; cursor:default; }

@@ -213,13 +213,14 @@ def test_a_step_never_changes_its_words_and_state_changes_fade() -> None:
     weave = read(WEAVE)
 
     # The verb has no tense and no key: it is the same element from the first frame to the last, and the
-    # step's state is its node. Words that do change (an outcome tag, a line's counts, a printed line) are
-    # keyed on their text, so each change is a birth that fades.
+    # step's state is its node. Finished tags/lines can fade on change, but live subprocess output keeps
+    # its DOM identity: keying each arriving fragment would restart its fade while it is being read.
     assert '<span className="wv-verb" title={description.verb}>{description.label}</span>' in flow
     assert "key={description.verb}" not in flow and "key={description.label}" not in flow
     assert '<span className="wv-tag" key={shownTag.status} data-tone={shownTag.tone}>{shownTag.label}</span>' in flow
     assert '<span className="wv-line-text" key={text}>{text}</span>' in flow
-    assert '<span className="wv-sub-text" key={subShown.text}>' in flow
+    assert '<span className="wv-sub-text">{subShown.text}</span>' in flow
+    assert 'key={subShown.text}' not in flow
 
     fade = keyframes(weave, "wv-fade-in")
     assert "opacity" in fade and not TRANSFORM_PROPERTY.search(fade)

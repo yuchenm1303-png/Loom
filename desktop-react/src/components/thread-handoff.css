@@ -16,7 +16,7 @@
 .thread-handoff-body > small { display: block; color: var(--pl-faint); }
 .thread-handoff-body ul { margin: 4px 0 9px; padding-left: 18px; }
 .thread-handoff-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-.thread-handoff-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--loom-workspace-ink) 8%, var(--loom-workspace-panel)); color: var(--pl-ink); font: inherit; font-size: 11px; cursor: pointer; }
+.thread-handoff-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--loom-workspace-ink) 8%, var(--loom-workspace-panel)); color: var(--pl-ink); font: inherit; font-size: 11.5px; cursor: pointer; }
 .thread-handoff-actions button:disabled { opacity: .5; cursor: default; }
 .thread-handoff-panel button:focus-visible, .thread-handoff-record > summary:focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 2px; }
 @media (max-width: 700px) { .thread-handoff-panel { margin: 4px 8px; } .thread-handoff-record > summary { flex-wrap: wrap; } .thread-handoff-record > summary > small { margin-left: 21px; } }

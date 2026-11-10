@@ -777,7 +777,7 @@ html[data-loom-surface="mobile"] .m-stage .decision-submit svg { flex: none; }
 .m-goal { gap: 12px; }
 .m-goal-head { display: flex; align-items: center; gap: 12px; }
 .m-goal-title { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-html[data-loom-surface="mobile"] .m-goal-title h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.25; }
+html[data-loom-surface="mobile"] .m-goal-title h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.25; }
 .m-goal-state { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 1.4; color: var(--loom-workspace-secondary); }
 .m-goal-state i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--loom-workspace-muted); }
 .m-goal[data-tone="run"] .m-goal-state i { background: var(--m-on); box-shadow: 0 0 0 3px rgba(127, 209, 174, .16); }
@@ -794,7 +794,7 @@ html[data-loom-surface="mobile"] .m-goal-title h2 { margin: 0; font-size: 17px; 
 .m-goal-clamp p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--loom-workspace-secondary); overflow-wrap: anywhere; white-space: pre-wrap;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--m-lines); overflow: hidden; }
 .m-goal-clamp[data-open] p { display: block; }
-html[data-loom-surface="mobile"] .m-goal-more { display: block; min-height: 30px; margin-bottom: -6px; padding: 0; border: 0; background: none; font-size: 12.5px; color: var(--m-run); }
+html[data-loom-surface="mobile"] .m-goal-more { display: block; min-height: 30px; margin-bottom: -6px; padding: 0; border: 0; background: none; font-size: 13px; color: var(--m-run); }
 .m-goal-objective p { color: var(--loom-workspace-ink); }
 
 .m-goal-block { display: grid; gap: 8px; padding-top: 13px; border-top: 1px solid var(--loom-workspace-line); }

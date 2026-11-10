@@ -25,7 +25,7 @@
 .goal-budget-meter .goal-budget-toggle { font-size: 11.5px; opacity: .85; transition: opacity var(--loom-dur-fast) var(--loom-ease-out); }
 .goal-budget-meter .goal-budget-toggle:hover, .goal-budget-meter .goal-budget-toggle[aria-expanded="true"] { opacity: 1; }
 /* On the desktop card the editor is sized for a pointer, not a thumb. */
-.goal-budget-control .goal-budget-meter .goal-budget-exact { flex: 1 0 100%; margin: 0; font-size: 11px; line-height: 1.5; color: var(--pl-muted, var(--loom-workspace-secondary)); font-variant-numeric: tabular-nums; }
+.goal-budget-control .goal-budget-meter .goal-budget-exact { flex: 1 0 100%; margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--pl-muted, var(--loom-workspace-secondary)); font-variant-numeric: tabular-nums; }
 .goal-budget-control[data-meter] .goal-budget-editor { margin-top: 10px; padding: 10px; border-radius: 12px; }
 .goal-budget-control[data-meter] .goal-budget-modes { flex-wrap: nowrap; gap: 4px; padding: 3px; border-radius: 10px; background: var(--loom-workspace-panel); border: 1px solid var(--loom-workspace-line); }
 .goal-budget-control[data-meter] .goal-budget-modes button { min-height: 26px; flex: 1 1 0; padding: 3px 6px; border: 0; border-radius: 7px; background: transparent; color: var(--loom-workspace-secondary); white-space: nowrap; }

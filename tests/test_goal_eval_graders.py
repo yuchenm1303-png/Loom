@@ -96,7 +96,11 @@ def test_the_pipeline_grader_runs_it_from_nothing_and_catches_a_wrong_step(tmp_p
     assert "deterministic" in failed(grade_pipeline(tmp_path))
 
 
-def test_every_prompt_gives_time_and_never_mentions_sub_agents():
-    for task in TASKS.values():
-        assert "个小时" in task["prompt"] and "子代理" not in task["prompt"] and "{python}" in task["prompt"]
+def test_prompts_keep_the_timed_and_open_research_conditions_without_delegation_hints():
+    for name, task in TASKS.items():
+        assert "子代理" not in task["prompt"] and "{python}" in task["prompt"]
+        if name == "open_research":
+            assert "个小时" not in task["prompt"], "this case measures open-ended research without an explicit time grant"
+        else:
+            assert "个小时" in task["prompt"]
     assert "一个小时" not in TASKS["large"]["prompt"] and all(word in TASKS["large"]["prompt"] for word in ("toolkit/", "inventory/", "results.json"))

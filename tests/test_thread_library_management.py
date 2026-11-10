@@ -200,7 +200,8 @@ def test_thread_library_search_delete_and_protocol_capability(tmp_path: Path) ->
             "permissionMode": True,
             "autoTitle": True,
             "branches": True,
-        "branchPlanning": True,
+            "branchPlanning": True,
+            "handoff": True,
         }
 
         deleted = controller.handle(

@@ -1,7 +1,7 @@
 """Long tasks with automatic graders, to compare ways of running a long goal on what they produce and what they cost.
 
-Each task has a prepare(workspace) that seeds the folder, a prompt in the person's words (it gives time and says
-they are away, and never mentions sub-agents), and a grade(workspace) that returns one result per check, computed
+Each task has a prepare(workspace) that seeds the folder, a prompt in the person's words (the timed cases give time
+and say they are away; open_research deliberately gives no time; none mention sub-agents), and a grade(workspace) that returns one result per check, computed
 outside the agent's control: inputs and answers live here, the agent never sees them.
 
 - toolkit: four independent modules, ideal for lines.
