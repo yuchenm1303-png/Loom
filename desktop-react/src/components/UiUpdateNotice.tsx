@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Roll } from "./RollText";
 import { useI18n } from "../i18n";
 import "./ui-update-notice.css";
 
@@ -18,7 +19,7 @@ export function UiUpdateNotice() {
   const key = status ? `${status.build}:${status.phase}` : "";
   if (!status || dismissed === key) return null;
   return <aside className="ui-update-notice" role="status" aria-live="polite">
-    <div><strong>{status.phase === "updated" ? (zh ? "界面已更新" : "Interface updated") : (zh ? "界面更新已就绪" : "Interface update ready")}</strong>
+    <div><strong><Roll text={status.phase === "updated" ? (zh ? "界面已更新" : "Interface updated") : (zh ? "界面更新已就绪" : "Interface update ready")} /></strong>
       <p>{status.phase === "updated"
         ? (zh ? "已自动更新到新版界面，后台任务继续运行。" : "The new interface is ready. Background tasks keep running.")
         : (zh ? "有未保存内容或正在操作，完成后将自动更新。" : "The interface will update automatically after you finish editing.")}</p>

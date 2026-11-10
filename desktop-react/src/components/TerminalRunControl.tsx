@@ -1,4 +1,5 @@
 import { LoaderCircle, Play, Send, Square, Terminal } from "./icons";
+import { Roll } from "./RollText";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { EXECUTABLE_LANGUAGES, openTerminal } from "../terminal";
@@ -198,7 +199,7 @@ export function TerminalRunControl({
         aria-label={running ? (zh ? "停止命令" : "Stop command") : (zh ? "运行代码" : "Run command")}
       >
         {starting ? <LoaderCircle size={12} /> : running ? <Square size={11} /> : <Play size={11} fill="currentColor" />}
-        <span>{running ? (zh ? "停止" : "Stop") : (zh ? "运行" : "Run")}</span>
+        <span><Roll text={running ? (zh ? "停止" : "Stop") : (zh ? "运行" : "Run")} /></span>
       </button><button type="button" className="terminal-run-open" disabled={disabled || starting} title={zh ? "在终端中打开并运行" : "Open and run in terminal"} aria-label={zh ? "在终端中运行" : "Run in terminal"} onClick={() => {
         if (!workspace) return;
         openTerminal(processId ? { workspace, processId } : { workspace, command, language });

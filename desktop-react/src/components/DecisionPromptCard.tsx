@@ -1,4 +1,5 @@
 import { Check, MessageSquareText, Send } from "./icons";
+import { Roll } from "./RollText";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
@@ -246,7 +247,7 @@ export function DecisionPromptRecoveryCard({
         onClick={() => void retry()}
       >
         {sent ? <Check size={13} /> : <Send size={13} />}
-        <span>{sent ? (zh ? "已请求重新生成" : "Requested") : sending ? (zh ? "正在发送…" : "Sending…") : (zh ? "重新生成选项" : "Regenerate options")}</span>
+        <span><Roll text={sent ? (zh ? "已请求重新生成" : "Requested") : sending ? (zh ? "正在发送…" : "Sending…") : (zh ? "重新生成选项" : "Regenerate options")} /></span>
       </button>
     </section>
   );

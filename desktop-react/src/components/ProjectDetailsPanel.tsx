@@ -13,6 +13,7 @@ import {
   Save,
   ShieldAlert,
 } from "./icons";
+import { Roll } from "./RollText";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
@@ -459,7 +460,7 @@ export function ProjectDetailsPanel({
           disabled={Boolean(reviewLoadingPath)}
           title={zh ? "在审查栏查看 diff" : "Open the diff in Review"}
         >
-          <span className={`project-git-badge ${kind}`}>{loading ? (zh ? "读取" : "Loading") : fileStatusLabel(file, zh)}</span>
+          <span className={`project-git-badge ${kind}`}><Roll text={loading ? (zh ? "读取" : "Loading") : fileStatusLabel(file, zh)} /></span>
           <code>{path}</code>
           <ExternalLink size={12} strokeWidth={1.9} />
         </button>
@@ -501,7 +502,7 @@ export function ProjectDetailsPanel({
           </div>
           <div className="project-overview-card">
             <span>{zh ? "项目说明" : "Instructions"}</span>
-            <strong>{project.instructions?.trim() ? (zh ? "已配置" : "Set") : (zh ? "未配置" : "Not set")}</strong>
+            <strong><Roll text={project.instructions?.trim() ? (zh ? "已配置" : "Set") : (zh ? "未配置" : "Not set")} /></strong>
             <small>{instructionsLength} / 12000</small>
           </div>
         </div>
@@ -529,8 +530,8 @@ export function ProjectDetailsPanel({
             <div className="project-workspace-stat">
               <GitBranch size={15} strokeWidth={1.8} />
               <span>Git</span>
-              <strong>{!git ? workspaceError ? (zh ? "读取失败" : "Unavailable") : (zh ? "读取中" : "Loading") : git.isRepo ? git.branch || "detached" : (zh ? "未接入" : "Not a repository")}</strong>
-              <small>{git?.summary || (!git ? (zh ? "等待工作区状态" : "Waiting for the workspace") : (zh ? "当前项目不是 Git 仓库或 Git 不可用" : "This project is not a Git repository, or Git is unavailable"))}</small>
+              <strong><Roll text={!git ? workspaceError ? (zh ? "读取失败" : "Unavailable") : (zh ? "读取中" : "Loading") : git.isRepo ? git.branch || "detached" : (zh ? "未接入" : "Not a repository")} /></strong>
+              <small><Roll text={git?.summary || (!git ? (zh ? "等待工作区状态" : "Waiting for the workspace") : (zh ? "当前项目不是 Git 仓库或 Git 不可用" : "This project is not a Git repository, or Git is unavailable"))} /></small>
             </div>
             <div className="project-workspace-stat">
               <FileText size={15} strokeWidth={1.8} />
@@ -676,7 +677,7 @@ export function ProjectDetailsPanel({
             aria-label="Project instructions"
           />
           <div className="project-instructions-actions">
-            <span>{notice || (dirty ? (zh ? "有未保存的修改" : "Unsaved changes") : (zh ? "已同步，下一轮起生效" : "Saved; applies from the next turn"))}</span>
+            <span><Roll text={notice || (dirty ? (zh ? "有未保存的修改" : "Unsaved changes") : (zh ? "已同步，下一轮起生效" : "Saved; applies from the next turn"))} /></span>
             <button type="button" onClick={() => setDraft(project.instructions ?? "")} disabled={!dirty || saving}>
               <RotateCcw size={14} strokeWidth={1.85} />
               {zh ? "还原" : "Revert"}
@@ -723,7 +724,7 @@ export function ProjectDetailsPanel({
                     <span className={`project-thread-dot ${busy ? "busy" : ""}`} aria-hidden="true" />
                     <MessageSquareText size={14} strokeWidth={1.85} aria-hidden="true" />
                     <span>{thread.title || (zh ? "新对话" : "New conversation")}</span>
-                    <small>{busy ? (zh ? "运行中" : "Running") : relativeTime(thread.updatedAt, zh)}</small>
+                    <small><Roll text={busy ? (zh ? "运行中" : "Running") : relativeTime(thread.updatedAt, zh)} /></small>
                   </button>
                 );
               })}

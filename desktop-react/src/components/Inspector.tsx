@@ -11,7 +11,7 @@ import {
   Terminal,
   Wrench,
 } from "./icons";
-import { RollText } from "./RollText";
+import { Roll, RollText } from "./RollText";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { useI18n } from "../i18n";
@@ -455,7 +455,7 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
               {tab === "computer" ? (
                 <button className="computer-log-export-button" onClick={handleExportComputerLogs} disabled={exportingLogs}>
                   <Download size={12} strokeWidth={1.8} />
-                  <span>{exportingLogs ? (zh ? "正在导出" : "Exporting") : (zh ? "导出日志" : "Export logs")}</span>
+                  <span><Roll text={exportingLogs ? (zh ? "正在导出" : "Exporting") : (zh ? "导出日志" : "Export logs")} /></span>
                 </button>
               ) : null}
               {tab === "changes" && changes.length ? (
@@ -464,7 +464,7 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
                   <span>{zh ? "审查" : "Review"}</span>
                 </button>
               ) : null}
-              <span>{visible.length ? eventCount(visible.length, zh) : (zh ? "等待中" : "Waiting")}</span>
+              <span><Roll text={visible.length ? eventCount(visible.length, zh) : (zh ? "等待中" : "Waiting")} /></span>
             </span>
           </div>
 
@@ -472,7 +472,7 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
             <div className="runtime-pane">
               {tab === "computer" && (exportArchivePath || exportError) ? (
                 <div className={`computer-log-export-note ${exportError ? "error" : "success"}`}>
-                  <strong>{exportError ? (zh ? "导出失败" : "Export failed") : (zh ? "日志已导出" : "Logs exported")}</strong>
+                  <strong><Roll text={exportError ? (zh ? "导出失败" : "Export failed") : (zh ? "日志已导出" : "Logs exported")} /></strong>
                   <span>
                     {exportError || `${exportArchivePath}${exportFileCount ? (zh ? ` · ${exportFileCount} 个文件` : ` · ${exportFileCount} files`) : ""}${exportSize ? ` · ${exportSize}` : ""}`}
                   </span>
@@ -497,7 +497,7 @@ export const Inspector = memo(function Inspector({ items, onClose }: InspectorPr
 
           <div className="runtime-footer">
             <span className={`runtime-stream-mark ${busy ? "live" : ""}`} aria-hidden="true"><i /><i /><i /></span>
-            <span>{busy ? (zh ? "正在接收运行事件" : "Receiving runtime events") : (zh ? "运行事件流已就绪" : "Runtime event stream ready")}</span>
+            <span><Roll text={busy ? (zh ? "正在接收运行事件" : "Receiving runtime events") : (zh ? "运行事件流已就绪" : "Runtime event stream ready")} /></span>
           </div>
         </div>
       </aside>

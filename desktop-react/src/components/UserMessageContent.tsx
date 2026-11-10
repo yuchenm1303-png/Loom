@@ -14,6 +14,7 @@ import {
   Video,
   type LucideIcon,
 } from "./icons";
+import { Roll } from "./RollText";
 import { useEffect, useMemo, useState } from "react";
 import { ImageLightbox } from "./ImageLightbox";
 import "./user-message-attachments.css";
@@ -262,7 +263,7 @@ function MediaAttachmentPreview({ attachment, workspace }: { attachment: Display
       </span>
       <span className="user-message-file-copy">
         <strong>{attachment.name}</strong>
-        <span>{failed ? "预览不可用" : loading ? "正在载入…" : video ? "视频" : "音频"}</span>
+        <span><Roll text={failed ? "预览不可用" : loading ? "正在载入…" : video ? "视频" : "音频"} /></span>
       </span>
       <span className="user-message-file-open" aria-hidden="true"><Play size={13} /></span>
     </button>
@@ -369,7 +370,7 @@ export function UserMessageContent({ parsed, workspace }: { parsed: ParsedUserMe
               aria-expanded={expanded}
               title={expanded ? "收起长消息" : "展开完整消息"}
             >
-              <span>{expanded ? "收起" : "展开全部"}</span>
+              <span><Roll text={expanded ? "收起" : "展开全部"} /></span>
               {expanded
                 ? <ChevronUp size={14} strokeWidth={1.9} aria-hidden="true" />
                 : <ChevronDown size={14} strokeWidth={1.9} aria-hidden="true" />}

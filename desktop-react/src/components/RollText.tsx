@@ -53,3 +53,8 @@ export function RollText({ identity, text, className = "" }: { identity: string;
     </span>
   );
 }
+
+/** A label whose words roll whenever they change: the text is its own identity. */
+export function Roll({ text, className }: { text: string; className?: string }) {
+  return <RollText identity={text} text={text} className={className} />;
+}

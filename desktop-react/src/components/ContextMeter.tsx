@@ -1,4 +1,5 @@
 import { Layers, Loader2, Wrench } from "./icons";
+import { Roll } from "./RollText";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
@@ -173,7 +174,7 @@ export function ContextMeter({ report: current, pending = false, compacting, pro
           inert={!open}
         >
           <header className="context-meter-panel-head">
-            <span>{meter.unknown ? zh ? "上下文用量" : "Context usage" : budgetLabel}</span>
+            <span><Roll text={meter.unknown ? zh ? "上下文用量" : "Context usage" : budgetLabel} /></span>
             <strong>
               {measurementPending ? "~" : ""}{formatTokens(report.usedTokens)}{meter.unknown ? " tokens" : ` / ${formatTokens(budget)}`}
             </strong>

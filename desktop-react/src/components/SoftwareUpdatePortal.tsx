@@ -6,6 +6,7 @@ import {
   RefreshCw,
   RotateCw,
 } from "./icons";
+import { Roll } from "./RollText";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
@@ -207,7 +208,7 @@ function UpdatePanel() {
 
           <div className="software-update-footnote">
             <span>{formatCheckedAt(state?.checkedAt)}</span>
-            <span>{state?.automaticUpdates === false ? "自动更新已关闭，可手动检查" : "自动更新已开启"}</span>
+            <span><Roll text={state?.automaticUpdates === false ? "自动更新已关闭，可手动检查" : "自动更新已开启"} /></span>
           </div>
         </div>
 

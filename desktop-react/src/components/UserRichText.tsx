@@ -1,4 +1,5 @@
 import { Check, Copy, ExternalLink, Globe2 } from "./icons";
+import { Roll } from "./RollText";
 import { isValidElement, memo, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import { rehypeHighlightOnce } from "./markdownHighlight";
@@ -45,7 +46,7 @@ function UserCodeBlock({ children }: { children?: ReactNode }) {
         <span>{language}</span>
         <button type="button" onClick={() => void copyCode()} title="Copy code" aria-label="Copy code">
           {copied ? <Check size={12} /> : <Copy size={12} />}
-          <span>{copied ? "Copied" : "Copy"}</span>
+          <span><Roll text={copied ? "Copied" : "Copy"} /></span>
         </button>
       </div>
       <pre>{children}</pre>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Roll } from "./RollText";
 import { ArrowRight, Download } from "./icons";
 import { discoverLocalLoomHost } from "../localHostDiscovery";
 import "./host-setup-actions.css";
@@ -31,12 +32,12 @@ export function HostSetupActions({ zh, download, onRetry, hostDetected = false }
     </> : <>
       <p className="loom-host-setup-title">{zh ? "已经安装 Loom？" : "Already installed Loom?"}</p>
       <a className="loom-form-submit" href="loom://host/start" onClick={() => { setLaunchState("waiting"); window.dispatchEvent(new Event("loom:web-host-launch")); }}>
-        <span>{launching ? (zh ? "已请求启动，等待检测…" : "Launch requested · waiting…") : launchState === "timeout" ? (zh ? "再次尝试打开 Loom" : "Try opening Loom again") : (zh ? "启动 Loom Host" : "Start Loom Host")}</span><ArrowRight size={16} aria-hidden="true" />
+        <span><Roll text={launching ? (zh ? "已请求启动，等待检测…" : "Launch requested · waiting…") : launchState === "timeout" ? (zh ? "再次尝试打开 Loom" : "Try opening Loom again") : (zh ? "启动 Loom Host" : "Start Loom Host")} /></span><ArrowRight size={16} aria-hidden="true" />
       </a>
       <p className="loom-host-setup-note" role="status" aria-live="polite">{launchState === "timeout"
         ? (zh ? "仍无法访问本机 Host，启动尚未确认。请先从开始菜单打开 Loom，再点检测。" : "Cannot reach local Host; launch is not confirmed. Open Loom from the Start menu, then detect it below.")
         : (zh ? "在浏览器提示中允许打开 Loom；检测到 Host 后才会连接。" : "Allow the browser to open Loom when prompted. Connection starts once Host is detected.")}</p>
-      <button className="loom-host-setup-retry" type="button" disabled={checking} onClick={() => void checkHost()}>{checking ? (zh ? "正在检测…" : "Detecting…") : (zh ? "已打开 Loom？检测并连接" : "Opened Loom? Detect and connect")}</button>
+      <button className="loom-host-setup-retry" type="button" disabled={checking} onClick={() => void checkHost()}><Roll text={checking ? (zh ? "正在检测…" : "Detecting…") : (zh ? "已打开 Loom？检测并连接" : "Opened Loom? Detect and connect")} /></button>
       <details className="loom-host-launch-guide">
         <summary>{zh ? "没有启动或检测不到？" : "No launch or Host still missing?"}</summary>
         <ol>

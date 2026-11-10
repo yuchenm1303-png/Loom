@@ -1,4 +1,5 @@
 import { AmbientSettingsPanel } from "./AmbientSettingsPanel";
+import { Roll } from "./RollText";
 import { ProjectRunsPanel } from "./ProjectRunsPanel";
 import { PluginsSettingsPanel } from "./PluginsSettingsPanel";
 import { McpSettingsPanel } from "./McpSettingsPanel";
@@ -942,7 +943,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
       <div className="general-home">
         <div className="settings-page-heading general-home-heading">
           <div><h1>{zh ? "通用" : "General"}</h1><p>{zh ? "让 Loom 更贴合你的工作习惯。" : "Make Loom feel like your workspace."}</p></div>
-          <div className={`general-heading-status ${running ? "running" : ""}`} role="status"><i /><span>{running ? (zh ? "正在工作" : "Working") : (zh ? "运行就绪" : "Ready")}</span></div>
+          <div className={`general-heading-status ${running ? "running" : ""}`} role="status"><i /><span><Roll text={running ? (zh ? "正在工作" : "Working") : (zh ? "运行就绪" : "Ready")} /></span></div>
         </div>
         <div className="general-runtime-strip" aria-label={zh ? "运行概览" : "Runtime overview"}>
           <button type="button" onClick={() => navigateToPage("models")}><span>{zh ? "当前模型" : "Model"}</span><strong title={modelLabel}>{modelLabel}</strong><ChevronRight size={14} /></button>
@@ -1394,7 +1395,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
             <div className="skills-hero-icon"><Sparkles size={20} /></div>
             <div>
               <span>Skills Runtime v2</span>
-              <strong>{enabled ? "技能系统已启用" : "技能系统已关闭"}</strong>
+              <strong><Roll text={enabled ? "技能系统已启用" : "技能系统已关闭"} /></strong>
               <p>Skill 只提供说明和资源，不会绕过 Loom 的权限、沙箱、MCP、浏览器与审批边界。</p>
             </div>
           </div>

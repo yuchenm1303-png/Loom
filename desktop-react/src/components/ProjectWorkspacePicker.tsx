@@ -1,4 +1,5 @@
 import { useCallback, useEffect, createContext, useContext, useId, useRef, useState, type KeyboardEvent } from "react";
+import { Roll } from "./RollText";
 import { createPortal } from "react-dom";
 import { Check, ChevronLeft, FolderOpen, FolderSearch, Lock, X } from "./icons";
 import type { ProjectRecord } from "../types/loom";
@@ -137,7 +138,7 @@ function ProjectSwitch({ projects, selected, zh, disabled, lockedNote, onSelect,
             aria-activedescendant={open ? `${listId}-${active}` : undefined}
             title={lockedNote} onClick={() => (open ? close(false) : show())} onKeyDown={keys}>
       {lockedNote ? <Lock size={13} /> : <FolderOpen size={14} />}
-      <span>{lockedNote ? (zh ? "项目已锁定" : "Project locked") : label}</span>
+      <span><Roll text={lockedNote ? (zh ? "项目已锁定" : "Project locked") : label} /></span>
       {lockedNote ? null : <ChevronLeft size={14} className="pf-switch-chevron" />}
     </button>
     {open ? (() => {

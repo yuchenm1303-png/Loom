@@ -14,6 +14,7 @@ import {
   Sparkles,
   Square,
 } from "./icons";
+import { Roll } from "./RollText";
 import { KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
@@ -620,7 +621,7 @@ export function Composer({
           <div className="composer-right">
             <ComposerDraftTools text={formatQuotedPrompt(quote, value)} attachments={attachments} threadId={threadId} disabled={disabled || submitting} />
             <Crossfade identity={`${Boolean(running)}:${stopping}`}>
-              {!running ? <span className={submitting ? "composer-running-label" : "composer-keycap"} role={submitting ? "status" : undefined}>{submitting ? (zh ? "正在发送…" : "Sending…") : "Enter ↵"}</span> : (
+              {!running ? <span className={submitting ? "composer-running-label" : "composer-keycap"} role={submitting ? "status" : undefined}><Roll text={submitting ? (zh ? "正在发送…" : "Sending…") : "Enter ↵"} /></span> : (
                 <span className="composer-running-label" role="status">
                   <i aria-hidden="true" />
                   <span className="composer-running-copy">

@@ -1,4 +1,5 @@
 import { BookOpen, FileText, RefreshCw } from "./icons";
+import { Roll } from "./RollText";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import "./project-agent-files-card.css";
@@ -131,7 +132,7 @@ export function ProjectAgentFilesCard({ projectId, open }: ProjectAgentFilesCard
         {!files.length ? (
           <div className="project-agent-file-empty-tabs">
             <BookOpen size={14} strokeWidth={1.85} />
-            <span>{loading ? (zh ? "正在读取说明文件…" : "Reading the files…") : error ? (zh ? "说明文件读取失败" : "Could not read the files") : (zh ? "暂无说明文件" : "No instruction files")}</span>
+            <span><Roll text={loading ? (zh ? "正在读取说明文件…" : "Reading the files…") : error ? (zh ? "说明文件读取失败" : "Could not read the files") : (zh ? "暂无说明文件" : "No instruction files")} /></span>
           </div>
         ) : null}
       </div>

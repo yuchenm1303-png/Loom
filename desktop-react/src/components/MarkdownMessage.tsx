@@ -1,4 +1,5 @@
 import { Check, Copy, Maximize2 } from "./icons";
+import { Roll } from "./RollText";
 import { createContext, isValidElement, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ImageLightbox } from "./ImageLightbox";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
@@ -216,7 +217,7 @@ function CodeBlock({
           <span>{language}</span>
           <button type="button" onClick={() => void copyCode()} aria-label="Copy code" title="Copy code">
             {copied ? <Check size={12} /> : <Copy size={12} />}
-            <span>{copied ? "Copied" : "Copy"}</span>
+            <span><Roll text={copied ? "Copied" : "Copy"} /></span>
           </button>
         </div>
         <pre>{children}</pre>

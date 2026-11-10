@@ -13,6 +13,7 @@ import {
   UserRound,
   X,
 } from "./icons";
+import { Roll } from "./RollText";
 import {
   useCallback,
   useEffect,
@@ -545,13 +546,13 @@ export function AccountDialog({
                   {capabilities?.google ? (
                     <button type="button" className="acct-button is-secondary acct-oauth-button" disabled={busy || oauthOpening !== null} onClick={() => void startOAuth("google")}>
                       {oauthOpening === "google" ? spinner : <GoogleMark />}
-                      <span>{oauthOpening === "google" ? (zh ? "正在打开…" : "Opening…") : "Google"}</span>
+                      <span><Roll text={oauthOpening === "google" ? (zh ? "正在打开…" : "Opening…") : "Google"} /></span>
                     </button>
                   ) : null}
                   {capabilities?.github ? (
                     <button type="button" className="acct-button is-secondary acct-oauth-button" disabled={busy || oauthOpening !== null} onClick={() => void startOAuth("github")}>
                       {oauthOpening === "github" ? spinner : <GithubMark />}
-                      <span>{oauthOpening === "github" ? (zh ? "正在打开…" : "Opening…") : "GitHub"}</span>
+                      <span><Roll text={oauthOpening === "github" ? (zh ? "正在打开…" : "Opening…") : "GitHub"} /></span>
                     </button>
                   ) : null}
                 </div>
@@ -677,7 +678,7 @@ export function AccountDialog({
                   {busy ? (
                     <span className="acct-button-label">{spinner}{register ? (zh ? "正在创建…" : "Creating account…") : (zh ? "正在登录…" : "Signing in…")}</span>
                   ) : (
-                    <span className="acct-button-label">{register ? (zh ? "创建账号" : "Create account") : (zh ? "登录" : "Sign in")}</span>
+                    <span className="acct-button-label"><Roll text={register ? (zh ? "创建账号" : "Create account") : (zh ? "登录" : "Sign in")} /></span>
                   )}
                 </Crossfade>
               </button>
