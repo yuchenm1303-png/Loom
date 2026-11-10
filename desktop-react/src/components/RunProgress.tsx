@@ -7,6 +7,7 @@ import type { TranscriptItem } from "../types/loom";
 import { buildActivityRows } from "./activityModel";
 import { runtimeCopy, describeActivity } from "./runtimeCopy";
 import { Crossfade } from "./Crossfade";
+import { TickText } from "./TickText";
 import { turnPhaseLabel } from "./turnPhase";
 import "./run-progress.css";
 
@@ -193,12 +194,12 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
           <span className="run-progress-live-dot" aria-hidden="true">
             {finishing ? (finished.stopped ? <Square size={7} strokeWidth={0} fill="currentColor" /> : <Check size={10} strokeWidth={2.6} />) : null}
           </span>
-          <Crossfade identity={phase} className="run-progress-phase">{phase}</Crossfade>
+          <Crossfade soft identity={phase} className="run-progress-phase">{phase}</Crossfade>
           {stalled ? <span className="run-progress-phase-note">{copy.runWait(silentSeconds)}</span> : null}
         </div>
 
         <div className="run-progress-meta">
-          <span className="run-progress-meta-item"><Clock3 size={12} strokeWidth={1.8} />{formatElapsed(elapsedSeconds)}</span>
+          <span className="run-progress-meta-item"><Clock3 size={12} strokeWidth={1.8} /><TickText value={formatElapsed(elapsedSeconds)} /></span>
           {stats.activity ? (
             <>
               <span className="run-progress-meta-dot" aria-hidden="true" />

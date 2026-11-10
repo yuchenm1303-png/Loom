@@ -276,6 +276,11 @@ TRAVELLING = re.compile(
 )
 
 
+# A line of text that changes its words, or a counter that ticks, swaps by blurring across (opacity and blur, nothing
+# moves): the thinking row's status and clock. The only entrances of text allowed a filter.
+BLURRED_SWAPS = re.compile(r"^(crossfade-soft-in|tick-in)$")
+
+
 def test_what_carries_words_fades_in_and_does_not_move() -> None:
     moving: list[str] = []
     for path in stylesheets():
@@ -290,7 +295,8 @@ def test_what_carries_words_fades_in_and_does_not_move() -> None:
                 if depth == 0:
                     break
             body = css[match.end():index]
-            if re.search(r"(transform|translate|scale|rotate|filter)\s*:", body):
+            forbidden = r"(transform|translate|scale|rotate)" if BLURRED_SWAPS.match(name) else r"(transform|translate|scale|rotate|filter)"
+            if re.search(forbidden + r"\s*:", body):
                 moving.append(f"{rel(path)}: {name}")
     assert not moving, moving
 

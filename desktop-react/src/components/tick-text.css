@@ -1,0 +1,14 @@
+/* Text that changes one character at a time: the old character blurs out and the new one blurs in on the same spot.
+ * Opacity and blur only, nothing moves; the rest of the text stays still. */
+.tick-text { position: relative; display: inline-block; white-space: pre; font-variant-numeric: tabular-nums; }
+.tick-slot { position: relative; display: inline-block; }
+.tick-in { display: inline-block; animation: tick-in var(--loom-dur-base) var(--loom-ease-out) both; }
+.tick-ghost { position: absolute; inset: 0 auto auto 0; pointer-events: none; animation: tick-out var(--loom-dur-base) var(--loom-ease-out) both; }
+@keyframes tick-in { from { opacity: 0; filter: blur(var(--tick-blur, 3px)); } to { opacity: 1; filter: blur(0); } }
+@keyframes tick-out { from { opacity: 1; filter: blur(0); } to { opacity: 0; filter: blur(var(--tick-blur, 3px)); } }
+@media (prefers-reduced-motion: reduce) {
+  .tick-in { animation: none; }
+  .tick-ghost { display: none; }
+}
+:root[data-loom-reduced-motion="true"] .tick-in { animation: none; }
+:root[data-loom-reduced-motion="true"] .tick-ghost { display: none; }
