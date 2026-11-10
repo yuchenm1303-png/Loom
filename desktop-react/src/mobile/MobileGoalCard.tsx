@@ -95,7 +95,9 @@ export function MobileGoalCard({ goal, raw, children }: { goal: Goal; raw: LongG
               return (
                 <li key={item.title} data-state={dropped ? "dropped" : item.state}>
                   <span className="m-goal-mark" aria-hidden="true">{dropped ? <Minus size={13} strokeWidth={2.4} /> : MARK[item.state as keyof typeof MARK] ?? MARK.running}</span>
-                  <span className="m-goal-criterion"><span>{item.title}</span>{item.label.includes(" · ") ? <small>{item.label.split(" · ").slice(1).join(" · ")}</small> : null}</span>
+                  {/* The lead's own mark says so in words: only the check's is a pass. */}
+                  <span className="m-goal-criterion"><span>{item.title}</span>{item.state === "claimed" || item.label.includes(" · ")
+                    ? <small>{[item.state === "claimed" ? "自评已达标" : "", ...item.label.split(" · ").slice(1)].filter(Boolean).join(" · ")}</small> : null}</span>
                 </li>
               );
             })}
