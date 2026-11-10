@@ -61,9 +61,11 @@
   grid-template-columns: 8px minmax(0, 1fr);
   align-items: start;
   gap: 8px;
-  width: 100%;
-  padding: 6px 2px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  width: calc(100% + 16px);
   border: 0;
+  border-radius: 10px;
   background: none;
   color: inherit;
   font: inherit;
@@ -90,7 +92,7 @@
 
 /* On the phone a sub-agent's card opens into the same run box, with a way on to its full conversation. */
 .m-agent-item { min-width: 0; }
-.m-agent-tap { cursor: pointer; }
+.m-agent-tap { cursor: pointer; border-radius: 10px; margin: -4px -8px; padding: 4px 8px; }
 .m-agent-tap:focus-visible { outline: 1px solid color-mix(in srgb, currentColor 40%, transparent); outline-offset: 4px; border-radius: 6px; }
 .m-agent-chevron { display: grid; place-items: center; width: 28px; height: 28px; color: color-mix(in srgb, currentColor 50%, transparent); transition: transform var(--loom-dur-base, 240ms) var(--loom-ease-out, ease-out); }
 .m-agent-item[data-open] .m-agent-chevron { transform: rotate(180deg); }
