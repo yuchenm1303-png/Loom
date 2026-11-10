@@ -426,6 +426,58 @@ def test_replacing_the_plan_keeps_what_it_left_unfinished(harness):
     assert [d["step"] for d in current_plan(h.store.events("abcdef"))["dropped"]] == ["A", "B"]
 
 
+def test_a_dropped_step_takes_its_own_reason_and_a_shared_one_is_marked(harness):
+    h = harness
+    h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "B", "status": "pending"},
+                                          {"step": "C", "status": "pending"}]})
+    h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "D", "status": "pending"}],
+                                 "explanation": "换方向", "dropped_reasons": {"B": "数据拿不到"}})
+    dropped = {d["step"]: d for d in current_plan(h.store.events("abcdef"))["dropped"]}
+    assert dropped["B"]["reason"] == "数据拿不到" and "shared" not in dropped["B"]
+    assert dropped["C"]["reason"] == "换方向" and dropped["C"]["shared"] is True
+
+
+def test_a_finished_list_does_not_hand_its_dropped_steps_to_the_next(harness):
+    # Real run: a new five-step list opened with 27 "dropped" steps from the lists before it.
+    h = harness
+    h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "B", "status": "pending"},
+                                          {"step": "C", "status": "pending"}]})
+    h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "D", "status": "pending"}],
+                                 "explanation": "换方向"})
+    h.update.handler(h.context, {"plan": [done("A"), done("D")]})
+    assert [d["step"] for d in current_plan(h.store.events("abcdef"))["dropped"]] == ["B", "C"], "kept while it lives"
+    first = current_plan(h.store.events("abcdef"))
+    h.update.handler(h.context, {"plan": [{"step": "X", "status": "in_progress"}, {"step": "Y", "status": "pending"}],
+                                 "replace": True, "plan_id": first["plan_id"], "expected_revision": first["revision"],
+                                 "explanation": "新一轮"})
+    assert "dropped" not in current_plan(h.store.events("abcdef"))
+
+
+def test_settled_removes_a_dropped_step_that_was_in_fact_finished(harness):
+    h = harness
+    h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "B", "status": "pending"},
+                                          {"step": "C", "status": "pending"}]})
+    h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "D", "status": "pending"}],
+                                 "explanation": "换方向"})
+    proof = [{"path": "proof.txt"}]
+    unknown = h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "D", "status": "pending"}],
+                                           "settled": [{"step": "Z", "outcome": "passed", "evidence_refs": proof}]})
+    assert not unknown.ok and "not a dropped step" in json.dumps(unknown.data, ensure_ascii=False)
+    missing = h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "D", "status": "pending"}],
+                                           "settled": [{"step": "B", "outcome": "passed",
+                                                        "evidence_refs": [{"path": "nope.txt"}]}]})
+    assert not missing.ok
+    assert [d["step"] for d in current_plan(h.store.events("abcdef"))["dropped"]] == ["B", "C"], "refused: nothing moved"
+    ok = h.update.handler(h.context, {"plan": [{"step": "A", "status": "in_progress"}, {"step": "D", "status": "pending"}],
+                                      "settled": [{"step": "B", "outcome": "passed", "evidence_refs": proof}]})
+    assert ok.ok
+    plan = current_plan(h.store.events("abcdef"))
+    assert [d["step"] for d in plan["dropped"]] == ["C"]
+    assert [s["step"] for s in plan["settled"]] == ["B"] and plan["settled"][0]["outcome"] == "passed"
+    h.update.handler(h.context, {"plan": [done("A"), {"step": "D", "status": "in_progress"}]})
+    assert [s["step"] for s in current_plan(h.store.events("abcdef"))["settled"]] == ["B"], "a later update keeps it"
+
+
 # Whose list is it: a list belongs to the person's request it was written for (2026-11-08). A real person asked
 # "sum up where we are"; the model handed in the earlier request's unfinished list unchanged and went on editing.
 

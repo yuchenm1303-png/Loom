@@ -629,6 +629,14 @@ html[data-loom-surface="mobile"] .m-card.m-model-row:disabled { opacity: .55; }
 .m-steps > li > span:first-child { min-width: 0; display: grid; gap: 2px; }
 .m-steps strong { font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
 .m-steps small { font-size: 13px; line-height: 1.5; color: var(--loom-workspace-muted); overflow-wrap: anywhere; }
+/* Steps a list left out unfinished: set aside, quiet, never numbered into the count. */
+.m-dropped { margin-top: 10px; }
+.m-dropped .m-disclosure-title { color: var(--loom-workspace-muted); font-size: 14px; }
+.m-dropped .m-note { padding: 0 0 8px; }
+.m-steps-dropped { counter-reset: none; }
+.m-steps-dropped li { counter-increment: none; min-height: 0; padding-block: 9px; }
+.m-steps-dropped li::before { content: "–"; width: 26px; background: transparent; color: var(--loom-workspace-muted); font-weight: 500; }
+.m-steps-dropped strong { color: var(--loom-workspace-secondary); font-weight: 450; text-decoration: line-through; text-decoration-color: rgba(224, 230, 242, .28); }
 .m-accept { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; line-height: 1.5; color: var(--loom-workspace-secondary); }
 .m-accept > li { position: relative; padding-left: 14px; overflow-wrap: anywhere; }
 .m-accept > li::before { content: ""; position: absolute; left: 1px; top: .6em; width: 5px; height: 5px; border-radius: 50%; box-shadow: 0 0 0 1px var(--loom-workspace-muted) inset; }

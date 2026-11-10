@@ -1,5 +1,5 @@
 import { Activity, Check, CheckCircle2, ChevronRight, CircleAlert, ListChecks, Sparkles } from "./icons";
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useId, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useLoomLanguage } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
@@ -46,6 +46,8 @@ const COPY = {
     pendingFact: (count: number) => `待处理 ${count}`,
     dropped: "已放弃",
     droppedFact: (count: number) => `已放弃 ${count}`,
+    droppedGroup: "放弃的步骤",
+    droppedNote: "换清单时没有做完的步骤。若其实已做完，模型补记后会从这里消失。",
     earlier: (request: string) => request ? `这份清单属于之前的请求「${request}」，这一轮还没有写自己的清单。`
       : "这份清单属于之前的请求，这一轮还没有写自己的清单。",
   },
@@ -78,6 +80,8 @@ const COPY = {
     pendingFact: (count: number) => `${count} pending`,
     dropped: "Dropped",
     droppedFact: (count: number) => `${count} dropped`,
+    droppedGroup: "Dropped steps",
+    droppedNote: "Steps a list left unfinished when it was replaced. If one was in fact done, it leaves this list once the model records it.",
     earlier: (request: string) => request ? `This list is from an earlier request, “${request}”. This turn has no list of its own yet.`
       : "This list is from an earlier request. This turn has no list of its own yet.",
   },
@@ -88,6 +92,8 @@ export function TaskProgressPanel({ steps, earlierRequest, open, onClose }: Task
   const language = useLoomLanguage();
   const copy = COPY[language];
   const presence = useMotionPresence(open, RETAIN.base);
+  const [droppedOpen, setDroppedOpen] = useState(false);
+  const droppedId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -102,7 +108,8 @@ export function TaskProgressPanel({ steps, earlierRequest, open, onClose }: Task
 
   // Dropped steps are shown, not counted: the plan's progress is over what it still means to do.
   const planned = steps.filter(step => step.status !== "dropped");
-  const dropped = steps.length - planned.length;
+  const droppedSteps = steps.filter(step => step.status === "dropped");
+  const dropped = droppedSteps.length;
   const total = planned.length;
   const completed = planned.filter(step => step.status === "completed").length;
   const passed = planned.filter(step => step.status === "completed" && step.outcome === "passed").length;
@@ -152,7 +159,7 @@ export function TaskProgressPanel({ steps, earlierRequest, open, onClose }: Task
             <span className="task-plan-fact is-complete"><CheckCircle2 size={11} aria-hidden="true" />{copy.completedLabel(completed, total)}</span>
             {blocked ? <span className="task-plan-fact is-blocked"><CircleAlert size={11} aria-hidden="true" />{copy.blockedFact(blocked)}</span> : null}
             {pending ? <span className="task-plan-fact">{copy.pendingFact(pending)}</span> : null}
-            {dropped ? <span className="task-plan-fact is-blocked"><CircleAlert size={11} aria-hidden="true" />{copy.droppedFact(dropped)}</span> : null}
+            {dropped ? <span className="task-plan-fact">{copy.droppedFact(dropped)}</span> : null}
           </div>
         </div>
       </div>
@@ -172,13 +179,13 @@ export function TaskProgressPanel({ steps, earlierRequest, open, onClose }: Task
           <span>{completed}/{total}</span>
         </div>
         <ol className="task-plan-list">
-          {steps.map((step, index) => {
+          {planned.map((step, index) => {
             const tone = toneFor(step);
             const isCurrent = step === current;
             const evidence = milestoneEvidenceLabels(step, language);
             return (
               <li key={`${index}:${step.step}`} className={`task-plan-step is-${tone}${isCurrent ? " is-current" : ""}`}
-                aria-current={isCurrent ? "step" : undefined}>
+                style={{ "--i": Math.min(index, 8) } as CSSProperties} aria-current={isCurrent ? "step" : undefined}>
                 <span className="task-plan-step-mark" aria-hidden="true">
                   {tone === "failed" || tone === "interrupted" || tone === "not_covered"
                     ? <CircleAlert size={12} />
@@ -222,6 +229,30 @@ export function TaskProgressPanel({ steps, earlierRequest, open, onClose }: Task
               </li>
             );
           })}
+          {droppedSteps.length ? (
+            <li className={`task-plan-dropped${droppedOpen ? " is-open" : ""}`}>
+              <button type="button" className="task-plan-dropped-head" aria-expanded={droppedOpen} aria-controls={droppedId}
+                onClick={() => setDroppedOpen(value => !value)}>
+                <ChevronRight size={12} aria-hidden="true" /><span>{copy.droppedGroup}</span><em>{droppedSteps.length}</em>
+              </button>
+              <div className="task-plan-dropped-fold" id={droppedId} role="region" inert={!droppedOpen}>
+                <div>
+                  <p className="task-plan-dropped-note">{copy.droppedNote}</p>
+                  <ul className="task-plan-dropped-list">
+                    {droppedSteps.map((step, index) => (
+                      <li key={`${index}:${step.step}`} className="task-plan-dropped-row">
+                        <span className="task-plan-dropped-dash" aria-hidden="true" />
+                        <div>
+                          <p>{step.step}</p>
+                          {step.blocker ? <small>{step.blocker}</small> : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </li>
+          ) : null}
         </ol>
       </div>
 

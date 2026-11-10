@@ -26,7 +26,11 @@ interface FixtureState {
 }
 
 // A step the list left out unfinished, as the Host keeps it.
-const DROPPED: TaskMilestone = { step: "训练 nr_temphead.pt 到 3000 步", status: "dropped", blocker: "冒烟结果为负，不再训练" };
+const DROPPED: TaskMilestone[] = [
+  { step: "训练 nr_temphead.pt 到 3000 步", status: "dropped", blocker: "冒烟结果为负，不再训练" },
+  { step: "定位最有价值的开放问题并确定本轮实验设计", status: "dropped" },
+  { step: "更新 README 与中文文档的投稿包说明并汇报", status: "dropped" },
+];
 
 function stepsFor(completed: boolean): TaskMilestone[] {
   const running = completed ? "completed" : "in_progress";
@@ -64,7 +68,7 @@ let update: ((updater: (state: FixtureState) => FixtureState) => void) | null = 
 function Harness() {
   const [state, setState] = useState<FixtureState>({ width: 1200, completed: false, nextTurn: false, open: true, archived: false });
   update = setState;
-  const steps = state.archived ? [] : [...stepsFor(state.completed), ...(state.dropped ? [DROPPED] : [])];
+  const steps = state.archived ? [] : [...stepsFor(state.completed), ...(state.dropped ? DROPPED : [])];
   const completed = steps.filter(step => step.status === "completed").length;
   const noop = () => {};
 

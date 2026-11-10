@@ -58,8 +58,9 @@ function planSteps(result: { plan?: unknown; dropped?: unknown }): TaskMilestone
     && ["pending", "in_progress", "completed", "blocked"].includes(entry.status));
   // Steps left out unfinished stay in view: a real list once lost its training and evaluation this way.
   const dropped = (Array.isArray(result.dropped) ? result.dropped : [])
-    .filter((entry): entry is { step: string; reason?: string } => Boolean(entry) && typeof entry.step === "string")
-    .map((entry): TaskMilestone => ({ step: entry.step, status: "dropped", blocker: entry.reason || undefined }));
+    .filter((entry): entry is { step: string; reason?: string; shared?: boolean } => Boolean(entry) && typeof entry.step === "string")
+    // A reason that came with a whole replacement is the list's, not this step's: it is not shown beside it.
+    .map((entry): TaskMilestone => ({ step: entry.step, status: "dropped", blocker: entry.shared ? undefined : entry.reason || undefined }));
   return [...listed, ...dropped];
 }
 

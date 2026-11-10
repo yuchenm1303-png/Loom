@@ -141,6 +141,27 @@ const STATE: Record<string, string> = {
 };
 // A conversation's own task list is not merged or reviewed like a project's tasks.
 const TURN_STATE: Record<string, string> = { integrated: "已完成", working: "进行中", rework: "未完成" };
+
+/** The steps the list still means to do, numbered; the ones it left out unfinished fold away below, quiet and uncounted. */
+function TurnTaskList({ steps }: { steps: Parameters<typeof toTurnTasks>[0] }) {
+  const tasks = toTurnTasks(steps);
+  const counted = tasks.filter(task => !task.dropped);
+  const dropped = tasks.filter(task => task.dropped);
+  return (
+    <>
+      <ol className="m-steps">{counted.map(task => <li key={task.id}><span><strong>{task.title}</strong>{task.detail ? <small>{task.detail}</small> : null}</span><StateMark state={task.state} label={TURN_STATE[task.state] || STATE[task.state]} /></li>)}</ol>
+      {dropped.length ? (
+        <Disclosure className="m-dropped" title="放弃的步骤" aside={<span className="m-group-count">{dropped.length}</span>}>
+          <p className="m-note">换清单时没有做完的步骤。若其实已做完，模型补记后会从这里消失。</p>
+          <ol className="m-steps m-steps-dropped">{dropped.map(task => {
+            const reason = (task.detail ?? "").replace(/^已放弃[：:]?/, "");
+            return <li key={task.id}><span><strong>{task.title}</strong>{reason ? <small>{reason}</small> : null}</span></li>;
+          })}</ol>
+        </Disclosure>
+      ) : null}
+    </>
+  );
+}
 const TONE: Record<string, "run" | "wait" | "on" | undefined> = {
   running: "run",
   starting: "run",
@@ -560,7 +581,7 @@ export function MobileBuildPanel({
   return (
     <BuildBranches dock={dock} branch={branch} onBranch={onBranch} summary={proposal ? "建造方案待确认 · 点预算查看" : goalOnly && goal ? goal.text : idle ? idleText : data ? `阶段 ${data.milestone} · ${STATE[data.state]} · ${data.tasks.filter(t => t.state === "integrated").length}/${data.tasks.length} 任务` : "建造 · 等待方案"} refresh={{ busy: reading, disabled: !online || reading, run: () => void load(true) }}><div className="m-build-panel" aria-label="建造控制面板">
       {data?.attention && data.attention.action !== "approval" ? <Section title="建造需要处理" tone="wait"><p>{data.attention.reason}</p><button type="button" className="m-inline-button" onClick={() => onBranch("budget")}>处理预算与运行状态</button></Section> : null}
-      {turnPlan.steps.length ? <Section category="tasks" title={turnPlan.earlier ? "之前请求的任务" : "对话任务"}>{turnPlan.earlier ? <p className="m-note">{turnPlan.request ? `这份清单属于之前的请求「${turnPlan.request}」，这一轮还没有写自己的清单。` : "这份清单属于之前的请求，这一轮还没有写自己的清单。"}</p> : null}<ol className="m-steps">{toTurnTasks(turnPlan.steps).map(task => <li key={task.id}><span><strong>{task.title}</strong>{task.detail ? <small>{task.detail}</small> : null}</span><StateMark state={task.state} label={TURN_STATE[task.state] || STATE[task.state]} /></li>)}</ol></Section> : null}
+      {turnPlan.steps.length ? <Section category="tasks" title={turnPlan.earlier ? "之前请求的任务" : "对话任务"}>{turnPlan.earlier ? <p className="m-note">{turnPlan.request ? `这份清单属于之前的请求「${turnPlan.request}」，这一轮还没有写自己的清单。` : "这份清单属于之前的请求，这一轮还没有写自己的清单。"}</p> : null}<TurnTaskList steps={turnPlan.steps} /></Section> : null}
       {!turnPlan.steps.length && !(run && data?.phase === "live") ? <BranchEmpty category="tasks">建造开始后，任务和验收会显示在这里。</BranchEmpty> : null}
       <BranchCard category="budget"><div className="m-build-head">
         <span className={`m-badge${tone ? ` is-${tone}` : ""}`}>

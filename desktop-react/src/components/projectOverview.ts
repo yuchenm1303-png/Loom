@@ -642,7 +642,7 @@ function stoppedLine(reason: string, en: boolean, line: (zh: string, english: st
   return { text: line("长目标停下了，需要你处理", "The long goal stopped and needs you"), note: reason || undefined };
 }
 
-export function toTurnTasks(steps: TaskMilestone[], lang: "zh" | "en" = "zh"): FlowData["tasks"] {
+export function toTurnTasks(steps: TaskMilestone[], lang: "zh" | "en" = "zh"): (FlowData["tasks"][number] & { dropped?: boolean })[] {
   const states: Record<TaskMilestone["status"], FlowTaskState> = { pending: "pending", in_progress: "working", completed: "integrated", blocked: "rework", dropped: "rework" };
   const droppedWord = lang === "en" ? "Dropped" : "已放弃";
   // A step closed without being done is closed, not done: it does not count toward the tick total.

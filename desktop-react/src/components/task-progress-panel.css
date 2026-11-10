@@ -472,6 +472,142 @@ html[data-loom-theme="light"] .task-plan-panel {
   overflow-wrap: anywhere;
 }
 
+/* Entrance: a step fades in on its own beat, a finished step's tick lands. Opacity and transform only. */
+.task-plan-step {
+  animation: task-plan-in var(--loom-dur-base) var(--loom-ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--loom-stagger));
+}
+
+.task-plan-step.is-completed .task-plan-step-mark svg,
+.task-plan-step.is-passed .task-plan-step-mark svg {
+  animation: task-plan-tick var(--loom-dur-flow) var(--loom-ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--loom-stagger) + 90ms);
+}
+
+/* Dropped steps: set aside below the plan, folded, quiet, never counted. ---- */
+.task-plan-dropped {
+  list-style: none;
+  margin-top: 4px;
+  border-top: 1px solid var(--pl-edge);
+}
+
+.task-plan-dropped-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--pl-muted);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 15px;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--loom-dur-fast) ease;
+}
+
+.task-plan-dropped-head:hover { color: var(--pl-ink); }
+.task-plan-dropped-head:focus-visible { outline: 2px solid var(--pl-focus); outline-offset: 2px; }
+.task-plan-dropped-head svg { flex: none; transition: transform var(--loom-dur-base) var(--loom-ease-out); }
+.task-plan-dropped.is-open .task-plan-dropped-head svg { transform: rotate(90deg); }
+
+.task-plan-dropped-head em {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--pl-hover);
+  color: var(--pl-muted);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-plan-dropped-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows var(--loom-dur-base-out) var(--loom-ease-exit), visibility 0s linear var(--loom-dur-base-out);
+}
+
+.task-plan-dropped.is-open .task-plan-dropped-fold {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows var(--loom-dur-base) var(--loom-ease-out), visibility 0s;
+}
+
+.task-plan-dropped-fold > div {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--loom-dur-fast-out) ease;
+}
+
+.task-plan-dropped.is-open .task-plan-dropped-fold > div {
+  opacity: 1;
+  transition: opacity var(--loom-dur-base) var(--loom-ease-out) 60ms;
+}
+
+.task-plan-dropped-note {
+  margin: 0 0 4px;
+  color: var(--pl-faint);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.task-plan-dropped-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 6px;
+}
+
+.task-plan-dropped-row {
+  display: flex;
+  gap: 10px;
+  padding: 5px 4px 5px 0;
+}
+
+.task-plan-dropped-dash {
+  flex: 0 0 23px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+}
+
+.task-plan-dropped-dash::before {
+  content: "";
+  width: 7px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: var(--pl-faint);
+}
+
+.task-plan-dropped-row > div { min-width: 0; display: grid; gap: 1px; }
+
+.task-plan-dropped-row p {
+  margin: 0;
+  color: var(--pl-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--pl-muted) 45%, transparent);
+}
+
+.task-plan-dropped-row small {
+  color: var(--pl-faint);
+  font-size: 11.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@keyframes task-plan-in { from { opacity: 0; } }
+@keyframes task-plan-tick { from { opacity: 0; transform: scale(.55); } }
+
 /* Footer ------------------------------------------------------------------- */
 .task-plan-foot {
   flex: none;

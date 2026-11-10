@@ -67,6 +67,15 @@ test("steps a plan left out unfinished stay in view as dropped, with the reason"
   assert.equal(steps[2].blocker, "冒烟结果为负");
 });
 
+test("a reason that came with a whole replacement is not shown as the dropped step's own", () => {
+  // Real run: "定位最有价值的开放问题" sat beside "已确认仓库状态…", the explanation of a list swap about other work.
+  const plan = { plan: [{ step: "A", status: "pending" }, { step: "B", status: "pending" }],
+    dropped: [{ step: "C", status: "pending", reason: "换清单的总说明", shared: true }, { step: "D", status: "pending", reason: "数据拿不到" }] };
+  const steps = model.latestTaskPlan([item("p", "task_plan", { result: plan })]);
+  assert.equal(steps[2].blocker, undefined);
+  assert.equal(steps[3].blocker, "数据拿不到");
+});
+
 test("a list from an earlier request is marked as such until this turn writes its own", () => {
   // Real run: asked to sum up, the model showed the earlier request's list as this turn's and went on doing its work.
   const plan = (turnId, fields = {}) => item(`p-${turnId}`, "task_plan", { turnId,

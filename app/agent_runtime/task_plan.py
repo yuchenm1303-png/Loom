@@ -113,23 +113,60 @@ UPDATE_SCHEMA = {"type": "object", "additionalProperties": False, "properties": 
     "explanation": {"type": "string", "maxLength": 2000},
     "plan_id": {"type": "string"}, "expected_revision": {"type": "integer", "minimum": 0},
     "replace": {"type": "boolean"}, "mode": {"enum": ["milestones", "graph"]},
+    "dropped_reasons": {"type": "object", "maxProperties": 64,
+                        "additionalProperties": {"type": "string", "maxLength": 600}},
+    "settled": {"type": "array", "maxItems": 64, "items": {
+        "type": "object", "additionalProperties": False, "required": ["step", "outcome", "evidence_refs"],
+        "properties": {"step": {"type": "string", "minLength": 1, "maxLength": 240},
+                       "outcome": {"enum": ["passed", "failed"]}, "evidence_refs": EVIDENCE_REFS_SCHEMA}}},
     "plan": {"type": "array", "minItems": 2, "maxItems": 128, "items": STEP_SCHEMA}}, "required": ["plan"]}
 
 
-MAX_DROPPED = 50
+MAX_DROPPED = 24
 
 
-def _dropped(previous, old, labels, explanation, context):
-    """Unfinished steps a new list leaves out stay visible as dropped, with the explanation that came with it.
+def _dropped(previous, old, labels, explanation, context, reasons=None):
+    """Unfinished steps a new list leaves out stay visible as dropped, with the reason that came with them.
 
     A real lead planned six steps, ran a 100-step smoke test, then rewrote the list to one "explored (negative
     result): completed" so the goal could be claimed: the training and evaluation it had planned vanished, and
     the check never saw them. Leaving a step out is allowed; making it disappear is not. A step listed again
-    is no longer dropped."""
-    carried = [item for item in (previous or {}).get("dropped") or () if item.get("step") not in labels]
-    fresh = [{"step": label, "status": step["status"], "reason": explanation[:600], "turn_id": context.turn_id}
+    is no longer dropped.
+
+    A dropped step lives as long as the list it was dropped from. A list every step of which is finished closes
+    that chapter: a real 14-hour goal replaced its lists a few dozen times and the person's panel ended with 27
+    "dropped" steps, most of them long since done, each carrying the reason of an unrelated replacement.
+    reasons: a step's own reason by its label; without one it takes the replacement's explanation, marked shared
+    so a panel does not present it as that step's own."""
+    own = {str(label).strip(): str(why).strip()[:600] for label, why in (reasons or {}).items() if str(why).strip()}
+    closed = bool(previous) and not unfinished(previous)
+    carried = [] if closed else [item for item in (previous or {}).get("dropped") or () if item.get("step") not in labels]
+    fresh = [{"step": label, "status": step["status"], "reason": own.get(label) or explanation[:600],
+              "turn_id": context.turn_id, **({} if label in own else {"shared": True})}
              for label, step in old.items() if label not in labels and step.get("status") in UNFINISHED]
     return (carried + fresh)[-MAX_DROPPED:], [item["step"] for item in fresh]
+
+
+def _settle(settled, dropped, previous, store, context, events):
+    """Dropped steps the lead reports it did finish, with the evidence a completed step needs. A lead that kept
+    its list behind the work (five times in one run: "plan is behind the real state") replaced it instead of
+    marking steps done, and every step it had in fact finished was recorded as dropped. Returns the dropped
+    steps that remain, the settled record, and the evidence errors."""
+    names = {item["step"] for item in dropped}
+    errors, accepted = [], []
+    for entry in settled:
+        step = entry["step"].strip()
+        if step not in names:
+            errors.append({"step": step, "reason": "not a dropped step; settled names steps listed as dropped"})
+            continue
+        facts, problems = resolve_evidence(store, context, entry["evidence_refs"], events=events)
+        errors.extend(problems)
+        if not problems:
+            accepted.append({"step": step, "outcome": entry["outcome"], "evidence_refs": entry["evidence_refs"],
+                             "evidence_facts": facts, "turn_id": context.turn_id})
+    done = {item["step"] for item in accepted}
+    kept = [item for item in (previous or {}).get("settled") or () if item["step"] not in done]
+    return [item for item in dropped if item["step"] not in done], (kept + accepted)[-MAX_DROPPED:], errors
 
 
 def _request(events, context, previous, replacing, earlier, old, labels):
@@ -229,11 +266,21 @@ def update_plan_tool(store):
             raise ValueError("dependencies and review gates require mode=graph")
         for item in plan:
             item["step"] = item["step"].strip()
-        dropped, new_drops = _dropped(previous, old, set(labels), explanation, context)
+        dropped, new_drops = _dropped(previous, old, set(labels), explanation, context, arguments.get("dropped_reasons"))
+        settled = []
+        if arguments.get("settled"):
+            dropped, settled, errors = _settle(arguments["settled"], dropped, previous, store, context, events)
+            if errors:
+                return rejected_evidence(errors)
+            new_drops = [step for step in new_drops if step in {item["step"] for item in dropped}]
+        elif previous and unfinished(previous):
+            settled = list(previous.get("settled") or ())
         data = stamp({"plan": plan, "mode": mode, "explanation": explanation, "current": None},
                      previous if not replacing else None, context)
         if dropped:
             data["dropped"] = dropped
+        if settled:
+            data["settled"] = settled
         if replacing and previous:
             data["replaces_plan_id"] = previous.get("plan_id")
         elif not previous:
@@ -243,7 +290,9 @@ def update_plan_tool(store):
         data.update(_request(events, context, previous, replacing, earlier, old, labels))
         if new_drops:
             return persist(context, data, "Plan updated. Unfinished steps you left out are kept as dropped, with your "
-                           "explanation, where the person and any check see them: " + "; ".join(new_drops))
+                           "reason, where the person and any check see them: " + "; ".join(new_drops)
+                           + ". Work you did finish is not dropped: report it with settled=[{step, outcome, "
+                           "evidence_refs}], and give a step its own reason in dropped_reasons.")
         return persist(context, data)
 
     return AgentTool("update_plan", (
