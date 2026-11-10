@@ -880,7 +880,7 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         record["titleSource"] = title_source
         record["archived"] = bool(archived_at)
         record["archivedAt"] = archived_at or None
-        record["parentThreadId"] = str(metadata.get("parentThreadId") or "") or None
+        record["parentThreadId"] = str(metadata.get("parentThreadId") or record.get("parentThreadId") or "") or None
         record["branchSourceMessageId"] = str(metadata.get("branchSourceMessageId") or "") or None
         record["branchReportedAt"] = str(metadata.get("branchReportedAt") or "") or None
         from .thread_handoff import metadata as handoff_metadata
@@ -1144,7 +1144,7 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             thread["titleSource"] = title_source
             thread["archived"] = bool(archived_at)
             thread["archivedAt"] = archived_at or None
-            thread["parentThreadId"] = str(metadata.get("parentThreadId") or "") or None
+            thread["parentThreadId"] = str(metadata.get("parentThreadId") or thread.get("parentThreadId") or "") or None
             thread["branchSourceMessageId"] = str(metadata.get("branchSourceMessageId") or "") or None
             thread["branchReportedAt"] = str(metadata.get("branchReportedAt") or "") or None
             from .thread_handoff import metadata as handoff_metadata

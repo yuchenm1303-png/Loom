@@ -520,7 +520,12 @@ export function useLoom() {
         turnLimit: THREAD_READ_WINDOW_TURNS,
         ...(beforeTurnId ? { beforeTurnId } : {}),
       }))
-      .then((result) => normalizeThreadReadWindow(result, beforeTurnId))
+      .then((result) => {
+        if (result.thread?.id !== threadId) {
+          throw new Error("电脑返回了其他对话，未切换。请刷新后重试。");
+        }
+        return normalizeThreadReadWindow(result, beforeTurnId);
+      })
       .finally(() => {
         if (threadReadInflightRef.current.get(requestKey) === request) {
           threadReadInflightRef.current.delete(requestKey);

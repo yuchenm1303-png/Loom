@@ -5,6 +5,7 @@ import { useHandoffNavigation } from "../state/useHandoffNavigation";
 import { AnimatedFold } from "../motion/AnimatedFold";
 import { MorphText, MotionRows, MotionValue, Swap } from "./MotionRows";
 import { TickText } from "../components/TickText";
+import { agentRoleName } from "../components/agentPeek";
 import { playEntrance, useSheetDrag } from "./motion";
 import { recordSendOrigin } from "../sendFlight";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
@@ -529,7 +530,7 @@ function useApprovalOffscreen(active: boolean): boolean {
   return offscreen;
 }
 
-function ThreadView({ loom, space, online, connecting, draftWorkspace, swapped, onBack, onMode, onOpenAgent }: { loom: Loom; space: Space; online: boolean; connecting: boolean; draftWorkspace?: string; swapped: boolean; onBack(): void; onMode(mode: Space): void; onOpenAgent(id: string): void }) {
+function ThreadView({ loom, space, online, connecting, draftWorkspace, swapped, navigationError, agentView, onBack, onMode, onOpenAgent }: { loom: Loom; space: Space; online: boolean; connecting: boolean; draftWorkspace?: string; swapped: boolean; navigationError: string; agentView: boolean; onBack(): void; onMode(mode: Space): void; onOpenAgent(id: string): void }) {
   const thread = loom.active?.thread;
   const handoffNavigation = { current: loom.openThread };
   const handoffError = useHandoffNavigation(loom.openingThreadId || thread?.id, handoffNavigation);
@@ -651,17 +652,20 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, swapped, 
 
   const mode = thread?.permissionMode || loom.draftPermissionMode || "approval";
   const blank = !loom.items.length && !opening;
+  const isAgent = Boolean(thread?.agentRole || agentView);
+  const heading = isAgent && thread ? `${agentRoleName(thread.agentRole || "worker")} · ${thread.id.slice(0, 8)}` : thread?.title || (space === "build" ? "新建造" : "新任务");
   return (
     <div className={`m-thread${swapped ? " is-swapped" : ""}`}>
       <Fold open={offlineNotice}><p className="m-banner" role="status">{connecting ? "正在重新连接…" : "电脑离线，暂时不能操作"}</p></Fold>
       <header className="m-thread-head">
-        <button type="button" className="m-icon-button" aria-label="返回" onClick={onBack}><ChevronLeft size={24} strokeWidth={1.75} /></button>
+        <button type="button" className="m-icon-button" aria-label={isAgent ? "返回父对话" : "返回"} onClick={onBack}><ChevronLeft size={24} strokeWidth={1.75} /></button>
         <div>
-          <h1><Swap id={opening ? "opening" : thread?.title || space}>{opening ? "正在打开…" : thread?.title || (space === "build" ? "新建造" : "新任务")}</Swap></h1>
+          <h1><Swap id={opening ? "opening" : heading}>{opening ? "正在打开…" : heading}</Swap></h1>
           <p><span className={`m-dot is-${!online ? "idle" : running ? "run" : "on"}`} aria-hidden="true" /><MotionValue value={!online ? "off" : running ? "run" : space}>{!online ? "电脑离线" : running ? "正在运行" : space === "build" ? "建造" : "对话"}</MotionValue>{thread?.workspace ? ` · ${placeOf(thread.workspace)}` : draftWorkspace ? ` · ${placeOf(draftWorkspace)}` : ""}</p>
         </div>
         <button type="button" className="m-icon-button" aria-label="对话详情与操作" disabled={opening || sending || buildBusy} onClick={() => setDetails(true)}><Ellipsis size={22} /></button>
       </header>
+      <AnimatedFold open={Boolean(navigationError)}><p className="m-alert m-page-alert" role="alert">{navigationError}</p></AnimatedFold>
       <ThreadHandoffPanel threadId={thread?.id} navigation={handoffNavigation} navigationError={handoffError} />
       {space === "build" && !opening ? <div className="m-stage m-build-stage" hidden={pane !== "build"}><MobileBuildPanel model={loom.models?.current} onModelSettings={() => setControls(true)} items={loom.items} dock={buildDock} branch={branch} onBranch={chooseBranch} key={thread?.id || "draft"} threadId={thread?.id} workspace={thread?.workspace || draftWorkspace} online={online} chatting={running} visible={true} attachments={attachments.filter((item) => item.status === "ready").map((item) => ({ path: item.path!, name: item.file.name }))} attachmentsReady={attachmentsReady && !picking && !sending} onConsumeAttachments={() => queue.clear()} onBudget={setWeaveBudget} onBusy={setBuildBusy} onOpenAgent={onOpenAgent} /></div> : null}
       {opening ? (
@@ -902,6 +906,9 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   if (!visited.has(tab)) setVisited(new Set(visited).add(tab));
   const pages = useRef(new Map<Tab, HTMLElement>());
   const [navigationError, setNavigationError] = useState("");
+  const navigationVersion = useRef(0);
+  const [relatedOpening, setRelatedOpening] = useState(false);
+  const [agentOrigin, setAgentOrigin] = useState<{ agentId: string; parentId: string; parentSpace: Space } | null>(null);
   const [draftWorkspace, setDraftWorkspace] = useState("");
   const [spaces, setSpaces] = useState<Record<string, Space>>(() => {
     try { const stored = JSON.parse(localStorage.getItem(`loom.mobile.spaces:${shell.deviceId}`) || "{}"); return Object.fromEntries(Object.entries(stored).filter(([, mode]) => mode === "chat" || mode === "build")) as Record<string, Space>; } catch { return {}; }
@@ -923,8 +930,8 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   const modeOf = (thread: ThreadRecord): Space => spaces[thread.id] || (thread.weave ? "build" : "chat");
   useEffect(() => {
     const id = loom.active?.thread.id;
-    if (open && id && !loom.openingThreadId) setSpaces((current) => current[id] === open ? current : { ...current, [id]: open });
-  }, [open, loom.active?.thread.id, loom.openingThreadId]);
+    if (open && id && !loom.openingThreadId && !relatedOpening) setSpaces((current) => current[id] === open ? current : { ...current, [id]: open });
+  }, [open, loom.active?.thread.id, loom.openingThreadId, relatedOpening]);
   useEffect(() => { try { localStorage.setItem(`loom.mobile.spaces:${shell.deviceId}`, JSON.stringify(spaces)); } catch {} }, [spaces, shell.deviceId]);
   useEffect(() => {
     if (!online || loom.connection !== "ready") return;
@@ -946,6 +953,9 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   useEffect(() => { if (online && loom.connection === "error") onRestart(); }, [loom.connection, onRestart, online]);
 
   const openThread = (thread: ThreadRecord) => {
+    navigationVersion.current += 1;
+    setRelatedOpening(false);
+    setAgentOrigin(null);
     setViewKey((key) => key + 1);
     setViewSwapped(false);
     setOpen(modeOf(thread));
@@ -954,6 +964,9 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
   };
 
   const begin = (space: Space, workspace?: string, projectId?: string) => {
+    navigationVersion.current += 1;
+    setRelatedOpening(false);
+    setAgentOrigin(null);
     setViewKey((key) => key + 1);
     setViewSwapped(false);
     setChoosing(null);
@@ -963,16 +976,53 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
     void loom.newThread(workspace, projectId);
   };
 
+  const openRelated = async (id: string, mode: Space, origin: typeof agentOrigin, failure: string) => {
+    const version = ++navigationVersion.current;
+    setRelatedOpening(true);
+    setNavigationError("");
+    try {
+      await loom.openThread(id);
+      if (version !== navigationVersion.current) return;
+      setAgentOrigin(origin);
+      setViewKey(key => key + 1);
+      setViewSwapped(true);
+      setOpen(mode);
+    } catch (cause) {
+      if (version === navigationVersion.current) setNavigationError(`${failure}：${cause instanceof Error ? cause.message : String(cause)}`);
+    } finally {
+      if (version === navigationVersion.current) setRelatedOpening(false);
+    }
+  };
+  const openAgent = (id: string) => {
+    const parentId = loom.active?.thread.id;
+    if (!parentId) return;
+    void openRelated(id, "chat", { agentId: id, parentId, parentSpace: open || "chat" }, `无法打开子代理 ${id.slice(0, 8)}`);
+  };
+  const goBack = () => {
+    const thread = loom.active?.thread;
+    const origin = agentOrigin?.agentId === thread?.id ? agentOrigin : null;
+    const parentId = origin?.parentId || (thread?.agentRole ? thread.parentThreadId : null);
+    if (parentId && !loom.openingThreadId) {
+      const parent = loom.threads.find(entry => entry.id === parentId);
+      void openRelated(parentId, origin?.parentSpace || (parent ? modeOf(parent) : "chat"), null, "无法返回父对话");
+      return;
+    }
+    navigationVersion.current += 1;
+    setRelatedOpening(false);
+    setNavigationError("");
+    setOpen(null);
+  };
+
   useEffect(() => {
     if (!open) return;
     // The system Back key: cancelling the event tells the shell it was handled.
     const back = (event: Event) => {
       if (event.defaultPrevented || document.querySelector('.m-sheet-host:not([inert]), .user-message-image-lightbox:not([inert]), .m-branch-content:not([data-branch=closed])')) return;
-      event.preventDefault(); setOpen(null);
+      event.preventDefault(); goBack();
     };
     window.addEventListener("loom:mobile-back", back);
     return () => window.removeEventListener("loom:mobile-back", back);
-  }, [open]);
+  }, [open, agentOrigin, loom.active?.thread, loom.openingThreadId, loom.openThread]);
 
   const waitingCount = threads.filter((thread) => thread.status === "waiting_approval").length;
   const tabIndex = TABS.findIndex((entry) => entry.key === tab);
@@ -1041,7 +1091,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
       </div>
       {screen.mounted ? (
         <div ref={screenElement} className="m-screen" data-phase={screen.phase} inert={!open}>
-          <ThreadView key={viewKey} loom={loom} space={space} online={online} draftWorkspace={draftWorkspace} swapped={viewSwapped} connecting={shell.socket === "connecting"} onBack={() => setOpen(null)} onMode={setOpen} onOpenAgent={(id) => { setViewKey((key) => key + 1); setViewSwapped(true); setOpen("chat"); void loom.openThread(id).catch((cause) => setNavigationError(String(cause))); }} />
+          <ThreadView key={viewKey} loom={loom} space={space} online={online} draftWorkspace={draftWorkspace} swapped={viewSwapped} connecting={shell.socket === "connecting"} navigationError={navigationError} agentView={agentOrigin?.agentId === loom.active?.thread.id} onBack={goBack} onMode={setOpen} onOpenAgent={openAgent} />
         </div>
       ) : null}
       <ProjectChooser open={Boolean(choosing)} loom={loom} online={online} onClose={() => setChoosing(null)} onChoose={(workspace, projectId) => begin(chosenSpace, workspace, projectId)} />

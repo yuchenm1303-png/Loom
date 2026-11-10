@@ -264,6 +264,12 @@ class AgentControl:
                 pass
         return self.snapshot(caller_session_id, node.session_id)
 
+    def is_running(self, session_id: str) -> bool:
+        """Includes queued starts that have not acquired a runtime turn token yet."""
+        with self._lock:
+            future = self._futures.get(session_id)
+            return future is not None and not future.done()
+
     def snapshot(
         self,
         caller_session_id: str,
@@ -271,9 +277,7 @@ class AgentControl:
     ) -> AgentExecutionSnapshot:
         node = self.graph.assert_same_tree(caller_session_id, target_session_id)
         session = self.runtime.store.load(node.session_id)
-        with self._lock:
-            future = self._futures.get(node.session_id)
-            execution_running = future is not None and not future.done()
+        execution_running = self.is_running(node.session_id)
         queue_depth = self.runtime.durable_state.pending_count(node.session_id)
         return AgentExecutionSnapshot(
             node=node,

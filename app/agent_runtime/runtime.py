@@ -576,6 +576,11 @@ class AgentRuntime:
             finally:
                 self._deactivate(session.session_id, token)
 
+    def is_turn_active(self, session_id: str) -> bool:
+        """Whether this process still owns the turn, including cancellation/terminal cleanup."""
+        with self._active_tokens_guard:
+            return session_id in self._turn_lifecycle_tokens
+
     def is_paused(self, session_id: str) -> bool:
         with self._active_tokens_guard:
             token = self._active_tokens.get(session_id)

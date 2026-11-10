@@ -37,9 +37,43 @@ try {
   assert.ok(await page.evaluate(() => window.__shell.calls.some(call => call.operation === "call" && call.args[0] === "projectAgent/peek" && call.args[1].agentId === "checker-1")));
   await page.screenshot({ path: `${out}/agents-peek.png`, animations: "disabled" });
   await page.getByRole("button", { name: "打开完整对话", exact: true }).click();
-  await page.getByRole("heading", { name: "独立检查执行记录", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "独立检查 · checker-", exact: true }).waitFor();
+  await page.getByText("仅属于独立检查的执行消息", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "返回父对话", exact: true }).click();
+  await page.getByRole("heading", { name: "Loom 账号页重做", exact: true }).waitFor();
+  await page.getByRole("navigation", { name: "建造支路" }).getByRole("button", { name: "Agent", exact: true }).click();
+  const line = page.locator(".m-agent-card").filter({ has: page.getByRole("heading", { name: "并行支路", exact: true }) });
+  await line.getByRole("heading").click();
+  await page.getByRole("button", { name: "打开完整对话", exact: true }).click();
+  await page.getByRole("heading", { name: "并行支路 · line-1", exact: true }).waitFor();
+  await page.getByText("仅属于并行支路的执行消息", { exact: true }).waitFor();
+  assert.equal(await page.getByText("仅属于独立检查的执行消息", { exact: true }).count(), 0);
+  await page.screenshot({ path: `${out}/child-conversation.png`, animations: "disabled" });
   assert.ok(await page.evaluate(() => window.__shell.calls.some(call => call.operation === "call" && call.args[0] === "thread/read" && call.args[1].threadId === "checker-1")));
   assert.deepEqual(errors, []);
+  for (const mode of ["error", "wrong"]) {
+    await open(`&agentread=${mode}`);
+    await checker.getByRole("heading").click();
+    await page.getByRole("button", { name: "打开完整对话", exact: true }).click();
+    await page.locator(".m-screen").getByRole("alert").filter({ hasText: "无法打开子代理" }).waitFor();
+    await page.getByRole("heading", { name: "Loom 账号页重做", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "并行支路", exact: true }).waitFor();
+    assert.equal(await page.getByRole("heading", { name: "独立检查 · checker-", exact: true }).count(), 0);
+    await page.screenshot({ path: `${out}/child-read-${mode}.png`, animations: "disabled" });
+    await page.evaluate(() => { window.__shell.agentReadMode = "ok"; });
+    await checker.getByRole("heading").click();
+    await page.getByRole("button", { name: "打开完整对话", exact: true }).click();
+    await page.getByText("仅属于独立检查的执行消息", { exact: true }).waitFor();
+  }
+  // Back during a slow child read must not reopen that child when its reply finally arrives.
+  await open();
+  await checker.getByRole("heading").click();
+  await page.evaluate(() => { window.__shell.agentReadDelay = 1000; });
+  await page.getByRole("button", { name: "打开完整对话", exact: true }).click();
+  await page.getByRole("heading", { name: "正在打开…", exact: true }).waitFor();
+  await page.locator(".m-screen").getByRole("button", { name: "返回", exact: true }).click();
+  await page.waitForTimeout(1200);
+  assert.equal(await page.locator(".m-screen:not([inert])").count(), 0);
   // Every sub-agent the conversation ever had stays on the agents page, each opening into the same run box.
   await open();
   await page.getByText("正式实验", { exact: true }).waitFor();

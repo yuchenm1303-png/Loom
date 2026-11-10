@@ -91,7 +91,9 @@ if (params.has("goalagents")) {
   ] });
   if (params.has("oldhost")) delete buildOverview.conversationAgents;
   if (params.has("agenterror")) { buildOverview.conversationAgents = []; buildOverview.conversationAgentsError = "模拟读取失败"; }
-  threads.push({ ...threads[2], id: "checker-1", title: "独立检查执行记录", weave: false, parentThreadId: "thread-build" });
+  for (const [id, agentRole] of [["checker-1", "goal-check"], ["line-1", "goal-line"]]) {
+    threads.push({ ...threads[2], id, title: "代理执行记录", weave: false, parentThreadId: "thread-build", agentRole });
+  }
 }
 const pendingApproval = {
   requestId: "req-1", threadId: THREAD, turnId: "turn-1", itemId: "tool-1", approvalItemId: "approval:call-1", callId: "call-1",
@@ -448,6 +450,8 @@ const MANY_CHANGES = {
   diff: MANY_NAMES.map((path, index) => plainDiff(path, 12 - index, index % 3)).join("\n"),
 };
 const showcase: Record<string, () => unknown[]> = {
+  "checker-1": () => [showcaseTurn("checker-1", "child-check", 3, "检查委派任务", "仅属于独立检查的执行消息")],
+  "line-1": () => [showcaseTurn("line-1", "child-line", 3, "支路委派任务", "仅属于并行支路的执行消息")],
   "thread-run": () => [
     showcaseTurn("thread-run", "turn-8", 40, "长对话滚动很卡，200 轮以上就掉帧，帮我查一下原因并修好。", SHOWCASE_ANSWER),
     showcaseTurn("thread-run", "turn-9", 3, "再把图片预览滚动时重新解码的问题也处理一下。", "", true),
@@ -520,7 +524,10 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "thread/rename": (args) => { const record = threads.find((item) => item.id === args.threadId)!; record.title = String(args.title); return { thread: record }; },
   "thread/archive": (args) => { const record = threads.find((item) => item.id === args.threadId)!; record.archived = Boolean(args.archived); return { thread: record }; },
   "thread/read": (args) => {
-    const record = threads.find((entry) => entry.id === args.threadId) ?? threads[0];
+    const child = args.threadId === "checker-1" || args.threadId === "line-1";
+    if (child && shell.agentReadMode === "error") throw new Error("模拟子代理读取失败");
+    const record = child && shell.agentReadMode === "wrong" ? threads[2] : threads.find((entry) => entry.id === args.threadId);
+    if (!record) throw new Error("对话不存在");
     if (record.id === "thread-run") resumeRunTurn();
     if (record.id !== THREAD || histories.has(THREAD)) {
       const approval = runs.get(record.id)?.approval ?? (record.id === THREAD && longTurn.status === "running" && !runs.has(THREAD) ? pendingApproval : null);
@@ -572,6 +579,8 @@ const state = {
 };
 const emit = (event: unknown) => window.__loomShellEvent?.(JSON.stringify(event));
 const shell = {
+  agentReadMode: params.get("agentread") || "ok",
+  agentReadDelay: 0,
   agentState(id: string, state: string, executionRunning: boolean) { const agent = buildOverview.conversationAgents?.find(item => item.id === id); if (agent) Object.assign(agent, { state, executionRunning }); },
   calls: [] as Array<{ operation: string; args: unknown[] }>,
   biometric: true,
@@ -613,7 +622,7 @@ window.LoomShell = {
       }
       emit({ type: "invoke_result", id, result });
       } catch (cause) { emit({ type: "invoke_result", id, error: { code: "RPC_ERROR", message: cause instanceof Error ? cause.message : String(cause) } }); }
-    }, operation === "call" ? LATENCY : 10);
+    }, operation === "call" && args[0] === "thread/read" && ["checker-1", "line-1"].includes(String((args[1] as Record<string, unknown>)?.threadId)) ? shell.agentReadDelay || LATENCY : operation === "call" ? LATENCY : 10);
   },
   startPairing: () => shell.pairing({ state: "scanning" }),
   cancelPairing: () => shell.pairing({ state: "cancelled" }),

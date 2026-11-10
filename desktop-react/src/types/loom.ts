@@ -47,6 +47,8 @@ export interface ThreadRecord {
   projectId?: string;
   /** Persisted owner of this child session; null for a top-level conversation. */
   parentThreadId?: string | null;
+  /** Internal delegated session, distinct from a user-created conversation branch. */
+  agentRole?: string | null;
   branchSourceMessageId?: string | null;
   branchReportedAt?: string | null;
   title: string;

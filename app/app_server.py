@@ -646,6 +646,12 @@ class LoomAppServerService:
         is_paused = getattr(self.runtime, "is_paused", None)
         if callable(is_paused):
             record["paused"] = is_paused(session.session_id)
+        graph = getattr(self.runtime, "agent_graph", None)
+        if graph is not None:
+            node = graph.get(session.session_id)
+            if node is not None and node.parent_session_id:
+                record["parentThreadId"] = node.parent_session_id
+                record["agentRole"] = node.role
         return record
 
     def subscribe_notifications(self, listener: NotificationListener) -> None:
@@ -674,7 +680,16 @@ class LoomAppServerService:
 
     def _is_active(self, session_id: str) -> bool:
         with self._guard:
-            return session_id in self._active_sessions
+            if session_id in self._active_sessions:
+                return True
+        # Sub-agents run in AgentControl, not in the server's top-level operation table.
+        # A read must never wait on recover_interrupted for a turn that is still executing.
+        runtime = getattr(self, "runtime", None)
+        active = getattr(runtime, "is_turn_active", None)
+        if callable(active) and active(session_id):
+            return True
+        running = getattr(getattr(runtime, "agent_control", None), "is_running", None)
+        return bool(callable(running) and running(session_id))
 
     def _load(self, session_id: str):
         # Reads do not establish crash ownership. Recovery is explicit.
