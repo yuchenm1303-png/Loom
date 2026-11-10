@@ -65,9 +65,14 @@ def time_left(record):
     return hours * 3600 - (time.time() - record["startedAt"]) if hours else 0
 
 
-def transient(data):
-    """The provider failed and said trying again may work: capacity, not credentials or the request."""
-    return bool(data.get("provider_failure") and data.get("retryable"))
+def transient(data, *, quota=False):
+    """The provider failed and said trying again may work: capacity, not credentials or the request.
+
+    ``quota``: a goal already running also waits out an exhausted quota (it comes back when the person tops
+    up, switches model or the quota resets), backing off to RETRY_MAX, instead of burning its eight failures
+    in twenty minutes and ending a night's work. A first turn with no goal yet still needs the person.
+    """
+    return bool(data.get("provider_failure") and (data.get("retryable") or (quota and data.get("quota_exhausted"))))
 
 
 def delay(failures):

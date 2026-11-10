@@ -6,7 +6,9 @@ import json
 from .contracts import AgentEventKind as Event, ToolEffect
 from .tools import AgentTool, ToolResult
 
-EVIDENCE_REFS_SCHEMA = {"type": "array", "minItems": 1, "maxItems": 64, "items": {
+EVIDENCE_REFS_SCHEMA = {"type": "array", "minItems": 1, "maxItems": 64,
+    "description": "Each item has exactly one key: {\"call_id\": \"<id>\"} or {\"path\": \"<workspace file>\"}; no other keys.",
+    "items": {
     "oneOf": [
         {"type": "object", "properties": {"call_id": {"type": "string", "minLength": 1,
          "description": "ID of an executed tool call in this session, including remote commands. Use the call that observed or verified the result."}},

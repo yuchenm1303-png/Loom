@@ -26,6 +26,9 @@ from .workspace import WorkspaceMixin, describe as describe_workspace
 EPISODE_CARRY_TOKENS = 12000
 # Working context of a project session: auto-compaction keeps requests under it.
 PROJECT_WORKING_CONTEXT_TOKENS = 48000
+# A long goal's lead, lines and checker run for hours. Without a working context a model with no
+# declared window never compacted: one line sent 606k tokens per request and the quota ran out.
+GOAL_WORKING_CONTEXT_TOKENS = 200000
 
 
 def _short_word(word):
@@ -375,6 +378,27 @@ class ProjectServiceMixin(WorkspaceMixin):
     # Builders and reviewers write only their own sandboxed checkout; planners read only.
     project_permission_mode = PermissionMode.WORKSPACE
 
+    def _working_context_tokens(self, session_id):
+        """Where to compact a session regardless of its model's window; None leaves it to the window."""
+        if session_id in self._project_session_ids:
+            return PROJECT_WORKING_CONTEXT_TOKENS
+        goals = getattr(self, "weave_goals", None)
+        records = goals.all() if goals is not None else {}
+        for thread_id, record in records.items():
+            if session_id == thread_id or session_id == record.get("checkerId") or any(
+                    line.get("agentId") == session_id for line in record.get("lines") or ()):
+                return GOAL_WORKING_CONTEXT_TOKENS
+        return None
+
+    def _line_exec_env(self, session_id):
+        """Thread limits for the commands of a long-goal line that shares the machine (see goal_lines)."""
+        goals = getattr(self, "weave_goals", None)
+        for record in (goals.all().values() if goals is not None else ()):
+            environment = goal_lines.thread_environment(record, session_id)
+            if environment:
+                return environment
+        return None
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         home = runtime_home_from_store(self.store) / "project-runner"
@@ -407,8 +431,8 @@ class ProjectServiceMixin(WorkspaceMixin):
         # stalled a live review for an hour. Approvals a tool itself asks for still wait in the hub.
         self.runtime.unattended_sessions = self._project_session_ids
         # Compact inside long episodes too, not only near the model's window.
-        self.runtime.session_working_context_tokens = (
-            lambda session_id: PROJECT_WORKING_CONTEXT_TOKENS if session_id in self._project_session_ids else None)
+        self.runtime.session_working_context_tokens = self._working_context_tokens
+        self.runtime.session_exec_env = self._line_exec_env
         self.runtime.subscribe(self.project_budget.observe)
         on_activated = self.runtime._on_turn_activated
         def project_activated(session_id, token):

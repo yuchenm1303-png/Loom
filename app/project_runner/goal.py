@@ -211,8 +211,14 @@ def _working_agents(service, thread_id, record):
         return 0
 
 
+# Build mode holds the first tool call of every turn until the task list is written; each goal turn lost a
+# model step (and its whole history, re-sent) to that refusal. Saying so up front costs a sentence.
+TASK_LIST_FIRST = ("This turn's first tool call is update_plan: carry the current task list forward (or revise it) "
+                   "before any other tool; the Host refuses other tools until the list is written.")
+
+
 def _context(service, thread_id, record):
-    lines = [_time_line(record)]
+    lines = [_time_line(record), TASK_LIST_FIRST]
     if record.get("wrapUp"):
         lines.append(WRAP_UP.format(share=record["tokens"] / max(1, record["tokenBudget"])))
     if record.get("deepen"):
@@ -534,7 +540,7 @@ def _wait_out_provider(service, thread_id, record, snapshot):
 
     Counted as a faulty check, two connection errors in a row ended a real goal as "could not be checked".
     """
-    if snapshot.session_status is not AgentStatus.FAILED or not _transient(goal_lines._failure(service, record["checkerId"])):
+    if snapshot.session_status is not AgentStatus.FAILED or not _transient(goal_lines._failure(service, record["checkerId"]), quota=True):
         return False
     now = time.time()
     record["checkerFailingSince"] = record.get("checkerFailingSince") or now
@@ -673,7 +679,7 @@ def _settle_turn(service, thread_id, record, session):
         now = time.time()
         record["failures"] += 1
         record["failingSince"] = record.get("failingSince") or now
-        transient = _transient(_failure(service, thread_id, turn))
+        transient = _transient(_failure(service, thread_id, turn), quota=True)
         if (now - record["failingSince"] > RETRY_WINDOW) if transient else record["failures"] > MAX_FAILURES:
             return _stop(service, thread_id, record, GoalStatus.BLOCKED, str(session.error or "The turn failed"))
         record["retryAt"] = now + _delay(record["failures"])

@@ -1056,6 +1056,41 @@ def test_a_check_must_be_a_command_line_not_a_description():
     assert goal_lines._validated([line("丁", ["y"], check="python check.py 丁 --strict")])[0]["check"].startswith("python")
 
 
+def test_a_check_in_any_shape_a_lead_sends_is_understood(tmp_path, monkeypatch):
+    # Real lead, refused nine times: a JSON list inside a string, the whole command line as one list item,
+    # an unquoted interpreter path with spaces, and `python` where only the workspace's venv has one.
+    root = tmp_path / "ai run"
+    interpreter = root / ".venv" / "Scripts" / "python.exe"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_text("")
+    (root / "src").mkdir()
+    want = [str(interpreter), "src/check.py"]
+    shapes = [json.dumps(want), [f"{interpreter} src/check.py"], f"{interpreter} src/check.py", f'"{interpreter}" src/check.py']
+    for shape in shapes:
+        assert goal_lines._check_argv("甲", shape, root) == want, shape
+    monkeypatch.setattr(goal_lines.shutil, "which", lambda name: None)
+    assert goal_lines._check_argv("甲", ["python", "src/check.py"], root) == want, "the workspace's own interpreter"
+    with pytest.raises(ValueError, match="not a program on this computer"):
+        goal_lines._check_argv("甲", ["no-such-tool", "x.py"], tmp_path / "elsewhere")
+
+
+def test_an_exhausted_quota_is_waited_out_by_a_running_goal_only(tmp_path):
+    from app.project_runner.goal_common import transient
+    quota = {"provider_failure": True, "retryable": False, "quota_exhausted": True}
+    assert transient(quota, quota=True) and not transient(quota), "a first turn with no goal still needs the person"
+    assert not transient({"provider_failure": True, "retryable": False}, quota=True), "bad credentials never wait"
+
+
+def test_a_line_stopped_before_its_report_still_hands_over_its_last_words(tmp_path):
+    from app.ai import AIMessage, MessageRole
+    session = type("S", (), {"messages": [AIMessage(MessageRole.USER, "go"), AIMessage(MessageRole.ASSISTANT, "做到第三步，指标已写入 results/la.json"),
+                                          AIMessage(MessageRole.TOOL, "x", tool_call_id="c")]})()
+    service = type("Svc", (), {"store": type("St", (), {"load": staticmethod(lambda _id: session)})()})()
+    assert "做到第三步" in goal_lines._last_words(service, "line")
+    session.messages = [AIMessage(MessageRole.USER, "go")]
+    assert goal_lines._last_words(service, "line") == ""
+
+
 def test_lines_say_how_many_processors_they_use_and_are_packed_into_the_machine(monkeypatch):
     # Real goal: two 8-thread trainings refused as "both need cpu" on a machine with 20 logical processors.
     monkeypatch.setattr(goal_lines.os, "cpu_count", lambda: 20)

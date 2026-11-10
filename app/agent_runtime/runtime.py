@@ -1391,6 +1391,7 @@ class AgentRuntime:
                 "process_store": self.process_store,
                 "permission_snapshot": step.permissions,
                 "environment_policy": step.environment_policy,
+                "session_exec_env": getattr(self, "session_exec_env", None),
                 "active_skills": session.active_skills,
                 "diff_tracker": tracker,
                 "run_scratch_dir": self._run_scratch_dir(session.session_id, session.current_turn_id),

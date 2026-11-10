@@ -65,6 +65,11 @@ def _resolve_command(context: ToolContext, arguments: dict[str, Any], *, server:
     cwd = context.resolve_workspace_path(relative_cwd)
     if not cwd.is_dir():
         raise ValueError("command cwd must be a workspace directory")
+    from .host_process_guard import host_kill_reason
+
+    refusal = host_kill_reason(argv, cwd)
+    if refusal:
+        raise ValueError(refusal)
     # A preview server lives across edits and turns; two minutes would kill it
     # between the first look and the second.
     timeout_seconds = (validate_timeout(arguments.get("timeout_seconds"), default=_MAX_TIMEOUT_SECONDS)
@@ -73,6 +78,12 @@ def _resolve_command(context: ToolContext, arguments: dict[str, Any], *, server:
     if len(stdin_text) > 256_000:
         raise ValueError("stdin exceeds 256,000 characters")
     env = _validate_env(arguments.get("env"))
+    # A caller that shares the machine among sessions (long-goal lines) sets what each command starts with;
+    # what the command asked for explicitly still wins.
+    provider = context.services.get("session_exec_env")
+    inherited = provider(context.session_id) if callable(provider) else None
+    if inherited:
+        env = {**inherited, **(env or {})}
     use_pty = bool(arguments.get("pty", False))
     rows, cols = validate_terminal_size(arguments.get("rows", 24), arguments.get("cols", 80))
     return argv, relative_cwd, cwd, timeout_seconds, stdin_text, env, use_pty, rows, cols

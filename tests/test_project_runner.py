@@ -745,6 +745,28 @@ def test_project_sessions_compact_at_a_working_context_not_near_the_model_window
         runtime.close()
 
 
+def test_a_long_goal_lead_its_lines_and_checker_compact_at_a_working_context(tmp_path, monkeypatch):
+    # A line on a model with no declared window grew to 606k tokens per request and never compacted.
+    from app.agent_runtime.context_limits import resolve_context_limits
+    from app.project_runner.service import GOAL_WORKING_CONTEXT_TOKENS
+    monkeypatch.delenv("LOOM_WORKING_CONTEXT_TOKENS", raising=False)
+    service, runtime, _, _, source = build(tmp_path, [])
+    try:
+        lead = runtime.get_session(source)
+        line = runtime.create_session("p", system_prompt="x")
+        checker = runtime.create_session("p", system_prompt="x")
+        other = runtime.create_session("p", system_prompt="x")
+        assert resolve_context_limits(runtime, lead).working_context_source != "session_policy"
+        service.weave_goals.put(source, {"lines": [{"agentId": line.session_id}], "checkerId": checker.session_id})
+        for session in (lead, line, checker):
+            limits = resolve_context_limits(runtime, session)
+            assert limits.working_context_source == "session_policy"
+            assert limits.working_context_tokens == GOAL_WORKING_CONTEXT_TOKENS
+        assert resolve_context_limits(runtime, other).working_context_source != "session_policy"
+    finally:
+        runtime.close()
+
+
 def test_a_refused_credential_waits_long_then_asks_the_person_never_for_inspection():
     from app.project_runner.runner import MAX_CREDENTIAL_RETRIES, ProjectRunner, episode_outcome
     refused = {"providerFailure": True, "providerStatus": 401, "retryable": False, "error": "401 Unauthorized"}

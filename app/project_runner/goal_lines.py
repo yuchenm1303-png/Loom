@@ -24,6 +24,7 @@ sent back once. What the lead reads says whether each check passed.
 """
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import shutil
@@ -86,7 +87,7 @@ LINE_PROMPT = (
     "integrate your report. You see none of the lead's conversation.\n"
     "The whole goal, for context only:\n{objective}\n\n"
     "Your line: {title}\n{brief}\n\n"
-    "{writes}\n{check}"
+    "{writes}\n{check}{cpus}"
     "Limits: about {tokens} tokens and {time}. Do this line yourself, without sub-agents. Run what you make and "
     "look at the result; report what you saw, not what you expect.\n"
     "Put details and data in files. End with a report of at most 300 words: what you did, the files, the key "
@@ -95,6 +96,25 @@ WRITES_ONLY = "Write only under: {paths}. Anything else in this folder belongs t
 WRITES_NONE = "This line only reads: do not change anything in this folder."
 CHECK_LINE = ("Done when this command passes. Run it exactly as written, as your last step before the report, and "
               "fix your part until it does:\n{check}\n")
+CPUS_LINE = ("Processors: the machine is shared with the other lines and your share is {cpus} logical processors. "
+             "Commands you start already run with OMP_NUM_THREADS/MKL_NUM_THREADS={cpus}; keep a program of your "
+             "own within it (for example torch.set_num_threads({cpus})), and never end processes by image name "
+             "(taskkill /IM, pkill): the Loom Host is a python process too.\n")
+# Math libraries read these once at import: a line's commands carry its share in the environment.
+THREAD_VARIABLES = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS")
+
+
+def thread_environment(record, session_id):
+    """The environment a line's commands start with: its processor share as thread limits (none for light lines).
+
+    Four lines of 14 torch threads each on 14 cores ran about four times slower than they would have serially,
+    and the lead then ended every python process to fix it."""
+    for line in (record or {}).get("lines") or ():
+        if line.get("agentId") == session_id and line.get("cpus") and line.get("state") in {"running", "waiting", "reporting"}:
+            return {name: str(line["cpus"]) for name in THREAD_VARIABLES}
+    return {}
+
+
 CHECK_AGAIN = ("Not done yet: {what}. Run exactly this, fix your part until it passes, then give your report again:\n"
                "{check}")
 HELD_LATER = ("Not executed: this long goal has grown large, and the Host asks once whether to split what is left. "
@@ -190,24 +210,64 @@ def _check_argv(title, check, workspace):
     command line, for leads that still send one."""
     if not check:
         return []
+    # Leads send the command in every shape: a JSON list inside a string, a list holding the whole command
+    # line as one item, an unquoted path with spaces. One real lead was refused nine times in a row.
+    if isinstance(check, str) and check.lstrip().startswith("["):
+        try:
+            parsed = json.loads(check)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, list) and parsed and all(isinstance(part, str) for part in parsed):
+            check = parsed
+    if isinstance(check, (list, tuple)) and len(check) == 1 and isinstance(check[0], str) and " " in check[0].strip() \
+            and not _program(check[0].strip(), workspace):
+        check = check[0]
     if isinstance(check, str):
         try:
             argv = shlex.split(check, posix=os.name != "nt")
         except ValueError:
             argv = check.split()
         argv = [part[1:-1] if len(part) > 1 and part[0] == part[-1] == '"' else part for part in argv]
+        argv = _spaced_program(argv, workspace)
     elif isinstance(check, (list, tuple)) and all(isinstance(part, str) for part in check):
         argv = [part for part in check if part != ""]
     else:
         raise ValueError(f"The check of \"{title}\" is a list of arguments, such as [\"python\", \"check.py\"].")
     if len(" ".join(argv)) > CHECK_CHARS:
         raise ValueError(f"The check of \"{title}\" is too long: give one command, at most {CHECK_CHARS} characters.")
+    if argv:
+        argv[0] = _workspace_python(argv[0], workspace)
     if argv and not _program(argv[0], workspace):
         raise ValueError(f"The check of \"{title}\" starts with {argv[0]!r}, which is not a program on this computer "
                          "(not on PATH, not a file in the workspace). Give the exact command the line will run, as a "
                          "list of arguments starting with the program (the full path of the interpreter when it is not "
                          "on PATH), such as [\"python\", \"scripts/check_results.py\"]; put what it asserts inside that script.")
     return argv
+
+
+def _spaced_program(argv, workspace):
+    """An unquoted program path with spaces ("E:\\ai run\\.venv\\Scripts\\python.exe x.py") split at them: rejoin it."""
+    if not argv or _program(argv[0], workspace):
+        return argv
+    for count in range(2, min(len(argv), 6) + 1):
+        joined = " ".join(argv[:count])
+        if _program(joined, workspace):
+            return [joined, *argv[count:]]
+    return argv
+
+
+def _workspace_python(name, workspace):
+    """A bare interpreter name the machine's PATH does not know, but the workspace's own environment does."""
+    if name.lower() not in {"python", "python3", "py", "python.exe"} or not workspace:
+        return name
+    found = shutil.which(name) or ""
+    if found and "WindowsApps" not in found:  # the Store stub exits silently: not a real interpreter
+        return name
+    for relative in (".venv/Scripts/python.exe", "venv/Scripts/python.exe", ".venv/bin/python", "venv/bin/python"):
+        candidate = Path(workspace) / relative
+        if candidate.is_file():
+            return str(candidate)
+    return name
 
 
 def _program(name, workspace):
@@ -261,7 +321,8 @@ def start(service, thread_id, arguments):
             writes = WRITES_ONLY.format(paths=", ".join(line["writes"])) if line["writes"] else WRITES_NONE
             check = CHECK_LINE.format(check=line["check"]) if line["check"] else ""
             prompt = LINE_PROMPT.format(objective=objective, title=line["title"], brief=line["brief"], writes=writes,
-                                        check=check, tokens=f"{cap:,}", time=span(seconds))
+                                        check=check, tokens=f"{cap:,}", time=span(seconds),
+                                        cpus=CPUS_LINE.format(cpus=line["cpus"]) if line["cpus"] else "")
             line.update(state="running", agentId="", prompt=prompt, cap=cap, startedAt=now, deadline=now + seconds,
                         attempts=0, lost=0, retryAt=0, pressedAt=0, tokens=0, report="", why="", changed=[],
                         checkResult="", sentBack=False)
@@ -412,12 +473,26 @@ def _changed(service, session_id):
     return sorted(paths)
 
 
+def _last_words(service, session_id):
+    """What a line that never got to report last said: a failed line's work is not nothing.
+
+    A line that ran out of quota after hours of work reached the lead as "(no report)", though its files
+    and its check were fine; its last message at least says where it stood.
+    """
+    from app.ai import MessageRole
+
+    for message in reversed(service.store.load(session_id).messages):
+        if message.role is MessageRole.ASSISTANT and isinstance(message.content, str) and message.content.strip():
+            return "(the line was stopped before its report; this is the last thing it said)\n" + message.content.strip()[:REPORT_CHARS]
+    return ""
+
+
 def _settle(service, thread_id, record, line, state, why=""):
     """A line is over: take what it reported and close it, so nothing it started keeps running."""
     control = service.runtime.agent_control
     try:
         snapshot = control.snapshot(thread_id, line["agentId"])
-        line["report"] = str(snapshot.final_text or "")
+        line["report"] = str(snapshot.final_text or "") or _last_words(service, line["agentId"])
         line["tokens"] = int(charged(service.store.load(line["agentId"]).usage))
         line["changed"] = _changed(service, line["agentId"])
         if line.get("check"):
@@ -479,7 +554,7 @@ def _tick_line(service, thread_id, record, line, now):
         _settle(service, thread_id, record, line, "failed", "it stopped at a command that needs approval; no one sees a line's approvals")
         return True
     if status is AgentStatus.FAILED:
-        if transient(_failure(service, line["agentId"])) and now < line["deadline"]:
+        if transient(_failure(service, line["agentId"]), quota=True) and now < line["deadline"]:
             line["attempts"] += 1
             line.update(state="waiting", retryAt=now + delay(line["attempts"]))
             return True

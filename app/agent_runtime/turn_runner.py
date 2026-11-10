@@ -814,5 +814,8 @@ class TurnRunner:
                     "retryable": getattr(exc, "retryable", None),
                     # The provider failed, not the work: callers decide on this, not on the message text.
                     "provider_failure": isinstance(exc, (AITransportError, ModelRequestTimeout)),
+                    # The account's balance ran out: it comes back when the person tops up or the quota
+                    # resets, so unattended work waits for it instead of giving up after a few tries.
+                    "quota_exhausted": isinstance(exc, AIQuotaExceeded),
                     "resume": {"durable_history_preserved": True, "new_turn_required": True}})
         return rt._result(session)
