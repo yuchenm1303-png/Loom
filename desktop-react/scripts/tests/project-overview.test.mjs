@@ -44,7 +44,17 @@ test("a long goal reads as one line with the move the person has", () => {
   assert.equal(toGoal({ ...base, status: "paused" }).action, "resume");
   assert.equal(toGoal({ ...base, status: "budget_limited" }).action, "resume");
   const blocked = toGoal({ ...base, status: "blocked", reason: "缺数据" });
-  assert.equal(blocked.detail, "缺数据");
+  assert.equal(blocked.note, "缺数据", "the reason is on the card, not only in a tooltip");
+  assert.equal(blocked.attention, true);
+  const rejected = toGoal({ ...base, status: "blocked", reason: "An independent check rejected the work 5 times: §23 maxdiff is not reproducible." });
+  assert.match(rejected.text, /^独立核验驳回了 5 次，已停下等你决定/, "a stop by the checker says so and what Resume does");
+  assert.equal(rejected.note, "§23 maxdiff is not reproducible.");
+  assert.equal(rejected.action, "resume");
+  assert.match(toGoal({ ...base, status: "blocked", reason: "2 turns in a row made no progress: 等待" }).text, /连续 2 轮没有进展/);
+  assert.match(toGoal({ ...base, status: "blocked", reason: "Reached 300 turns" }, "en").text, /300-turn limit/);
+  assert.equal(toGoal({ ...base, status: "budget_limited" }).attention, true);
+  assert.equal(toGoal({ ...base, status: "paused" }).attention, undefined, "the person's own pause is not news to them");
+  assert.equal(toGoal(base).attention, undefined);
   const unchecked = toGoal({ ...base, status: "complete", phase: "done" });
   assert.match(unchecked.text, /没能做完/, "an unchecked finish never reads as checked");
   assert.equal(unchecked.action, undefined);

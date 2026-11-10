@@ -527,10 +527,26 @@ function goalLine(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): 
     const checking = /during the independent check/i.test(goal.reason || "");
     const text = checking ? line("预算在独立检查中用完：已声明完成，但未经核验", "Budget used up during the check: claimed done, not verified")
       : line("预算用完，长目标在声明完成前停下", "Budget used up before the goal was claimed done");
-    return { text, detail: goal.objective, live: false, action: "resume", dismiss: true };
+    return { text, detail: goal.objective, live: false, action: "resume", dismiss: true, attention: true };
   }
   if (goal.status === "paused") return { text: line("长目标已暂停", "Long goal paused"), detail: goal.objective, live: false, action: "resume", dismiss: true };
-  return { text: line("长目标需要你处理", "The long goal needs you"), detail: goal.reason, live: false, action: "resume", dismiss: true };
+  return { ...stoppedLine(goal.reason || "", en, line), detail: goal.objective, live: false, action: "resume", dismiss: true, attention: true };
+}
+
+/** A goal the Host stopped, said in the person's words with the reason on the card itself. A real goal stopped after
+ *  five rejections showed only "needs you", with the checker's reasons in a tooltip, on a card the person had folded:
+ *  it read as stuck, the lead's last words still "waiting for the check". */
+function stoppedLine(reason: string, en: boolean, line: (zh: string, english: string) => string): { text: string; note?: string } {
+  const rest = (match: RegExpMatchArray) => match[2]?.trim() || undefined;
+  const rejected = reason.match(/^An independent check rejected the work (\d+) times:\s*([\s\S]*)$/);
+  if (rejected) return { text: line(`独立核验驳回了 ${rejected[1]} 次，已停下等你决定；继续会把核验意见交给它修改`,
+                                    `The independent check rejected the work ${rejected[1]} times; stopped for you to decide. Resume hands it the checker's points`),
+                         note: rest(rejected) };
+  const stalled = reason.match(/^(\d+) turns in a row made no progress:\s*([\s\S]*)$/);
+  if (stalled) return { text: line(`连续 ${stalled[1]} 轮没有进展，已停下`, `${stalled[1]} turns in a row made no progress; stopped`), note: rest(stalled) };
+  const turns = reason.match(/^Reached (\d+) turns$/);
+  if (turns) return { text: line(`已到 ${turns[1]} 轮上限，已停下`, `Reached the ${turns[1]}-turn limit; stopped`) };
+  return { text: line("长目标停下了，需要你处理", "The long goal stopped and needs you"), note: reason || undefined };
 }
 
 export function toTurnTasks(steps: TaskMilestone[], lang: "zh" | "en" = "zh"): FlowData["tasks"] {

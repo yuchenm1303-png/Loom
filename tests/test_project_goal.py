@@ -110,6 +110,23 @@ def test_a_check_that_keeps_rejecting_stops_for_the_person(tmp_path):
         runtime.close()
 
 
+def test_resuming_a_goal_the_checker_stopped_starts_a_new_count(tmp_path):
+    service, runtime, platform, source = conversation(tmp_path, [
+        START, DONE, answer("1"), REJECTED, DONE, answer("2"), REJECTED, DONE, answer("3"), REJECTED,
+        DONE, answer("4"), REJECTED])
+    try:
+        tick(service, source, 10)
+        assert state(service, source)["status"] == "blocked" and state(service, source)["checks"] == 3
+        goal.control(service, {"threadId": source, "action": "resume"})
+        tick(service, source, 4)
+        final = state(service, source)
+        assert final["status"] == "active" and final["checks"] == 4, "one rejection after the person's resume is not a stop"
+        said = json.dumps([message.content for message in platform.requests[-1].messages], ensure_ascii=False, default=str)
+        assert "评估脚本跑不通" in said, "the resumed turn is handed the checker's points"
+    finally:
+        runtime.close()
+
+
 def test_rejections_that_ask_for_less_each_time_do_not_stop_the_goal(tmp_path):
     def rejected(count):
         return answer(json.dumps({"verdict": "needs_changes", "summary": "还差一点",

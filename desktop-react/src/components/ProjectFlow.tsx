@@ -90,7 +90,9 @@ export interface FlowData {
   /** The list belongs to an earlier request of the person's; this turn has none of its own yet. */
   taskListEarlier?: boolean;
   /** A long goal this conversation is pursuing by itself, with no project. */
-  goal?: { budget?: GoalBudgetState; text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean; lines?: { title: string; state: string; label: string; why?: string }[];
+  goal?: { budget?: GoalBudgetState; text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean;
+          /** The Host stopped the goal: the card unfolds once for it and says why in `note`, not only in a tooltip. */
+          attention?: boolean; note?: string; lines?: { title: string; state: string; label: string; why?: string }[];
           charter?: { deliverable: string; where: string; items: { title: string; state: string; label: string }[] } } | null;
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
   models?: { current: ModelOption & { reasoning?: ModelReasoningState; vision?: boolean }; recent: ModelOption[];
@@ -214,7 +216,7 @@ const zhText = {
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目和长目标的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以；16M 之后再点一下可以输入任意额度", budgetCustom: "自定义预算（单位：百万 token，1–1000）", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
-  goalDismiss: "收起", goalCharter: "交付", goalDeliverable: "交付物", goalCriteria: "验收标准", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
+  goalDismiss: "收起", taskDropped: (count: number) => `已放弃 ${count} 项（未执行，不计入）`, goalCharter: "交付", goalDeliverable: "交付物", goalCriteria: "验收标准", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
   agentsPending: "当前没有可查看的 agent，任务调度后自动启用", timelinePending: "还没有执行记录，建造开始后自动启用",
   filesUnavailable: "当前没有可查看或添加的参考文件", historyUnavailable: "当前环境未提供对话记录",
 };
@@ -245,7 +247,7 @@ const enText: typeof zhText = {
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The total token budget for projects and long goals; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓; one more click after 16M lets you type any amount", budgetCustom: "Custom budget (millions of tokens, 1–1000)", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
-  goalDismiss: "Dismiss", goalCharter: "Deliverable", goalDeliverable: "Deliverable", goalCriteria: "Acceptance criteria", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
+  goalDismiss: "Dismiss", taskDropped: (count: number) => `${count} dropped (not run, not counted)`, goalCharter: "Deliverable", goalDeliverable: "Deliverable", goalCriteria: "Acceptance criteria", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
   agentsPending: "No agents to inspect yet; available once tasks are dispatched", timelinePending: "No execution records yet; available once the build starts",
   filesUnavailable: "No reference files to view or add here", historyUnavailable: "Conversation history is not available here",
 };
@@ -264,6 +266,13 @@ function readFolded(): string[] {
 }
 function writeFolded(ids: string[]) {
   try { localStorage.setItem(FOLDED_KEY, JSON.stringify(ids)); } catch { /* kept for this session only */ }
+}
+const GOAL_STOP_KEY = "loom.buildGoalStopSeen";
+function readGoalStopSeen() {
+  try { return localStorage.getItem(GOAL_STOP_KEY) || ""; } catch { return ""; }
+}
+function writeGoalStopSeen(key: string) {
+  try { localStorage.setItem(GOAL_STOP_KEY, key); } catch { /* unfolds again next time, which is the safe side */ }
 }
 // The history card is the one branch that starts folded; opened, it stays open across conversations,
 // so the person can walk through them from it.
@@ -837,6 +846,19 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     writeFolded(next);
     return next;
   });
+  // A goal the Host stopped unfolds its card once, even one the person folded away: the stop is theirs to decide and
+  // the folded hub read as a goal still running. Folded again, it stays folded until the next stop.
+  const goalStop = data.goal?.attention ? `${conversationId || data.objective}|${data.goal.text.replace(/ · [\d.]+[KM] \/ [\d.]+[KM]$/, "")}` : "";
+  useEffect(() => {
+    if (!goalStop || readGoalStopSeen() === goalStop) return;
+    writeGoalStopSeen(goalStop);
+    setFolded((list) => {
+      if (!list.includes("goal")) return list;
+      const next = list.filter((item) => item !== "goal");
+      writeFolded(next);
+      return next;
+    });
+  }, [goalStop]);
   const [historyOpen, setHistoryOpen] = useState(readHistoryOpen);
   const [observationBranches, setObservationBranches] = useState<BuildBranch[]>([]);
   const inspection = useBuildInspection(conversationId || data.objective || "draft", observationBranches.length > 0, actions.onInspect);
@@ -1569,7 +1591,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
           <div className="pf-slot" data-glide="goal" {...hover("goal")} {...slot("goal")}>
             {/* No data-fit: the goal never gives height, its criteria and an open budget editor stay whole; the column scrolls instead. */}
             <Card id="goal" side="right" className="pf-listed pf-goal-card" icon={<Timer size={12} />} label={text.goalCard} register={register}>
-            <div className="pf-goal" role="status" data-live={goal.live || undefined}>
+            <div className="pf-goal" role="status" data-live={goal.live || undefined} data-attention={goal.attention || undefined}>
               <div className="pf-goal-head">
                 <span className="pf-attention-dot" />
                 {/* With the budget meter below, the spent figure lives there, not in the heading. */}
@@ -1581,6 +1603,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                 {goal.dismiss ? <button type="button" className="pf-control" aria-label={text.goalDismiss} title={text.goalDismiss} disabled={actions.busy}
                   onClick={() => actions.onGoal?.("dismiss")}><X size={12} /></button> : null}
               </div>
+              {goal.note ? <p className="pf-goal-note" title={goal.note}>{goal.note}</p> : null}
               {goal.budget && actions.onGoalBudget ? <GoalBudgetControl meter goal={goal.budget} disabled={actions.busy} canResume={goal.action === "resume"} onSubmit={actions.onGoalBudget} /> : null}
               {goal.lines?.length ? (
                 <ul className="pf-goal-lines">
@@ -1637,8 +1660,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
         })}
         {branches.some((item) => item.id === "tasks") ? (() => {
           // What the conversation's agent is doing this turn, as its own list says; a leaving card keeps what it showed.
-          const list = leavingView("tasks").taskList ?? [];
-          const counted = list.filter((task) => !task.dropped);  // shown, not counted
+          // Dropped steps were left out of the list unfinished: they are not waiting to run. Shown apart, quiet and
+          // struck through, under their own heading; in the rows they read as pending work the agent never started.
+          const all = leavingView("tasks").taskList ?? [];
+          const counted = all.filter((task) => !task.dropped);
+          const dropped = all.filter((task) => task.dropped);
+          const list = counted;
           return (
             <div className="pf-slot" data-glide="tasks" data-fit="" {...hover("tasks")} {...slot("tasks")}>
               <Card id="tasks" side="right" className="pf-listed pf-task-list" icon={<ListChecks size={12} />}
@@ -1657,6 +1684,15 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                       </div>
                     );
                   })}
+                  {dropped.length ? <>
+                    <small className="pf-task-dropped-head">{text.taskDropped(dropped.length)}</small>
+                    {dropped.map((task) => (
+                      <div key={task.id} className="pf-row pf-task" data-dropped="" title={task.detail || task.title}>
+                        <span className="pf-task-mark"><Minus size={11} strokeWidth={2.4} /></span>
+                        <span className="pf-task-title"><Inline text={task.title} /></span>
+                      </div>
+                    ))}
+                  </> : null}
                 </div>
               </Card>
             </div>

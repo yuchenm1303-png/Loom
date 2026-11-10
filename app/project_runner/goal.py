@@ -564,7 +564,7 @@ def _collect(service, thread_id, record, objective):
     listed = lambda items: "\n".join(f"- {item}" for item in items) or "- none"  # noqa: E731
     feedback = REVIEW_BACK.format(summary=summary, unmet=listed(unmet), major=listed(major or issues), minor=listed(minor))
     record.update(phase="working", checkFaults=0, feedback=feedback[:6000])
-    if record["rejectionStalls"] >= MAX_CHECKS or record["checks"] >= MAX_REJECTIONS:
+    if record["rejectionStalls"] >= MAX_CHECKS or record["checks"] - record.get("checksAtResume", 0) >= MAX_REJECTIONS:
         return _stop(service, thread_id, record, GoalStatus.BLOCKED,
                      f"An independent check rejected the work {record['checks']} times: {summary}")
     service.weave_goals.put(thread_id, record)
@@ -841,6 +841,10 @@ def control(service, params):
             service.runtime.cancel(thread_id)
     elif action == "resume":
         record.update(reason="", stalls=0, failures=0, failingSince=0, retryAt=0, handledTurn=service.store.load(thread_id).current_turn_id)
+        # Resuming a goal the checker stopped is the person's decision to go on: the next rejection starts a new count.
+        # Kept, the count stopped the goal again on the first rejection after the person's resume.
+        record.update(rejectionStalls=0, checksAtResume=record["checks"])
+        record.pop("rejectionWeight", None)
         service.weave_goals.put(thread_id, record)
         service.runtime.set_goal_status(thread_id, GoalStatus.ACTIVE)
     elif action == "set_budget":
@@ -867,7 +871,7 @@ def view(service, thread_id):
             "startedAt": record["startedAt"],
             "phase": phase,
             "tokens": record["tokens"], "tokenBudget": record["tokenBudget"], "turns": record["turns"],
-            "reason": record["reason"], "summary": record["summary"], "checked": record["checked"],
+            "reason": record["reason"], "summary": record["summary"], "checked": record["checked"], "checks": record["checks"],
             "retryAt": record.get("checkerRetryAt", 0) if phase == "checking" else record["retryAt"] if record.get("failures") and phase == "working" else 0,
             "hours": record.get("hours") or 0, "deepens": record.get("deepens", 0),
             "agents": _working_agents(service, thread_id, record), "lines": goal_lines.view(record),
