@@ -21,10 +21,12 @@ import { GoalBudgetControl, type GoalBudgetState, type GoalBudgetUpdate } from "
 import {
   ArrowDown, ArrowUp, Bot, BookMarked, ChartGantt, Check, Circle, CircleDot, Compass, Copy, File, FileCode, FileImage,
   FileSpreadsheet, FileText, FolderOpen, GitBranch, Hammer, LoaderCircle, Minus, Paperclip, Pause, Play, Plus, ShieldAlert, ShieldCheck,
-  History, ListChecks, Search, Sparkles, Square, X, Gauge, RefreshCw, ExternalLink,
+  History, ListChecks, Search, Sparkles, Square, X, Gauge, RefreshCw, ExternalLink, Archive,
   Timer, CircleAlert, GitPullRequest, FileDiff, TrendingUp, Package,
 } from "./icons";
 import { BuildHistory, type BuildHistoryEntry } from "./BuildHistory";
+import { AgentHistory, AgentRunBox, useAgentPeek } from "./AgentRunBox";
+import type { AgentHistoryPage, AgentPeek } from "./agentPeek";
 import { NewConversationRow } from "./NewConversationRow";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ProjectDecisionReply } from "./ProjectDecisionReply";
@@ -69,6 +71,8 @@ export interface FlowAgent {
   waiting?: boolean;
   /** What this agent is when it is not one of a project's (a goal's referee, a line, an investigation). */
   roleLabel?: string;
+  /** A conversation sub-agent: its card opens into a run box. */
+  peekable?: boolean;
   /** How a finished sub-agent ended (done, failed, stopped), what it handed back in full, and what it cost. */
   outcome?: "done" | "failed" | "stopped"; detail?: string; cost?: string;
 }
@@ -145,6 +149,9 @@ export interface ModelOption { selection: string; name: string; group: string; g
 
 export interface FlowActions {
   onInspect?(): Promise<BuildInspection>;
+  /** A compact look at one of the conversation's sub-agents (its latest steps and result), and the record of all of them. */
+  onAgentPeek?(agentId: string): Promise<AgentPeek>;
+  onAgentHistory?(offset: number): Promise<AgentHistoryPage>;
   workspaceControls?: ReactNode;
   onChooseWorkspace?(): void;
   /** A message to the conversation's agent, with the files pasted, dropped or picked into the field. */
@@ -225,7 +232,7 @@ const zhText = {
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目和长目标的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以；16M 之后再点一下可以输入任意额度", budgetCustom: "自定义预算（单位：百万 token，1–1000）", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
-  agentResult: "查看结果", lineFiles: "改过的文件", goalDismiss: "收起", goalChecker: "核验模型", goalCheckerSame: "与对话相同", goalCheckerHint: "独立核验用的模型：它决定哪些意见算数、目标何时停下；每个目标只核验几次，换更强的模型花费不大", goalCheckerError: (error: string) => `所选核验模型不可用，上次核验用了对话模型：${error}`, taskDropped: (count: number) => `已放弃 ${count} 项（未执行，不计入）`, goalCharter: "交付", goalDeliverable: "交付物", goalCriteria: "验收标准", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
+  agentResult: "查看结果", lineFiles: "改过的文件", agentHistory: "历史子代理", agentHistoryUnavailable: "这台电脑的后台还不能列出子代理记录，请更新电脑端", agentOpen: "查看它在做什么", goalDismiss: "收起", goalChecker: "核验模型", goalCheckerSame: "与对话相同", goalCheckerHint: "独立核验用的模型：它决定哪些意见算数、目标何时停下；每个目标只核验几次，换更强的模型花费不大", goalCheckerError: (error: string) => `所选核验模型不可用，上次核验用了对话模型：${error}`, taskDropped: (count: number) => `已放弃 ${count} 项（未执行，不计入）`, goalCharter: "交付", goalDeliverable: "交付物", goalCriteria: "验收标准", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
   agentsPending: "当前没有可查看的 agent，任务调度后自动启用", timelinePending: "还没有执行记录，建造开始后自动启用",
   filesUnavailable: "当前没有可查看或添加的参考文件", historyUnavailable: "当前环境未提供对话记录",
 };
@@ -256,7 +263,7 @@ const enText: typeof zhText = {
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The total token budget for projects and long goals; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓; one more click after 16M lets you type any amount", budgetCustom: "Custom budget (millions of tokens, 1–1000)", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
-  agentResult: "Show result", lineFiles: "Files changed", goalDismiss: "Dismiss", goalChecker: "Check model", goalCheckerSame: "Same as the conversation", goalCheckerHint: "The model of the independent check: it decides which points count and when the goal stops; a goal is checked only a few times, so a stronger model costs little", goalCheckerError: (error: string) => `The picked check model is unavailable; the last check ran on the conversation model: ${error}`, taskDropped: (count: number) => `${count} dropped (not run, not counted)`, goalCharter: "Deliverable", goalDeliverable: "Deliverable", goalCriteria: "Acceptance criteria", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
+  agentResult: "Show result", lineFiles: "Files changed", agentHistory: "Past sub-agents", agentHistoryUnavailable: "This computer's Host cannot list sub-agent records yet; update it", agentOpen: "See what it is doing", goalDismiss: "Dismiss", goalChecker: "Check model", goalCheckerSame: "Same as the conversation", goalCheckerHint: "The model of the independent check: it decides which points count and when the goal stops; a goal is checked only a few times, so a stronger model costs little", goalCheckerError: (error: string) => `The picked check model is unavailable; the last check ran on the conversation model: ${error}`, taskDropped: (count: number) => `${count} dropped (not run, not counted)`, goalCharter: "Deliverable", goalDeliverable: "Deliverable", goalCriteria: "Acceptance criteria", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
   agentsPending: "No agents to inspect yet; available once tasks are dispatched", timelinePending: "No execution records yet; available once the build starts",
   filesUnavailable: "No reference files to view or add here", historyUnavailable: "Conversation history is not available here",
 };
@@ -869,19 +876,24 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     });
   }, [goalStop]);
   const [historyOpen, setHistoryOpen] = useState(readHistoryOpen);
+  // The record of every sub-agent, and the one agent card opened into its run box (one at a time).
+  const [agentHistoryOpen, setAgentHistoryOpen] = useState(false);
+  const [peekId, setPeekId] = useState<string | null>(null);
+  const agentPeek = useAgentPeek(actions.onAgentPeek, peekId);
   const [observationBranches, setObservationBranches] = useState<BuildBranch[]>([]);
   const inspection = useBuildInspection(conversationId || data.objective || "draft", observationBranches.length > 0, actions.onInspect);
   const observationLabels = buildLabels[lang];
   const observationIcons: Record<BuildBranch, typeof Check> = { blockers: CircleAlert, evidence: ShieldCheck, reviews: GitPullRequest,
                                                             changes: FileDiff, spending: TrendingUp, delivery: Package };
   const history = data.history;
-  const open = (id: string) => id === "history" ? historyOpen : !folded.includes(id);
+  const open = (id: string) => id === "history" ? historyOpen : id === "agentHistory" ? agentHistoryOpen : !folded.includes(id);
   const showHistory = (value: boolean) => {
     try { localStorage.setItem(HISTORY_KEY, value ? "1" : "0"); } catch { /* kept for this session only */ }
     setHistoryOpen(value);
   };
   // Every branch opens on its own, and no card ever closes another: a column's lists give height, then it scrolls (.pf-side).
   const toggle = (id: string) => {
+    if (id === "agentHistory") { setAgentHistoryOpen((value) => !value); return; }
     if (id !== "history") { fold(id); return; }
     showHistory(!historyOpen);
   };
@@ -895,7 +907,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   const branches = useDeparting([...(data.goal && open("goal") ? [{ id: "goal" }] : []),
                                  ...(data.taskList?.length && open("tasks") ? [{ id: "tasks" }] : []),
                                  ...BUILD_BRANCHES.filter(branch => observationBranches.includes(branch)).map(branch => ({ id: `observe-${branch}` })),
-                                 ...(historyOpen && history ? [{ id: "history" }] : []), ...(modelOpen && data.models ? [{ id: "model" }] : []),
+                                 ...(historyOpen && history ? [{ id: "history" }] : []),
+                                 ...(agentHistoryOpen && actions.onAgentHistory ? [{ id: "agentHistory" }] : []),
+                                 ...(modelOpen && data.models ? [{ id: "model" }] : []),
                                  ...(usageOpen && data.models ? [{ id: "usage" }] : [])]);
   // Before a project the plan is a different card from the project's: one leaves as the other is born.
   const below = useDeparting(open("plan") ? [{ id: draftMode ? "plan-draft" : "plan" }] : []);
@@ -923,10 +937,12 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
     { id: "agents", icon: Bot, label: text.agentCards, unavailable: data.agents.length ? undefined : text.agentsPending },
     { id: "loom", icon: ChartGantt, label: text.loom, unavailable: data.timeline ? undefined : text.timelinePending },
     { id: "history", icon: History, label: text.history, unavailable: history ? undefined : text.historyUnavailable },
+    { id: "agentHistory", icon: Archive, label: text.agentHistory, unavailable: actions.onAgentHistory ? undefined : text.agentHistoryUnavailable },
   ];
   // A card that starts leaving changes the layout already (it is lifted out and the others close up), not only once it is gone.
   const ids = (list: { id: string; leaving?: boolean }[]) => list.map((item) => `${item.id}${item.leaving ? "~" : ""}`).join(",");
-  const layout = [ids(context), ids(branches), ids(agents), ids(below), ids(loom), files.length, history?.length ?? 0,
+  const layout = [ids(context), ids(branches), ids(agents), ids(below), ids(loom), files.length, history?.length ?? 0, peekId ?? "",
+                  agentPeek.peek?.rows.length ?? 0, agentPeek.peek?.result ? 1 : 0,
                   modelTotal, modelView, query, reasoningState?.value ?? "",
                   data.tasks.length, data.taskList?.length ?? 0, data.scope.length, data.attention ? 1 : 0, data.phase,
                   workspaceExpanded, dirtyOpen, objectiveOpen, draft, data.narration.summary, data.narration.text,
@@ -1638,7 +1654,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                   {goal.linesSummary ? <p className="pf-goal-lines-head">{goal.linesSummary}</p> : null}
                   <ul className="pf-goal-lines">
                     {goal.lines.map((line) => (
-                      <li key={line.title} data-state={line.state} title={line.why || undefined}>
+                      <li key={line.title} className={line.report || line.changed?.length ? "pf-line-expandable" : undefined} data-state={line.state} title={line.why || undefined}>
                         {line.report || line.changed?.length ? (
                           <details className="pf-line-more">
                             <summary>
@@ -1756,6 +1772,15 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
             </Card>
           </div>
         ) : null}
+        {actions.onAgentHistory && branches.some((item) => item.id === "agentHistory") ? (
+          // Every sub-agent the conversation ever had: the Host closes one the moment it reports, the record stays.
+          <div className="pf-slot" data-glide="agentHistory" data-fit="" {...hover("agentHistory")} {...slot("agentHistory")}>
+            <Card id="agentHistory" side="right" className="pf-listed pf-agent-history" icon={<Archive size={12} />} label={text.agentHistory}
+                  register={register}>
+              <div className="pf-list"><AgentHistory loadPage={actions.onAgentHistory} loadPeek={actions.onAgentPeek} lang={lang} /></div>
+            </Card>
+          </div>
+        ) : null}
         {data.models && branches.some((item) => item.id === "model") ? (
           <div className="pf-slot pf-model-slot" id="pf-model-card" data-glide="model" {...hover("model")} {...slot("model")}
                onKeyDown={(event) => { if (event.key === "Escape") setModelOpen(false); }}>
@@ -1866,11 +1891,16 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
         ) : null}
         {agents.map((agent, index) => {
           const Icon = roleIcon[agent.role];
+          const peekable = Boolean(agent.peekable && actions.onAgentPeek);
+          const peeked = peekable && peekId === agent.id;
           return (
             <div key={agent.id} className={`pf-slot pf-agent-slot${index % 2 ? " pf-offset-3" : ""}`} data-glide={`agent:${agent.id}`} {...hover(`agent:${agent.id}`)} {...slot(`agent:${agent.id}`)}
                  data-hot={hot === `task:${agent.id}` || undefined}>
               <Card id={`agent:${agent.id}`} side="right" className="pf-agent" icon={<Bot size={12} />} label={agent.name} register={register}>
-                <div className="pf-well pf-agent-well" data-done={agent.done || undefined}>
+                <div className="pf-well pf-agent-well" data-done={agent.done || undefined} data-peekable={peekable || undefined}
+                     {...(peekable ? { role: "button", tabIndex: 0, "aria-expanded": peeked, title: text.agentOpen,
+                       onClick: () => setPeekId(peeked ? null : agent.id),
+                       onKeyDown: (event: React.KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPeekId(peeked ? null : agent.id); } } } : {})}>
                   <span className="pf-agent-mark"><Icon size={15} /></span>
                   <div className="pf-agent-copy">
                     <div className="pf-agent-line">
@@ -1889,13 +1919,14 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                     <span className="pf-dashes-glint" key={agent.step} />
                   </div>
                   {/* What a finished sub-agent handed back stays one click away; the Host closed it, the card did not go. */}
-                  {agent.detail ? (
+                  {agent.detail && !peekable ? (
                     <details className="pf-agent-more">
                       <summary>{agent.cost ? `${text.agentResult} · ${agent.cost}` : text.agentResult}</summary>
                       <p>{agent.detail}</p>
                     </details>
                   ) : null}
                 </div>
+                {peeked ? <AgentRunBox peek={agentPeek.peek} error={agentPeek.error} lang={lang} /> : null}
               </Card>
             </div>
           );

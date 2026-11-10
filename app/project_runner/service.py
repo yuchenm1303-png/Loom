@@ -1083,6 +1083,12 @@ class ProjectControllerMixin:
             return self.service.project_prepare_workspace(params)
         if method == "projectRun/overview":
             return self.service.project_overview(params)
+        if method == "projectAgent/peek":
+            from . import agent_peek
+            return agent_peek.peek(self.service, params)
+        if method == "projectAgent/history":
+            from . import agent_peek
+            return agent_peek.history(self.service, params)
         if method == "projectRun/inspection":
             from .inspection import read
             return read(self.service, params)

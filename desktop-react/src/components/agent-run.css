@@ -1,0 +1,101 @@
+/* The run box of a sub-agent and the record of past ones. Quiet on purpose: a few rows of small text, no chrome.
+ * Only currentColor mixes and the hub's live colour, so the same box sits in a hub card and in a phone sheet. */
+.ar-box {
+  --ar-quiet: color-mix(in srgb, currentColor 55%, transparent);
+  --ar-line: color-mix(in srgb, currentColor 11%, transparent);
+  --ar-live: var(--pf-live, #8fc9e8);
+  --ar-warn: var(--pf-warn, #e0a85a);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 2px 2px;
+  border-top: 1px solid var(--ar-line);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.ar-rows {
+  display: grid;
+  gap: 3px;
+  max-height: 168px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.ar-row { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: baseline; gap: 7px; min-width: 0; }
+.ar-row > i { width: 4px; height: 4px; margin-top: 1px; border-radius: 50%; background: var(--ar-quiet); justify-self: center; align-self: center; }
+.ar-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* What it said: plain. What it ran: set apart in a monospace voice, with how it ended in the dot. */
+.ar-row[data-kind="say"] > span { color: var(--ar-quiet); }
+.ar-row[data-kind="tool"] > span { font-family: var(--loom-font-mono, ui-monospace, "Cascadia Mono", Consolas, monospace); font-size: 11.5px; }
+.ar-row[data-kind="tool"] > i { background: var(--ar-live); }
+.ar-row[data-kind="tool"][data-running] > i { animation: ar-breathe var(--loom-period-breathe) var(--loom-ease-inout) infinite; }
+.ar-row[data-kind="tool"][data-ok="no"] > i { background: var(--ar-warn); }
+
+.ar-result {
+  max-height: 150px;
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: color-mix(in srgb, currentColor 82%, transparent);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+}
+.ar-result[data-error] { color: var(--ar-warn); }
+
+.ar-facts, .ar-note { margin: 0; color: var(--ar-quiet); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.ar-box[data-empty] { border-top: 0; padding-top: 2px; }
+
+/* The record of every sub-agent. */
+.ar-history { display: grid; gap: 4px; min-width: 0; }
+.ar-history-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.ar-history-list > li { min-width: 0; }
+.ar-history-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ar-history-row > i { width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: var(--ar-live, #8fc9e8); justify-self: center; }
+.ar-history-list > li[data-outcome="done"] .ar-history-row > i { background: color-mix(in srgb, currentColor 40%, transparent); }
+.ar-history-list > li[data-outcome="failed"] .ar-history-row > i { background: var(--pf-warn, #e0a85a); }
+.ar-history-list > li[data-outcome="stopped"] .ar-history-row > i { background: transparent; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, currentColor 45%, transparent); }
+.ar-history-copy { display: grid; gap: 1px; min-width: 0; }
+.ar-history-copy strong { overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.ar-history-headline { overflow: hidden; color: color-mix(in srgb, currentColor 70%, transparent); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.ar-history-copy small { color: color-mix(in srgb, currentColor 50%, transparent); font-size: 11.5px; }
+.ar-history-row:hover strong { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 30%, transparent); text-underline-offset: 3px; }
+.ar-history-row:focus-visible { outline: 1px solid color-mix(in srgb, currentColor 40%, transparent); outline-offset: 2px; border-radius: 6px; }
+.ar-history-list > li[data-open] > .ar-box { margin: 2px 0 6px 16px; }
+.ar-history-empty { padding: 4px 2px; }
+.ar-more { justify-self: start; padding: 4px 2px; border: 0; background: none; color: color-mix(in srgb, currentColor 60%, transparent); font: inherit; font-size: 11.5px; cursor: pointer; }
+.ar-more:hover { color: inherit; }
+
+@keyframes ar-breathe { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ar-row[data-kind="tool"][data-running] > i { animation: none; } }
+
+/* On the phone a sub-agent's card opens into the same run box, with a way on to its full conversation. */
+.m-agent-item { min-width: 0; }
+.m-agent-tap { cursor: pointer; }
+.m-agent-tap:focus-visible { outline: 1px solid color-mix(in srgb, currentColor 40%, transparent); outline-offset: 4px; border-radius: 6px; }
+.m-agent-chevron { display: grid; place-items: center; width: 28px; height: 28px; color: color-mix(in srgb, currentColor 50%, transparent); transition: transform var(--loom-dur-base, 240ms) var(--loom-ease-out, ease-out); }
+.m-agent-item[data-open] .m-agent-chevron { transform: rotate(180deg); }
+.m-agent-peek { display: grid; gap: 8px; padding: 0 0 12px; }
+.m-agent-peek .ar-box { border-top: 0; padding-top: 0; font-size: 12px; }
+.m-agent-peek .ar-rows { max-height: 220px; }
+.m-agent-peek .ar-row[data-kind="tool"] > span { font-size: 12px; }
+.m-agent-peek .m-button { justify-self: start; }

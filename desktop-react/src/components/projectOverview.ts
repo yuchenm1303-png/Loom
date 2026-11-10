@@ -207,7 +207,7 @@ export function conversationFlowAgents(overview: ProjectOverview, now: number, l
         : (first || (lang === "en" ? "Done" : "已完成"));
       const detail = [agent.result, outcome === "failed" ? agent.error : ""].filter(Boolean).join("\n\n");
       return { id: agent.id, role: kind.role, name: lang === "en" ? kind.en : kind.zh, roleLabel: lang === "en" ? kind.enRole : kind.zhRole,
-               step: agent.step, activity: headline.length > 120 ? `${headline.slice(0, 118)}…` : headline, done: true, outcome,
+               step: agent.step, activity: headline.length > 120 ? `${headline.slice(0, 118)}…` : headline, done: true, outcome, peekable: true,
                ...(detail ? { detail } : {}), ...(agent.tokens ? { cost: money(agent.tokens) } : {}),
                elapsed: words[lang].short(Math.max(0, Math.round((endedAt - (Number.isFinite(startedAt) ? startedAt : endedAt)) / 60000))) };
     }
@@ -217,7 +217,7 @@ export function conversationFlowAgents(overview: ProjectOverview, now: number, l
       : idle ? (lang === "en" ? "Finished, result not yet collected" : "已结束，等待收取结果")
       : (lang === "en" ? "Working" : "正在处理");
     return { id: agent.id, role: kind.role, name: lang === "en" ? kind.en : kind.zh, roleLabel: lang === "en" ? kind.enRole : kind.zhRole,
-             step: agent.step, activity,
+             step: agent.step, activity, peekable: true,
              waiting: agent.state === "waiting_approval", done: idle,
              elapsed: words[lang].short(Math.max(0, Math.round((now - (Number.isFinite(startedAt) ? startedAt : now)) / 60000))) };
   });

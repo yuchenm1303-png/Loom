@@ -51,6 +51,8 @@ export const MOBILE_RPC_METHODS: ReadonlySet<string> = new Set([
   "projectRun/list",
   "projectRun/get",
   "projectRun/overview",
+  "projectAgent/peek",
+  "projectAgent/history",
   "projectRun/prepareWorkspace",
   "projectRun/commitWorkspace",
   "projectRun/pause",

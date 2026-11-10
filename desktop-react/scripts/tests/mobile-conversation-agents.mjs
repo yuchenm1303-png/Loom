@@ -29,9 +29,24 @@ try {
   await page.evaluate(() => window.__shell.agentState("checker-1", "completed", false));
   await page.getByRole("button", { name: "刷新建造状态", exact: true }).click();
   await checker.getByText("已完成 · 等待收取结果", { exact: true }).waitFor();
-  await checker.getByRole("button", { name: "打开独立检查的执行对话", exact: true }).click();
+  // A tap opens a compact run box (what it said and ran), with a way on to the full conversation.
+  await checker.getByText("已完成 · 等待收取结果", { exact: true }).click();
+  await page.locator(".m-agent-peek .ar-row").first().waitFor();
+  assert.ok(await page.locator(".m-agent-peek .ar-row").count() >= 3);
+  await page.getByText("检查结果已生成：表 2 的 3 个数字与 JSON 一致。").waitFor();
+  assert.ok(await page.evaluate(() => window.__shell.calls.some(call => call.operation === "call" && call.args[0] === "projectAgent/peek" && call.args[1].agentId === "checker-1")));
+  await page.screenshot({ path: `${out}/agents-peek.png`, animations: "disabled" });
+  await page.getByRole("button", { name: "打开完整对话", exact: true }).click();
   await page.getByRole("heading", { name: "独立检查执行记录", exact: true }).waitFor();
   assert.ok(await page.evaluate(() => window.__shell.calls.some(call => call.operation === "call" && call.args[0] === "thread/read" && call.args[1].threadId === "checker-1")));
+  assert.deepEqual(errors, []);
+  // Every sub-agent the conversation ever had stays on the agents page, each opening into the same run box.
+  await open();
+  await page.getByText("正式实验", { exact: true }).waitFor();
+  await page.getByText("找窗口声明", { exact: true }).waitFor();
+  await page.getByText("正式实验", { exact: true }).click();
+  await page.locator(".ar-history-list .ar-box").waitFor();
+  await page.screenshot({ path: `${out}/agents-history.png`, animations: "disabled" });
   await open("&oldhost=1");
   await page.getByText(/电脑后台尚未提供对话子代理列表/).waitFor();
   await open("&emptyagents=1");

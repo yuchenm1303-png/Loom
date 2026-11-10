@@ -14,7 +14,7 @@ test("a phone reaches project settings and the complete build control path", () 
   for (const method of ["project/list", "project/create", "project/rename", "project/set_instructions", "thread/compact",
     "projectRun/overview", "projectRun/prepareWorkspace", "projectRun/commitWorkspace", "projectRun/pause",
     "projectRun/resume", "projectRun/cancel", "projectRun/recover", "projectRun/steer", "projectRun/approval",
-    "projectWeave/start", "projectWeave/dismiss", "projectWeave/goal", "projectProgram/attach"]) {
+    "projectWeave/start", "projectWeave/dismiss", "projectWeave/goal", "projectProgram/attach", "projectAgent/peek", "projectAgent/history"]) {
     assert.equal(mobileInvokeAllowed("call", [method, {}]), true, method);
   }
 });

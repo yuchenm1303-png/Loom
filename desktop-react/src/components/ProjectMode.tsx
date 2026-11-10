@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { ProjectFlow } from "./ProjectFlow";
 import type { BuildInspection } from "./buildInspection";
+import type { AgentHistoryPage, AgentPeek } from "./agentPeek";
 import { raisedBudget, readableError, toConversation, toFlowData, toHistory, toGoal, toModelChoice, toTurnTasks, type ProjectOverview } from "./projectOverview";
 import { lastOverview } from "./projectOverviewCache";
 import { latestTaskPlanInfo } from "./liveTaskProgress";
@@ -275,6 +276,9 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
         onPrepare={!workspaceLocked ? action => void act(() => window.loom.call("projectRun/prepareWorkspace", {
           threadId, action, confirmed: true, expectedPath: shownOverview.workspace?.path, branch: workBranch })) : undefined} />,
       onChooseWorkspace: chooseWorkspace,
+      // What a sub-agent is doing, and the record of all of them: read when a card or the history card is opened.
+      onAgentPeek: (agentId) => window.loom.call<AgentPeek>("projectAgent/peek", { threadId: shownThread.current, agentId }),
+      onAgentHistory: (offset) => window.loom.call<AgentHistoryPage>("projectAgent/history", { threadId: shownThread.current, offset }),
       // While the hub goes over, what it shows is no longer what its buttons would reach.
       busy: busy || changing,
       error: error || (offline ? (lang === "en" ? "Lost the Host; reconnecting…" : "与 Host 的连接中断，正在重连…") : ""),

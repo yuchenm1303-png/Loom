@@ -1094,7 +1094,7 @@ html[data-loom-theme="light"] .pf-new-thread { --pf-quill: #6152cc; }
 .pf-goal-lines li[data-state="failed"] i { background: var(--pf-warn); }
 .pf-goal-lines span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-goal-lines-head { flex-basis: 100%; margin: 4px 0 0 16px; color: var(--pl-muted); font-size: 11px; }
-.pf-goal-lines li:has(> .pf-line-more) { display: block; }
+.pf-goal-lines .pf-line-expandable { display: block; }
 .pf-line-more { min-width: 0; }
 .pf-line-more summary { display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; list-style: none; }
 .pf-line-more summary::-webkit-details-marker { display: none; }
@@ -1843,3 +1843,10 @@ html[data-loom-theme="light"] .pf-file-mark[data-kind="code"] { color: #6c4fc4; 
      to give the row, and its cards were gone (.pf-side's box is the wide stage's row). */
   .pf-side { margin: 0; padding: 0; overflow: visible; container-type: normal; scrollbar-gutter: auto; mask-image: none; }
 }
+
+/* A conversation sub-agent's card opens into its run box. */
+.pf-agent-well[data-peekable] { cursor: pointer; }
+.pf-agent-well[data-peekable]:hover .pf-agent-line strong { color: var(--pl-ink); }
+.pf-agent-well[data-peekable]:focus-visible { outline: 1px solid color-mix(in srgb, var(--pl-ink) 35%, transparent); outline-offset: -2px; border-radius: 10px; }
+.pf-agent > .ar-box { margin: 0 10px 8px 9px; }
+.pf-agent-history .ar-history { padding: 2px 4px 4px; }

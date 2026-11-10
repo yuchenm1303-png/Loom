@@ -1,5 +1,5 @@
 import { BuildBranchDetails } from "./BuildBranchDetails";
-import { ConversationAgents } from "./ConversationAgents";
+import { AgentRecord, ConversationAgents } from "./ConversationAgents";
 import { AnimatedFold } from "../motion/AnimatedFold";
 import { MotionValue } from "./MotionRows";
 import { GoalBudgetControl } from "../components/GoalBudgetControl";
@@ -657,7 +657,8 @@ export function MobileBuildPanel({
                 ))}
             </Section>
           ) : null}
-          {overview && (overview.conversationAgents?.length || !data?.agents.length) ? <Section category="agents" title="对话子 Agent"><ConversationAgents overview={overview} online={online} onOpen={onOpenAgent} /></Section> : null}
+          {overview && (overview.conversationAgents?.length || !data?.agents.length) ? <Section category="agents" title="对话子 Agent"><ConversationAgents overview={overview} online={online} onOpen={onOpenAgent} threadId={threadId} /></Section> : null}
+          {threadId && overview && overview.conversationAgents !== undefined ? <Section category="agents" title="历史子 Agent"><AgentRecord threadId={threadId} /></Section> : null}
           {goal && overview.goal ? (
             <BranchCard category="budget"><MobileGoalCard goal={goal} raw={overview.goal}>
               {overview.goal && overview.goal.phase !== "done" ? <GoalBudgetControl goal={overview.goal} disabled={disabled} canResume={goal.action === "resume"} onSubmit={(action, update) => act(() => window.loom.call("projectWeave/goal", { threadId, action: action === "resume" ? "resume_with_budget" : action, ...update }))} /> : null}

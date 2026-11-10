@@ -464,6 +464,17 @@ const answers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "project/set_instructions": (args) => { const project = projects.find((item) => item.id === args.projectId)!; project.instructions = String(args.instructions); return { project }; },
   "project/create": (args) => { const project = { id: `p${projects.length + 1}`, name: String(args.name || args.root), root: String(args.root), instructions: "", threadCount: 0 }; projects.push(project); return { project }; },
   "projectRun/overview": (args) => args.threadId === "thread-build" ? buildOverview : { run: null, program: null, children: [], agents: [], events: [], workspace },
+  "projectAgent/peek": (args) => {
+    const running = Boolean(buildOverview.conversationAgents?.find((item) => item.id === args.agentId)?.executionRunning);
+    return { id: args.agentId, role: running ? "goal-check" : "goal-line", state: running ? "running" : "completed", executionRunning: running, finished: !running,
+      outcome: running ? "" : "done", startedAt: new Date(Date.now() - 600000).toISOString(), endedAt: running ? null : new Date(Date.now() - 60000).toISOString(), tokens: 1200000, error: "",
+      rows: [{ kind: "say", text: "先读报告的方法与结果两节" }, { kind: "tool", text: "read_workspace_text report/report.md", running: false, ok: true },
+        { kind: "say", text: "核对表 2 与 results/eval.json 的数字" }, { kind: "tool", text: "python scripts/check_numbers.py", running, ok: running ? null : true }],
+      result: running ? "" : "检查结果已生成：表 2 的 3 个数字与 JSON 一致。", observedAt: Date.now() / 1000 };
+  },
+  "projectAgent/history": () => ({ total: 2, observedAt: Date.now() / 1000, agents: [
+    { id: "line-1", parentId: "thread-build", role: "goal-line", task: "正式实验", state: "completed", outcome: "done", finished: true, startedAt: new Date(Date.now() - 7200000).toISOString(), endedAt: new Date(Date.now() - 3600000).toISOString(), tokens: 3600000, result: "跑完 4 个信道条件，吞吐增益 +6.1%", error: "" },
+    { id: "old-1", parentId: "thread-build", role: "investigator", task: "找窗口声明", state: "completed", outcome: "done", finished: true, startedAt: new Date(Date.now() - 90000000).toISOString(), endedAt: new Date(Date.now() - 89900000).toISOString(), tokens: 120000, result: "只在 loom_model_bridge.py 里声明。", error: "" }] }),
   "projectWeave/start": (args) => { buildOverview.run = { id: "run-1", revision: 1, sourceThreadId: "thread-build", objective: "重做账号页并独立验收", repository: "D:/work/Loom", state: "running", control: "active", phase: "planning", workflowControl: "active", completionPolicy: "local_integrate", tokensUsed: 0, tokenBudget: Number(args.tokenBudget), episodesUsed: 0, maxEpisodes: Number(args.maxEpisodes), maxWorkers: Number(args.maxWorkers), plan: [], permissionMode: String(args.permissionMode) }; buildOverview.proposal = null; return { program: {} }; },
   "projectWeave/dismiss": () => { buildOverview.proposal = null; return {}; },
   "projectWeave/goal": (args) => {
