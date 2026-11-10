@@ -8,7 +8,8 @@
  * with the older ones folded into the same kind of line. Every appearance, fold and unfold below is the
  * same motion (weave.css owns all of it), so nothing competes.
  */
-import { RollText } from "./RollText";
+import { Roll, RollText } from "./RollText";
+import { TickText } from "./TickText";
 import { ChevronRight, CircleSlash, CircleX, Eye, FileDiff, Ban, Hourglass, Terminal, TriangleAlert, Wrench } from "lucide-react";
 import {
   Fragment,
@@ -468,7 +469,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
                 <span className="wv-tag" key={shownTag.status} data-tone={shownTag.tone}>{shownTag.label}</span>
               </span>
             ) : null}
-            {time ? <span className="wv-time">{time}</span> : null}
+            {time ? <span className="wv-time"><TickText value={time} /></span> : null}
           </span>
           <span className="wv-chevron-cell" aria-hidden="true"><ChevronRight size={12} className="wv-chevron" /></span>
         </button>
@@ -490,7 +491,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
           <div className="wv-sub-fold" data-open={sub ? "true" : "false"} data-settled={settledSubOnMount.current || !animate ? "true" : undefined} inert>
             <div className="wv-sub-inner">
               <div className={`wv-sub is-${subShown.kind}`}>
-                <span className="wv-sub-text">{subShown.text}</span>
+                <span className="wv-sub-text"><Roll text={subShown.text} /></span>
               </div>
             </div>
           </div>
@@ -555,7 +556,7 @@ function Line({ tones, labels, text, failed, duration, open, controls, animated,
       <Beads tones={tones} labels={labels} animated={animated} />
       <span className="wv-line-text" key={text}>{text}</span>
       {failed ? <span className="wv-line-failed">{copy.clusterFailed(failed)}</span> : null}
-      {time ? <span className="wv-time wv-line-time">{time}</span> : null}
+      {time ? <span className="wv-time wv-line-time"><TickText value={time} /></span> : null}
     </button>
   );
 }

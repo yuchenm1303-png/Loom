@@ -1136,3 +1136,8 @@ html[data-loom-theme="light"] {
     column-gap: 6px;
   }
 }
+
+/* Words that roll in place keep the line single and ellipsised, as the plain text did. */
+.wv-sub-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wv-sub-text > .roll { display: grid; }
+.wv-sub-text .roll-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -351,3 +351,7 @@
     animation: none !important;
   }
 }
+
+/* The summary rolls when its words change and still ends in an ellipsis when it is too long. */
+.turn-process-summary > .roll { display: grid; min-width: 0; }
+.turn-process-summary .roll-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

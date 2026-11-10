@@ -24,10 +24,31 @@ function Characters({ text, delay, step }: { text: string; delay: number; step: 
   ))}</>;
 }
 
-export function RollText({ identity, text, className = "" }: { identity: string; text: string; className?: string }) {
+/** Words that are drawn by one element and then by another (a row that hands its place to its successor) can still
+ *  roll: instances that share a `carry` channel remember what the channel last showed, and one that mounts while
+ *  the last is still on screen, or just left, rolls from those words. */
+const carried = new Map<string, { text: string; at: number; live: number }>();
+const CARRY_MS = 800;
+function carriedFrom(channel: string | undefined, text: string): string | null {
+  const last = channel ? carried.get(channel) : undefined;
+  if (!last || last.text === text) return null;
+  return last.live > 0 || performance.now() - last.at < CARRY_MS ? last.text : null;
+}
+
+export function RollText({ identity, text, className = "", carry }: { identity: string; text: string; className?: string; carry?: string }) {
   const reduce = useReducedMotion();
   const latest = useRef(text);
-  const [state, setState] = useState<{ identity: string; outgoing: string | null; revision: number }>({ identity, outgoing: null, revision: 0 });
+  const [state, setState] = useState<{ identity: string; outgoing: string | null; revision: number }>(() => {
+    const from = reduce ? null : carriedFrom(carry, text);
+    return { identity, outgoing: from, revision: from === null ? 0 : 1 };
+  });
+  useEffect(() => {
+    if (!carry) return;
+    const entry = carried.get(carry) ?? { text, at: 0, live: 0 };
+    entry.text = text; entry.at = performance.now(); entry.live += 1;
+    carried.set(carry, entry);
+    return () => { const now = carried.get(carry); if (now) { now.live -= 1; now.at = performance.now(); } };
+  }, [carry, text]);
   let current = state;
   if (identity !== state.identity) {
     current = { identity, outgoing: reduce ? null : latest.current, revision: state.revision + 1 };

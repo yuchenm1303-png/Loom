@@ -1,4 +1,5 @@
-import { RollText } from "./RollText";
+import { Roll, RollText } from "./RollText";
+import { TickText } from "./TickText";
 import "./model-input-notice.css";
 import {
   ArrowUpRight,
@@ -330,7 +331,7 @@ function ThinkingCapsule({ active = true }: { active?: boolean }) {
   return (
     <div ref={ref} className="inline-thinking" role="status" aria-live="polite">
       <ThinkingGlyph />
-      <span className="thinking-shimmer"><RollText identity={turnPhaseLabel(phase, copy.lang) ?? copy.thinking} text={turnPhaseLabel(phase, copy.lang) ?? copy.thinking} /></span>
+      <span className="thinking-shimmer"><RollText carry="thinking-label" identity={turnPhaseLabel(phase, copy.lang) ?? copy.thinking} text={turnPhaseLabel(phase, copy.lang) ?? copy.thinking} /></span>
     </div>
   );
 }
@@ -1440,9 +1441,9 @@ function TurnProcess({
               tabIndex={settle === "hold" ? -1 : undefined}
             >
               <span className="turn-process-primary">
-                <span className="turn-process-summary">{summaryLabel}</span>
+                <span className="turn-process-summary"><Roll text={summaryLabel} /></span>
                 {failedSteps > 0 ? <span className="turn-process-issues">{copy.processIssues(failedSteps)}</span> : null}
-                <span className="turn-process-time">{copy.elapsed(elapsedSeconds(allItems))}</span>
+                <span className="turn-process-time"><TickText value={copy.elapsed(elapsedSeconds(allItems))} /></span>
               </span>
               <ChevronRight size={14} className="turn-process-chevron" aria-hidden="true" />
             </button>
