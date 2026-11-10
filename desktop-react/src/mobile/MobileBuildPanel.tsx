@@ -21,7 +21,11 @@ import {
 } from "react";
 import {
   Blocks,
+  Bot,
   ChevronRight,
+  Compass,
+  Hammer,
+  ShieldCheck,
   MessageSquareText,
 } from "../components/icons";
 import {
@@ -978,34 +982,37 @@ export function MobileBuildPanel({
                 ) : null}
               {data.agents.length ? <Section category="agents" title="执行 Agent">
                 {data.agents.length ? (
-                  <div>
-                    {data.agents.map((agent) => (
-                      <article className="m-agent-card" key={agent.id}>
-                        <div>
-                          <h3>
-                            {agent.name} ·{" "}
-                            {agent.role === "planner"
-                              ? "规划"
-                              : agent.role === "reviewer"
-                                ? "复审"
-                                : "执行"}
-                          </h3>
-                          <p>{agent.activity}</p>
-                          <p className="m-note">
-                            第 <TickText value={String(agent.step)} /> 步 · <TickText value={agent.elapsed} />
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          className="m-icon-button"
-                          aria-label={`打开${agent.name}的执行对话`}
-                          disabled={!online}
-                          onClick={() => onOpenAgent(agent.id)}
-                        >
-                          <ChevronRight size={20} strokeWidth={1.75} />
-                        </button>
-                      </article>
-                    ))}
+                  <div className="m-agent-list">
+                    {data.agents.map((agent) => {
+                      const RoleIcon = agent.role === "planner" ? Compass : agent.role === "reviewer" ? ShieldCheck : Hammer;
+                      const role = agent.role === "planner" ? "规划" : agent.role === "reviewer" ? "复审" : "执行";
+                      const done = Boolean((agent as { done?: boolean }).done);
+                      // The same fill the desktop's dashes show: it climbs fast on the first steps and settles.
+                      const fill = done ? 1 : 1 - 0.82 ** Math.max(0, agent.step);
+                      return (
+                        <article className="m-agent-tile" data-role={agent.role} data-done={done || undefined} key={agent.id}>
+                          <span className="m-agent-mark" aria-hidden="true"><RoleIcon size={18} strokeWidth={1.75} /></span>
+                          <div className="m-agent-body">
+                            <h3><span>{agent.name}</span><small>{role}</small></h3>
+                            <p className="m-agent-line">{agent.activity}</p>
+                            <p className="m-agent-meta">
+                              <span>第 <TickText value={String(agent.step)} /> 步</span>
+                              <span><TickText value={agent.elapsed} /></span>
+                            </p>
+                            <span className="m-agent-dashes" aria-hidden="true" style={{ "--m-agent-fill": fill } as React.CSSProperties} />
+                          </div>
+                          <button
+                            type="button"
+                            className="m-icon-button"
+                            aria-label={`打开${agent.name}的执行对话`}
+                            disabled={!online}
+                            onClick={() => onOpenAgent(agent.id)}
+                          >
+                            <ChevronRight size={20} strokeWidth={1.75} />
+                          </button>
+                        </article>
+                      );
+                    })}
                   </div>
                 ) : null}
               </Section> : null}
@@ -1021,18 +1028,21 @@ export function MobileBuildPanel({
                         title={task.title}
                         aside={<StateMark state={task.state} label={STATE[task.state] ?? task.state} />}
                       >
-                        {task.detail ? <p className="m-prewrap">{task.detail}</p> : null}
+                        {task.detail && task.detail.trim() !== task.title.trim() ? <p className="m-prewrap">{task.detail}</p> : null}
                         {run.plan.find((item) => item.id === task.id)?.acceptance.length ? (
-                          <ul className="m-accept" aria-label="验收标准">
-                            {run.plan
-                              .find((item) => item.id === task.id)
-                              ?.acceptance.map((criterion, index) => (
-                                <li key={index}>{criterion}</li>
-                              ))}
-                          </ul>
+                          <div className="m-task-accept">
+                            <small>验收标准</small>
+                            <ul className="m-accept" aria-label="验收标准">
+                              {run.plan
+                                .find((item) => item.id === task.id)
+                                ?.acceptance.map((criterion, index) => (
+                                  <li key={index}>{criterion}</li>
+                                ))}
+                            </ul>
+                          </div>
                         ) : null}
                         {task.agentName ? (
-                          <p className="m-note">执行者：{task.agentName}</p>
+                          <p className="m-task-agent"><Bot size={13} strokeWidth={1.75} aria-hidden="true" />执行者<b>{task.agentName}</b></p>
                         ) : null}
                       </Disclosure>
                     </li>
