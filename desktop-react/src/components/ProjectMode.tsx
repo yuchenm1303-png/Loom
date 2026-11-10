@@ -292,6 +292,9 @@ export function ProjectMode({ threadId, workspace, model, models, onSwitchModel,
       imagesAllowed, imageSupport,
       onGoal: (action) => act(() => window.loom.call("projectWeave/goal", { threadId, action: action === "resume" ? "resume_with_budget" : action, ...(action === "resume" && shownOverview.goal ? { tokenBudget: shownOverview.goal.tokenBudget, expectedTokenBudget: shownOverview.goal.tokenBudget, expectedStartedAt: shownOverview.goal.startedAt } : {}) })),
       onGoalBudget: (action, update) => act(() => window.loom.call("projectWeave/goal", { threadId, action: action === "resume" ? "resume_with_budget" : action, ...update })),
+      // The Host resolves selection + model the way a conversation's own switch does, and refuses one it cannot use.
+      onGoalChecker: (selection) => act(() => window.loom.call("projectWeave/goal", { threadId, action: "set_checker_model", selection,
+        model: models?.profiles.find((profile) => profile.selection === selection)?.model || "" })),
       onChat: onChat ? async (text, attachments, tokens) => {
         setError("");
         try { await onChat(text, attachments, tokens); }

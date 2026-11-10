@@ -775,7 +775,34 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         session_id = self._required_text(params, "threadId")
         session = self._recover_orphaned_thread_model_turn(self._load(session_id))
         active_turn = self._thread_model_blocked(session)
+        resolved = self.resolve_model(params)
+        selection, model, provider, base_url = resolved["selection"], resolved["model"], resolved["provider"], resolved["base_url"]
+        vision, reasoning, platform, capability = resolved["vision"], resolved["reasoning"], resolved["platform"], resolved["capability"]
 
+        if active_turn:
+            pending = getattr(self, "_pending_thread_model_runtime", None)
+            if pending is None:
+                pending = self._pending_thread_model_runtime = {}
+            pending[session_id] = (platform, reasoning)
+        else:
+            self.runtime.set_session_model(session_id, platform, reasoning=reasoning)
+        session.model_selection = selection
+        session.model = model
+        session.model_provider = provider
+        session.model_base_url = base_url
+        session.model_vision = vision
+        session.reasoning_kind = reasoning.kind.value if reasoning is not None else ""
+        session.reasoning_value = reasoning.value if reasoning is not None else ""
+        self.store.save(session)
+
+        record = self._record(session, active=active_turn)
+        runtime = self._thread_runtime_patch(session, capability)
+        self._notify("thread/updated", {"thread": record, "reason": "model_changed"})
+        return {"thread": record, "runtime": runtime}
+
+    def resolve_model(self, params: dict[str, Any]) -> dict[str, Any]:
+        """A model picked by selection and model id, resolved by the Host into a ready platform: the same policy,
+        key and capability checks a conversation's own model switch goes through. Used for a long goal's checker."""
         requested_selection = str(params.get("selection") or "").strip()
         requested_model = str(params.get("model") or "").strip()
         if not requested_selection:
@@ -840,27 +867,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             request_timeout_seconds=float(params.get("timeout") or 120.0),
             context_limits=context_limits if isinstance(context_limits, dict) else None,
         )
-
-        if active_turn:
-            pending = getattr(self, "_pending_thread_model_runtime", None)
-            if pending is None:
-                pending = self._pending_thread_model_runtime = {}
-            pending[session_id] = (platform, reasoning)
-        else:
-            self.runtime.set_session_model(session_id, platform, reasoning=reasoning)
-        session.model_selection = selection
-        session.model = model
-        session.model_provider = provider
-        session.model_base_url = base_url
-        session.model_vision = vision
-        session.reasoning_kind = reasoning.kind.value if reasoning is not None else ""
-        session.reasoning_value = reasoning.value if reasoning is not None else ""
-        self.store.save(session)
-
-        record = self._record(session, active=active_turn)
-        runtime = self._thread_runtime_patch(session, capability)
-        self._notify("thread/updated", {"thread": record, "reason": "model_changed"})
-        return {"thread": record, "runtime": runtime}
+        return {"selection": selection, "model": model, "provider": provider, "base_url": base_url, "vision": vision,
+                "reasoning": reasoning, "platform": platform, "capability": capability}
 
     def thread_set_reasoning(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")

@@ -104,7 +104,9 @@ NOTE_DUE = ("Your last goal turn ended without a note. Before anything else, wri
             "found with the numbers, decided and why, what comes next, and current_phase).")
 TRACE_COMMANDS = 40
 CHECK_PREVIOUS = ("\nThe previous review asked for these changes; check each one was actually made, by what you see "
-                  "in the workspace, not by the agent's word:\n{asked}\nThe agent's notes since then, its replies:\n{replies}\n")
+                  "in the workspace, not by the agent's word:\n{asked}\nThe agent's notes since then, its replies:\n{replies}\n"
+                  'Add "unfixed" to your JSON: the numbers of the points above that are still not fixed ([] when all '
+                  "are); a point that is fixed but raises a new problem is fixed, and the new problem goes in major.\n")
 REVISION = ("Review round {round}: an independent referee found the work sound so far ({summary}), and {left} "
             "left. Its requests are now criteria in your charter ({ids}); this is a revision round "
             "of the same deliverable, not new work. Answer each point in a note as you address it, keep the "
@@ -331,7 +333,7 @@ def _previous_review(record):
     if not asked:
         return ""
     replies = [note["text"] for note in record.get("notes") or () if note["at"] >= last.get("at", 0)]
-    return CHECK_PREVIOUS.format(asked="\n".join(f"- {item}"[:500] for item in asked[:16]),
+    return CHECK_PREVIOUS.format(asked="\n".join(f"{at}. {item}"[:500] for at, item in enumerate(asked[:16], 1)),
                                  replies="\n".join(f"- {item}"[:800] for item in replies[-8:]) or "- none")
 
 
@@ -464,10 +466,26 @@ def _spawn_checker(service, thread_id, record, objective):
         deeper = CHECK_DEEPER_BUDGET.format(left=f"{1 - record['tokens'] / max(1, record['tokenBudget']):.0%}")
     task = (CHECK_PROMPT + objective + goal_charter.checker_lines(record) + _previous_review(record) + deeper
             + _dropped_line(service, thread_id) + _gaps_line(record) + _trace(service, thread_id, record))
-    snapshot = service.runtime.agent_control.spawn(thread_id, task, role="goal-check", history_mode="none", background=True)
+    snapshot = service.runtime.agent_control.spawn(thread_id, task, role="goal-check", history_mode="none", background=True,
+                                                   model=_checker_model(service, record))
     record.update(phase="checking", checkerId=snapshot.node.session_id, checkerPressed=False, checkerFailingSince=0,
                   checkerAttempts=0, checkerRetryAt=0)
     service.weave_goals.put(thread_id, record)
+
+
+def _checker_model(service, record):
+    """The model the person picked for this goal's checker, resolved fresh; None runs it on the conversation's model.
+    A pick that no longer resolves (key removed, policy changed) still gets the check done, and the card says so."""
+    picked = record.get("checkerModel")
+    if not picked:
+        return None
+    try:
+        model = service.resolve_model(picked)
+    except Exception as error:  # noqa: BLE001 - any failure falls back; the reason is shown, not raised at night
+        record["checkerModelError"] = str(error)[:300]
+        return None
+    record.pop("checkerModelError", None)
+    return model
 
 
 def _verdict(text):
@@ -483,6 +501,32 @@ def _verdict(text):
             found = value
         at = text.find("{", end)
     return found
+
+
+def _unmet_ids(criteria):
+    """The criteria a verdict judged not met, by id."""
+    return sorted({str(item["id"]) for item in criteria or () if isinstance(item, dict) and item.get("id")
+                   and item.get("met") is not True})
+
+
+def _repeats(previous, review, unfixed):
+    """Whether a rejection asks again for something the review before it asked: the stuck kind."""
+    if not previous or previous.get("verdict") != "needs_changes":
+        return False
+    # Asking for less than last time is converging even with a point left over. The two lists name the same gaps
+    # from two sides (per criterion, per fix), so the larger one is how much is asked, not their sum.
+    size = lambda item: max(len(item.get("major") or ()), len(item.get("unmet") or ()))  # noqa: E731
+    if size(review) < size(previous):
+        return False
+    asked = len(previous.get("major") or ())
+    # The referee's own word, by number in CHECK_PREVIOUS (majors come first); a minor left unfixed is not stuck.
+    if isinstance(unfixed, list) and any(type(at) is int and 1 <= at <= asked for at in unfixed):
+        return True
+    if set(review.get("unmet") or ()) & set(previous.get("unmet") or ()):
+        return True
+    # A checker that leaves "unfixed" out still repeats itself in words.
+    same = lambda text: " ".join(str(text).lower().split())  # noqa: E731
+    return bool({same(item) for item in review.get("major") or ()} & {same(item) for item in previous.get("major") or ()})
 
 
 def _wait_out_provider(service, thread_id, record, snapshot):
@@ -539,8 +583,10 @@ def _collect(service, thread_id, record, objective):
     minor = [str(item) for item in verdict.get("minor") or [] if str(item).strip()]
     deeper = [str(item) for item in verdict.get("deeper") or [] if str(item).strip()]
     goal_charter.apply_verdict(record, verdict.get("criteria"))
+    previous = (record.get("reviews") or [None])[-1]
     review = {"round": len(record.get("reviews") or []) + 1, "verdict": verdict["verdict"], "summary": summary[:2000],
-              "major": major[:12], "minor": minor[:12], "deeper": [], "at": time.time()}
+              "major": (major or [str(item) for item in verdict.get("issues") or [] if str(item).strip()])[:12],
+              "minor": minor[:12], "deeper": [], "at": time.time(), "unmet": _unmet_ids(verdict.get("criteria"))}
     record["reviews"] = [*(record.get("reviews") or []), review][-12:]
     if verdict["verdict"] == "passed":
         decide(record, "deepen" if _should_deepen(record, deeper) else "finish", asked=len(deeper),
@@ -555,7 +601,6 @@ def _collect(service, thread_id, record, objective):
             if not goal_charter.charter_of(record):  # a goal from before charters: the requests travel as text
                 text += "\n" + "\n".join(f"- {item}" for item in deeper[:8])
             record.update(phase="working", checkFaults=0, deepen=text[:6000])
-            record.pop("rejectionWeight", None)  # a new round's requests are not measured against the old one's
             if goal_lines.mode() == "lines":  # these are often independent: the split is decided again
                 record.update(linesDecision="pending", linesHolds=0)
             service.weave_goals.put(thread_id, record)
@@ -565,16 +610,16 @@ def _collect(service, thread_id, record, objective):
     unmet = [f"{item['id']}: {item['text']}" + (f" ({item['note']})" if item.get("note") else "")
              for item in (goal_charter.charter_of(record) or {}).get("criteria") or () if item["status"] == "unmet"]
     record["checks"] += 1
-    # A rejection that asks for less than the last one is the work converging, not stuck: only the others count.
-    weight = len(unmet) + len(major or issues)
-    previous = record.get("rejectionWeight")
-    if previous is None or weight >= previous:
+    # Stuck is the referee asking again for what it already asked: a point of the last review it reports unfixed,
+    # or a criterion unmet two rounds running. New problems each round are the work moving, however many they are.
+    # Counting problems instead stopped a real goal whose lead had fixed every round's points: one checker misreading
+    # was counted three times (two criteria and a major), and five rounds of different findings read as no progress.
+    if _repeats(previous, review, verdict.get("unfixed")):
         record["rejectionStalls"] = record.get("rejectionStalls", 0) + 1
-    record["rejectionWeight"] = weight
     listed = lambda items: "\n".join(f"- {item}" for item in items) or "- none"  # noqa: E731
     feedback = REVIEW_BACK.format(summary=summary, unmet=listed(unmet), major=listed(major or issues), minor=listed(minor))
     record.update(phase="working", checkFaults=0, feedback=feedback[:6000])
-    if record["rejectionStalls"] >= MAX_CHECKS or record["checks"] - record.get("checksAtResume", 0) >= MAX_REJECTIONS:
+    if record.get("rejectionStalls", 0) >= MAX_CHECKS or record["checks"] - record.get("checksAtResume", 0) >= MAX_REJECTIONS:
         return _stop(service, thread_id, record, GoalStatus.BLOCKED,
                      f"An independent check rejected the work {record['checks']} times: {summary}")
     service.weave_goals.put(thread_id, record)
@@ -855,17 +900,27 @@ def control(service, params):
         # Resuming a goal the checker stopped is the person's decision to go on: the next rejection starts a new count.
         # Kept, the count stopped the goal again on the first rejection after the person's resume.
         record.update(rejectionStalls=0, checksAtResume=record["checks"])
-        record.pop("rejectionWeight", None)
         service.weave_goals.put(thread_id, record)
         service.runtime.set_goal_status(thread_id, GoalStatus.ACTIVE)
     elif action == "set_budget":
+        service.weave_goals.put(thread_id, record)
+    elif action == "set_checker_model":
+        # The checker decides what counts and when the goal stops; a stronger model there costs a few runs, not the
+        # whole goal's work. Resolved now so a model without a key or outside policy is refused here, not at 3 a.m.
+        selection, model = str(params.get("selection") or "").strip(), str(params.get("model") or "").strip()
+        if selection:
+            service.resolve_model({"selection": selection, "model": model})
+            record["checkerModel"] = {"selection": selection, "model": model}
+        else:
+            record.pop("checkerModel", None)  # back to the conversation's model
+        record.pop("checkerModelError", None)
         service.weave_goals.put(thread_id, record)
     elif action == "dismiss":
         goal_lines.stop_all(service, thread_id, record, "the person dismissed the goal")
         service.runtime.clear_goal(thread_id)
         service.weave_goals.take(thread_id)
     else:
-        raise ValueError("action must be pause, resume, resume_with_budget, set_budget or dismiss")
+        raise ValueError("action must be pause, resume, resume_with_budget, set_budget, set_checker_model or dismiss")
     return {"goal": view(service, thread_id)}
 
 
@@ -883,6 +938,7 @@ def view(service, thread_id):
             "phase": phase,
             "tokens": record["tokens"], "tokenBudget": record["tokenBudget"], "turns": record["turns"],
             "reason": record["reason"], "summary": record["summary"], "checked": record["checked"], "checks": record["checks"],
+            "checkerModel": record.get("checkerModel"), "checkerModelError": record.get("checkerModelError", ""),
             "retryAt": record.get("checkerRetryAt", 0) if phase == "checking" else record["retryAt"] if record.get("failures") and phase == "working" else 0,
             "hours": record.get("hours") or 0, "deepens": record.get("deepens", 0),
             "agents": _working_agents(service, thread_id, record), "lines": goal_lines.view(record),

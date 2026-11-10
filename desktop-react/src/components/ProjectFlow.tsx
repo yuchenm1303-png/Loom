@@ -93,7 +93,9 @@ export interface FlowData {
   goal?: { budget?: GoalBudgetState; text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean;
           /** The Host stopped the goal: the card unfolds once for it and says why in `note`, not only in a tooltip. */
           attention?: boolean; note?: string; lines?: { title: string; state: string; label: string; why?: string }[];
-          charter?: { deliverable: string; where: string; items: { title: string; state: string; label: string }[] } } | null;
+          charter?: { deliverable: string; where: string; items: { title: string; state: string; label: string }[] };
+          /** The checker's own model ("" = the conversation's), and why the last check could not use it. */
+          checker?: { selection: string; error?: string } } | null;
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
   models?: { current: ModelOption & { reasoning?: ModelReasoningState; vision?: boolean }; recent: ModelOption[];
              groups: { id: string; name: string; options: ModelOption[] }[] };
@@ -145,6 +147,8 @@ export interface FlowActions {
   /** The long goal's stop, resume and dismiss. */
   onGoal?(action: "pause" | "resume" | "dismiss"): void;
   onGoalBudget?(action: "set_budget" | "resume", update: GoalBudgetUpdate): Promise<unknown>;
+  /** The model the long goal's independent check runs on; "" puts it back on the conversation's model. */
+  onGoalChecker?(selection: string): void;
   /** Whether the model can take the images attached to a message, and whether that is known (the chat composer's gate). */
   imagesAllowed?: boolean;
   imageSupport?: boolean | null;
@@ -216,7 +220,7 @@ const zhText = {
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目和长目标的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以；16M 之后再点一下可以输入任意额度", budgetCustom: "自定义预算（单位：百万 token，1–1000）", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
-  goalDismiss: "收起", taskDropped: (count: number) => `已放弃 ${count} 项（未执行，不计入）`, goalCharter: "交付", goalDeliverable: "交付物", goalCriteria: "验收标准", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
+  goalDismiss: "收起", goalChecker: "核验模型", goalCheckerSame: "与对话相同", goalCheckerHint: "独立核验用的模型：它决定哪些意见算数、目标何时停下；每个目标只核验几次，换更强的模型花费不大", goalCheckerError: (error: string) => `所选核验模型不可用，上次核验用了对话模型：${error}`, taskDropped: (count: number) => `已放弃 ${count} 项（未执行，不计入）`, goalCharter: "交付", goalDeliverable: "交付物", goalCriteria: "验收标准", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
   agentsPending: "当前没有可查看的 agent，任务调度后自动启用", timelinePending: "还没有执行记录，建造开始后自动启用",
   filesUnavailable: "当前没有可查看或添加的参考文件", historyUnavailable: "当前环境未提供对话记录",
 };
@@ -247,7 +251,7 @@ const enText: typeof zhText = {
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The total token budget for projects and long goals; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓; one more click after 16M lets you type any amount", budgetCustom: "Custom budget (millions of tokens, 1–1000)", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
-  goalDismiss: "Dismiss", taskDropped: (count: number) => `${count} dropped (not run, not counted)`, goalCharter: "Deliverable", goalDeliverable: "Deliverable", goalCriteria: "Acceptance criteria", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
+  goalDismiss: "Dismiss", goalChecker: "Check model", goalCheckerSame: "Same as the conversation", goalCheckerHint: "The model of the independent check: it decides which points count and when the goal stops; a goal is checked only a few times, so a stronger model costs little", goalCheckerError: (error: string) => `The picked check model is unavailable; the last check ran on the conversation model: ${error}`, taskDropped: (count: number) => `${count} dropped (not run, not counted)`, goalCharter: "Deliverable", goalDeliverable: "Deliverable", goalCriteria: "Acceptance criteria", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
   agentsPending: "No agents to inspect yet; available once tasks are dispatched", timelinePending: "No execution records yet; available once the build starts",
   filesUnavailable: "No reference files to view or add here", historyUnavailable: "Conversation history is not available here",
 };
@@ -1605,6 +1609,25 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
               </div>
               {goal.note ? <p className="pf-goal-note" title={goal.note}>{goal.note}</p> : null}
               {goal.budget && actions.onGoalBudget ? <GoalBudgetControl meter goal={goal.budget} disabled={actions.busy} canResume={goal.action === "resume"} onSubmit={actions.onGoalBudget} /> : null}
+              {/* Only while the goal still has checks ahead (budget shown = not finished). */}
+              {goal.budget && actions.onGoalChecker && data.models ? (
+                <label className="pf-goal-checker" title={text.goalCheckerHint}>
+                  <small>{text.goalChecker}</small>
+                  <select value={goal.checker?.selection ?? ""} disabled={actions.busy}
+                          onChange={(event) => actions.onGoalChecker!(event.target.value)}>
+                    <option value="">{text.goalCheckerSame}</option>
+                    {/* A pick no longer offered is still named, so the field never silently reads "same". */}
+                    {goal.checker?.selection && !data.models.groups.some((group) => group.options.some((option) => option.selection === goal.checker!.selection))
+                      ? <option value={goal.checker.selection}>{goal.checker.selection}</option> : null}
+                    {data.models.groups.map((group) => (
+                      <optgroup key={group.id} label={group.name}>
+                        {group.options.map((option) => <option key={option.selection} value={option.selection}>{option.name}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {goal.checker?.error ? <p className="pf-goal-checker-error">{text.goalCheckerError(goal.checker.error)}</p> : null}
               {goal.lines?.length ? (
                 <ul className="pf-goal-lines">
                   {goal.lines.map((line) => (

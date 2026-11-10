@@ -55,6 +55,10 @@ test("a long goal reads as one line with the move the person has", () => {
   assert.equal(toGoal({ ...base, status: "budget_limited" }).attention, true);
   assert.equal(toGoal({ ...base, status: "paused" }).attention, undefined, "the person's own pause is not news to them");
   assert.equal(toGoal(base).attention, undefined);
+  assert.equal(toGoal(base).checker, undefined, "no pick: the check runs on the conversation's model");
+  assert.deepEqual(toGoal({ ...base, checkerModel: { selection: "saved:strong", model: "strong-1" } }).checker, { selection: "saved:strong", error: undefined });
+  assert.deepEqual(toGoal({ ...base, checkerModel: null, checkerModelError: "API key is required" }).checker,
+                   { selection: "", error: "API key is required" }, "a pick that failed says so even once cleared");
   const unchecked = toGoal({ ...base, status: "complete", phase: "done" });
   assert.match(unchecked.text, /没能做完/, "an unchecked finish never reads as checked");
   assert.equal(unchecked.action, undefined);

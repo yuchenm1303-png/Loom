@@ -430,6 +430,9 @@ const WORK = new Set(["tool_call", "process", "file_edit"]);
 export interface LongGoal {
   startedAt?: number;
   objective: string; status: string; phase: string; tokens: number; tokenBudget: number; turns: number;
+  /** The model the person picked for the independent check; none runs it on the conversation's model. A pick that
+   *  no longer resolves leaves checkerModelError and the check ran on the conversation's model. */
+  checkerModel?: { selection: string; model: string } | null; checkerModelError?: string;
   reason: string; summary: string; checked: boolean;
   /** Seconds since the epoch: the model provider failed and the Host tries again then; 0 when nothing waits. */
   retryAt?: number;
@@ -477,7 +480,9 @@ export function toCharter(goal: LongGoal, lang: "zh" | "en" = "zh"): NonNullable
 export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {
   const shown = goalLine(goal, lang);
   const charter = shown && goal ? toCharter(goal, lang) : undefined;
-  return charter ? { ...shown!, charter } : shown;
+  const checker = goal?.checkerModel?.selection || goal?.checkerModelError
+    ? { checker: { selection: goal.checkerModel?.selection || "", error: goal.checkerModelError || undefined } } : {};
+  return shown ? { ...shown, ...(charter ? { charter } : {}), ...checker } : shown;
 }
 
 function goalLine(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {

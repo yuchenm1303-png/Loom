@@ -135,9 +135,11 @@ class AgentControl:
         read_only: bool = False,
         tool_selection: list[str] | None = None,
         system_prompt: str | None = None,
+        model: dict | None = None,
     ) -> AgentExecutionSnapshot:
         """Start a child thread. read_only narrows it to the read-only permission mode (never widens anything);
-        tool_selection limits the tools it is offered; system_prompt replaces the parent's for a narrow role."""
+        tool_selection limits the tools it is offered; system_prompt replaces the parent's for a narrow role;
+        model (a resolve_model result) runs it on another model than the parent's, set before its first turn."""
         self._assert_open()
         body = str(task or "").strip()
         if not body:
@@ -169,7 +171,14 @@ class AgentControl:
         # every sub-agent silently ran on whatever model the Host was started with.
         for name in _MODEL_FIELDS:
             setattr(child, name, getattr(parent, name))
-        if self.runtime.has_session_model(parent.session_id):
+        if model is not None:
+            reasoning = model.get("reasoning")
+            child.model_selection, child.model = model["selection"], model["model"]
+            child.model_provider, child.model_base_url, child.model_vision = model["provider"], model["base_url"], model["vision"]
+            child.reasoning_kind = reasoning.kind.value if reasoning is not None else ""
+            child.reasoning_value = reasoning.value if reasoning is not None else ""
+            self.runtime.set_session_model(child.session_id, model["platform"], reasoning=reasoning)
+        elif self.runtime.has_session_model(parent.session_id):
             self.runtime.set_session_model(
                 child.session_id,
                 self.runtime.platform_for_session(parent.session_id),

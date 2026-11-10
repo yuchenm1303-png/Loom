@@ -19,7 +19,8 @@ const params = new URLSearchParams(location.search);
 const GOAL_STOP = {
   goal: { ...toGoal({ objective: "继续 AI-RAN 研究", status: "blocked", phase: "working", tokens: 6436079, tokenBudget: 800000000, turns: 7,
                       reason: "An independent check rejected the work 5 times: Report §23's per-layer temperature head 'maxdiff 3.719' is not reproducible from results/nr_layer_temp.pt; the 32-ch BLER-aware CE has only a 128-slot eval.",
-                      summary: "", checked: false })! },
+                      summary: "", checked: false, checkerModelError: "API key is required" })!,
+          budget: { tokens: 6436079, tokenBudget: 800000000, startedAt: 123 } },
   taskList: toTurnTasks([{ step: "最终验证", status: "completed" }, { step: "提交 goal", status: "completed" },
                          { step: "执行下一阶段实验与分析", status: "dropped", blocker: "进入深挖阶段" },
                          { step: "per-SNR 变体（temp-head 或 focal）", status: "dropped" },
@@ -283,6 +284,7 @@ function Preview() {
             <ProjectFlow data={{ ...turnTalk(activated ? play(count, workers) : variant(play(count, workers)), scene), ...(draftProposal ? { proposal: draftProposal } : {}), ...(params.has("longgoal") ? { goal: { text: "长目标已暂停", detail: "继续研究并交付报告", live: goalActive, action: goalActive ? "pause" as const : "resume" as const, dismiss: true, budget: goalBudget } } : {}), ...(params.has("goalstop") ? GOAL_STOP : {}), models, references: REFERENCES, history: THREADS, conversationPermissionMode: conversationAccess }}
                          actions={{ onChat: (...args) => { (window as unknown as { sent: unknown }).sent = args; }, onInterrupt: () => {}, onApproval: () => {}, onStart: (...args) => { (window as unknown as { started: unknown }).started = args; }, onDismiss: () => {}, onWorkers: setWorkers, onModel: switchModel, onReasoning: (_kind, value) => setEffort(value), onAttach: () => {}, onOpenThread: (id) => { (window as unknown as { opened: unknown }).opened = id; }, onNewThread: () => {},
                                     onPermissionModeChange: conversationAccess ? async value => setConversationAccess(value) : undefined,
+                                    onGoalChecker: (selection) => { Object.assign(window, { goalCheckerCall: selection }); },
                                     onGoalBudget: async (action, update) => { Object.assign(window, { goalBudgetCall: { action, ...update } }); setGoalBudget(value => ({ ...value, tokenBudget: update.tokenBudget })); if (action === "resume") setGoalActive(true); return true; },
                                     error: params.has("error") ? "Lost the Host; reconnecting…" : undefined,
                                     onPickFiles: async () => { setPicks((value) => value + 1); return PICKS.slice(picks % 3, picks % 3 + 2); } }} />

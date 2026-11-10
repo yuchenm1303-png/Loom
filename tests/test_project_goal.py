@@ -102,10 +102,12 @@ def test_a_rejected_claim_goes_back_to_the_work_with_the_findings(tmp_path):
 
 def test_a_check_that_keeps_rejecting_stops_for_the_person(tmp_path):
     service, runtime, _, source = conversation(tmp_path, [
-        START, DONE, answer("1"), REJECTED, DONE, answer("2"), REJECTED, DONE, answer("3"), REJECTED])
+        START, DONE, answer("1"), REJECTED, DONE, answer("2"), REJECTED, DONE, answer("3"), REJECTED,
+        DONE, answer("4"), REJECTED])
     try:
-        tick(service, source, 10)
-        assert state(service, source)["status"] == "blocked" and "3 times" in state(service, source)["reason"]
+        tick(service, source, 13)
+        assert state(service, source)["status"] == "blocked" and "4 times" in state(service, source)["reason"], \
+            "the same point asked again three times after the first is stuck"
     finally:
         runtime.close()
 
@@ -113,14 +115,14 @@ def test_a_check_that_keeps_rejecting_stops_for_the_person(tmp_path):
 def test_resuming_a_goal_the_checker_stopped_starts_a_new_count(tmp_path):
     service, runtime, platform, source = conversation(tmp_path, [
         START, DONE, answer("1"), REJECTED, DONE, answer("2"), REJECTED, DONE, answer("3"), REJECTED,
-        DONE, answer("4"), REJECTED])
+        DONE, answer("4"), REJECTED, DONE, answer("5"), REJECTED])
     try:
-        tick(service, source, 10)
-        assert state(service, source)["status"] == "blocked" and state(service, source)["checks"] == 3
+        tick(service, source, 13)
+        assert state(service, source)["status"] == "blocked" and state(service, source)["checks"] == 4
         goal.control(service, {"threadId": source, "action": "resume"})
         tick(service, source, 4)
         final = state(service, source)
-        assert final["status"] == "active" and final["checks"] == 4, "one rejection after the person's resume is not a stop"
+        assert final["status"] == "active" and final["checks"] == 5, "one rejection after the person's resume is not a stop"
         said = json.dumps([message.content for message in platform.requests[-1].messages], ensure_ascii=False, default=str)
         assert "评估脚本跑不通" in said, "the resumed turn is handed the checker's points"
     finally:
@@ -139,7 +141,7 @@ def test_rejections_that_ask_for_less_each_time_do_not_stop_the_goal(tmp_path):
         final = state(service, source)
         assert final["status"] == "complete" and final["checked"] is True, final.get("reason")
         record = service.weave_goals.get(source)
-        assert record["checks"] == 4 and record["rejectionStalls"] == 1
+        assert record["checks"] == 4 and record.get("rejectionStalls", 0) == 0
     finally:
         runtime.close()
 
@@ -149,11 +151,89 @@ def test_rejections_that_stop_shrinking_still_stop_the_goal(tmp_path):
         return answer(json.dumps({"verdict": "needs_changes", "summary": "没改好", "major": [f"问题 {i}" for i in range(count)]}))
     service, runtime, _, source = conversation(tmp_path, [
         START, DONE, answer("1"), rejected(3), DONE, answer("2"), rejected(2), DONE, answer("3"), rejected(2),
-        DONE, answer("4"), rejected(2)])
+        DONE, answer("4"), rejected(2), DONE, answer("5"), rejected(2)])
     try:
-        tick(service, source, 14)
+        tick(service, source, 17)
         final = state(service, source)
-        assert final["status"] == "blocked" and "4 times" in final["reason"]
+        assert final["status"] == "blocked" and "5 times" in final["reason"]
+    finally:
+        runtime.close()
+
+
+def test_different_findings_each_round_are_progress_not_a_stop(tmp_path):
+    # The 2026-11-09 AI-RAN goal: each review found something new, the lead fixed the last round's points, and the
+    # old count (problems asked, criteria and majors added up) stopped it after five rounds as "not converging".
+    def rejected(round_):
+        return answer(json.dumps({"verdict": "needs_changes", "summary": f"第 {round_} 轮",
+                                  "major": [f"第 {round_} 轮问题 A", f"第 {round_} 轮问题 B"], "unfixed": []}))
+    service, runtime, _, source = conversation(tmp_path, [
+        START, DONE, answer("1"), rejected(1), DONE, answer("2"), rejected(2), DONE, answer("3"), rejected(3),
+        DONE, answer("4"), rejected(4), DONE, answer("5"), rejected(5), DONE, answer("6"), PASSED])
+    try:
+        tick(service, source, 19)
+        final = state(service, source)
+        assert final["status"] == "complete" and final["checked"] is True, final.get("reason")
+        assert service.weave_goals.get(source).get("rejectionStalls", 0) == 0
+    finally:
+        runtime.close()
+
+
+def test_the_checker_says_which_earlier_points_are_unfixed_and_only_those_count(tmp_path):
+    def rejected(round_, unfixed):
+        return answer(json.dumps({"verdict": "needs_changes", "summary": "还有旧问题",
+                                  "major": [f"maxdiff 第 {round_} 次写法"], "unfixed": unfixed}))
+    service, runtime, platform, source = conversation(tmp_path, [
+        START, DONE, answer("1"), rejected(1, []), DONE, answer("2"), rejected(2, [1]), DONE, answer("3"),
+        rejected(3, [1]), DONE, answer("4"), rejected(4, [1])])
+    try:
+        tick(service, source, 13)
+        final = state(service, source)
+        assert final["status"] == "blocked" and "4 times" in final["reason"], "reworded, the same point is still the same"
+        said = [json.dumps([message.content for message in request.messages], ensure_ascii=False, default=str)
+                for request in platform.requests]
+        assert any("1. (major) maxdiff" in text and 'Add \\"unfixed\\"' in text for text in said), \
+            "the checker sees the last points numbered and is asked which are unfixed"
+    finally:
+        runtime.close()
+
+
+def test_a_checker_model_runs_the_check_and_a_broken_pick_falls_back(tmp_path, monkeypatch):
+    service, runtime, _, source = conversation(tmp_path, [START, answer("0"), DONE, answer("1"), REJECTED,
+                                                          DONE, answer("2"), REJECTED])
+    try:
+        resolved = {"broken": False}
+
+        def resolve_model(params):
+            if resolved["broken"]:
+                raise ValueError("API key is required")
+            return {"selection": params["selection"], "model": params["model"], "provider": "openai",
+                    "base_url": "", "vision": None, "reasoning": None, "platform": service.runtime.platform,
+                    "capability": None}
+        monkeypatch.setattr(service, "resolve_model", resolve_model, raising=False)
+        spawned = []
+        control = service.runtime.agent_control
+        original = control.spawn
+
+        def spy(*args, **kwargs):
+            spawned.append(kwargs.get("model"))
+            return original(*args, **kwargs)
+        monkeypatch.setattr(control, "spawn", spy)
+        goal.control(service, {"threadId": source, "action": "set_checker_model", "selection": "saved:strong",
+                               "model": "strong-1"})
+        assert state(service, source)["checkerModel"] == {"selection": "saved:strong", "model": "strong-1"}
+        tick(service, source, 4)
+        assert spawned and spawned[0]["model"] == "strong-1", "the check runs on the picked model"
+        assert runtime.store.load(source).model_selection != "saved:strong", "the conversation keeps its own model"
+        resolved["broken"] = True
+        tick(service, source, 4)
+        assert len(spawned) >= 2 and spawned[-1] is None, "a pick that no longer resolves still gets the check done"
+        assert "API key" in state(service, source)["checkerModelError"]
+        resolved["broken"] = False
+        goal.control(service, {"threadId": source, "action": "set_checker_model", "selection": ""})
+        assert state(service, source)["checkerModel"] is None and state(service, source)["checkerModelError"] == ""
+        resolved["broken"] = True
+        with pytest.raises(ValueError):
+            goal.control(service, {"threadId": source, "action": "set_checker_model", "selection": "saved:x", "model": "x"})
     finally:
         runtime.close()
 
