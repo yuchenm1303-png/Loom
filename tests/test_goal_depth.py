@@ -331,6 +331,52 @@ def test_the_referees_are_not_the_work_nor_open_sub_agents_of_the_lead():
     assert set(goal_depth.ROLES) <= set(goal.REFEREES)
 
 
+# --- the person's time ----------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("words,named", [
+    ("你有六个小时", True), ("你有一整晚", True), ("我要出门两个小时，你有一个小时", True), ("今晚跑完", True),
+    ("Give it this afternoon", True), ("run it overnight", True), ("you have 3h", True), ("1.5 hours", True),
+    ("请你深入深入研究一下ai ran吧，利用现在的电脑和资源随意研究，看看能不能做出一些成果", False),
+    ("CDL-A 30 km/h 下复现 1 dB 增益", False), ("5G NR PUSCH 神经接收机", False), ("research it deeply", False),
+])
+def test_a_time_is_one_the_person_named(words, named):
+    assert goal_depth.named_time([words]) is named
+
+
+def test_only_the_persons_own_messages_count_as_their_words():
+    from types import SimpleNamespace
+    from app.ai.contracts import MessageRole
+    messages = [SimpleNamespace(role=MessageRole.USER, name=None, content="深入研究一下"),
+                SimpleNamespace(role=MessageRole.USER, name="loom_weave_mode", content="给你两个小时的那种提示"),
+                SimpleNamespace(role=MessageRole.ASSISTANT, name=None, content="我先用六个小时")]
+    service = SimpleNamespace(store=SimpleNamespace(load=lambda _thread: SimpleNamespace(messages=messages)))
+    assert goal_depth.persons_words(service, "t") == ["深入研究一下"]
+    assert not goal_depth.named_time(goal_depth.persons_words(service, "t"))
+
+
+def test_hours_the_model_made_up_are_not_kept(tmp_path):
+    service, runtime, platform, _, source = base.build(tmp_path, [])
+    router = Router(platform, [calling("weave_goal", {"objective": "深入研究 AI-RAN", "hours": 6}, "call-goal"), answer("开始")])
+    try:
+        service.turn_start({"threadId": source, "input": "请你深入深入研究一下ai ran吧，看看能不能发论文", "weave": True})
+        settle(service, source)
+        record = service.weave_goals.get(source)
+        assert record["hours"] == 0, "the person named no time"
+        assert any(item["what"] == "hours_dropped" and item["asked"] == 6 for item in record["decisions"])
+        assert "Never invent a time" in tool_results(service, source, "weave_goal")[0]
+    finally:
+        runtime.close()
+
+
+def test_hours_the_person_named_are_kept(tmp_path):
+    service, runtime, _, source, _, _ = research(tmp_path, [START, answer("开始")])
+    try:
+        assert service.weave_goals.get(source)["hours"] == 6
+        assert "Never invent a time" not in tool_results(service, source, "weave_goal")[0]
+    finally:
+        runtime.close()
+
+
 # --- the fixes from the real run ------------------------------------------------------------------------------------
 
 def test_a_lead_whose_own_turn_failed_is_brought_back_while_its_lines_run(tmp_path, monkeypatch):

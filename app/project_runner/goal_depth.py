@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -144,6 +145,39 @@ def machine_line(record):
         text += " Check that the Python environment you run has a GPU build before relying on it."
     return text + (" Run one large download at a time: downloads share the connection the model provider uses, and a "
                    "saturated link fails your own requests.")
+
+
+# --- the person's time ----------------------------------------------------------------------------------------------
+
+# A duration or a part of the day, in Chinese or English. Hours steer a goal ("go deeper while it lasts", the card's
+# time bar, "the 6 h are up, so finish"), so they come from the person's words, never from the model's guess: a real
+# lead given "深入研究一下 ai ran" with no time set hours=6 itself, and the goal began to wrap up at a deadline no one set.
+_NUMBER = r"(?:[0-9０-９]+(?:\.[0-9]+)?|[一二两三四五六七八九十百半几]+)"
+TIME_WORDS = re.compile(
+    rf"{_NUMBER}\s*(?:个)?\s*(?:半)?\s*(?:小时|钟头|分钟|天|夜|晚上|晚)"
+    r"|一整晚|整晚|今晚|今夜|通宵|整夜|一整夜|一晚上|下午|上午|中午|晚上|明早|明天|天亮|白天|一整天|周末"
+    r"|\b\d+(?:\.\d+)?\s*(?:h|hrs?|hours?|mins?|minutes?|days?)\b"
+    r"|\b(?:overnight|tonight|all night|the night|this afternoon|this evening|this morning|all day|the weekend"
+    r"|an hour|half an hour|a few hours|couple of hours|until morning|till morning)\b", re.I)
+PERSON_TURNS = 4  # the person's latest messages read for a time: the request and what they added around it
+HOURS_DROPPED = ("hours was not kept: the person named no time, so this goal is paced by its token budget (you are "
+                 "told when to wrap up). Never invent a time.")
+
+
+def persons_words(service, thread_id):
+    """The person's latest messages in the conversation: their own words, not the Host's or the mode's context."""
+    try:
+        messages = service.store.load(thread_id).messages
+    except (OSError, ValueError, KeyError):
+        return []
+    said = [str(message.content or "") for message in messages
+            if getattr(message.role, "value", message.role) == "user" and not getattr(message, "name", None)]
+    return said[-PERSON_TURNS:]
+
+
+def named_time(texts):
+    """Whether any of these words gives a time: a duration or a part of the day."""
+    return any(TIME_WORDS.search(text or "") for text in texts)
 
 
 # --- directions -----------------------------------------------------------------------------------------------------

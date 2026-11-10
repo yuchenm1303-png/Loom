@@ -22,7 +22,7 @@ from app.agent_runtime.contracts import ToolEffect
 from app.agent_runtime.tools import AgentTool, ToolResult
 from app.ai import AIMessage, MessageRole
 
-from . import goal, goal_charter, goal_depth, goal_lines, goal_scope, program
+from . import goal, goal_charter, goal_common, goal_depth, goal_lines, goal_scope, program
 from .parallel import MAX_WORKERS
 from .workspace import describe as describe_workspace
 
@@ -361,7 +361,15 @@ def tools(service):
             hours = max(0.0, min(float(arguments.get("hours") or 0), goal.MAX_HOURS))
         except (TypeError, ValueError):
             hours = 0.0
+        dropped = bool(hours) and not goal_depth.named_time(goal_depth.persons_words(service, context.session_id))
+        if dropped:
+            hours = 0.0
         goal.start(service, context.session_id, objective, budget, hours)
+        if dropped:
+            with service.project_runner.guard:
+                record = service.weave_goals.get(context.session_id)
+                goal_common.decide(record, "hours_dropped", asked=arguments.get("hours"))
+                service.weave_goals.put(context.session_id, record)
         written = ""
         if chartered:
             with service.project_runner.guard:
@@ -370,6 +378,7 @@ def tools(service):
                 service.weave_goals.put(context.session_id, record)
             written = charter_text(record["charter"], {"new": True, "dropped": []}) + "\n"
         given = f" and {hours:g} h of the person's time" if hours else ""
+        given += (". " + goal_depth.HOURS_DROPPED.rstrip(".")) if dropped else ""
         started = service.weave_goals.get(context.session_id) or {}
         before = "\n".join([*goal.previous_lines(started), *filter(None, (goal_depth.machine_line(started),))])
         return ToolResult(ok=True, content=f"Long goal started with a budget of {budget:,} tokens{given}. Carry on "
