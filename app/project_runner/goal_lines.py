@@ -2,12 +2,13 @@
 
 Asking the lead to delegate did not work: a prompt leaves "no" as the silent default, and in a real two-hour
 goal it never split anything. So the Host asks for a decision (lines, or why not) before the work starts, and
-does the rest itself: starts the sub-agents, holds the lead while they run, retries what the provider failed,
-stops what overruns, closes them, and hands the reports back.
+does the rest itself: starts the sub-agents, retries what the provider failed, stops what overruns, closes them,
+and hands the reports back. The lead keeps working beside them (LEAD_ENV; "hold" restores the old rule that it stops).
 
 The reason to split is cost as much as speed: a conversation's history is re-sent on every step, so what a goal
-costs grows with the square of its steps in one conversation (docs/goal-lines-design-2026-11-07.md). The lead
-does not run while lines run, and only their reports enter its history.
+costs grows with the square of its steps in one conversation (docs/goal-lines-design-2026-11-07.md). While lines
+run the lead works on what does not depend on them, or stops and costs nothing; only their reports enter its history,
+each in the result of the lead's next tool call, or in its next turn if it had stopped.
 
 Whether two lines depend on each other only the lead can know, so the batch is its statement that they do not.
 Lines that declare the same files or the same resource are refused, not queued: serial work stays with the lead,
@@ -26,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -55,10 +57,14 @@ REPORT_CHARS = 6000
 OBJECTIVE_CHARS = 2000
 LIVE = {"running", "waiting", "reporting"}
 MAX_WAIT_HOLDS = 2
+LEAD_ENV = "LOOM_GOAL_LEAD"
+LEADS = ("parallel", "hold")
+POLLS = {"wait_agent", "list_agents", "weave_status"}  # looking at the lines: what the Host does for the lead
+POLL_LIMIT = 2  # looks between two changes in the lines; past it the Host says nothing has changed
 CPU_RESERVED = 2  # logical processors kept for the lead, the Host and the person's own use
 FAILURE_KIND = "goal_lines_required"
 
-GUIDE_LINES = (
+GUIDE_LINES_HOLD = (
     "Lines: you are the lead of this goal. Start the work yourself. A goal you can finish in an hour or so is "
     "cheaper done alone: splitting it measured 2 to 5 times the tokens for the same result. When the goal is large "
     "(the Host asks once it has cost you a while), run what is independent at the same time with weave_lines: up "
@@ -71,6 +77,22 @@ GUIDE_LINES = (
     "nothing. Work that feeds each other in order, and runs that compete for one GPU or one set of files, go "
     "before the lines or in a later round; integrating and the final result are yours. Do not read what a line "
     "produced except what your answer relies on. When nothing is worth splitting, say why with solo_reason.")
+GUIDE_LINES = (
+    "Lines: you are the lead of this goal. Start the work yourself. A goal you can finish in an hour or so is "
+    "cheaper done alone: splitting it measured 2 to 5 times the tokens for the same result. When the goal is large "
+    "(the Host asks once it has cost you a while), run what is independent at the same time with weave_lines: up "
+    "to four lines that do not depend on each other's results, each worth many steps of its own (a survey, an "
+    "experiment, a module, a data set). A line sees none of this conversation, so its brief says the objective, "
+    "the files to read and where to write, what to hand back, and its boundaries; a line that writes gives check, "
+    "the argument list of a command that proves its part works (its tests, or a script that checks its results), "
+    "and a line of heavy computation gives cpus. After weave_lines the lines run on their own and you keep "
+    "working: do what does not depend on them and does not write the paths they write (the Host refuses those "
+    "writes). Do not wait for them or look at them again and again: when a line finishes, its report reaches you "
+    "inside the result of your next tool call. If nothing independent is left, end the turn with a sentence: you "
+    "spend nothing until the rest report. Work that feeds each other in order, and runs that compete for one GPU or "
+    "one set of files, go before the lines or in a later round; integrating and the final result are yours. Do not "
+    "read what a line produced except what your answer relies on. When nothing is worth splitting, say why with "
+    "solo_reason.")
 GUIDE_PROMPT = (
     "Sub-agents: in a long goal you are the lead, and delegating is the default. Split what is left into lines "
     "that do not depend on each other, and give each line worth many steps of its own (a survey, an experiment, "
@@ -127,6 +149,12 @@ RESUME_LINE = ("The previous attempt at this line stopped because of the model p
 WAIT = ("Not executed: your lines are running. Every step you take now re-sends your whole history, and in a real run "
         "a lead that stayed and checked on its lines cost 20 times one that stopped. End this turn now with a sentence, and "
         "no tool call: the Host brings you back with their reports and you spend nothing until then.")
+POLLING = ("Not executed: you have looked at your lines {n} times since one of them last changed, and none has. "
+           "A report reaches you inside the result of a tool call when its line finishes, and every look re-sends your "
+           "whole history. Do work that does not depend on them, or end this turn with a sentence: you spend nothing "
+           "until they report.")
+OWNED = ("Not executed: {path} belongs to the line \"{title}\" (it declared {own}), which is still running. Change "
+         "something else now, or do this part after it reports.")
 HELD = ("Not executed: this is a long goal and you have not decided how to split it. Call weave_lines now, with "
         "the lines that can run at the same time, or with solo_reason if nothing is worth splitting. Reading files "
         "first is fine if you need to before deciding.")
@@ -137,8 +165,15 @@ def mode():
     return value if value in MODES else "lines"
 
 
+def lead_mode():
+    """Whether the lead keeps working beside its lines ("parallel", the default) or is held at no cost ("hold")."""
+    value = os.environ.get(LEAD_ENV, "").strip().lower()
+    return value if value in LEADS else "parallel"
+
+
 def guide():
-    return {"lines": GUIDE_LINES, "prompt": GUIDE_PROMPT, "off": GUIDE_OFF}[mode()]
+    lines = GUIDE_LINES_HOLD if lead_mode() == "hold" else GUIDE_LINES
+    return {"lines": lines, "prompt": GUIDE_PROMPT, "off": GUIDE_OFF}[mode()]
 
 
 def live(record):
@@ -292,7 +327,8 @@ def start(service, thread_id, arguments):
         if record is None or record.get("phase") == "done":
             raise ValueError("weave_lines works inside a running long goal; start one with weave_goal first.")
         if live(record):
-            raise ValueError("A round of lines is still running. End this turn; you come back with their reports.")
+            raise ValueError("A round of lines is still running; its reports reach you when its lines finish. " + (
+                "End this turn; you come back with them." if lead_mode() == "hold" else "Keep working on what does not depend on them."))
         if record.get("phase") == "checking":
             raise ValueError("An independent check is running; lines would change what it is reading.")
         raw, reason = arguments.get("lines") or [], str(arguments.get("solo_reason") or "").strip()
@@ -335,13 +371,20 @@ def start(service, thread_id, arguments):
                 stats["failed"] += 1
             record["lines"].append(line)
         if not live(record):
-            record["reports"] = _digest(record["lines"])
+            record["reports"] = _reports(record)
         service.weave_goals.put(thread_id, record)
         titles = "\n".join(f"- {line['title']}: {'started' if line['agentId'] else line['why']}" for line in record["lines"])
-    return ToolResult(ok=True, content=f"Lines started (about {cap:,} tokens and {span(seconds)} each):\n{titles}\n"
-                      "End this turn now, in one sentence and with no tool call: you are brought back with their "
-                      "reports, and spend nothing until then.",
-                      data={"lines": len(record["lines"]), "cap": cap})
+    head = f"Lines started (about {cap:,} tokens and {span(seconds)} each):\n{titles}\n"
+    if lead_mode() == "hold":
+        tail = ("End this turn now, in one sentence and with no tool call: you are brought back with their "
+                "reports, and spend nothing until then.")
+    else:
+        owned = ", ".join(path for line in record["lines"] for path in line.get("writes") or ())
+        tail = ("They run on their own. Keep working on what does not depend on them" + (f" and does not write {owned}" if owned else "")
+                + ". Do not wait for them or look at them again and again: each report reaches you inside the result of a "
+                "later tool call. If nothing independent is left, end this turn with one sentence; you spend nothing "
+                "until they report.")
+    return ToolResult(ok=True, content=head + tail, data={"lines": len(record["lines"]), "cap": cap})
 
 
 def _hold_while_running(service, session, calls):
@@ -360,6 +403,96 @@ def _hold_while_running(service, session, calls):
     return tuple((call, refusal) for call in waiting)
 
 
+def _relative(path, workspace):
+    if path.startswith("scratch:") or not workspace:
+        return path
+    try:
+        if Path(path).is_absolute():
+            return Path(path).resolve().relative_to(Path(workspace).resolve()).as_posix()
+    except (ValueError, OSError):
+        pass
+    return path
+
+
+def _written_paths(call, workspace):
+    """The workspace paths a file-writing call names. A command (exec) cannot be read this way: what it wrote is
+    compared afterwards, in the reports."""
+    args = getattr(call, "arguments", None)
+    args = args if isinstance(args, dict) else {}
+    found = []
+    if call.name == "write_workspace_text":
+        found.append(args.get("path"))
+    elif call.name == "apply_patch":
+        for item in args.get("changes") or ():
+            if isinstance(item, dict):
+                found += [item.get("path"), item.get("move_to")]
+        text = str(args.get("patch") or "")
+        found += re.findall(r"^\*\*\* (?:Add|Update|Delete) File:\s*(.+?)\s*$", text, re.M)
+        found += re.findall(r"^\*\*\* Move to:\s*(.+?)\s*$", text, re.M)
+    paths = [_relative(str(path).strip(), workspace) for path in found if path and str(path).strip()]
+    return [path for path in paths if not path.startswith("scratch:")]
+
+
+def _guard_beside_lines(service, session, calls, record):
+    """The lead works while its lines run, with two rules: it does not write what a running line writes (two writers
+    on one file is what lines are declared to prevent), and it does not keep looking at them. A look costs the whole
+    history; a report reaches the lead inside a tool result when its line finishes."""
+    workspace = getattr(session, "workspace_dir", None)
+    refused, taken = [], set()
+    for call in calls:
+        for path in _written_paths(call, workspace):
+            owner = next(((line["title"], own) for line in live(record) for own in line.get("writes") or ()
+                          if _overlap(path, own)), None)
+            if owner:
+                refused.append((call, ToolResult(False, OWNED.format(path=path, title=owner[0], own=owner[1]), {
+                    "failure_kind": FAILURE_KIND, "execution_status": "not_executed", "retry_policy": "change_something_else"})))
+                taken.add(id(call))
+                break
+    looks = tuple(call for call in calls if call.name in POLLS and id(call) not in taken)
+    if looks:
+        with service.project_runner.guard:
+            record = service.weave_goals.get(session.session_id)
+            record["linesPolls"] = record.get("linesPolls", 0) + len(looks)
+            stop = record["linesPolls"] > POLL_LIMIT and record.get("linesPollHolds", 0) < MAX_WAIT_HOLDS
+            if stop:  # never at the cost of the turn: only a few refusals, then it is let through
+                record["linesPollHolds"] = record.get("linesPollHolds", 0) + 1
+            service.weave_goals.put(session.session_id, record)
+        if stop:
+            refusal = ToolResult(False, POLLING.format(n=record["linesPolls"] - len(looks)), {
+                "failure_kind": FAILURE_KIND, "execution_status": "not_executed", "retry_policy": "work_or_end_the_turn"})
+            refused += [(call, refusal) for call in looks]
+    return tuple(refused) or None
+
+
+def notice(service, session):
+    """Reports of lines that finished since the lead last heard, for the next tool result of the turn it is running.
+    Each report is given once: at the end of the round the lead is handed only the ones it has not heard."""
+    if mode() != "lines" or lead_mode() != "parallel":
+        return ""
+    record = service.weave_goals.get(session.session_id)
+    if not record or not any(line["state"] not in LIVE and not line.get("told") for line in record.get("lines") or ()):
+        return ""
+    with service.project_runner.guard:
+        record = service.weave_goals.get(session.session_id)
+        fresh = [line for line in (record or {}).get("lines") or () if line["state"] not in LIVE and not line.get("told")]
+        if not fresh:
+            return ""
+        for line in fresh:
+            line["told"] = True
+        if not live(record):  # the round was over before the lead heard: what waits for its next turn is now less
+            record["reports"] = _reports(record)
+        service.weave_goals.put(session.session_id, record)
+        left = len(live(record))
+    text = _digest(fresh)
+    return text + (f"\n{left} more line(s) are still running; their reports reach you the same way." if left else "")
+
+
+def _reports(record):
+    """What the lead still has to be told when the round is over: the lines it has not heard from."""
+    fresh = [line for line in record.get("lines") or () if not line.get("told")]
+    return _digest(fresh) if fresh else ""
+
+
 def hold(service, session, step, calls):
     """Before a batch runs: the refusal for each of its calls, or None when it may run."""
     if getattr(session, "weave", False) is not True or mode() != "lines":
@@ -368,7 +501,9 @@ def hold(service, session, step, calls):
     if record is None:
         return None
     if live(record) and record.get("linesTurn") == session.current_turn_id:
-        return _hold_while_running(service, session, calls)
+        if lead_mode() == "hold":
+            return _hold_while_running(service, session, calls)
+        return _guard_beside_lines(service, session, calls, record)
     if record.get("linesDecision") == "later":
         if charged(session.usage) - record.get("baseCharged", 0) < SPLIT_AFTER:
             return None
@@ -652,6 +787,7 @@ def advance(service, thread_id, record):
     if not running:
         return False
     now, moved = time.time(), False
+    before = [line["state"] for line in running]
     for line in running:
         try:
             moved = _tick_line(service, thread_id, record, line, now) or moved
@@ -659,8 +795,10 @@ def advance(service, thread_id, record):
             # A line must not hold the goal: the lead hears of it and decides.
             _settle(service, thread_id, record, line, "failed", f"{type(exc).__name__}: {exc}")
             moved = True
+    if [line["state"] for line in running] != before:  # something changed: the lead may look again
+        record["linesPolls"] = record["linesPollHolds"] = 0
     if moved and not live(record):
-        record["reports"] = _digest(record["lines"])
+        record["reports"] = _reports(record)
     return moved
 
 
@@ -673,7 +811,7 @@ def stop_all(service, thread_id, record, reason, keep=""):
     for line in running:
         _settle(service, thread_id, record, line, "failed", reason)
     if running:
-        record["reports"] = _digest(record["lines"])
+        record["reports"] = _reports(record)
     for snapshot in control.list_tree(thread_id, include_closed=False):
         if snapshot.node.relation_status.value != "active" or snapshot.node.session_id == keep:
             continue

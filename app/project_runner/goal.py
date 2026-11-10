@@ -796,20 +796,25 @@ def _advance(service, thread_id, record, polled):
 
 def annotate(service, session, result):
     """A tool result of a goal's conversation as the model sees it: the first one after the goal passes WRAP_SHARE
-    carries the note. Goal turns run for hours, and a tool result is where a running turn can be told."""
+    carries the note, and the first one after a line finishes carries its report. Goal turns run for hours, and a
+    tool result is where a running turn can be told."""
     if getattr(session, "weave", False) is not True:
         return result  # only build mode has goals; ordinary turns pay no file read per tool call
+    notes = []
+    arrived = goal_lines.notice(service, session)
+    if arrived:
+        notes.append(arrived)
     record = service.weave_goals.get(session.session_id)
-    if not record or not record.get("wrapUp") or record.get("wrapTold") or record.get("phase") != "working":
+    if record and record.get("wrapUp") and not record.get("wrapTold") and record.get("phase") == "working":
+        with service.project_runner.guard:
+            record = service.weave_goals.get(session.session_id)
+            if record and not record.get("wrapTold"):
+                record["wrapTold"] = True
+                service.weave_goals.put(session.session_id, record)
+                notes.append(WRAP_UP.format(share=record["tokens"] / max(1, record["tokenBudget"])))
+    if not notes:
         return result
-    with service.project_runner.guard:
-        record = service.weave_goals.get(session.session_id)
-        if not record or record.get("wrapTold"):
-            return result
-        record["wrapTold"] = True
-        service.weave_goals.put(session.session_id, record)
-    note = WRAP_UP.format(share=record["tokens"] / max(1, record["tokenBudget"]))
-    return type(result)(result.ok, result.content + "\n\nRuntime note: " + note, result.data)
+    return type(result)(result.ok, result.content + "\n\nRuntime note: " + "\n\n".join(notes), result.data)
 
 
 def observe_failure(service, event):

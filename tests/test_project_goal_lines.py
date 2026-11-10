@@ -243,7 +243,8 @@ def test_no_question_after_the_host_comes_back_in_another_mode(tmp_path, monkeyp
 PLAN_CALL = {"plan": [{"step": "一", "status": "in_progress"}, {"step": "二", "status": "pending"}]}
 
 
-def test_the_turn_that_started_lines_stops_there(tmp_path):
+def test_the_turn_that_started_lines_stops_there_in_hold_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv(goal_lines.LEAD_ENV, "hold")
     # Real toolkit run: the lead stayed, polled wait_agent ten times and re-did work, 0.64M against 0.03M for one that stopped.
     tools, runs = exec_tool()
     gate = threading.Event()
@@ -260,7 +261,8 @@ def test_the_turn_that_started_lines_stops_there(tmp_path):
         runtime.close()
 
 
-def test_stopping_gives_way_rather_than_cost_the_turn(tmp_path):
+def test_stopping_gives_way_rather_than_cost_the_turn_in_hold_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv(goal_lines.LEAD_ENV, "hold")
     tools, runs = exec_tool()
     gate = threading.Event()
     service, runtime, _, source, _ = conversation(tmp_path, [
@@ -274,7 +276,8 @@ def test_stopping_gives_way_rather_than_cost_the_turn(tmp_path):
         runtime.close()
 
 
-def test_a_turn_the_person_started_is_not_held(tmp_path):
+def test_a_turn_the_person_started_is_not_held_in_hold_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv(goal_lines.LEAD_ENV, "hold")
     from types import SimpleNamespace
     gate = threading.Event()
     service, runtime, _, source, _ = conversation(tmp_path, [
@@ -290,6 +293,211 @@ def test_a_turn_the_person_started_is_not_held(tmp_path):
     finally:
         gate.set()
         runtime.close()
+
+
+# --- the lead beside its lines (the default): it keeps working, and is told when a line finishes -----------------
+
+def begin(tmp_path, lead, lines=None, tools=(), input_text="你有一整晚"):
+    """conversation() without waiting for the lead's turn to end: for a test that acts while it runs."""
+    service, runtime, platform, _, source = build(tmp_path, [], tools=tools)
+    runtime.limits = AgentLimits(transport_retries=0, model_retries=0)
+    router = Router(platform, lead, lines)
+    if tools:
+        session = runtime.store.load(source)
+        session.permission_mode = PermissionMode.FULL_ACCESS
+        runtime.store.save(session)
+    service.turn_start({"threadId": source, "input": input_text, "weave": True})
+    return service, runtime, platform, source, router
+
+
+def gated_tool(gate):
+    """A tool the lead's turn waits in until the test lets it go."""
+    def handler(_context, _arguments):
+        gate.wait(15)
+        return ToolResult(ok=True, content="slow done", data={})
+    return AgentTool(name="slow_it", description="Wait for the test.", input_schema={
+        "type": "object", "properties": {}, "additionalProperties": True}, handler=handler, effect=ToolEffect.READ_ONLY)
+
+
+def test_the_lead_keeps_working_while_its_lines_run(tmp_path):
+    tools, runs = exec_tool()
+    gate = threading.Event()
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, calling("update_plan", PLAN_CALL, "call-plan"), split(line("甲")), calling("run_it", {}, "call-beside"), answer("先做别的")],
+        {"甲": [gate]}, tools=tools)
+    try:
+        assert goal_lines.live(record_of(service, source)), "its line is still running"
+        assert runs == [{}], "the lead's own work ran beside the line"
+        assert not any(goal_lines.WAIT[:40] in text for text in said_to_lead(platform))
+        assert "Keep working" in "".join(said_to_lead(platform)) or "keep working" in "".join(said_to_lead(platform)).lower()
+    finally:
+        gate.set()
+        runtime.close()
+
+
+def test_a_report_reaches_the_lead_inside_its_next_tool_result_and_only_once(tmp_path):
+    slow = threading.Event()
+    tools, runs = exec_tool()
+    service, runtime, platform, source, _ = begin(tmp_path, [
+        START, calling("update_plan", PLAN_CALL, "call-plan"), split(line("甲")), calling("slow_it", {}, "call-slow"),
+        calling("read_it", {}, "call-read-1"), calling("read_it", {}, "call-read-2"), answer("整合好了")],
+        {"甲": [answer("甲的报告：临界点 1.00", total=100)]}, tools=(*tools, gated_tool(slow)))
+    try:
+        _wait_until(lambda: record_of(service, source) and record_of(service, source)["lines"], timeout=30)
+        agent = record_of(service, source)["lines"][0]["agentId"]
+        _wait_until(lambda: not runtime.agent_control.snapshot(source, agent).execution_running, timeout=30)
+        service.__dict__.get("_goal_polled", {}).clear()
+        goal.advance(service)  # the line is collected while the lead's turn is still running
+        assert record_of(service, source)["lines"][0]["state"] == "done"
+        slow.set()
+        settle(service, source)
+        seen = [text for text in said_to_lead(platform) if "Runtime note" in text and "甲的报告：临界点 1.00" in text]
+        assert seen, "the report arrived in a tool result of the lead's own turn"
+        first = said_to_lead(platform).index(seen[0])
+        assert "甲的报告：临界点 1.00" not in "".join(said_to_lead(platform)[first - 1:first]), "not before it finished"
+        record = record_of(service, source)
+        assert record["lines"][0]["told"] is True and record["reports"] == "", "nothing is handed over a second time"
+    finally:
+        slow.set()
+        runtime.close()
+
+
+def test_at_the_end_of_the_round_only_the_reports_not_yet_heard_are_handed_over(tmp_path):
+    slow, gate = threading.Event(), threading.Event()
+    tools, _ = exec_tool()
+    service, runtime, platform, source, _ = begin(tmp_path, [
+        START, calling("update_plan", PLAN_CALL, "call-plan"), split(line("甲"), line("乙")), calling("slow_it", {}, "call-slow"),
+        calling("read_it", {}, "call-read"), answer("等乙")],
+        {"甲": [answer("甲的报告：临界点 1.00")], "乙": [gate]}, tools=(*tools, gated_tool(slow)))
+    try:
+        _wait_until(lambda: record_of(service, source) and len(record_of(service, source)["lines"]) == 2, timeout=30)
+        first = record_of(service, source)["lines"][0]["agentId"]
+        _wait_until(lambda: not runtime.agent_control.snapshot(source, first).execution_running, timeout=30)
+        service.__dict__.get("_goal_polled", {}).clear()
+        goal.advance(service)
+        slow.set()
+        settle(service, source)  # the lead heard 甲 and ended its turn; 乙 is still running
+        record = record_of(service, source)
+        assert [line["state"] for line in record["lines"]] == ["done", "running"] and record["lines"][0]["told"]
+        gate.set()
+        wait_lines(service, source)
+        record = record_of(service, source)
+        goal_lines.advance(service, source, record)  # the last line is collected; the lead is not brought back yet
+        assert [line["state"] for line in record["lines"]] == ["done", "done"]
+        assert "## 乙" in record["reports"] and "## 甲" not in record["reports"], "only what the lead has not heard"
+    finally:
+        slow.set()
+        gate.set()
+        runtime.close()
+
+
+def test_a_digest_of_the_untold_lines_leaves_out_the_told_ones():
+    told = {"title": "甲", "state": "done", "report": "甲的报告", "writes": [], "changed": [], "told": True}
+    fresh = {"title": "乙", "state": "done", "report": "乙的报告", "writes": [], "changed": []}
+    record = {"lines": [told, fresh]}
+    text = goal_lines._reports(record)
+    assert "乙的报告" in text and "甲的报告" not in text
+    assert goal_lines._reports({"lines": [told]}) == "", "nothing left to hand over"
+
+
+def _beside(tmp_path, writes=("results/甲",)):
+    """A session beside a running line that writes `writes`, for the Host's rules about the lead's own calls."""
+    from types import SimpleNamespace
+    gate = threading.Event()
+    service, runtime, _, source, _ = conversation(tmp_path, [
+        START, calling("update_plan", PLAN_CALL, "call-plan"), split(line("甲", writes=writes)), answer("先歇着")], {"甲": [gate]})
+    record = record_of(service, source)
+    lead = SimpleNamespace(weave=True, session_id=source, current_turn_id=record["linesTurn"], workspace_dir=str(tmp_path))
+    return service, runtime, gate, lead
+
+
+def call_of(name, **arguments):
+    from types import SimpleNamespace
+    return SimpleNamespace(name=name, arguments=arguments)
+
+
+def test_the_lead_cannot_write_what_a_running_line_writes(tmp_path):
+    service, runtime, gate, lead = _beside(tmp_path)
+    try:
+        refused = goal_lines.hold(service, lead, None, [call_of("write_workspace_text", path="results/甲/data.csv", text="x")])
+        assert refused and "甲" in refused[0][1].content and "results/甲" in refused[0][1].content
+        assert goal_lines.hold(service, lead, None, [call_of("write_workspace_text", path="notes/整合.md", text="x")]) is None
+        assert goal_lines.hold(service, lead, None, [call_of("write_workspace_text", path="scratch:probe.py", text="x")]) is None
+        assert goal_lines.hold(service, lead, None, [call_of("write_workspace_text", path=str(tmp_path / "results" / "甲" / "a.txt"), text="x")]), \
+            "an absolute path inside the workspace is the same file"
+        patch = "*** Begin Patch\n*** Update File: results/甲/model.py\n@@\n-a\n+b\n*** End Patch"
+        assert goal_lines.hold(service, lead, None, [call_of("apply_patch", patch=patch)])
+        moved = {"changes": [{"action": "move", "path": "notes/a.md", "move_to": "results/甲/a.md"}]}
+        assert goal_lines.hold(service, lead, None, [call_of("apply_patch", **moved)])
+        only = goal_lines.hold(service, lead, None, [call_of("write_workspace_text", path="notes/a.md", text="x"),
+                                                     call_of("write_workspace_text", path="results/甲/b.md", text="x")])
+        assert len(only) == 1, "only the call that writes the line's file is refused"
+    finally:
+        gate.set()
+        runtime.close()
+
+
+def test_a_line_that_only_reads_owns_nothing(tmp_path):
+    service, runtime, gate, lead = _beside(tmp_path, writes=())
+    try:
+        assert goal_lines.hold(service, lead, None, [call_of("write_workspace_text", path="results/甲/data.csv", text="x")]) is None
+    finally:
+        gate.set()
+        runtime.close()
+
+
+def test_the_lead_is_told_to_stop_looking_at_lines_that_have_not_changed(tmp_path):
+    service, runtime, gate, lead = _beside(tmp_path)
+    try:
+        look = [call_of("wait_agent", agent_id="x")]
+        assert goal_lines.hold(service, lead, None, look) is None and goal_lines.hold(service, lead, None, look) is None
+        refused = goal_lines.hold(service, lead, None, look)
+        assert refused and "nothing" not in refused[0][1].content[:5] and "looked at your lines" in refused[0][1].content
+        for _ in range(goal_lines.MAX_WAIT_HOLDS):
+            goal_lines.hold(service, lead, None, look)
+        assert goal_lines.hold(service, lead, None, look) is None, "never at the cost of the turn"
+    finally:
+        gate.set()
+        runtime.close()
+
+
+def test_a_line_changing_state_lets_the_lead_look_again(tmp_path):
+    service, runtime, gate, lead = _beside(tmp_path, writes=())
+    try:
+        look = [call_of("weave_status")]
+        for _ in range(goal_lines.POLL_LIMIT + 1):
+            goal_lines.hold(service, lead, None, look)
+        assert record_of(service, lead.session_id)["linesPolls"] > goal_lines.POLL_LIMIT
+        gate.set()
+        wait_lines(service, lead.session_id)
+        service.__dict__.get("_goal_polled", {}).clear()
+        goal.advance(service)
+        record = record_of(service, lead.session_id)
+        assert record["lines"][0]["state"] == "done" and record["linesPolls"] == 0
+    finally:
+        gate.set()
+        runtime.close()
+
+
+def test_the_answer_to_weave_lines_names_the_paths_the_lead_must_leave(tmp_path):
+    gate = threading.Event()
+    service, runtime, platform, source, _ = conversation(tmp_path, [
+        START, calling("update_plan", PLAN_CALL, "call-plan"), split(line("甲", writes=["results/甲"])), answer("先做别的")], {"甲": [gate]})
+    try:
+        said = " ".join(said_to_lead(platform))
+        assert "does not write results/甲" in said and "Keep working" in said
+    finally:
+        gate.set()
+        runtime.close()
+
+
+def test_the_guide_follows_the_lead_mode(monkeypatch):
+    monkeypatch.setenv(goal_lines.LEAD_ENV, "hold")
+    assert "no work of your own meanwhile" in goal_lines.guide()
+    monkeypatch.delenv(goal_lines.LEAD_ENV)
+    assert goal_lines.lead_mode() == "parallel" and "you keep working" in goal_lines.guide()
+    monkeypatch.setenv(goal_lines.LEAD_ENV, "nonsense")
+    assert goal_lines.lead_mode() == "parallel"
 
 
 def batch(*calls):

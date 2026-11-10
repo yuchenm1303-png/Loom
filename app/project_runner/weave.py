@@ -450,7 +450,8 @@ def tools(service):
         AgentTool(
             name="weave_lines",
             description=("Decide how a large long goal splits. Give the lines that can run at the same time: the Host runs each "
-                         "in its own sub-agent, holds you at no cost, and brings you back with their reports. Or give "
+                         "in its own sub-agent; you keep working on what does not depend on them, and each report reaches "
+                         "you when its line finishes (or you stop and spend nothing until then). Or give "
                          "solo_reason when nothing is worth splitting. Lines that write the same paths or need the same "
                          "resource are refused: keep those for yourself or for a later round."),
             input_schema={"type": "object", "properties": {
