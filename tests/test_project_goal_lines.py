@@ -1114,3 +1114,35 @@ def test_a_check_is_an_argument_list_run_by_any_path_to_its_program(tmp_path):
     assert goal_lines._ran(["python", "check.py"], wrapped)
     (tmp_path / "check.sh").write_text("exit 0\n")
     assert goal_lines._validated([line("乙", ["x"], check=["check.sh"])], workspace=tmp_path)[0]["check"] == "check.sh"
+
+
+def test_a_sub_agent_woken_by_a_message_runs_on_the_model_it_was_started_on(tmp_path):
+    # After a Host restart three lines resumed on the Host's default model (MiniMax-M3) instead of their own.
+    from app.agent_runtime.agent_control import AgentControl
+    calls = []
+    runtime = type("R", (), {"prepare_session_turn": staticmethod(lambda sid: calls.append(("prepare", sid))),
+                             "run_queued": staticmethod(lambda sid, max_turns: calls.append(("run", sid)) or "ran")})()
+    control = AgentControl.__new__(AgentControl)
+    control.runtime = runtime
+    assert control._run_queued("line-1") == "ran"
+    assert calls == [("prepare", "line-1"), ("run", "line-1")], "the model is restored before the turn"
+
+    def broken(_sid):
+        raise RuntimeError("model cannot be rebuilt")
+    runtime.prepare_session_turn = staticmethod(broken)
+    assert control._run_queued("line-2") == "ran", "a model that cannot be restored does not strand the sub-agent"
+
+
+def test_a_resumed_line_is_prepared_by_the_host_like_a_conversation_turn(tmp_path):
+    service, runtime, platform, source, _ = conversation(tmp_path, [START, split(line("甲")), answer("开始"), answer("整合")],
+                                                         {"甲": [answer("甲的报告")]})
+    try:
+        prepared = []
+        original = service._prepare_turn
+        service._prepare_turn = lambda session: (prepared.append(session.session_id), original(session))[1]
+        item = record_of(service, source)["lines"][0]
+        runtime.agent_control.send(source, item["agentId"], "carry on")
+        wait_lines(service, source)
+        assert item["agentId"] in prepared
+    finally:
+        runtime.close()

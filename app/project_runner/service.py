@@ -432,6 +432,7 @@ class ProjectServiceMixin(WorkspaceMixin):
         self.runtime.unattended_sessions = self._project_session_ids
         # Compact inside long episodes too, not only near the model's window.
         self.runtime.session_working_context_tokens = self._working_context_tokens
+        self.runtime.prepare_session_turn = lambda session_id: self._prepare_turn(self.store.load(session_id))
         self.runtime.session_exec_env = self._line_exec_env
         self.runtime.subscribe(self.project_budget.observe)
         on_activated = self.runtime._on_turn_activated

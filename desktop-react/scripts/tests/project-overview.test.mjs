@@ -37,6 +37,10 @@ test("a long goal reads as one line with the move the person has", () => {
   const waiting = toGoal({ ...base, retryAt: Date.now() / 1000 + 600 });
   assert.match(waiting.text, /模型服务暂时不可用，\d\d:\d\d 自动重试/, "a night of 429s never reads as running");
   assert.equal(waiting.live, false);
+  const quota = toGoal({ ...base, retryAt: Date.now() / 1000 + 600, retryKind: "quota" });
+  assert.match(quota.text, /模型额度已用完：充值或切换模型后自动继续（\d\d:\d\d 再试）/, "an empty balance says what the person must do");
+  assert.match(toGoal({ ...base, retryAt: Date.now() / 1000 + 600, retryKind: "quota" }, "en").text, /Model quota used up: top up or switch model/);
+  assert.match(toGoal({ ...base, retryAt: Date.now() / 1000 + 600, retryKind: "provider" }).text, /模型服务暂时不可用/);
   assert.match(toGoal({ ...base, retryAt: Date.now() / 1000 - 5 }).text, /长目标进行中/, "a retry already due is running again");
   assert.match(toGoal({ ...base, deepens: 2 }).text, /检查已通过，正用剩余时间加深（第 2 轮）/, "a pass that went on says why it is still running");
   assert.match(toGoal({ ...base, deepens: 1, phase: "checking" }).text, /独立检查/);

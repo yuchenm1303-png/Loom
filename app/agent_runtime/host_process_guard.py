@@ -24,12 +24,12 @@ _KILL_VERBS = re.compile(
 )
 # Image names the Host (or the desktop app around it) runs as.
 _HOST_IMAGE = re.compile(
-    r"(?<![\w.-])(pythonw?[\d.]*|python3[\d.]*|py|loom|loom_app_server|electron)(\.exe)?(?![\w-])",
+    r"(?<![\w.-])(pythonw?[\d.]*|python3[\d.]*|py|loom|loom-host|loom_app_server|electron)(\.exe)?(?![\w-])",
     re.IGNORECASE,
 )
 _PID_ARG = re.compile(r"(?:/pid|-id|--pid)\s+\"?(\d+)", re.IGNORECASE)
 _KILL_PID_POSIX = re.compile(r"\bkill\b[^|;&]*?\s(\d{2,})\b", re.IGNORECASE)
-_SCRIPT_SUFFIXES = {".bat", ".cmd", ".ps1"}
+_SCRIPT_SUFFIXES = {".bat", ".cmd", ".ps1", ".py"}
 _MAX_SCRIPT_BYTES = 128_000
 
 

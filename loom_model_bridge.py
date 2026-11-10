@@ -861,6 +861,13 @@ def _safe_minimax(
     if model.casefold() == "minimax-m3" and _normalize_url(profile["baseUrl"]) in official:
         profile["contextLimits"] = {"contextWindowTokens": 512_000}
         profile["contextLimitsSource"] = "minimax.io/models/text/m3"
+    # M3.1-Flash had no declared window: its limits resolved from the runtime fallback, compaction never fired,
+    # and one long-goal line sent 606k tokens per request. MiniMax's platform docs give it 1M tokens.
+    # https://platform.minimax.io/docs/guides/text-generation (verified 2026-11-10).
+    elif (model.casefold() in {"minimax-m3.1-flash", "minimax-m3.1-flash-preview"}
+          and _normalize_url(profile["baseUrl"]) in official):
+        profile["contextLimits"] = {"contextWindowTokens": 1_000_000}
+        profile["contextLimitsSource"] = "platform.minimax.io/docs/guides/text-generation"
     return profile
 
 

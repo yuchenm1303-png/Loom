@@ -436,6 +436,8 @@ export interface LongGoal {
   reason: string; summary: string; checked: boolean;
   /** Seconds since the epoch: the model provider failed and the Host tries again then; 0 when nothing waits. */
   retryAt?: number;
+  /** Why it waits: "quota" is the account's balance, which only the person can refill; "provider" is capacity. */
+  retryKind?: "quota" | "provider";
   /** Hours the person gave; passes where a correct result went on because time was left. */
   hours?: number; deepens?: number;
   /** Sub-agents working for the goal right now. */
@@ -451,7 +453,7 @@ export interface GoalCharter {
   criteria: { id: string; text: string; status: "open" | "met" | "unmet" | "dropped"; origin: string }[];
 }
 
-export interface GoalLine { title: string; state: "running" | "waiting" | "reporting" | "done" | "failed"; tokens?: number; cap?: number; retryAt?: number; why?: string; check?: "" | "passed" | "failed" | "not_run";
+export interface GoalLine { title: string; state: "running" | "waiting" | "reporting" | "done" | "failed"; tokens?: number; cap?: number; retryAt?: number; waitKind?: "quota" | "provider" | ""; why?: string; check?: "" | "passed" | "failed" | "not_run";
   changed?: string[]; report?: string; startedAt?: number; writes?: string[] }
 
 /** One line for a long goal: what it is doing, what it has spent, and the move the person has. */
@@ -494,6 +496,8 @@ function goalLine(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): 
   if (goal.status === "active" && goal.phase === "approval") return { text: line("长目标在等你批准", "The long goal is waiting for your approval"), detail: goal.objective, live: false, action: "pause", dismiss: false };
   if (goal.status === "active" && (goal.retryAt ?? 0) * 1000 > Date.now()) {
     const at = new Date((goal.retryAt as number) * 1000).toLocaleTimeString(en ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    // An exhausted quota does not clear by itself: the person has to act, so the line says what to do.
+    if (goal.retryKind === "quota") return { text: line(`模型额度已用完：充值或切换模型后自动继续（${at} 再试）`, `Model quota used up: top up or switch model and it continues (next try ${at})`), detail: goal.objective, live: false, action: "pause", dismiss: false };
     return { text: line(`模型服务暂时不可用，${at} 自动重试`, `The model provider is unavailable; retrying at ${at}`), detail: goal.objective, live: false, action: "pause", dismiss: false };
   }
   if (goal.status === "active" && goal.phase === "checking") return { text: line("正在独立检查结果", "Independently checking the result"), detail: goal.objective, live: true, action: "pause", dismiss: false };
@@ -507,6 +511,7 @@ function goalLine(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): 
     const at = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString(en ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
     const label = (item: GoalLine) => {
       const used = item.tokens ? ` · ${money(item.tokens)}` : "";
+      if (item.state === "waiting" && item.waitKind === "quota") return en ? `Model quota used up, next try ${at(item.retryAt ?? 0)}` : `模型额度已用完，${at(item.retryAt ?? 0)} 再试`;
       if (item.state === "waiting") return en ? `Provider unavailable, retrying at ${at(item.retryAt ?? 0)}` : `模型服务不可用，${at(item.retryAt ?? 0)} 重试`;
       if (item.state === "reporting") return (en ? "At its limit, wrapping up" : "到上限，正在收尾") + used;
       if (item.state === "done" && item.check && item.check !== "passed") return (en ? "Done, its check did not pass" : "完成，但验证没通过") + used;

@@ -23,7 +23,7 @@ function between(source, start, end) {
   return source.slice(from, to);
 }
 
-const beforeSpawn = between(main, "private async startProcess()", "const child = spawn(python");
+const beforeSpawn = between(main, "private async startProcess()", "const child = spawn(hostLaunchExecutable(python)");
 
 test("the runtime is spawned from local credentials, not after account round trips", () => {
   assert.match(beforeSpawn, /this\.account\.cachedCredentials\(\)/);

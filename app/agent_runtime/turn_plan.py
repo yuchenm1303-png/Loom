@@ -6,7 +6,7 @@ progress and guards nothing, so it gives way after MAX_HOLDS refused batches: a 
 write a list loses the list, not the person's turn.
 """
 from .contracts import AgentEventKind
-from .plan_state import active_plan, from_earlier_request
+from .plan_state import active_plan, from_earlier_request, unfinished
 from .tool_selection import WEAVE_PREFIX
 from .tools import ToolResult
 
@@ -35,6 +35,26 @@ def _refusal(previous, earlier=False):
                                     "retry_policy": "reissue_with_update_plan"})
 
 
+def _carry_into_goal_turn(runtime, session, events):
+    """A goal's continuation turn works the list the goal already has: the Host shows it for this turn.
+
+    Every goal turn lost its first model step (a full re-send of a history of hundreds of thousands of tokens) to
+    this refusal, and a prompt saying "start with update_plan" is advice a model may skip. The list is stated again
+    unchanged, with the same revision so a plan_id/expected_revision the model holds stays valid; it is only
+    carried while steps remain, so a finished list never stands in for the next stretch of work."""
+    plan = active_plan(events)
+    if not plan or not unfinished(plan):
+        return False
+    started = runtime._lifecycle_events(session.session_id, turn_id=session.current_turn_id,
+                                        kinds=(AgentEventKind.TURN_STARTED,))
+    if not any(event.data.get("source") == "goal" for event in started):
+        return False
+    carried = dict(plan)
+    carried.update(updated_turn_id=session.current_turn_id, carried=True)
+    runtime._emit_event(session, AgentEventKind.PLAN_UPDATED, data=carried)
+    return True
+
+
 def held_calls(runtime, session, step, calls):
     """The refusal for each call of a batch that must wait for the list, or None when all may run.
 
@@ -48,6 +68,8 @@ def held_calls(runtime, session, step, calls):
         return None
     events = runtime._lifecycle_events(session.session_id, kinds=(AgentEventKind.PLAN_UPDATED,))
     if any(event.turn_id == session.current_turn_id for event in events):
+        return None
+    if _carry_into_goal_turn(runtime, session, events):
         return None
     turn, holds = runtime._turn_plan_holds.get(session.session_id, (None, 0))
     holds = holds if turn == session.current_turn_id else 0

@@ -212,6 +212,20 @@ class AgentControl:
             self._futures[session_id] = future
             return future
 
+    def _run_queued(self, session_id: str):
+        """Run what a message to a sub-agent queued, on the model that sub-agent was started on.
+
+        Only a conversation's own turn restored its model (the Host's turn preparation); a sub-agent resumed by a
+        message after a Host restart ran on the Host's default model instead: three long-goal lines moved from
+        MiniMax-M3.1-Flash to MiniMax-M3 mid-run, with another window and another price."""
+        prepare = getattr(self.runtime, "prepare_session_turn", None)
+        if callable(prepare):
+            try:
+                prepare(session_id)
+            except Exception:  # noqa: BLE001 - a model that cannot be restored must not strand the sub-agent
+                pass
+        return self.runtime.run_queued(session_id, max_turns=1)
+
     def send(
         self,
         caller_session_id: str,
@@ -231,10 +245,7 @@ class AgentControl:
         if wake:
             session = self.runtime.store.load(node.session_id)
             if session.status not in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
-                self._submit(
-                    node.session_id,
-                    lambda: self.runtime.run_queued(node.session_id, max_turns=1),
-                )
+                self._submit(node.session_id, lambda: self._run_queued(node.session_id))
         _ = item
         return self.snapshot(caller_session_id, node.session_id)
 

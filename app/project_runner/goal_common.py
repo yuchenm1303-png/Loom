@@ -75,5 +75,10 @@ def transient(data, *, quota=False):
     return bool(data.get("provider_failure") and (data.get("retryable") or (quota and data.get("quota_exhausted"))))
 
 
+def retry_kind(data):
+    """Why a goal is waiting to try again, for the person who reads it: "quota" needs them; "provider" does not."""
+    return "quota" if data.get("quota_exhausted") else "provider"
+
+
 def delay(failures):
     return min(RETRY_BASE * 2 ** (max(1, failures) - 1), RETRY_MAX)

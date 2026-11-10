@@ -755,6 +755,31 @@ def test_a_goal_waits_out_a_provider_outage_instead_of_counting_it_as_failures(t
         runtime.close()
 
 
+def test_a_goal_waits_out_an_empty_quota_and_says_it_is_the_quota(tmp_path):
+    # A real night: the account's quota ran out, the goal burned its eight failures in twenty minutes and stopped,
+    # and the hub said "provider unavailable" over a balance only the person can refill.
+    from app.agent_runtime.contracts import AgentLimits
+    from app.ai.errors import AIQuotaExceeded
+    service, runtime, platform, source = conversation(tmp_path, [START, answer("额度回来了")])
+    runtime.limits = AgentLimits(transport_retries=0)
+    failing(platform, *[AIQuotaExceeded(status_code=429) for _ in range(goal.MAX_FAILURES + 2)])
+    try:
+        for _ in range(2 * (goal.MAX_FAILURES + 2)):
+            record = service.weave_goals.get(source)
+            service.weave_goals.put(source, {**record, "retryAt": 0})
+            tick(service, source)
+        record = service.weave_goals.get(source)
+        assert state(service, source)["status"] == "active", record["reason"]
+        assert record["failures"] > goal.MAX_FAILURES and record["retryKind"] == "quota"
+        shown = goal.view(service, source)
+        assert shown["retryKind"] == "quota" and shown["retryAt"] > time.time()
+        service.weave_goals.put(source, {**record, "retryAt": 0})
+        tick(service, source, 2)
+        assert service.weave_goals.get(source)["retryKind"] == "", "a turn that went through clears it"
+    finally:
+        runtime.close()
+
+
 def test_the_person_sending_again_while_a_retry_waits_restarts_the_wait(tmp_path):
     service, runtime, platform, source = fresh(tmp_path, [])
     failing(platform, busy(), busy(), busy())

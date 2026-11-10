@@ -26,7 +26,7 @@ from app.ai.contracts import MessageRole
 from app.agent_runtime.durable_state import GoalStatus
 from app.agent_runtime.turn_plan import PLAN_TOOLS
 from . import goal_charter, goal_lines
-from .goal_common import decide, RETRY_BASE, RETRY_MAX, charged, delay as _delay, span as _span, time_left as _left, transient as _transient
+from .goal_common import decide, RETRY_BASE, RETRY_MAX, charged, delay as _delay, retry_kind, span as _span, time_left as _left, transient as _transient
 
 GOALS_FILE = "weave-goals.json"
 RETRIES_FILE = "weave-start-retries.json"
@@ -213,8 +213,9 @@ def _working_agents(service, thread_id, record):
 
 # Build mode holds the first tool call of every turn until the task list is written; each goal turn lost a
 # model step (and its whole history, re-sent) to that refusal. Saying so up front costs a sentence.
-TASK_LIST_FIRST = ("This turn's first tool call is update_plan: carry the current task list forward (or revise it) "
-                   "before any other tool; the Host refuses other tools until the list is written.")
+TASK_LIST_FIRST = ("The task list carries over into this turn while steps remain open. When none remain, or the "
+                   "next stretch of work is not on it, your first tool call is update_plan with a new list: the Host "
+                   "refuses other tools until a list is written.")
 
 
 def _context(service, thread_id, record):
@@ -540,8 +541,10 @@ def _wait_out_provider(service, thread_id, record, snapshot):
 
     Counted as a faulty check, two connection errors in a row ended a real goal as "could not be checked".
     """
-    if snapshot.session_status is not AgentStatus.FAILED or not _transient(goal_lines._failure(service, record["checkerId"]), quota=True):
+    failure = goal_lines._failure(service, record["checkerId"]) if snapshot.session_status is AgentStatus.FAILED else {}
+    if not _transient(failure, quota=True):
         return False
+    record["checkerRetryKind"] = retry_kind(failure)
     now = time.time()
     record["checkerFailingSince"] = record.get("checkerFailingSince") or now
     if now - record["checkerFailingSince"] > RETRY_WINDOW:
@@ -679,12 +682,14 @@ def _settle_turn(service, thread_id, record, session):
         now = time.time()
         record["failures"] += 1
         record["failingSince"] = record.get("failingSince") or now
-        transient = _transient(_failure(service, thread_id, turn), quota=True)
+        failure = _failure(service, thread_id, turn)
+        transient = _transient(failure, quota=True)
+        record["retryKind"] = retry_kind(failure) if transient else ""
         if (now - record["failingSince"] > RETRY_WINDOW) if transient else record["failures"] > MAX_FAILURES:
             return _stop(service, thread_id, record, GoalStatus.BLOCKED, str(session.error or "The turn failed"))
         record["retryAt"] = now + _delay(record["failures"])
         return False
-    record.update(failures=0, failingSince=0)
+    record.update(failures=0, failingSince=0, retryKind="")
     if turn == record.get("goalTurn"):
         record["stalls"] = 0 if _made_progress(service, thread_id, turn) else record["stalls"] + 1
         if record["stalls"] >= MAX_STALLS:
@@ -946,6 +951,7 @@ def view(service, thread_id):
             "reason": record["reason"], "summary": record["summary"], "checked": record["checked"], "checks": record["checks"],
             "checkerModel": record.get("checkerModel"), "checkerModelError": record.get("checkerModelError", ""),
             "retryAt": record.get("checkerRetryAt", 0) if phase == "checking" else record["retryAt"] if record.get("failures") and phase == "working" else 0,
+            "retryKind": (record.get("checkerRetryKind") if phase == "checking" else record.get("retryKind")) or "provider",
             "hours": record.get("hours") or 0, "deepens": record.get("deepens", 0),
             "agents": _working_agents(service, thread_id, record), "lines": goal_lines.view(record),
             **goal_charter.view(record)}

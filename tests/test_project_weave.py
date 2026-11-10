@@ -327,3 +327,41 @@ def test_a_conversation_that_asks_first_cannot_leave_a_project_running_alone(tmp
 def test_the_guide_says_when_to_start_and_what_a_project_is_for():
     assert "start it yourself with start=true" in weave.GUIDE
     assert "research, experiments, writing" in weave.GUIDE
+
+
+def test_a_goal_turn_carries_the_open_list_instead_of_losing_a_step_to_the_gate(tmp_path):
+    # Every goal turn used to open with a refusal and a second model request (the whole history re-sent).
+    ran = []
+    service, runtime, platform, _, source = build(tmp_path, [
+        batch(("update_plan", LIST), ("probe", {})), answer("一"),
+        batch(("probe", {})), answer("二")], tools=(probe_tool(ran),))
+    try:
+        turn(service, source, "第一件事", weave_mode=True)
+        before = tool_events(runtime, source, "plan_updated")[-1].data
+        runtime._start_turn_once(source, "Continue pursuing this durable Loom goal", source="goal")
+        assert ran == [1, 1], "the goal turn's first call ran"
+        assert not tool_events(runtime, source, "tool_failed")
+        carried = tool_events(runtime, source, "plan_updated")[-1].data
+        assert carried["carried"] is True and carried["revision"] == before["revision"] and carried["plan_id"] == before["plan_id"]
+        assert carried["updated_turn_id"] != before["updated_turn_id"]
+    finally:
+        runtime.close()
+
+
+def test_a_goal_turn_does_not_carry_a_finished_list(tmp_path):
+    ran = []
+    service, runtime, platform, _, source = build(tmp_path, [
+        batch(("update_plan", LIST), ("probe", {})), answer("一"), batch(("probe", {})), batch(("probe", {})),
+        batch(("probe", {})), answer("二")], tools=(probe_tool(ran),))
+    try:
+        turn(service, source, "第一件事", weave_mode=True)
+        events = runtime.store.events(source)
+        from app.agent_runtime.plan_state import active_plan
+        plan = active_plan(events)
+        plan["plan"] = [{**step, "status": "completed", "outcome": "passed"} for step in plan["plan"]]
+        runtime._emit_event(runtime.get_session(source), __import__("app.agent_runtime.contracts", fromlist=["x"]).AgentEventKind.PLAN_UPDATED, data=plan)
+        runtime._start_turn_once(source, "Continue pursuing this durable Loom goal", source="goal")
+        failed = tool_events(runtime, source, "tool_failed")
+        assert failed and failed[0].data["data"]["failure_kind"] == "turn_plan_required"
+    finally:
+        runtime.close()

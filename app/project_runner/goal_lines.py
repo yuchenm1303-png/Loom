@@ -35,7 +35,7 @@ from pathlib import Path
 from app.agent_runtime.contracts import AgentEventKind, AgentStatus
 from app.agent_runtime.tools import ToolResult
 
-from .goal_common import CONTROL_TOOLS, decide, changes, charged, delay, span, time_left, transient
+from .goal_common import CONTROL_TOOLS, decide, changes, charged, delay, retry_kind, span, time_left, transient
 
 MODE_ENV = "LOOM_GOAL_LINES"
 MODES = ("lines", "prompt", "off")
@@ -241,7 +241,8 @@ def _check_argv(title, check, workspace):
         raise ValueError(f"The check of \"{title}\" starts with {argv[0]!r}, which is not a program on this computer "
                          "(not on PATH, not a file in the workspace). Give the exact command the line will run, as a "
                          "list of arguments starting with the program (the full path of the interpreter when it is not "
-                         "on PATH), such as [\"python\", \"scripts/check_results.py\"]; put what it asserts inside that script.")
+                         "on PATH), such as [\"python\", \"scripts/check_results.py\"]; put what it asserts inside that script."
+                         + (f" The interpreter of this workspace is {interpreter!r}." if (interpreter := _workspace_python("python", workspace)) != "python" else ""))
     return argv
 
 
@@ -556,7 +557,8 @@ def _tick_line(service, thread_id, record, line, now):
     if status is AgentStatus.FAILED:
         if transient(_failure(service, line["agentId"]), quota=True) and now < line["deadline"]:
             line["attempts"] += 1
-            line.update(state="waiting", retryAt=now + delay(line["attempts"]))
+            line.update(state="waiting", retryAt=now + delay(line["attempts"]),
+                        waitKind=retry_kind(_failure(service, line["agentId"])))
             return True
         _settle(service, thread_id, record, line, "failed", str(snapshot.error or "the line failed"))
         return True
@@ -652,6 +654,7 @@ def stop_all(service, thread_id, record, reason, keep=""):
 def view(record):
     return [{"title": line["title"], "state": line["state"], "tokens": line.get("tokens", 0), "cap": line.get("cap", 0),
              "retryAt": line.get("retryAt", 0) if line["state"] == "waiting" else 0, "why": line.get("why", ""),
+             "waitKind": line.get("waitKind", "provider") if line["state"] == "waiting" else "",
              "check": line.get("checkResult", "") if line.get("check") else "",
              "changed": line.get("changed", [])[:200], "report": line.get("report", "")[:4000],
              "startedAt": line.get("startedAt"), "writes": line.get("writes", [])}

@@ -53,6 +53,8 @@ import {
   resolveHostPythonExecutable,
   resolveHostSandboxExecutable,
 } from "./hostRuntime.js";
+import { hostLaunchExecutable } from "./hostImage.js";
+import { RespawnPolicy } from "./hostRespawn.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -751,6 +753,8 @@ class LoomRpcProcess {
   private initialized = false;
   private initializeResult: unknown = null;
   private connectPromise: Promise<unknown> | null = null;
+  private readonly respawn = new RespawnPolicy();
+  private respawnTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly notify: (payload: JsonRpcResponse) => void,
@@ -907,7 +911,32 @@ class LoomRpcProcess {
 
   stop(): void {
     this.connectPromise = null;
+    this.cancelRespawn();
+    this.respawn.reset();
     this.stopProcess(new Error("Loom App Server stopped"));
+  }
+
+  private cancelRespawn(): void {
+    if (this.respawnTimer) clearTimeout(this.respawnTimer);
+    this.respawnTimer = null;
+  }
+
+  /** The process ended and nobody asked it to (stop() clears the child first): bring it back. */
+  private scheduleRespawn(reason: string): void {
+    if (this.respawnTimer) return;
+    const delay = this.respawn.next();
+    if (delay === null) {
+      console.error(`[loom-app-server] exited ${reason} too often; not restarting it until something asks for it`);
+      return;
+    }
+    console.warn(`[loom-app-server] exited ${reason}; starting it again in ${Math.round(delay / 1000)} s`);
+    this.respawnTimer = setTimeout(() => {
+      this.respawnTimer = null;
+      this.connect().catch((error) => {
+        console.warn("[loom-app-server] restart failed", error);
+        if (!this.child) this.scheduleRespawn("while starting");
+      });
+    }, delay);
   }
 
   private sendNotification(method: string, params: Record<string, unknown>): void {
@@ -942,7 +971,8 @@ class LoomRpcProcess {
     if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
     if (spec.reasoning) args.push("--reasoning-kind", spec.reasoning.kind, "--reasoning-value", spec.reasoning.value);
     console.log(`[loom-app-server] launching ${python}`);
-    const child = spawn(python, args, {
+    // Under its own image name, so a command that ends "python" cannot end the Host (see hostImage.ts).
+    const child = spawn(hostLaunchExecutable(python), args, {
       cwd: runtimeRoot,
       env: {
         ...process.env,
@@ -974,6 +1004,7 @@ class LoomRpcProcess {
       windowsHide: true,
     });
     this.child = child;
+    this.respawn.started();
     readline.createInterface({ input: child.stdout }).on("line", (line) => this.handleLine(line));
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk) => console.error(`[loom-app-server] ${String(chunk).trimEnd()}`));
@@ -987,6 +1018,7 @@ class LoomRpcProcess {
       this.initializeResult = null;
       this.connectPromise = null;
       this.failAll(new Error(`Loom App Server exited (${code ?? signal ?? "unknown"})`));
+      this.scheduleRespawn(`(${code ?? signal ?? "unknown"})`);
     });
   }
 

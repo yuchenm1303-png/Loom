@@ -90,3 +90,13 @@ def test_only_a_running_line_with_a_processor_share_gets_thread_limits():
     assert thread_environment(record, "a") == {name: "4" for name in THREAD_VARIABLES}
     assert thread_environment(record, "b") == {} and thread_environment(record, "c") == {}
     assert thread_environment(record, "lead") == {} and thread_environment(None, "a") == {}
+
+
+def test_the_hosts_own_image_name_and_python_scripts_are_covered(tmp_path):
+    assert host_kill_reason(["taskkill", "/F", "/IM", "loom-host.exe"])
+    script = tmp_path / "cleanup.py"
+    script.write_text("import subprocess\nsubprocess.run('taskkill /F /IM python.exe')\n", encoding="utf-8")
+    assert host_kill_reason([sys.executable, "cleanup.py"], tmp_path)
+    fine = tmp_path / "train.py"
+    fine.write_text("print('training')\n", encoding="utf-8")
+    assert host_kill_reason([sys.executable, "train.py"], tmp_path) is None
