@@ -231,7 +231,11 @@ html[data-loom-theme="light"] .pf-stage {
   .pf-stage[data-agents] { --pf-fan: 48px; --pf-spread: 108px; }
 }
 .pf-stage[data-agents] .pf-right { padding-left: calc(var(--pf-side-shade) + var(--pf-fan, 0px)); }
-.pf-stage[data-agents] .pf-agent-slot { margin-left: calc(var(--pf-step, 0) * var(--pf-spread, 0px) / 3); }
+/* Same width on every step: what a card gains on the left it gives up on the right, so it moves as a whole. */
+.pf-stage[data-agents] .pf-agent-slot {
+  margin-left: calc(var(--pf-step, 0) * var(--pf-spread, 0px) / 3);
+  margin-right: calc((3 - var(--pf-step, 0)) * var(--pf-spread, 0px) / 3);
+}
 .pf-right > .pf-slot[data-glide="tasks"] { margin-left: 6%; }
 .pf-right > .pf-slot[data-glide="history"] { margin-left: 11%; }
 
