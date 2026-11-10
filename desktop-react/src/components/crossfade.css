@@ -4,11 +4,10 @@
 .crossfade-in { animation: crossfade-in var(--crossfade-ms) ease both; }
 @keyframes crossfade-out { to { opacity: 0; } }
 @keyframes crossfade-in { from { opacity: 0; } to { opacity: 1; } }
-/* A status line changing its words: both texts blur as they cross, on the same spot. */
-.crossfade--soft > .crossfade-out { animation-name: crossfade-soft-out; animation-timing-function: var(--loom-ease-inout); }
-.crossfade--soft > .crossfade-in { animation-name: crossfade-soft-in; animation-timing-function: var(--loom-ease-inout); }
-@keyframes crossfade-soft-out { from { opacity: 1; filter: blur(0); } to { opacity: 0; filter: blur(var(--soft-blur, 4px)); } }
-@keyframes crossfade-soft-in { from { opacity: 0; filter: blur(var(--soft-blur, 4px)); } to { opacity: 1; filter: blur(0); } }
+/* A block that changes in place and is not plain text: the old is lifted away, the new comes up from below (keyframes in
+   roll-text.css). Plain text rolls per character (RollText). */
+.crossfade--soft > .crossfade-out { animation: loom-roll-away var(--loom-dur-press) var(--loom-ease-exit) both; }
+.crossfade--soft > .crossfade-in { animation: loom-roll-rise var(--loom-dur-base) var(--loom-ease-out) 90ms backwards; }
 @media (prefers-reduced-motion: reduce) {
   .crossfade-out { display: none; }
   .crossfade-in { animation: none; }

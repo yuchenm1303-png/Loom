@@ -272,7 +272,7 @@ TRAVELLING = re.compile(
     r"profile-(bar|hour)-grow$|loom-task-icon-spring$|loom-reasoning-chevron-in$|task-plan-mark$|settings-eyebrow-draw$|"
     r"loom-user-|loom-flight-|li-|rt-|sidebar-brand|empty-loom|loom-pet|loom-hud|tg-|status-breathe|streaming-glow|dot-wave|"
     r"orbit-rotate|spark-float|ambient-drift|compact-thread-pulse|context-meter-|home-token-pulse|general-status-breathe|"
-    r"sub-agent-pulse|runtime-|header-state-breathe|composer-|model-core-layer-in$|loom-count-tick$)"
+    r"sub-agent-pulse|runtime-|header-state-breathe|composer-|model-core-layer-in$|loom-count-tick$|loom-roll-)"
 )
 
 

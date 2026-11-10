@@ -6,6 +6,8 @@ import { Crossfade } from "../../src/components/Crossfade";
 import { TickText } from "../../src/components/TickText";
 import "../../src/motion-tokens.css";
 import "../../src/components/run-progress.css";
+import "../../src/components/roll-text.css";
+import "./sr-only.css";
 
 function Row() {
   const [seconds, setSeconds] = useState(190);

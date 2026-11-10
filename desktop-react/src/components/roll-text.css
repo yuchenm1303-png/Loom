@@ -1,0 +1,20 @@
+/* Rolling text (RollText.tsx, and the same keyframes for a counter's digit and a block that changes in place).
+   The old words are lifted away and the new come up from below, on one spot; each character a little behind the one
+   before it. Words that change their place are an exception to "text fades and does not move", asked for by the
+   designer and measured off a recording: the travel is a third of the text's own height, never more. */
+.roll { display: inline-grid; min-width: 0; }
+.roll-line { grid-area: 1 / 1; min-width: 0; white-space: pre; }
+.roll-out { pointer-events: none; }
+.roll-ch { display: inline-block; white-space: pre; }
+.roll-out .roll-ch { animation: loom-roll-away var(--loom-dur-press) var(--loom-ease-exit) both; }
+.roll-line.is-rising .roll-ch { animation: loom-roll-rise var(--loom-dur-base) var(--loom-ease-out) backwards; }
+
+@keyframes loom-roll-away { to { opacity: 0; filter: blur(var(--roll-blur, 2px)); transform: translateY(calc(var(--roll-rise, .3em) * -1)); } }
+@keyframes loom-roll-rise { from { opacity: 0; filter: blur(var(--roll-blur, 2px)); transform: translateY(var(--roll-rise, .3em)); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .roll-out { display: none; }
+  .roll-line.is-rising .roll-ch { animation: none; }
+}
+:root[data-loom-reduced-motion="true"] .roll-out { display: none; }
+:root[data-loom-reduced-motion="true"] .roll-line.is-rising .roll-ch { animation: none; }

@@ -1,11 +1,21 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { DUR } from "../motion/tokens";
+import { RollText } from "./RollText";
 import "./crossfade.css";
 
 /** Retain the outgoing paint while the new surface fades in at the same origin. `soft` blurs the two as they cross
  *  (opacity and blur, nothing moves): for a line of text that changes its words, as a status does. */
-export function Crossfade({ identity, children, className = "", block = false, soft = false }: {
+export function Crossfade(props: {
+  identity: string; children: ReactNode; className?: string; block?: boolean; soft?: boolean;
+}) {
+  // Words that change in place roll (RollText); anything else (a node with its own look) is lifted away as a block.
+  return props.soft && typeof props.children === "string"
+    ? <RollText identity={props.identity} text={props.children} className={props.className} />
+    : <CrossfadeLayers {...props} />;
+}
+
+function CrossfadeLayers({ identity, children, className = "", block = false, soft = false }: {
   identity: string; children: ReactNode; className?: string; block?: boolean; soft?: boolean;
 }) {
   const ms = soft ? DUR.flow : DUR.base;

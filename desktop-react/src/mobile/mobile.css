@@ -90,8 +90,8 @@ html[data-loom-surface="mobile"] button.m-row:disabled { opacity: 1; }
 .m-row-text strong { display: block; font-size: 15px; font-weight: 500; line-height: 1.4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .m-row-text small { display: block; font-size: 13px; line-height: 1.4; color: var(--loom-workspace-muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .m-morph { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.m-morph > .crossfade { display: grid; }
-.m-morph > .crossfade > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-morph > .roll { display: grid; }
+.m-morph .roll-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-row.is-static .m-row-text strong { color: var(--loom-workspace-secondary); }
 .m-row.is-danger strong { color: var(--m-bad); }
 .m-row.is-accent strong { color: var(--m-run); }
