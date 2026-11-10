@@ -12,7 +12,8 @@ import { TickText } from "../components/TickText";
 type Goal = NonNullable<FlowData["goal"]>;
 
 const money = (value: number) => value >= 1_000_000 ? `${Number((value / 1_000_000).toFixed(1))}M` : `${Math.round(value / 1000)}K`;
-const MARK = { running: <Circle size={12} strokeWidth={2} />, done: <Check size={13} strokeWidth={2.4} />, failed: <X size={13} strokeWidth={2.4} /> };
+const MARK = { running: <Circle size={12} strokeWidth={2} />, done: <Check size={13} strokeWidth={2.4} />, failed: <X size={13} strokeWidth={2.4} />,
+               claimed: <Check size={12} strokeWidth={1.6} /> };
 
 function Clamp({ lines, children, className = "" }: { lines: number; children: ReactNode; className?: string }) {
   const [open, setOpen] = useState(false);
@@ -84,9 +85,10 @@ export function MobileGoalCard({ goal, raw, children }: { goal: Goal; raw: LongG
             ))}
           </ol>
           <p className="m-goal-phase">{charter.phases[charter.current]?.replace(/^Revision round (\d+)$/, "第 $1 轮修改")}</p>
+          {goal.charter.judgment ? <p className="m-goal-phase">{goal.charter.judgment}</p> : null}
         </div>
         <div className="m-goal-block">
-          <span className="m-goal-label">验收标准 · {met}/{counted} 已达标</span>
+          <span className="m-goal-label">验收标准 · {goal.charter.tally ?? `${met}/${counted} 已达标`}</span>
           <ul className="m-goal-criteria">
             {criteria.map((item) => {
               const dropped = /放弃/.test(item.label);

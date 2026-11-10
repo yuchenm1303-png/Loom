@@ -484,6 +484,32 @@ test("the goal row carries its charter: the deliverable, where the work is, and 
   assert.equal(toGoal({ ...goal, charter: null }).charter, undefined);
 });
 
+test("until the check runs the card says so, the lead's own marks read as its view, and the research stages get a line", () => {
+  const goal = { objective: "研究一晚", status: "active", phase: "working", tokens: 1_000_000, tokenBudget: 8_000_000, turns: 3,
+    reason: "", summary: "", checked: false,
+    reviews: [{ round: 0, verdict: "early_review", summary: "", major: 2, minor: 0 }],
+    directions: { state: "chosen", candidates: ["温度标定", "链路自适应", "高 SNR 鸿沟"], ranking: [2, 1, 3], chosen: 1, reason: "已有数据" },
+    earlyReview: { state: "done", summary: "证据单薄", reject: 2, added: ["C4", "C5"] },
+    charter: { deliverable: "一份研究稿", kind: "research", phases: ["选题", "主实验", "写作"], current: 1,
+      criteria: [{ id: "C1", text: "相关工作", status: "open", origin: "charter", self: "met" },
+                 { id: "C2", text: "置信区间", status: "open", origin: "charter" },
+                 { id: "C3", text: "复现脚本", status: "dropped", origin: "charter" },
+                 { id: "C4", text: "三个随机种子", status: "open", origin: "early review" }] } };
+  const shown = toGoal(goal).charter;
+  assert.equal(shown.tally, "待核验 · 自评 1/3", "nothing reads as failed before the check");
+  assert.deepEqual(shown.items.map(i => [i.state, i.label]),
+    [["claimed", "自评已达标"], ["running", "待完成"], ["failed", "已放弃"], ["running", "待完成 · 中途评审"]]);
+  assert.equal(shown.where, "阶段 2/3：主实验", "a mid-course review is not a review round");
+  assert.equal(shown.judgment, "选题：温度标定 · 中途评审：新增 2 条标准");
+  const checked = toGoal({ ...goal, charter: { ...goal.charter, criteria: [{ ...goal.charter.criteria[0], status: "met" },
+    { ...goal.charter.criteria[1], status: "unmet" }] } }).charter;
+  assert.equal(checked.tally, "核验 1/2");
+  const english = toGoal({ ...goal, directions: { ...goal.directions, state: "ranking" }, earlyReview: undefined }, "en").charter;
+  assert.equal(english.tally, "not checked yet · own view 1/3");
+  assert.equal(english.judgment, "Direction: a referee is ranking the candidates");
+  assert.equal(toGoal({ ...goal, directions: undefined, earlyReview: undefined }).charter.judgment, "");
+});
+
 test("a sub-agent the Host closed keeps its card: how it ended, what it handed back, what it cost", () => {
   const now = Date.parse("2026-11-10T08:00:00Z");
   const overview = { run: null, program: null, children: [], events: [], agents: [],

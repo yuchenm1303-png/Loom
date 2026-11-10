@@ -16,7 +16,7 @@ from app.app_server_local_ipc import runtime_home_from_store
 from .runner import ProjectRunner, review_target
 from .store import ProjectStore
 from .review import git, candidate, review_workspace, assess, snapshot, definition_hash, review_progress
-from . import delivery, escalation, goal, goal_charter, goal_lines, goal_scope, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
+from . import delivery, escalation, goal, goal_charter, goal_depth, goal_lines, goal_scope, integration, workflow, parallel, checks, program, weave, delegation, metrics, shards, admission
 from .janitor import review_folder
 from .budget import BudgetedModelExecutor, ProjectBudget, event_tokens
 from .store import encoded
@@ -477,14 +477,14 @@ class ProjectServiceMixin(WorkspaceMixin):
         self.runtime.subscribe(lambda event: goal.observe_failure(self, event))
         self.runtime.tool_batch_gate = lambda session, step, calls: (
             goal_scope.hold(self, session, step, calls) or goal_charter.hold(self, session, step, calls)
-            or goal_lines.hold(self, session, step, calls))
+            or goal_depth.hold(self, session, step, calls) or goal_lines.hold(self, session, step, calls))
         self.runtime.goal_claim_note = lambda session_id: goal.CLAIMED if self.weave_goals.get(session_id) else None
         self.runtime.goal_pause = lambda session_id: goal.pause_on_request(self, session_id)
         self.runtime.goal_claim_check = lambda session_id: goal.claim_check(self, session_id)
         self.runtime.goal_owns_claim = lambda session_id: goal.owns_claim(self, session_id)
         reads = getattr(self.runtime, "tool_result_annotator", None)
-        self.runtime.tool_result_annotator = lambda runtime, session, call, result: goal.annotate(
-            self, session, reads(runtime, session, call, result) if reads else result)
+        self.runtime.tool_result_annotator = lambda runtime, session, call, result: goal_depth.annotate(
+            self, session, goal.annotate(self, session, reads(runtime, session, call, result) if reads else result))
         for tool in weave.tools(self):
             if self.runtime.tools.get(tool.name) is None:
                 self.runtime.tools.register(tool)

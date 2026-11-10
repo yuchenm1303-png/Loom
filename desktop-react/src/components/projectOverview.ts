@@ -469,10 +469,16 @@ export interface LongGoal {
   /** What the lead committed to deliver and the criteria the referee holds it to. */
   charter?: GoalCharter | null;
   reviews?: { round: number; verdict: string; summary: string; major: number; minor: number }[];
+  /** Research goals: the candidate directions, the referee's ranking (1-based, best first) and the one chosen. */
+  directions?: { state: "" | "declared" | "ranking" | "ranked" | "chosen" | "skipped" | "gave_way"; candidates: string[];
+                 ranking: number[]; chosen: number; reason: string };
+  /** The mid-course referee: what it found, and the criteria its requests added. */
+  earlyReview?: { state: "" | "running" | "done" | "failed"; summary: string; reject: number; added: string[] };
 }
 export interface GoalCharter {
   deliverable: string; kind: string; phases: string[]; current: number;
-  criteria: { id: string; text: string; status: "open" | "met" | "unmet" | "dropped"; origin: string }[];
+  /** self: "met" when the lead says a criterion is met; only the check's status counts. */
+  criteria: { id: string; text: string; status: "open" | "met" | "unmet" | "dropped"; origin: string; self?: string }[];
 }
 
 export interface GoalLine { title: string; state: "running" | "waiting" | "reporting" | "done" | "failed"; tokens?: number; cap?: number; retryAt?: number; waitKind?: "quota" | "provider" | ""; why?: string; check?: "" | "passed" | "failed" | "not_run";
@@ -484,21 +490,50 @@ export function toCharter(goal: LongGoal, lang: "zh" | "en" = "zh"): NonNullable
   const charter = goal.charter;
   if (!charter) return undefined;
   const en = lang === "en";
-  const words = en ? { open: "To do", met: "Met", unmet: "Not met", dropped: "Dropped", review: (n: number) => `review ${n}`, standard: "standard" }
-    : { open: "待完成", met: "已达标", unmet: "未达标", dropped: "已放弃", review: (n: number) => `第 ${n} 轮评审`, standard: "通用标准" };
+  const words = en ? { open: "To do", met: "Met", unmet: "Not met", dropped: "Dropped", review: (n: number) => `review ${n}`, standard: "standard",
+                       claimed: "Met in its own view", early: "mid-course review" }
+    : { open: "待完成", met: "已达标", unmet: "未达标", dropped: "已放弃", review: (n: number) => `第 ${n} 轮评审`, standard: "通用标准",
+        claimed: "自评已达标", early: "中途评审" };
   // The Host's bar for the kind of work ("standard") and review rounds are named; the lead's own criteria carry no tag.
-  const origin = (value: string) => value === "standard" ? words.standard : value.replace(/^review (\d+)$/, (_, n) => words.review(Number(n)));
+  const origin = (value: string) => value === "standard" ? words.standard : value === "early review" ? words.early
+    : value.replace(/^review (\d+)$/, (_, n) => words.review(Number(n)));
   const states = { open: "running", met: "done", unmet: "failed", dropped: "failed" } as const;
   // The Host names a review's revision round in English; say it in the person's language.
   const phase = (charter.phases[charter.current] || "").replace(/^Revision round (\d+)$/, (_, n) => en ? `Revision round ${n}` : `第 ${n} 轮修改`);
-  const rounds = goal.reviews?.length ?? 0;
+  const rounds = goal.reviews?.filter((review) => review.verdict !== "early_review").length ?? 0;
   const where = [phase && (en ? `phase ${charter.current + 1}/${charter.phases.length}: ${phase}` : `阶段 ${charter.current + 1}/${charter.phases.length}：${phase}`),
                  rounds ? words.review(rounds) : ""].filter(Boolean).join(" · ");
+  // Only the check sets met or unmet. Until it has run, the lead's own marks are shown as its view: a real card read
+  // "0/11 已达标" for three hours of sound work and the person took it for a failure.
+  const claimed = (item: GoalCharter["criteria"][number]) => item.status === "open" && item.self === "met";
+  const counted = charter.criteria.filter((item) => item.status !== "dropped");
+  const checked = counted.some((item) => item.status === "met" || item.status === "unmet");
+  const met = counted.filter((item) => item.status === "met").length, own = counted.filter(claimed).length;
+  const tally = en
+    ? `${checked ? `checked ${met}/${counted.length}` : "not checked yet"}${own ? ` · own view ${met + own}/${counted.length}` : ""}`
+    : `${checked ? `核验 ${met}/${counted.length}` : "待核验"}${own ? ` · 自评 ${met + own}/${counted.length}` : ""}`;
+  const status = (item: GoalCharter["criteria"][number]) => claimed(item) ? words.claimed : words[item.status] || item.status;
   return {
-    deliverable: charter.deliverable, where,
-    items: charter.criteria.map((item) => ({ title: item.text, state: states[item.status] || "running",
-      label: item.origin !== "charter" ? `${words[item.status] || item.status} · ${origin(item.origin)}` : words[item.status] || item.status })),
+    deliverable: charter.deliverable, where, tally, judgment: judgment(goal, en),
+    items: charter.criteria.map((item) => ({ title: item.text, state: claimed(item) ? "claimed" : states[item.status] || "running",
+      label: item.origin !== "charter" ? `${status(item)} · ${origin(item.origin)}` : status(item) })),
   };
+}
+
+/** How a research goal decided what to work on, and what the mid-course referee did: one line, or "". */
+function judgment(goal: LongGoal, en: boolean): string {
+  const directions = goal.directions, review = goal.earlyReview;
+  const title = directions && directions.chosen ? directions.candidates[directions.chosen - 1] || "" : "";
+  const choice = !directions?.state ? "" : (en ? {
+    declared: `Direction: ${directions.candidates.length} candidates, piloting`, ranking: "Direction: a referee is ranking the candidates",
+    ranked: "Direction: ranked, waiting for the choice", chosen: `Direction: ${title}`, skipped: "Direction: fixed by the person",
+    gave_way: "Direction: not compared" } as Record<string, string> : {
+    declared: `选题：${directions.candidates.length} 个候选方向试点中`, ranking: "选题：裁判正在比较候选方向",
+    ranked: "选题：已排名，等待选定", chosen: `选题：${title}`, skipped: "选题：由你指定", gave_way: "选题：未比较" } as Record<string, string>)[directions.state] || "";
+  const reviewed = !review?.state ? "" : (en ? { running: "mid-course review under way", done: `mid-course review: ${review.added.length} criteria added`,
+    failed: "mid-course review did not finish" } as Record<string, string> : { running: "中途评审进行中",
+    done: `中途评审：新增 ${review.added.length} 条标准`, failed: "中途评审没有完成" } as Record<string, string>)[review.state] || "";
+  return [choice, reviewed].filter(Boolean).join(" · ");
 }
 
 export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {

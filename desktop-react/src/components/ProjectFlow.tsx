@@ -102,7 +102,11 @@ export interface FlowData {
           lines?: { title: string; state: string; label: string; why?: string; report?: string; changed?: string[] }[];
           /** What the round came to once no line is still working; the list under it stays until the next round. */
           linesSummary?: string;
-          charter?: { deliverable: string; where: string; items: { title: string; state: string; label: string }[] };
+          charter?: { deliverable: string; where: string; items: { title: string; state: string; label: string }[];
+                      /** "待核验 · 自评 6/11": the check's count, and the lead's own beside it until the check runs. */
+                      tally?: string;
+                      /** How a research goal chose its direction and what the mid-course referee did. */
+                      judgment?: string };
           /** The checker's own model ("" = the conversation's), and why the last check could not use it. */
           checker?: { selection: string; error?: string } } | null;
   /** The model the agents run on, with a few to switch to. Built from the app's model snapshot. */
@@ -1686,10 +1690,11 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                     <p>{goal.charter.deliverable.replace(/^(Deliverable|交付物?)\s*[:：]\s*/i, "")}</p>
                   </div>
                   {goal.charter.where ? <span className="pf-goal-where" title={goal.charter.where}>{goal.charter.where}</span> : null}
+                  {goal.charter.judgment ? <span className="pf-goal-where" title={goal.charter.judgment}>{goal.charter.judgment}</span> : null}
                   {goal.charter.items.length ? <>
                     <div className="pf-goal-criteria-head"><small>{text.goalCriteria}</small>
                       {/* A dropped criterion is set aside, not failed: it reads quiet and leaves the count, as on the phone. */}
-                      <small>{goal.charter.items.filter((item) => item.state === "done").length}/{goal.charter.items.filter((item) => !/放弃|Dropped/.test(item.label)).length}</small></div>
+                      <small>{goal.charter.tally ?? `${goal.charter.items.filter((item) => item.state === "done").length}/${goal.charter.items.filter((item) => !/放弃|Dropped/.test(item.label)).length}`}</small></div>
                     <ul className="pf-goal-lines pf-goal-criteria">
                       {goal.charter.items.map((item) => (
                         <li key={item.title} data-state={item.state} data-dropped={/放弃|Dropped/.test(item.label) || undefined} title={item.title}>

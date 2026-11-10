@@ -22,7 +22,7 @@ from app.agent_runtime.contracts import ToolEffect
 from app.agent_runtime.tools import AgentTool, ToolResult
 from app.ai import AIMessage, MessageRole
 
-from . import goal, goal_charter, goal_lines, goal_scope, program
+from . import goal, goal_charter, goal_depth, goal_lines, goal_scope, program
 from .parallel import MAX_WORKERS
 from .workspace import describe as describe_workspace
 
@@ -85,6 +85,13 @@ GUIDE = (
     "and history_mode none, writers on disjoint files. In a long goal the Host asks whether to split it into lines "
     "once it has grown, and investigate keeps long reading out of your history."
 )
+
+
+# A real lead ended a turn with "要我接着往下推进哪一条？" while its goal went on by itself one second later: the person
+# read a question nobody waited for, and the goal turn never saw an answer.
+GOAL_RUNNING = ("The Host continues this goal after each turn by itself. End a turn with where the work stands and what "
+                "you do next, never with a question to the person or an offer to continue; choose the next step "
+                "yourself. When you truly cannot go on without them, call mark_thread_goal with status=blocked and say why.")
 
 
 class Proposals:
@@ -277,7 +284,7 @@ def context_messages(service, session, step):
     except (OSError, ValueError, RuntimeError):
         pass
     if long_goal is not None and long_goal["status"] == "active":
-        line = f"A long goal is running in this conversation: {long_goal['objective']}"
+        line = f"A long goal is running in this conversation: {long_goal['objective']}\n{GOAL_RUNNING}"
     elif run is not None:
         state = "paused" if run.get("control") != "active" else "running"
         line = (f"Current project: {state}, milestone {(run.get('milestone') or {}).get('index', 1)}. "
@@ -363,7 +370,8 @@ def tools(service):
                 service.weave_goals.put(context.session_id, record)
             written = charter_text(record["charter"], {"new": True, "dropped": []}) + "\n"
         given = f" and {hours:g} h of the person's time" if hours else ""
-        before = "\n".join(goal.previous_lines(service.weave_goals.get(context.session_id) or {}))
+        started = service.weave_goals.get(context.session_id) or {}
+        before = "\n".join([*goal.previous_lines(started), *filter(None, (goal_depth.machine_line(started),))])
         return ToolResult(ok=True, content=f"Long goal started with a budget of {budget:,} tokens{given}. Carry on "
                           "working; the Host continues this conversation after each turn until you call "
                           "mark_thread_goal.\n" + written + (before + "\n" if before else "") + goal_charter.GUIDE + "\n"
@@ -399,12 +407,14 @@ def tools(service):
             if charter and not (isinstance(phase, int) and 0 <= phase < len(charter["phases"])):
                 raise ValueError("Give current_phase, the index of the phase now under way: "
                                  + "; ".join(f"{at} = {name}" for at, name in enumerate(charter["phases"])))
+            marked = goal_charter.self_assess(record, arguments.get("met"))
             goal_charter.add_note(record, arguments.get("text"))
             if charter:
                 goal_charter.advance_phase(record, phase)
             service.weave_goals.put(context.session_id, record)
         now = f" Phase now: {charter['phases'][charter['current']]}." if charter else ""
-        return ToolResult(ok=True, content="Noted. Every goal turn shows your latest notes." + now, data={})
+        mine = (f" Marked met by you (the check decides): {', '.join(marked)}." if marked else "")
+        return ToolResult(ok=True, content="Noted. Every goal turn shows your latest notes." + now + mine, data={})
 
     def claims(context, arguments):
         weave_session(context)
@@ -420,6 +430,10 @@ def tools(service):
     def lines(context, arguments):
         weave_session(context)
         return goal_lines.start(service, context.session_id, arguments)
+
+    def directions(context, arguments):
+        weave_session(context)
+        return goal_depth.set_directions(service, context.session_id, arguments)
 
     def steer(context, arguments):
         weave_session(context)
@@ -506,6 +520,11 @@ def tools(service):
                 "text": {"type": "string", "description": "The note, in the person's language."},
                 "current_phase": {"type": "integer", "minimum": 0, "description": "Index of the charter's phase now "
                                   "under way (0 is the first); required once the charter is written."},
+                "met": {"type": "array", "items": {"type": "object", "properties": {
+                    "id": {"type": "string", "description": "A criterion's id, such as C3."},
+                    "evidence": {"type": "string", "description": "Where the check can see it is met: a file, a command, a section."},
+                }, "required": ["id", "evidence"], "additionalProperties": False}, "description": "Criteria you believe are "
+                    "now met, with where to see it. The person sees them as your assessment; the check alone passes them."},
             }, "required": ["text"], "additionalProperties": False},
             handler=note, effect=ToolEffect.READ_ONLY),
         AgentTool(
@@ -523,6 +542,37 @@ def tools(service):
                     }, "required": ["claim", "command", "output"], "additionalProperties": False}},
             }, "required": ["claims"], "additionalProperties": False},
             handler=claims, effect=ToolEffect.READ_ONLY),
+        AgentTool(
+            name="weave_directions",
+            description=("Research goals: decide what to work on before working on it. Name 3 to 5 candidate directions "
+                         "(each with the closest prior work you found, what would be new, a pilot of minutes, and the "
+                         "results that keep or drop it; one that continues work already here names that work and its "
+                         "limits). Call again with pilot_result for each after piloting: an independent referee ranks "
+                         "them pair by pair and its ranking reaches you. Then choose=<number> (against the ranking only "
+                         "with a reason). skip_reason only when the person already fixed the direction."),
+            input_schema={"type": "object", "properties": {
+                "candidates": {"type": "array", "minItems": goal_depth.MIN_DIRECTIONS, "maxItems": goal_depth.MAX_DIRECTIONS,
+                               "items": {"type": "object", "properties": {
+                                   "title": {"type": "string", "description": "A few words, in the person's language."},
+                                   "question": {"type": "string", "description": "The research question it answers."},
+                                   "closest_work": {"type": "array", "items": {"type": "string"}, "minItems": 1,
+                                                    "description": "The nearest prior work you found: title with a link or arXiv id."},
+                                   "new": {"type": "string", "description": "What would be new against that work."},
+                                   "pilot": {"type": "string", "description": "A test of minutes that says whether it is worth it."},
+                                   "pilot_result": {"type": "string", "description": "What the pilot showed, with numbers; give it once piloted."},
+                                   "signal": {"type": "string", "description": "The pilot result that keeps this direction."},
+                                   "kill": {"type": "string", "description": "The pilot result that drops it."},
+                                   "existing": {"type": "array", "items": {"type": "string"}, "description": "Work already in this "
+                                                "folder it continues (paths or results); then give limitations."},
+                                   "limitations": {"type": "array", "items": {"type": "string"}, "description": "At least two "
+                                                   "limits of that existing work, as its reviewer would name them."},
+                               }, "required": ["title", "question", "closest_work", "new", "pilot", "signal", "kill"],
+                                   "additionalProperties": False}},
+                "choose": {"type": "integer", "minimum": 1, "description": "The number (1-based) of the direction you commit to."},
+                "reason": {"type": "string", "description": "Why this one; required when it is not the referee's first."},
+                "skip_reason": {"type": "string", "description": "Only when the person already fixed the direction: say so in their words."},
+            }, "additionalProperties": False},
+            handler=directions, effect=ToolEffect.READ_ONLY),
         AgentTool(
             name="weave_one_turn",
             description=("Size the person's request as a quick task you will finish well in this turn, so no long goal "

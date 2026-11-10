@@ -55,8 +55,8 @@ GUIDE = (
     "reproduce every number; for software, working, tested, documented code; for analysis, conclusions with the "
     "evidence and its limits. Give concrete criteria the check can verify by reading and running, and phases sized "
     "to the time. For research, begin by surveying the literature and checking novelty (a line or investigate can "
-    "do it while you set up), then pilot two or three candidate directions briefly and commit to one, saying why "
-    "in a note. Change the charter only with a reason; never lower a criterion to make it pass. The Host adds the "
+    "do it while you set up), then name 3 to 5 candidate directions with weave_directions, pilot them in minutes "
+    "each, and choose one once an independent referee has ranked them. Change the charter only with a reason; never lower a criterion to make it pass. The Host adds the "
     "standard criteria of the kind of work you name (for research: related work and novelty, fair comparison, "
     "uncertainty, reproducibility, negative results checked against bugs, limitations); write your own criteria for "
     "what is specific to this request.\n"
@@ -235,6 +235,28 @@ def set_claims(record, claims):
     return kept
 
 
+def self_assess(record, items):
+    """The lead's own view of criteria it believes met, with where to see it: shown as its claim beside the check's
+    verdict, which alone sets met/unmet. A real goal's card read "0/11 已达标" for three hours of sound work because
+    only the final check ever changed a criterion, and the person took it for a failure."""
+    charter = charter_of(record)
+    if not charter or not items:
+        return []
+    if not isinstance(items, list):
+        raise ValueError("met is a list of {id, evidence}.")
+    by_id = {item["id"]: item for item in charter["criteria"] if item["status"] != "dropped"}
+    marked = []
+    for item in items[:MAX_CRITERIA * 2]:
+        if not isinstance(item, dict) or item.get("id") not in by_id:
+            raise ValueError("Each entry of met names a criterion by its id (" + ", ".join(by_id) + ") with evidence.")
+        evidence = _clean(item.get("evidence"), 400)
+        if len(evidence) < MIN_CRITERION:
+            raise ValueError(f"{item['id']}: say where the check can see it is met (a file, a command, a section).")
+        by_id[item["id"]].update(selfStatus="met", selfEvidence=evidence)
+        marked.append(item["id"])
+    return marked
+
+
 def finish_phases(record):
     """A claim of completion is the last phase of the plan."""
     charter = charter_of(record)
@@ -283,7 +305,8 @@ def context_lines(record):
     if charter:
         phases = " → ".join(f"[{phase}]" if at == charter["current"] else phase for at, phase in enumerate(charter["phases"]))
         lines.append(f"Charter. Deliverable: {charter['deliverable']}\nPhases: {phases}\nCriteria (the check holds you to these):")
-        lines += [f"- {item['id']} ({item['status']}{', from ' + item['origin'] if item['origin'] != 'charter' else ''}): "
+        lines += [f"- {item['id']} ({item['status']}{', you marked it met' if item.get('selfStatus') == 'met' and item['status'] == 'open' else ''}"
+                  f"{', from ' + item['origin'] if item['origin'] != 'charter' else ''}): "
                   f"{item['text']}" + (f" — {item['note']}" if item.get("note") and item["status"] != "open" else "")
                   for item in charter["criteria"] if item["status"] != "dropped"]
         if charter["kind"] in LEDGER_KINDS:
@@ -304,6 +327,8 @@ def checker_lines(record):
     if not charter:
         return ""
     criteria = "\n".join(f"- {item['id']}{' (standard)' if item.get('origin') == 'standard' else ''}: {item['text']}"
+                         + (f" [the agent says it is met: {item['selfEvidence']} — its word, not evidence; look]"
+                            if item.get("selfStatus") == "met" else "")
                          for item in charter["criteria"] if item["status"] != "dropped")
     dropped = [item for item in charter["criteria"] if item["status"] == "dropped"]
     gone = ("\nCriteria the agent dropped, with its reason (judge whether the deliverable still holds without them):\n"
@@ -384,5 +409,6 @@ def view(record):
     return {"charter": {"deliverable": charter["deliverable"][:600], "kind": charter["kind"],
                         "phases": charter["phases"], "current": charter["current"],
                         "criteria": [{"id": item["id"], "text": item["text"][:300], "status": item["status"],
-                                      "origin": item["origin"]} for item in charter["criteria"]]},
+                                      "origin": item["origin"], "self": item.get("selfStatus", "")}
+                                     for item in charter["criteria"]]},
             "reviews": reviews, "notes": len(record.get("notes") or ()), "claims": len(record.get("claims") or ())}

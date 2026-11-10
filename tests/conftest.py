@@ -34,6 +34,16 @@ def _build_requests_are_not_sized(request, monkeypatch):
     monkeypatch.setattr(goal_scope, "MAX_HOLDS", 0)
 
 
+@pytest.fixture(autouse=True)
+def _research_goals_are_not_steered(request, monkeypatch):
+    """A research goal's direction stage and mid-course referee spawn agents and hold work; they have their own tests
+    (a module sets GOAL_DEPTH = True). Everywhere else they are off, so scripted goals run as they are written."""
+    if getattr(request.module, "GOAL_DEPTH", False):
+        return
+    from app.project_runner import goal_depth
+    monkeypatch.setattr(goal_depth, "ENABLED", False)
+
+
 def without_stickers(text: str) -> str:
     """Drop inline sticker markers from a reply before asserting on its wording.
 

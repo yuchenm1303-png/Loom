@@ -592,6 +592,11 @@ class TurnRunner:
                 if next_execution_action(response).action is ExecutionAction.DELIVER:
                     rt.development_verification.observe(session)
                     finish_review = rt.development_verification.before_finish(session, accepting_response=True)
+                    owned = getattr(rt, "goal_owns_claim", None)
+                    if finish_review and callable(owned) and owned(session.session_id):
+                        # A long goal's independent check judges the work; asked a third time to verify, a real lead
+                        # wrote its own reasoning ("But I must end turn ... Correct behavior: ...") as the reply.
+                        finish_review["exhausted"] = finish_review["exhausted"] or finish_review["total_attempts"] >= 2
 
                 # Serialize the final sample-acceptance boundary against steering
                 # submission. ModelExecutor already notices guidance during token

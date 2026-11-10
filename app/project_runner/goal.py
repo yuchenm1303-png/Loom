@@ -25,7 +25,7 @@ from app.agent_runtime.contracts import AgentEventKind, AgentStatus
 from app.ai.contracts import MessageRole
 from app.agent_runtime.durable_state import GoalStatus
 from app.agent_runtime.turn_plan import PLAN_TOOLS
-from . import goal_charter, goal_lines
+from . import goal_charter, goal_depth, goal_lines
 from .goal_common import decide, RETRY_BASE, RETRY_MAX, charged, delay as _delay, retry_kind, span as _span, time_left as _left, transient as _transient
 
 GOALS_FILE = "weave-goals.json"
@@ -47,6 +47,7 @@ OUT_CHECKING = "The token budget ran out during the independent check: the work 
 CLAIMED = ("Claim recorded, not verified. A separate agent with none of this conversation now checks the work; "
            "until it passes the goal is not done, and it may send the work back. Tell the person the result is being "
            "checked, not that it passed or was verified.")
+REFEREES = ("goal-check", *goal_depth.ROLES)  # sub-agents that judge the work: not the work, not its trace
 MAX_CHECK_FAULTS = 2  # a checker that died or gave no verdict is run again, not believed
 MAX_FAILURES = 8
 MAX_STALLS = 2  # goal turns in a row with no tool call that worked
@@ -196,7 +197,8 @@ def _agents_line(service, thread_id, record):
     running, finished = [], []
     for snapshot in _children(service, thread_id):
         node = snapshot.node
-        if node.session_id == record.get("checkerId") or node.role == "goal-line" or node.relation_status.value != "active":
+        if (node.session_id == record.get("checkerId") or node.role == "goal-line" or node.role in REFEREES
+                or node.relation_status.value != "active"):
             continue  # lines are the Host's to collect and close
         (running if snapshot.execution_running else finished).append(f"{node.role} {node.session_id}")
     parts = []
@@ -221,10 +223,15 @@ def _working_agents(service, thread_id, record):
 TASK_LIST_FIRST = ("The task list carries over into this turn while steps remain open. When none remain, or the "
                    "next stretch of work is not on it, your first tool call is update_plan with a new list: the Host "
                    "refuses other tools until a list is written.")
+LEAD_FAILED = ("Your last turn stopped because the model provider or the connection failed, not because of the work. "
+               "Carry on from where it stopped; do not redo what is already done.")
 
 
 def _context(service, thread_id, record):
     lines = [_time_line(record), TASK_LIST_FIRST]
+    if record.get("failures"):
+        lines.append(LEAD_FAILED)
+    lines += goal_depth.context_lines(service, thread_id, record)
     if record.get("wrapUp"):
         lines.append(WRAP_UP.format(share=record["tokens"] / max(1, record["tokenBudget"])))
     if record.get("deepen"):
@@ -265,7 +272,8 @@ def start(service, thread_id, objective, token_budget, hours=0):
         "feedback": "", "checkerId": "", "reason": "", "summary": "", "checked": False,
         "goalTurn": "", "handledTurn": session.current_turn_id, "startedAt": time.time(),
         "hours": max(0.0, min(float(hours or 0), MAX_HOURS)), "deepens": 0, "deepen": "",
-        "linesDecision": "later" if goal_lines.mode() == "lines" else "", "linesHolds": 0, "lines": [], "reports": ""})
+        "linesDecision": "later" if goal_lines.mode() == "lines" else "", "linesHolds": 0, "lines": [], "reports": "",
+        "machine": goal_depth.probe(session.workspace_dir)})
 
 
 def _stop(service, thread_id, record, status, reason):
@@ -277,6 +285,7 @@ def _stop(service, thread_id, record, status, reason):
         service.runtime.cancel(checker)
         record["checkerSuspended"] = True
     goal_lines.stop_all(service, thread_id, record, reason[:300], keep=record.get("checkerId"))
+    goal_depth.stop(service, thread_id, record)
     service.weave_goals.put(thread_id, record)
     service.runtime.set_goal_status(thread_id, status)
     return True
@@ -304,6 +313,7 @@ def pause_on_request(service, thread_id):
 def _finish(service, thread_id, record, summary, checked):
     record.update(phase="done", summary=summary[:2000], checked=checked, reason="")
     goal_lines.stop_all(service, thread_id, record, "the goal finished")
+    goal_depth.stop(service, thread_id, record)
     service.weave_goals.put(thread_id, record)
     service.runtime.set_goal_status(thread_id, GoalStatus.COMPLETE)
     return True
@@ -371,7 +381,7 @@ def _sessions(service, thread_id, record):
     """The conversation and the sub-agents that worked for this goal, the checker excluded."""
     known = set(record.get("baseChildren") or ())
     return [thread_id, *(snapshot.node.session_id for snapshot in _children(service, thread_id)
-                         if snapshot.node.session_id not in known and snapshot.node.role != "goal-check")]
+                         if snapshot.node.session_id not in known and snapshot.node.role not in REFEREES)]
 
 
 def _searched(service, thread_id, record):
@@ -400,7 +410,8 @@ def claim_check(service, thread_id):
     charter = goal_charter.charter_of(record) or {}
     searched = charter.get("kind") != "research" or _searched(service, thread_id, record)
     missing = [*(() if searched else (NO_LITERATURE,)),
-               *((NO_LEDGER,) if charter.get("kind") in goal_charter.LEDGER_KINDS and not record.get("claims") else ())]
+               *((NO_LEDGER,) if charter.get("kind") in goal_charter.LEDGER_KINDS and not record.get("claims") else ()),
+               *filter(None, (goal_depth.claim_gap(record),))]
     with service.project_runner.guard:
         record = service.weave_goals.get(thread_id)
         if not record:
@@ -482,7 +493,8 @@ def _spawn_checker(service, thread_id, record, objective):
         deeper = CHECK_DEEPER.format(hours=f"{record['hours']:g} h", left=_span(_left(record)))
     elif not record.get("hours") and _room_to_deepen(record):
         deeper = CHECK_DEEPER_BUDGET.format(left=f"{1 - record['tokens'] / max(1, record['tokenBudget']):.0%}")
-    task = (CHECK_PROMPT + objective + goal_charter.checker_lines(record) + _previous_review(record) + deeper
+    task = (CHECK_PROMPT + objective + goal_charter.checker_lines(record) + goal_depth.checker_lines(record)
+            + _previous_review(record) + deeper
             + _dropped_line(service, thread_id) + _gaps_line(record) + _trace(service, thread_id, record))
     snapshot = service.runtime.agent_control.spawn(thread_id, task, role="goal-check", history_mode="none", background=True,
                                                    model=_checker_model(service, record))
@@ -754,6 +766,10 @@ def _advance(service, thread_id, record, polled):
         polled[(thread_id, "lines")] = now
         if goal_lines.advance(service, thread_id, record):
             service.weave_goals.put(thread_id, record)
+    if record["phase"] == "working" and now - polled.get((thread_id, "depth"), 0) >= LINES_EVERY:
+        polled[(thread_id, "depth")] = now
+        if goal_depth.advance(service, thread_id, record, goal.objective):
+            service.weave_goals.put(thread_id, record)
     if service._is_active(thread_id):
         if now - polled.get(thread_id, 0) < USAGE_EVERY:
             return False
@@ -789,7 +805,12 @@ def _advance(service, thread_id, record, polled):
     if _settle_turn(service, thread_id, record, session):
         return True
     service.weave_goals.put(thread_id, record)
-    if now < record["retryAt"] or goal_lines.live(record):  # the lead costs nothing while it waits for its lines
+    if now < record["retryAt"]:
+        return False
+    # The lead costs nothing while it waits for its lines, when it stopped to wait. A lead whose own turn failed did
+    # not choose to wait: a real lead lost to a dropped connection sat 36 minutes beside running lines until the
+    # person typed "继续吧".
+    if goal_lines.live(record) and not record.get("failures"):
         return False
     return _continue(service, thread_id, record, session)
 
@@ -986,4 +1007,4 @@ def view(service, thread_id):
             "retryKind": (record.get("checkerRetryKind") if phase == "checking" else record.get("retryKind")) or "provider",
             "hours": record.get("hours") or 0, "deepens": record.get("deepens", 0),
             "agents": _working_agents(service, thread_id, record), "lines": goal_lines.view(record),
-            **goal_charter.view(record)}
+            **goal_charter.view(record), **goal_depth.view(record)}
