@@ -40,6 +40,12 @@ function mergeDeltaParams(
 }
 
 const api = {
+  getUiUpdateStatus: () => ipcRenderer.invoke("loom:ui-update-status") as Promise<{ phase: "waiting" | "updated"; build: number } | null>,
+  onUiUpdateStatus: (listener: (status: { phase: "waiting" | "updated"; build: number }) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, status: { phase: "waiting" | "updated"; build: number }) => listener(status);
+    ipcRenderer.on("loom:ui-update-status", wrapped);
+    return () => ipcRenderer.removeListener("loom:ui-update-status", wrapped);
+  },
   openThreadWindow: (threadId: string) => ipcRenderer.invoke("loom:open-thread-window", threadId),
   windowControl: (action: "state" | "minimize" | "maximize" | "close" | "move", point?: { x: number; y: number }) => ipcRenderer.invoke("loom:window-control", action, point),
   connect: () => ipcRenderer.invoke("loom:connect"),
@@ -126,7 +132,10 @@ const api = {
   pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
   setUpdatePreferences: (patch: { automaticUpdates?: boolean; silentUpdates?: boolean; autoRestartAfterUpdate?: boolean }) => ipcRenderer.invoke("loom:update-preferences", patch),
   getUpdateStatus: () => ipcRenderer.invoke("loom:update-status") as Promise<SoftwareUpdateState>,
-  checkForUpdates: () => ipcRenderer.invoke("loom:update-check") as Promise<SoftwareUpdateState>,
+  checkForUpdates: () => {
+    void ipcRenderer.invoke("loom:ui-update-check").catch(() => undefined);
+    return ipcRenderer.invoke("loom:update-check") as Promise<SoftwareUpdateState>;
+  },
   installUpdate: () => ipcRenderer.invoke("loom:update-install") as Promise<{ accepted: boolean; state: SoftwareUpdateState }>,
   onUpdateStatus: (listener: (payload: SoftwareUpdateState) => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: SoftwareUpdateState) => listener(payload);
@@ -211,3 +220,18 @@ const api = {
 
 contextBridge.exposeInMainWorld("loom", api);
 window.addEventListener("loom:renderer-healthy", () => ipcRenderer.send("loom:renderer-healthy"));
+let lastInteraction = Date.now();
+let composing = false;
+for (const type of ["input", "keydown", "pointerdown", "drop", "wheel"]) window.addEventListener(type, () => { lastInteraction = Date.now(); }, true);
+window.addEventListener("compositionstart", () => { composing = true; }, true);
+window.addEventListener("compositionend", () => { composing = false; lastInteraction = Date.now(); }, true);
+ipcRenderer.on("loom:ui-update-prepare", (_event, token: unknown) => {
+  if (typeof token !== "string") return;
+  const dirtyText = [...document.querySelectorAll<HTMLTextAreaElement | HTMLInputElement>("textarea,input")]
+    .some(input => !input.readOnly && !input.disabled && !["button", "submit", "checkbox", "radio", "range", "hidden"].includes(input.type) && Boolean(input.value));
+  const blocked = document.querySelector('[data-loom-update-blocked="true"], [role="dialog"], dialog[open]')
+    || [...document.querySelectorAll<HTMLElement>('[contenteditable="true"]')].some(element => element.textContent?.trim());
+  const safe = !dirtyText && !blocked && !composing && Date.now() - lastInteraction >= 15_000;
+  if (safe) window.dispatchEvent(new Event("loom:ui-update-save"));
+  ipcRenderer.send("loom:ui-update-prepared", token, safe);
+});

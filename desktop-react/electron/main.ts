@@ -1,4 +1,5 @@
 import { installWindowChrome } from "./windowChrome.js";
+import { currentUiDocument, recoverUiWindow, watchUiWindow } from "./uiUpdater.js";
 import { openConversationWindow } from "./conversationWindows.js";
 import { EmbeddedBrowserManager, type EmbeddedBrowserCommand } from "./embeddedBrowser.js";
 import { loadRunPageAction } from "./pageActions.js";
@@ -1234,7 +1235,7 @@ function devServerUrlFromArgs(): string | null {
 function rendererDocument(): RendererDocument {
   const devUrl = devServerUrlFromArgs();
   if (devUrl) return { url: devUrl, development: true };
-  return { url: pathToFileURL(path.join(DESKTOP_ROOT, "dist", "index.html")).href, development: false };
+  return currentUiDocument({ url: pathToFileURL(path.join(DESKTOP_ROOT, "dist", "index.html")).href, development: false });
 }
 
 async function loadRenderer(window: BrowserWindow, document: RendererDocument): Promise<void> {
@@ -1244,10 +1245,12 @@ async function loadRenderer(window: BrowserWindow, document: RendererDocument): 
       await window.loadURL(document.url);
       return;
     }
-    const builtIndex = path.join(DESKTOP_ROOT, "dist", "index.html");
-    console.log(`[loom-desktop] loading built renderer ${builtIndex}`);
-    await window.loadFile(builtIndex);
+    console.log(`[loom-desktop] loading renderer ${document.url}`);
+    await window.loadURL(document.url);
   } catch (error) {
+    if (recoverUiWindow(window)) return;
+    // did-fail-load may already have initiated recovery before loadURL rejects.
+    if (!document.development && document.url !== pathToFileURL(path.join(DESKTOP_ROOT, "dist", "index.html")).href) return;
     const detail = error instanceof Error ? error.stack || error.message : String(error);
     console.error("Loom renderer navigation failed", detail);
     showRendererFailure("Loom renderer could not be loaded", detail);
@@ -1321,16 +1324,19 @@ function createWindow(): void {
   });
   window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame || validatedURL.startsWith("data:text/html")) return;
+    if (recoverUiWindow(window)) return;
     const detail = `${errorDescription} (${errorCode})\n${validatedURL}`;
     console.error("Loom renderer did-fail-load", detail);
     showRendererFailure("Loom renderer failed to navigate", detail);
   });
   window.webContents.on("preload-error", (_event, preloadPath, error) => {
+    if (recoverUiWindow(window)) return;
     const detail = `${preloadPath}\n${error.stack || error.message}`;
     console.error("Loom preload failed", detail);
     showRendererFailure("Loom preload failed to load", detail);
   });
   window.webContents.on("render-process-gone", (_event, details) => {
+    if (recoverUiWindow(window)) return;
     const detail = `reason=${details.reason}, exitCode=${details.exitCode}`;
     console.error("Loom renderer process exited", detail);
     showRendererFailure("Loom renderer process exited", detail);
@@ -1340,6 +1346,7 @@ function createWindow(): void {
   const document = rendererDocument();
   trustRendererDocument(window, document.url);
   installRendererContentSecurity(window, document);
+  watchUiWindow(window, document);
   void loadRenderer(window, document);
   // AI tasks open their own tabs in Loom Browser without the panel open first.
   startEmbeddedBrowserAgentClient(window);
@@ -1671,6 +1678,7 @@ ipcMain.handle("loom:open-thread-window", fromLoomRenderer((_event, threadId: st
   backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0e11" : "#f7f7f8",
   readThread: id => runRpcCall("thread/read", { threadId: id, threadOnly: true }),
   onClosed: retireDesktopWindow,
+  watchUiWindow, recoverUiWindow,
 })));
 ipcMain.handle("loom:embedded-browser", async (event, command: EmbeddedBrowserCommand) => {
   if (!mainWindow || mainWindow.isDestroyed() || !sentByLoomRenderer(event)) {

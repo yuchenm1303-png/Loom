@@ -1,0 +1,20 @@
+.ui-update-notice {
+  position: fixed;
+  z-index: 10020;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  gap: 18px;
+  width: min(360px, calc(100vw - 48px));
+  padding: 16px 18px;
+  border: 1px solid var(--border, #40404a);
+  border-radius: 14px;
+  color: var(--text, #e9e9ed);
+  background: var(--panel, #222228);
+  box-shadow: 0 8px 32px #0003;
+  font-size: 13px;
+}
+.ui-update-notice strong { font-weight: 600; }
+.ui-update-notice p { margin: 6px 0 0; line-height: 1.6; opacity: .75; }
+.ui-update-notice button { flex: none; align-self: flex-start; border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 20px; line-height: 1; }
+.ui-update-notice button:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }

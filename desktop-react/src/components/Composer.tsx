@@ -207,7 +207,7 @@ function SteeringComposer({
 
   return (
     <ComposerPanelHost host={panels}>
-    <div ref={rootRef} className="composer-wrap composer-refined live-steering-composer">
+    <div ref={rootRef} className="composer-wrap composer-refined live-steering-composer" data-loom-update-blocked={Boolean(attachments.length || quote || pendingSends || stopping || pauseBusy)}>
       <form
         // Live steering is deliberately not `.is-running`: that legacy class
         // belongs to the old non-interactive working footer and historically
@@ -396,6 +396,7 @@ export const Composer = memo(function Composer(props: ComposerProps) {
   };
 
   return <>
+    <span hidden data-loom-update-blocked={Object.values(drafts).some(Boolean)} />
     {sendErrors[draftKey] && <p className="composer-attach-error" role="alert">Could not send: {sendErrors[draftKey]}</p>}
     <Crossfade block identity={String(Boolean(props.running))} className="composer-mode-crossfade">
       {props.running ? <SteeringComposer {...sharedProps} /> : <ComposerBase {...sharedProps} />}

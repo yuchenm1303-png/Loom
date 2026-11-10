@@ -1426,6 +1426,10 @@ export function useLoom() {
   useEffect(() => {
     let disposed = false;
     const bridge = getBridge();
+    const saveUiNavigation = () => {
+      try { sessionStorage.setItem("loom.ui-update.navigation", JSON.stringify({ threadId: activeIdRef.current })); } catch { /* Storage can be disabled. */ }
+    };
+    window.addEventListener("loom:ui-update-save", saveUiNavigation);
     void runStartup<InitializeResult, ThreadRecord>({
       connect: async () => {
         if (!bridge) {
@@ -1446,9 +1450,17 @@ export function useLoom() {
       openFirst: (thread) => openThread(thread.id),
       openRequested: async () => {
         const requested = conversationFromHash(location.hash);
-        if (!requested) return false;
-        await openThread(requested);
-        return true;
+        let saved: { threadId?: string } | null = null;
+        try {
+          const value = sessionStorage.getItem("loom.ui-update.navigation");
+          sessionStorage.removeItem("loom.ui-update.navigation");
+          if (value) saved = JSON.parse(value);
+        } catch { /* Use normal startup selection when storage is unavailable. */ }
+        if (requested) { await openThread(requested); return true; }
+        if (saved?.threadId === "") return true;
+        const restored = saved?.threadId && conversationFromHash(`#thread=${saved.threadId}`);
+        if (restored) { await openThread(restored); return true; }
+        return false;
       },
       failed: (cause) => {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -1458,6 +1470,7 @@ export function useLoom() {
     });
     return () => {
       disposed = true;
+      window.removeEventListener("loom:ui-update-save", saveUiNavigation);
     };
   }, [openThread, refreshModels, refreshProjects, refreshThreads]);
 

@@ -547,7 +547,7 @@ export function Composer({
 
   return (
     <ComposerPanelHost host={panels}>
-    <div className="composer-wrap composer-refined" ref={composerRootRef}>
+    <div className="composer-wrap composer-refined" ref={composerRootRef} data-loom-update-blocked={Boolean(attachments.length || quote || submittingRef.current)}>
       <div
         className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${panels.mounted ? "has-panel" : ""} ${dragging ? "is-dragging" : ""} ${hasDraftContent ? "has-content" : "is-empty"}`}
         onDragOver={(event) => {

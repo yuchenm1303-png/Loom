@@ -1,0 +1,53 @@
+name: Publish UI hot update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ui-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop-react/package-lock.json
+      - name: Install dependencies
+        working-directory: desktop-react
+        run: npm ci --no-audit --no-fund
+      - name: Build and validate UI update
+        working-directory: desktop-react
+        run: |
+          npm run build:electron
+          node --experimental-test-module-mocks --test electron/tests/uiUpdate*.test.mjs
+          npm run build:renderer
+          echo "LOOM_UI_BUILD=$(date +%s%3N)" >> "$GITHUB_ENV"
+      - name: Prepare immutable assets
+        working-directory: desktop-react
+        run: node scripts/build-ui-update.mjs
+      - name: Publish assets, then advance channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="ui-${LOOM_UI_BUILD}"
+          directory="desktop-react/release/${tag}"
+          gh release create "$tag" "$directory"/* --target "$(git rev-parse HEAD)" --prerelease --title "Loom UI ${LOOM_UI_BUILD}" --notes "Renderer-only update. Exact bootstrap and runtime contract required."
+          cp "$directory/stable.json" ui-runtime/stable.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ui-runtime/stable.json
+          git commit -m "chore(ui): publish renderer build ${LOOM_UI_BUILD}"
+          git push origin HEAD:main

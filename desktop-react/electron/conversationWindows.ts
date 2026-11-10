@@ -16,6 +16,8 @@ export async function openConversationWindow(threadId: string, options: {
   document: RendererDocument; preload: string; backgroundColor: string;
   readThread(id: string): Promise<unknown>;
   onClosed?(window: BrowserWindow): void;
+  watchUiWindow?(window: BrowserWindow, document: RendererDocument): void;
+  recoverUiWindow?(window: BrowserWindow): boolean;
 }): Promise<boolean> {
   if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(threadId)) throw new Error("Invalid conversation id");
   const existing = windows.get(threadId);
@@ -35,6 +37,9 @@ export async function openConversationWindow(threadId: string, options: {
   url.hash = new URLSearchParams({ thread: threadId }).toString();
   trustRendererDocument(window, options.document.url);
   installRendererContentSecurity(window, options.document);
+  options.watchUiWindow?.(window, options.document);
+  window.webContents.on("render-process-gone", () => { options.recoverUiWindow?.(window); });
+  window.webContents.on("preload-error", () => { options.recoverUiWindow?.(window); });
   installWindowChrome(window);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event, target) => {
@@ -50,6 +55,7 @@ export async function openConversationWindow(threadId: string, options: {
     await loading;
     return await focus(threadId, window);
   } catch (error) {
+    if (options.recoverUiWindow?.(window)) return true;
     if (!window.isDestroyed()) window.destroy();
     windows.delete(threadId);
     throw error;

@@ -21,6 +21,8 @@ export type ComputerLogExportResult = DiagnosticLogExportResult;
 export type BrowserLogExportResult = DiagnosticLogExportResult;
 
 export interface LoomBridge {
+  getUiUpdateStatus?(): Promise<{ phase: "waiting" | "updated"; build: number } | null>;
+  onUiUpdateStatus?(listener: (status: { phase: "waiting" | "updated"; build: number }) => void): () => void;
   /** Open/focus a separate trusted Loom conversation window; the Host keeps running when it closes. */
   openThreadWindow?(threadId: string): Promise<boolean>;
   windowControl?(action: "state" | "minimize" | "maximize" | "close" | "move", point?: { x: number; y: number }): Promise<{ maximized: boolean; x: number; y: number; width: number; height: number } | null>;

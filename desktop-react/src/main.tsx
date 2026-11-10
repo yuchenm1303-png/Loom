@@ -7,6 +7,7 @@ import { BootErrorBoundary } from "./components/BootErrorBoundary";
 import { GlobalContextMenu } from "./components/GlobalContextMenu";
 import { GlobalTooltip } from "./components/GlobalTooltip";
 import { SoftwareUpdatePortal } from "./components/SoftwareUpdatePortal";
+import { UiUpdateNotice } from "./components/UiUpdateNotice";
 import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
 import { bootstrapTheme } from "./theme";
 import { applyRendererScale, installNativeRendererScaleSync } from "./rendererScale";
@@ -144,6 +145,7 @@ createRoot(rootElement).render(
           <WebAppGate>
             <App />
             {!isLoomWebRuntime() ? <SoftwareUpdatePortal /> : null}
+            {!isLoomWebRuntime() ? <UiUpdateNotice /> : null}
             <GlobalContextMenu />
             <GlobalTooltip />
           </WebAppGate>
