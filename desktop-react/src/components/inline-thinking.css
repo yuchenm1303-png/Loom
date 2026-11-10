@@ -102,6 +102,11 @@
   animation: var(--thinking-sweep);
 }
 
+/* While the words roll, each character moves on its own layer and no longer takes part in the parent's text-clipped
+   gradient, so it paints itself in the band's resting colour; at rest the line is one text node again and the band
+   passes over it as before. */
+.thinking-shimmer .roll-ch { -webkit-text-fill-color: var(--shimmer-base); }
+
 /* Forced colours drop backgrounds: show the plain label. */
 @media (forced-colors: active) {
   .thinking-shimmer {
