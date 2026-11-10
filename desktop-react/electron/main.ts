@@ -54,7 +54,7 @@ import {
   resolveHostSandboxExecutable,
 } from "./hostRuntime.js";
 import { hostLaunchExecutable } from "./hostImage.js";
-import { RespawnPolicy } from "./hostRespawn.js";
+import { observeHostExit, RespawnPolicy } from "./hostRespawn.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1011,7 +1011,7 @@ class LoomRpcProcess {
     child.on("error", (error) => {
       if (this.child === child) this.failAll(error);
     });
-    child.on("exit", (code, signal) => {
+    observeHostExit(child, (code, signal) => {
       if (this.child !== child) return;
       this.child = null;
       this.initialized = false;

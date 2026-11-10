@@ -422,15 +422,8 @@ _CHECK_WORDS = {"failed": "your check did not pass the last time you ran it",
                 "not_run": "your check was not run"}
 
 
-def _command(data):
-    argv = data.get("argv")
-    if isinstance(argv, (list, tuple)):
-        return " ".join(str(part) for part in argv)
-    return str(data.get("command") or data.get("cmd") or "")
-
-
 def _program_name(value):
-    name = Path(str(value)).name.lower()
+    name = str(value).replace("\\", "/").rsplit("/", 1)[-1].lower()
     return name[:-4] if name.endswith(".exe") else name
 
 
@@ -438,12 +431,30 @@ def _ran(check, data):
     """Whether a run is the check: the same program (wherever it lives: a line put the runtime's Python first when
     `python` was not on PATH) with the same arguments, or the check inside a wrapper such as cmd /c or bash -lc."""
     run = data.get("argv")
-    if isinstance(run, (list, tuple)) and run and _program_name(run[0]) == _program_name(check[0]) and \
-            [str(part) for part in run[1:]] == check[1:]:
-        return True
-    text = " ".join(_command(data).split()).lower()
-    rest = " ".join(" ".join(check[1:]).split()).lower()
-    return _program_name(check[0]) in text and (not rest or rest in text)
+    if not check or not isinstance(run, (list, tuple)) or not run:
+        return False
+    program = _program_name(run[0])
+    command = None
+    windows = program == "cmd"
+    if windows:
+        # Only a single command whose exit code is the check's exit code is evidence.
+        options = [str(part).lower() for part in run[1:-1]]
+        if options and options[-1] == "/c" and all(part in {"/d", "/s"} for part in options[:-1]):
+            command = str(run[-1])
+    elif program in {"sh", "bash"} and len(run) == 3 and run[1] in {"-c", "-lc"}:
+        command = str(run[2])
+    if command is not None:
+        # A pipeline, echo, conditional, or trailing successful command can hide a failed check.
+        # Such compound runs need a separate direct check; do not guess at shell semantics.
+        if any(char in command for char in "&|;<>\r\n`$%!"):
+            return False
+        try:
+            run = shlex.split(command, posix=not windows)
+        except ValueError:
+            return False
+        if windows:
+            run = [part[1:-1] if len(part) > 1 and part[0] == part[-1] == '"' else part for part in run]
+    return bool(run and _program_name(run[0]) == _program_name(check[0]) and list(run[1:]) == list(check[1:]))
 
 
 def _check_result(service, session_id, check):

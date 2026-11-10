@@ -6,6 +6,19 @@
  * "Loom App Server is not running" over a stale "running", until someone opened the app. A Host that
  * keeps dying at once is a bug to look at, not to loop on, so the delay grows and the tries run out.
  */
+import type { ChildProcess } from "node:child_process";
+
+/** A failed spawn emits error + close, without exit. Observe both terminal events exactly once. */
+export function observeHostExit(child: ChildProcess, ended: (code: number | null, signal: NodeJS.Signals | null) => void): void {
+  const finish = (code: number | null, signal: NodeJS.Signals | null) => {
+    child.removeListener("exit", finish);
+    child.removeListener("close", finish);
+    ended(code, signal);
+  };
+  child.once("exit", finish);
+  child.once("close", finish);
+}
+
 export const RESPAWN_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000, 120_000];
 export const RESPAWN_MAX_TRIES = 8;
 /** A Host that stayed up this long was healthy: its next death starts the count again. */

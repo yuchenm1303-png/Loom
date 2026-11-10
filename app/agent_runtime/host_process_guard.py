@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Sequence
 
 _KILL_VERBS = re.compile(
-    r"\btaskkill\b|\bstop-process\b|\bpkill\b|\bkillall\b|\bkill\s+-\w*9|"
+    r"\btaskkill\b|\bstop-process\b|\bpkill\b|\bkillall\b|\bkill(?=\s)|"
     r"\bwmic\b[^|;&]*\b(delete|terminate)\b|\bterminate\b[^|;&]*\bwin32_process\b|"
     r"\bwin32_process\b[^|;&]*\bterminate\b|\bpskill\b|\bcim?instance\b[^|;&]*\bterminate\b",
     re.IGNORECASE,
@@ -67,7 +67,7 @@ def host_kill_reason(argv: Sequence[str], cwd: Path | None = None) -> str | None
 
     pieces = [" ".join(argv), *_scripts(argv, cwd)]
     for text in pieces:
-        for line in re.split(r"[\r\n]+", text):
+        for line in re.split(r"[\r\n;&]+", text):
             if not _KILL_VERBS.search(line):
                 continue
             pids = {int(p) for p in _PID_ARG.findall(line)} | {
@@ -76,7 +76,8 @@ def host_kill_reason(argv: Sequence[str], cwd: Path | None = None) -> str | None
                 return _message("its PID")
             by_name = _HOST_IMAGE.search(line)
             # `taskkill /PID 123` that merely mentions python elsewhere is a PID kill.
-            if by_name and not pids:
+            by_image = re.search(r"/im\s|/fi\s|-(?:name|processname)\s|\b(?:pkill|killall)\b|\bget-process\b", line, re.IGNORECASE)
+            if by_name and (not pids or by_image):
                 return _message(f"the image name {by_name.group(1)}")
             # A wildcard image kill takes the Host with it.
             if re.search(r"/im\s+\"?\*", line, re.IGNORECASE):

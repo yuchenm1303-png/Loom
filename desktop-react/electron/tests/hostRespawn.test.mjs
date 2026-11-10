@@ -1,7 +1,27 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 
-const { RESPAWN_DELAYS_MS, RESPAWN_MAX_TRIES, RespawnPolicy, STABLE_AFTER_MS } = await import("../../dist-electron/hostRespawn.js");
+const { observeHostExit, RESPAWN_DELAYS_MS, RESPAWN_MAX_TRIES, RespawnPolicy, STABLE_AFTER_MS } = await import("../../dist-electron/hostRespawn.js");
+
+test("a failed spawn without exit reaches recovery", async () => {
+  const child = spawn(process.execPath + "-missing-loom-host", [], { windowsHide: true });
+  let error;
+  child.on("error", (value) => { error = value; });
+  await new Promise((resolve) => observeHostExit(child, resolve));
+  assert.equal(error.code, "ENOENT");
+});
+
+test("exit followed by close schedules only one restart", () => {
+  const child = new EventEmitter();
+  const outcomes = [];
+  observeHostExit(child, (code, signal) => outcomes.push([code, signal]));
+  child.emit("exit", 1, null);
+  child.emit("close", 1, null);
+  assert.deepEqual(outcomes, [[1, null]]);
+  assert.equal(child.listenerCount("close"), 0);
+});
 
 function clock() {
   let now = 1_000_000;

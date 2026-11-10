@@ -1111,9 +1111,30 @@ def test_a_check_is_an_argument_list_run_by_any_path_to_its_program(tmp_path):
     assert goal_lines._ran(lines[0]["checkArgv"], ran), "the line used the runtime's Python, not the one on PATH"
     assert not goal_lines._ran(lines[0]["checkArgv"], {"argv": ["python", "check.py"], "returncode": 0})
     wrapped = {"argv": ["cmd", "/c", "python check.py --name 甲 乙"], "returncode": 0}
-    assert goal_lines._ran(["python", "check.py"], wrapped)
+    assert not goal_lines._ran(["python", "check.py"], wrapped), "extra arguments change what was checked"
+    assert goal_lines._ran(["python", "check.py"], {"argv": ["cmd", "/c", "python check.py"]})
     (tmp_path / "check.sh").write_text("exit 0\n")
     assert goal_lines._validated([line("乙", ["x"], check=["check.sh"])], workspace=tmp_path)[0]["check"] == "check.sh"
+
+
+@pytest.mark.parametrize("argv", [
+    ["echo", "python check.py"],
+    ["python", "check.py.bak"],
+    ["python", "check.py", "--skip-tests"],
+    ["cmd", "/c", "echo python check.py"],
+    ["cmd", "/c", "python check.py & echo done"],
+    ["bash", "-lc", "python check.py || true"],
+    ["bash", "-c", "echo 'python check.py'"],
+])
+def test_a_mentioned_check_or_a_masked_exit_code_is_not_verification(argv):
+    assert not goal_lines._ran(["python", "check.py"], {"argv": argv, "returncode": 0})
+
+
+def test_a_single_wrapped_check_preserves_quoted_arguments():
+    check = ["python", "check.py", "--name", "甲 乙"]
+    assert goal_lines._ran(check, {"argv": ["cmd", "/d", "/s", "/c", 'python check.py --name "甲 乙"']})
+    assert goal_lines._ran(check, {"argv": ["bash", "-lc", "python check.py --name '甲 乙'"]})
+    assert goal_lines._ran(check, {"argv": [r"E:\ai run\.venv\Scripts\python.exe", *check[1:]]})
 
 
 def test_a_sub_agent_woken_by_a_message_runs_on_the_model_it_was_started_on(tmp_path):

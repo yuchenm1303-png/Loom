@@ -26,6 +26,12 @@ from app.agent_runtime.tools import ToolContext
     ["wmic", "process", "where", "name='python.exe'", "delete"],
     ["taskkill", "/F", "/PID", str(os.getpid())],
     ["powershell", "-Command", f"Stop-Process -Id {os.getpid()}"],
+    ["kill", str(os.getpid())],
+    ["kill", "-TERM", str(os.getpid())],
+    ["cmd", "/c", "taskkill /PID 999999 & taskkill /IM python.exe /F"],
+    ["powershell", "-Command", "Stop-Process -Id 999999; Stop-Process -Name loom-host -Force"],
+    ["taskkill", "/PID", "999999", "/IM", "python.exe", "/F"],
+    ["cmd", "/c", "taskkill /IM python.exe /F & echo /PID 999999"],
 ])
 def test_kills_that_reach_the_host_are_refused(argv):
     assert host_kill_reason(argv)
