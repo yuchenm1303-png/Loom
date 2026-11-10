@@ -4,6 +4,8 @@ import { MotionRows, MotionValue } from "./MotionRows";
 import { AnimatedFold } from "../motion/AnimatedFold";
 
 function agentState(agent: ConversationAgent) {
+  // Closed by the Host after it reported: its result stays, so it never reads as waiting to be collected.
+  if (agent.finished) return ({ done: "已完成", failed: "没做完", stopped: "已停止" } as Record<string, string>)[agent.outcome || "done"] || "已完成";
   if (agent.state === "waiting_approval") return "等待批准";
   if (agent.executionRunning) return "运行中";
   if (agent.queueDepth > 0) return "排队中";
@@ -23,9 +25,9 @@ export function ConversationAgents({ overview, online, onOpen }: { overview: Pro
       <div>
         <h3>{roles[agent.role] || agent.role || "子代理"}</h3>
         <p className="m-agent-state" role="status"><MotionValue value={agentState(agent)}>{agentState(agent)}</MotionValue></p>
-        <p>{agent.activity || (agent.executionRunning ? "正在处理任务，等待新的活动记录" : "打开执行对话查看详情")}</p>
+        <p>{agent.finished ? (agent.result ? (agent.result.length > 220 ? `${agent.result.slice(0, 218)}…` : agent.result) : "没有留下文字结果，打开执行对话查看") : agent.activity || (agent.executionRunning ? "正在处理任务，等待新的活动记录" : "打开执行对话查看详情")}</p>
         {agent.error ? <p className="m-alert">{agent.error}</p> : null}
-        <p className="m-note">第 {agent.step} 步 · {agent.id.slice(0, 8)}</p>
+        <p className="m-note">{agent.finished ? `${agent.tokens ? `${Math.round(agent.tokens / 1000)}K · ` : ""}${agent.id.slice(0, 8)}` : `第 ${agent.step} 步 · ${agent.id.slice(0, 8)}`}</p>
       </div>
       <button type="button" className="m-icon-button" disabled={!online} aria-label={`打开${roles[agent.role] || agent.role || "子代理"}的执行对话`} onClick={() => onOpen(agent.id)}><ChevronRight size={20} strokeWidth={1.75} /></button>
     </article>}</MotionRows>

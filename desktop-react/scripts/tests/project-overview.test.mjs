@@ -483,3 +483,42 @@ test("the goal row carries its charter: the deliverable, where the work is, and 
     [["done", "已达标"], ["failed", "未达标"], ["running", "待完成 · 第 1 轮评审"], ["failed", "已放弃"]]);
   assert.equal(toGoal({ ...goal, charter: null }).charter, undefined);
 });
+
+test("a sub-agent the Host closed keeps its card: how it ended, what it handed back, what it cost", () => {
+  const now = Date.parse("2026-11-10T08:00:00Z");
+  const overview = { run: null, program: null, children: [], events: [], agents: [],
+    conversationAgents: [
+      { id: "old", parentId: "t", role: "goal-line", state: "completed", executionRunning: false, queueDepth: 0, activity: "", step: 0, finished: true, outcome: "done",
+        startedAt: "2026-11-10T06:00:00Z", endedAt: "2026-11-10T07:30:00Z", result: "## 报告\n做完了：P3 曲线 4 个点，检查通过\n文件 results/a.json", tokens: 5_716_618 },
+      { id: "bad", parentId: "t", role: "goal-line", state: "failed", executionRunning: false, queueDepth: 0, activity: "", step: 0, finished: true, outcome: "failed",
+        startedAt: "2026-11-10T06:00:00Z", endedAt: "2026-11-10T06:10:00Z", result: "", error: "额度已耗尽", tokens: 400_000 },
+      { id: "live", parentId: "t", role: "goal-check", state: "running", executionRunning: true, queueDepth: 0, activity: "", step: 2, startedAt: "2026-11-10T07:55:00Z" }] };
+  const rows = module.exports.conversationFlowAgents(overview, now);
+  assert.deepEqual(rows.map((row) => row.id), ["live", "old", "bad"], "what is working first, what finished after it");
+  const [live, done, failed] = rows;
+  assert.equal(live.done, false);
+  assert.deepEqual([done.done, done.outcome, done.activity, done.elapsed, done.cost], [true, "done", "做完了：P3 曲线 4 个点，检查通过", "1 时", "5.7M"]);
+  assert.match(done.detail, /文件 results\/a\.json/);
+  assert.deepEqual([failed.outcome, failed.activity, failed.cost], ["failed", "额度已耗尽", "400K"]);
+  assert.equal(module.exports.conversationFlowAgents(overview, now, "en")[1].roleLabel, "Line");
+});
+
+test("the goal card keeps the round's lines, with what the round came to, after the last one ends", () => {
+  const base = { objective: "研究", status: "active", phase: "working", tokens: 1_000_000, tokenBudget: 8_000_000, turns: 3, reason: "", summary: "", checked: false };
+  const round = [
+    { title: "正式实验", state: "done", check: "passed", tokens: 3_600_000, report: "跑完 4 个点", changed: ["src/sweep.py", "results/a.json"] },
+    { title: "数学与文献审计", state: "done", check: "failed", tokens: 700_000, report: "两处推导不闭合" },
+    { title: "链路自适应", state: "failed", check: "", tokens: 5_700_000, why: "额度耗尽" }];
+  const settled = toGoal({ ...base, lines: round });
+  assert.equal(settled.linesSummary, "这一轮 3 条：2 条完成，1 条没做完，检查通过 1/2");
+  assert.deepEqual(settled.lines.map((line) => line.label), ["完成，检查通过 · 3.6M", "完成，但验证没通过 · 700K", "没做完 · 5.7M"]);
+  assert.deepEqual([settled.lines[0].report, settled.lines[0].changed], ["跑完 4 个点", ["src/sweep.py", "results/a.json"]]);
+  assert.equal(settled.lines[2].report, undefined);
+  const running = toGoal({ ...base, lines: [{ ...round[0], state: "running" }, round[1]] });
+  assert.match(running.text, /2 条线并行，1 条完成/);
+  assert.equal(running.linesSummary, undefined, "a summary only once nothing is working");
+  assert.equal(toGoal({ ...base, lines: [] }).lines, undefined);
+  assert.equal(toGoal({ ...base, lines: round }, "en").linesSummary, "This round, 3 lines: 2 done, 1 not finished, checks passed 1/2");
+  const ended = toGoal({ ...base, status: "complete", checked: true, lines: round });
+  assert.equal(ended.lines.length, 3, "a finished goal still shows what its last round did");
+});

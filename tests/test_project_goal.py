@@ -975,7 +975,34 @@ def test_overview_exposes_independent_checker_without_a_project_run(tmp_path):
         assert agent["role"] == "goal-check" and agent["parentId"] == source
         assert agent["state"] == "completed" and not agent["executionRunning"]
         runtime.agent_control.close_agent(source, checker)
-        assert service.project_overview({"threadId": source})["conversationAgents"] == []
+        # The Host closes a checker the moment it rules; the card must outlive that, as a finished one.
+        kept = service.project_overview({"threadId": source})["conversationAgents"]
+        assert [item["id"] for item in kept] == [checker]
+        assert kept[0]["finished"] is True and kept[0]["outcome"] == "done" and kept[0]["executionRunning"] is False
+        assert kept[0]["tokens"] > 0 and kept[0]["endedAt"] and kept[0]["result"].startswith("passed: ")
+    finally:
+        runtime.close()
+
+
+def test_finished_sub_agents_stay_for_the_current_goal_only_and_only_the_newest(tmp_path, monkeypatch):
+    from app.project_runner import service as service_module
+    service, runtime, _, source = conversation(tmp_path, [START, answer("已经提交")] + [answer(f"做完{n}") for n in range(9)])
+    try:
+        control = runtime.agent_control
+        ids = []
+        for number in range(8):
+            child = control.spawn(source, f"任务{number}", role="investigator", history_mode="none", background=True).node.session_id
+            control.wait(source, child, timeout_seconds=10)
+            control.close_agent(source, child)
+            ids.append(child)
+        shown = service._conversation_agent_views(source)["conversationAgents"]
+        assert len(shown) == service_module.FINISHED_AGENTS_SHOWN and all(item["finished"] for item in shown)
+        assert {item["id"] for item in shown} <= set(ids)
+        record = service.weave_goals.get(source)
+        service.weave_goals.put(source, {**record, "startedAt": time.time() + 60})  # the next goal began after them
+        assert service._conversation_agent_views(source)["conversationAgents"] == []
+        service.weave_goals.take(source)  # no goal: only open relations, as before
+        assert service._conversation_agent_views(source)["conversationAgents"] == []
     finally:
         runtime.close()
 

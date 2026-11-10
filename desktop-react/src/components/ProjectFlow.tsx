@@ -69,6 +69,8 @@ export interface FlowAgent {
   waiting?: boolean;
   /** What this agent is when it is not one of a project's (a goal's referee, a line, an investigation). */
   roleLabel?: string;
+  /** How a finished sub-agent ended (done, failed, stopped), what it handed back in full, and what it cost. */
+  outcome?: "done" | "failed" | "stopped"; detail?: string; cost?: string;
 }
 
 export interface FlowData {
@@ -92,7 +94,10 @@ export interface FlowData {
   /** A long goal this conversation is pursuing by itself, with no project. */
   goal?: { budget?: GoalBudgetState; text: string; detail: string; live: boolean; action?: "pause" | "resume"; dismiss: boolean;
           /** The Host stopped the goal: the card unfolds once for it and says why in `note`, not only in a tooltip. */
-          attention?: boolean; note?: string; lines?: { title: string; state: string; label: string; why?: string }[];
+          attention?: boolean; note?: string;
+          lines?: { title: string; state: string; label: string; why?: string; report?: string; changed?: string[] }[];
+          /** What the round came to once no line is still working; the list under it stays until the next round. */
+          linesSummary?: string;
           charter?: { deliverable: string; where: string; items: { title: string; state: string; label: string }[] };
           /** The checker's own model ("" = the conversation's), and why the last check could not use it. */
           checker?: { selection: string; error?: string } } | null;
@@ -220,7 +225,7 @@ const zhText = {
   attention: { recover: "重新复审并继续", budget: "追加预算", approval: "允许一次", resume: "继续" }, decline: "拒绝", noAgents: "等待调度", budgetHint: "项目和长目标的总 token 预算，普通对话不受它限制：点击或滚轮切换，↑↓ 也可以；16M 之后再点一下可以输入任意额度", budgetCustom: "自定义预算（单位：百万 token，1–1000）", agentsHint: "项目同时工作的 agent 上限，普通对话不受它影响", keyHint: ["发送", "换行"], expand: "展开", collapse: "收起",
   branches: "分支面板", agentCards: "Agent", foldBranch: (name: string) => `收起${name}`, unfoldBranch: (name: string) => `展开${name}`,
   history: "对话记录", historyEmpty: "还没有别的建造对话", newThread: "新建建造对话",
-  goalDismiss: "收起", goalChecker: "核验模型", goalCheckerSame: "与对话相同", goalCheckerHint: "独立核验用的模型：它决定哪些意见算数、目标何时停下；每个目标只核验几次，换更强的模型花费不大", goalCheckerError: (error: string) => `所选核验模型不可用，上次核验用了对话模型：${error}`, taskDropped: (count: number) => `已放弃 ${count} 项（未执行，不计入）`, goalCharter: "交付", goalDeliverable: "交付物", goalCriteria: "验收标准", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
+  agentResult: "查看结果", lineFiles: "改过的文件", goalDismiss: "收起", goalChecker: "核验模型", goalCheckerSame: "与对话相同", goalCheckerHint: "独立核验用的模型：它决定哪些意见算数、目标何时停下；每个目标只核验几次，换更强的模型花费不大", goalCheckerError: (error: string) => `所选核验模型不可用，上次核验用了对话模型：${error}`, taskDropped: (count: number) => `已放弃 ${count} 项（未执行，不计入）`, goalCharter: "交付", goalDeliverable: "交付物", goalCriteria: "验收标准", goalCard: "长目标", goalPending: "这条对话还没有长目标；说出时间或说你不在，它会开一个", taskListPending: "这条对话用到工具时会列出任务清单", scopePending: "任务规划后显示工作范围", knowledgePending: "还没有复审记录或项目笔记",
   agentsPending: "当前没有可查看的 agent，任务调度后自动启用", timelinePending: "还没有执行记录，建造开始后自动启用",
   filesUnavailable: "当前没有可查看或添加的参考文件", historyUnavailable: "当前环境未提供对话记录",
 };
@@ -251,7 +256,7 @@ const enText: typeof zhText = {
   attention: { recover: "Re-review and continue", budget: "Add budget", approval: "Allow once", resume: "Continue" }, decline: "Decline", noAgents: "Waiting to schedule", budgetHint: "The total token budget for projects and long goals; plain conversation turns are not limited by it. Click or scroll to change, or use ↑↓; one more click after 16M lets you type any amount", budgetCustom: "Custom budget (millions of tokens, 1–1000)", agentsHint: "Most agents a project runs at once; plain conversation turns are not affected", keyHint: ["send", "new line"], expand: "More", collapse: "Less",
   branches: "Branch panels", agentCards: "Agents", foldBranch: (name: string) => `Hide ${name}`, unfoldBranch: (name: string) => `Show ${name}`,
   history: "Conversations", historyEmpty: "No other Weave conversations yet", newThread: "New Weave conversation",
-  goalDismiss: "Dismiss", goalChecker: "Check model", goalCheckerSame: "Same as the conversation", goalCheckerHint: "The model of the independent check: it decides which points count and when the goal stops; a goal is checked only a few times, so a stronger model costs little", goalCheckerError: (error: string) => `The picked check model is unavailable; the last check ran on the conversation model: ${error}`, taskDropped: (count: number) => `${count} dropped (not run, not counted)`, goalCharter: "Deliverable", goalDeliverable: "Deliverable", goalCriteria: "Acceptance criteria", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
+  agentResult: "Show result", lineFiles: "Files changed", goalDismiss: "Dismiss", goalChecker: "Check model", goalCheckerSame: "Same as the conversation", goalCheckerHint: "The model of the independent check: it decides which points count and when the goal stops; a goal is checked only a few times, so a stronger model costs little", goalCheckerError: (error: string) => `The picked check model is unavailable; the last check ran on the conversation model: ${error}`, taskDropped: (count: number) => `${count} dropped (not run, not counted)`, goalCharter: "Deliverable", goalDeliverable: "Deliverable", goalCriteria: "Acceptance criteria", goalCard: "Long goal", goalPending: "No long goal here yet; give it time or say you will be away and it starts one", taskListPending: "A task list appears when this conversation uses tools", scopePending: "File scope appears after tasks are planned", knowledgePending: "No review checks or project notes yet",
   agentsPending: "No agents to inspect yet; available once tasks are dispatched", timelinePending: "No execution records yet; available once the build starts",
   filesUnavailable: "No reference files to view or add here", historyUnavailable: "Conversation history is not available here",
 };
@@ -1629,15 +1634,34 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
               ) : null}
               {goal.checker?.error ? <p className="pf-goal-checker-error">{text.goalCheckerError(goal.checker.error)}</p> : null}
               {goal.lines?.length ? (
-                <ul className="pf-goal-lines">
-                  {goal.lines.map((line) => (
-                    <li key={line.title} data-state={line.state} title={line.why || undefined}>
-                      <i aria-hidden="true" />
-                      <span>{line.title}</span>
-                      <small>{line.label}</small>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  {goal.linesSummary ? <p className="pf-goal-lines-head">{goal.linesSummary}</p> : null}
+                  <ul className="pf-goal-lines">
+                    {goal.lines.map((line) => (
+                      <li key={line.title} data-state={line.state} title={line.why || undefined}>
+                        {line.report || line.changed?.length ? (
+                          <details className="pf-line-more">
+                            <summary>
+                              <i aria-hidden="true" />
+                              <span>{line.title}</span>
+                              <small>{line.label}</small>
+                            </summary>
+                            {line.report ? <p className="pf-line-report">{line.report}</p> : null}
+                            {line.changed?.length ? (
+                              <p className="pf-line-files"><b>{text.lineFiles}</b> {line.changed.slice(0, 8).join(" · ")}{line.changed.length > 8 ? ` +${line.changed.length - 8}` : ""}</p>
+                            ) : null}
+                          </details>
+                        ) : (
+                          <>
+                            <i aria-hidden="true" />
+                            <span>{line.title}</span>
+                            <small>{line.label}</small>
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </>
               ) : null}
               {goal.charter ? (
                 <section className="pf-goal-charter" aria-label={text.goalCharter}>
@@ -1851,7 +1875,9 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                   <div className="pf-agent-copy">
                     <div className="pf-agent-line">
                       <strong>{agent.roleLabel || text.roles[agent.role]}</strong>
-                      {agent.done ? <span className="pf-agent-check"><Check size={8} strokeWidth={3.2} /></span> : <span className="pf-agent-live" data-waiting={agent.waiting || undefined} />}
+                      {agent.done ? <span className="pf-agent-check" data-outcome={agent.outcome || undefined}>
+                        {agent.outcome === "failed" ? <X size={8} strokeWidth={3.2} /> : agent.outcome === "stopped" ? <Minus size={8} strokeWidth={3.2} /> : <Check size={8} strokeWidth={3.2} />}
+                      </span> : <span className="pf-agent-live" data-waiting={agent.waiting || undefined} />}
                       <span className="pf-agent-time">{agent.elapsed}</span>
                     </div>
                     <span className="pf-agent-activity" key={`${agent.step}:${agent.activity}`} title={agent.activity}>{agent.activity}</span>
@@ -1862,6 +1888,13 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
                     <span className="pf-dashes-lit" />
                     <span className="pf-dashes-glint" key={agent.step} />
                   </div>
+                  {/* What a finished sub-agent handed back stays one click away; the Host closed it, the card did not go. */}
+                  {agent.detail ? (
+                    <details className="pf-agent-more">
+                      <summary>{agent.cost ? `${text.agentResult} · ${agent.cost}` : text.agentResult}</summary>
+                      <p>{agent.detail}</p>
+                    </details>
+                  ) : null}
                 </div>
               </Card>
             </div>

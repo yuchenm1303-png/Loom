@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import shutil
+from datetime import datetime, timezone
 import json
 import uuid
 import time
@@ -26,9 +27,32 @@ from .workspace import WorkspaceMixin, describe as describe_workspace
 EPISODE_CARRY_TOKENS = 12000
 # Working context of a project session: auto-compaction keeps requests under it.
 PROJECT_WORKING_CONTEXT_TOKENS = 48000
+# Finished sub-agents of the current long goal the hub keeps showing (the newest; a new goal starts clean).
+FINISHED_AGENTS_SHOWN = 6
 # A long goal's lead, lines and checker run for hours. Without a working context a model with no
 # declared window never compacted: one line sent 606k tokens per request and the quota ran out.
 GOAL_WORKING_CONTEXT_TOKENS = 200000
+
+
+def _iso(value):
+    """A stored timestamp as an aware datetime; unreadable ones count as ancient, so they are never shown."""
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _result_text(role, text):
+    """A sub-agent's last words for its card; a checker's verdict reads as the verdict, not as JSON."""
+    text = str(text or "").strip()
+    if role == "goal-check":
+        try:
+            verdict = json.loads(text[text.index("{"):text.rindex("}") + 1])
+            return f"{verdict.get('verdict', '')}: {verdict.get('summary', '')}".strip(": ")[:600]
+        except (ValueError, AttributeError):
+            pass
+    return text[:600]
 
 
 def _short_word(word):
@@ -708,9 +732,42 @@ class ProjectServiceMixin(WorkspaceMixin):
                                "state": item.session_status.value, "executionRunning": item.execution_running,
                                "queueDepth": item.queue_depth, "activity": view["activity"], "step": view["step"],
                                "startedAt": view["startedAt"] or node.created_at, "error": (item.error or "")[:500]})
+            agents += self._finished_agent_views(thread_id, descendants, control)
             return {"conversationAgents": agents}
         except (OSError, ValueError, RuntimeError) as cause:
             return {"conversationAgents": [], "conversationAgentsError": str(cause)[:300]}
+
+    def _finished_agent_views(self, thread_id, descendants, control):
+        """What the current long goal's sub-agents did, after the Host closed them.
+
+        The Host closes a line when it reports, a checker when it rules and an investigation when it answers, so
+        a card that listed only open relations lasted exactly as long as the work and then vanished, with the
+        report, the check and the cost on no screen. The newest few stay until the next goal starts."""
+        goals = getattr(self, "weave_goals", None)
+        record = goals.get(thread_id) if goals is not None else None
+        if not record:
+            return []
+        started = datetime.fromtimestamp(record["startedAt"], timezone.utc)
+        shown = []
+        for item in control.list_tree(thread_id, include_closed=True):
+            node = item.node
+            if node.session_id == thread_id or node.session_id not in descendants or node.relation_status.value != "closed":
+                continue
+            if _iso(node.created_at) < started:
+                continue
+            shown.append(item)
+        shown.sort(key=lambda item: item.node.updated_at, reverse=True)
+        views = []
+        for item in shown[:FINISHED_AGENTS_SHOWN]:
+            node, status = item.node, item.session_status.value
+            session = self.store.load(node.session_id)
+            views.append({"id": node.session_id, "parentId": node.parent_session_id, "role": node.role, "state": status,
+                          "executionRunning": False, "queueDepth": 0, "activity": "", "step": 0,
+                          "startedAt": node.created_at, "endedAt": node.updated_at, "finished": True,
+                          "outcome": {"completed": "done", "failed": "failed"}.get(status, "stopped"),
+                          "result": _result_text(node.role, item.final_text),
+                          "tokens": int(goal.charged(session.usage)), "error": (item.error or "")[:500]})
+        return views
 
     def _project_workspace_state(self, thread_id):
         return describe_workspace(self._load(thread_id).workspace_dir)

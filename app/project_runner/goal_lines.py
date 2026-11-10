@@ -422,6 +422,14 @@ _CHECK_WORDS = {"failed": "your check did not pass the last time you ran it",
                 "not_run": "your check was not run"}
 
 
+def _command(data):
+    """A run's command as one line, for the checker's trace of what the work ran (goal._trace)."""
+    argv = data.get("argv")
+    if isinstance(argv, (list, tuple)):
+        return " ".join(str(part) for part in argv)
+    return str(data.get("command") or data.get("cmd") or "")
+
+
 def _program_name(value):
     name = str(value).replace("\\", "/").rsplit("/", 1)[-1].lower()
     return name[:-4] if name.endswith(".exe") else name

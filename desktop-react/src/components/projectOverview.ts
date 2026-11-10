@@ -17,6 +17,8 @@ export interface OverviewEvent { sequence: number; runId: string; kind: string; 
 export interface ConversationAgent {
   id: string; parentId: string; role: string; state: string; executionRunning: boolean; queueDepth: number;
   activity: string; step: number; startedAt?: string | null; error?: string;
+  /** Closed by the Host after it reported or ruled: kept for the current goal so what it did stays readable. */
+  finished?: boolean; endedAt?: string; outcome?: "done" | "failed" | "stopped"; result?: string; tokens?: number;
 }
 export interface ProjectProgram {
   handoffHold?: string;
@@ -186,9 +188,29 @@ const CONVERSATION_ROLES: Record<string, { zh: string; en: string; role: FlowAge
  *  agent branch. The phone showed them; the desktop hub listed only a project's agents, so a running check had no card. */
 export function conversationFlowAgents(overview: ProjectOverview, now: number, lang: Lang = "zh"): FlowAgent[] {
   const taken = new Set(overview.agents.map((agent) => agent.id));
-  return (overview.conversationAgents || []).filter((agent) => !taken.has(agent.id)).map((agent) => {
+  const money = (value: number) => value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M` : `${Math.round(value / 1000)}K`;
+  // What is working first; what finished stays below it, newest first as the Host sends it.
+  const listed = (overview.conversationAgents || []).filter((agent) => !taken.has(agent.id));
+  const ordered = [...listed.filter((agent) => !agent.finished), ...listed.filter((agent) => agent.finished)];
+  return ordered.map((agent) => {
     const kind = CONVERSATION_ROLES[agent.role] || CONVERSATION_ROLES.worker;
     const startedAt = agent.startedAt ? Date.parse(agent.startedAt) : now;
+    if (agent.finished) {
+      const endedAt = agent.endedAt ? Date.parse(agent.endedAt) : now;
+      const outcome = agent.outcome || "done";
+      // The first sentence of substance: a heading above it ("## 报告") says nothing, so it only stands in when it is all there is.
+      const rows = (agent.result || "").split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
+      const plain = (row: string) => row.replace(/^[#>*\-\s]+/, "").trim();
+      const first = plain(rows.find((row) => !row.startsWith("#")) || rows[0] || "");
+      const headline = outcome === "failed" ? (agent.error || first || (lang === "en" ? "Did not finish" : "没做完"))
+        : outcome === "stopped" ? (first || (lang === "en" ? "Stopped before it reported" : "在汇报前被停下"))
+        : (first || (lang === "en" ? "Done" : "已完成"));
+      const detail = [agent.result, outcome === "failed" ? agent.error : ""].filter(Boolean).join("\n\n");
+      return { id: agent.id, role: kind.role, name: lang === "en" ? kind.en : kind.zh, roleLabel: lang === "en" ? kind.enRole : kind.zhRole,
+               step: agent.step, activity: headline.length > 120 ? `${headline.slice(0, 118)}…` : headline, done: true, outcome,
+               ...(detail ? { detail } : {}), ...(agent.tokens ? { cost: money(agent.tokens) } : {}),
+               elapsed: words[lang].short(Math.max(0, Math.round((endedAt - (Number.isFinite(startedAt) ? startedAt : endedAt)) / 60000))) };
+    }
     const idle = !agent.executionRunning && agent.state !== "waiting_approval";
     const activity = agent.activity ? activityText(agent.activity, lang)
       : agent.state === "waiting_approval" ? (lang === "en" ? "Waiting for approval" : "等待批准")
@@ -482,9 +504,43 @@ export function toCharter(goal: LongGoal, lang: "zh" | "en" = "zh"): NonNullable
 export function toGoal(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {
   const shown = goalLine(goal, lang);
   const charter = shown && goal ? toCharter(goal, lang) : undefined;
+  // The round's lines used to vanish the moment the last one ended, with their reports and checks on no screen:
+  // they stay, with a summary, until the next round replaces them.
+  const round = goal?.lines ?? [];
+  const settled = shown && round.length && !shown.lines ? { lines: roundLines(round, lang === "en"), linesSummary: roundSummary(round, lang === "en") } : {};
   const checker = goal?.checkerModel?.selection || goal?.checkerModelError
     ? { checker: { selection: goal.checkerModel?.selection || "", error: goal.checkerModelError || undefined } } : {};
-  return shown ? { ...shown, ...(charter ? { charter } : {}), ...checker } : shown;
+  return shown ? { ...shown, ...settled, ...(charter ? { charter } : {}), ...checker } : shown;
+}
+
+const moneyText = (value: number) => value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M` : `${Math.round(value / 1000)}K`;
+
+/** One line of the goal's round as the card lists it: how it stands, what it handed back, which files it changed. */
+function roundLines(round: GoalLine[], en: boolean): NonNullable<NonNullable<FlowData["goal"]>["lines"]> {
+  const at = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString(en ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const label = (item: GoalLine) => {
+    const used = item.tokens ? ` · ${moneyText(item.tokens)}` : "";
+    if (item.state === "waiting" && item.waitKind === "quota") return en ? `Model quota used up, next try ${at(item.retryAt ?? 0)}` : `模型额度已用完，${at(item.retryAt ?? 0)} 再试`;
+    if (item.state === "waiting") return en ? `Provider unavailable, retrying at ${at(item.retryAt ?? 0)}` : `模型服务不可用，${at(item.retryAt ?? 0)} 重试`;
+    if (item.state === "reporting") return (en ? "At its limit, wrapping up" : "到上限，正在收尾") + used;
+    if (item.state === "done" && item.check && item.check !== "passed") return (en ? "Done, its check did not pass" : "完成，但验证没通过") + used;
+    if (item.state === "done" && item.check === "passed") return (en ? "Done, check passed" : "完成，检查通过") + used;
+    if (item.state === "done") return (en ? "Done" : "完成") + used;
+    if (item.state === "failed") return (en ? "Not finished" : "没做完") + used;
+    return (en ? "Working" : "在做") + used;
+  };
+  return round.map((item) => ({ title: item.title, state: item.state, label: label(item), why: item.why,
+    ...(item.report ? { report: item.report } : {}), ...(item.changed?.length ? { changed: item.changed } : {}) }));
+}
+
+/** "This round: 2 lines, 1 done, checks passed 1/1": what the round came to, once no line is still working. */
+function roundSummary(round: GoalLine[], en: boolean): string {
+  const done = round.filter((item) => item.state === "done").length;
+  const failed = round.filter((item) => item.state === "failed").length;
+  const checked = round.filter((item) => item.check);
+  const passed = checked.filter((item) => item.check === "passed").length;
+  if (en) return `This round, ${round.length} line${round.length > 1 ? "s" : ""}: ${done} done${failed ? `, ${failed} not finished` : ""}${checked.length ? `, checks passed ${passed}/${checked.length}` : ""}`;
+  return `这一轮 ${round.length} 条：${done} 条完成${failed ? `，${failed} 条没做完` : ""}${checked.length ? `，检查通过 ${passed}/${checked.length}` : ""}`;
 }
 
 function goalLine(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): FlowData["goal"] {
@@ -508,21 +564,10 @@ function goalLine(goal: LongGoal | null | undefined, lang: "zh" | "en" = "zh"): 
   const open = round.filter((item) => item.state !== "done" && item.state !== "failed").length;
   if (goal.status === "active" && open) {
     const finished = round.length - open;
-    const at = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString(en ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const label = (item: GoalLine) => {
-      const used = item.tokens ? ` · ${money(item.tokens)}` : "";
-      if (item.state === "waiting" && item.waitKind === "quota") return en ? `Model quota used up, next try ${at(item.retryAt ?? 0)}` : `模型额度已用完，${at(item.retryAt ?? 0)} 再试`;
-      if (item.state === "waiting") return en ? `Provider unavailable, retrying at ${at(item.retryAt ?? 0)}` : `模型服务不可用，${at(item.retryAt ?? 0)} 重试`;
-      if (item.state === "reporting") return (en ? "At its limit, wrapping up" : "到上限，正在收尾") + used;
-      if (item.state === "done" && item.check && item.check !== "passed") return (en ? "Done, its check did not pass" : "完成，但验证没通过") + used;
-      if (item.state === "done") return (en ? "Done" : "完成") + used;
-      if (item.state === "failed") return (en ? "Not finished" : "没做完") + used;
-      return (en ? "Working" : "在做") + used;
-    };
     return {
       text: line(`${round.length} 条线并行，${finished} 条完成`, `${round.length} lines side by side, ${finished} finished`),
       detail: goal.objective, live: true, action: "pause", dismiss: false,
-      lines: round.map((item) => ({ title: item.title, state: item.state, label: label(item), why: item.why })),
+      lines: roundLines(round, en),
     };
   }
   const agents = goal.agents ?? 0;
