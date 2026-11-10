@@ -5,6 +5,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { Check, Circle, Compass, Minus, X } from "../components/icons";
 import type { FlowData } from "../components/ProjectFlow";
 import type { LongGoal } from "../components/projectOverview";
+import { TickText } from "../components/TickText";
 
 /** The long goal on the phone, read top to bottom: what state it is in and what it has spent, what it set out
  *  to deliver, where along its phases it is, then each criterion with a mark. Long prose folds to a few lines. */
@@ -56,14 +57,14 @@ export function MobileGoalCard({ goal, raw, children }: { goal: Goal; raw: LongG
         <span className="m-tile" aria-hidden="true"><Compass size={18} strokeWidth={1.8} /></span>
         <div className="m-goal-title">
           <h2>长目标</h2>
-          <span className="m-goal-state"><i aria-hidden="true" />{state}</span>
+          <span className="m-goal-state"><i aria-hidden="true" /><TickText value={state} /></span>
         </div>
       </header>
 
       <div className="m-goal-meter" role="group" aria-label={raw.hours ? "长目标时间与用量" : "长目标用量"}>
         <div className="m-goal-meter-row">
-          <span><b>{money(raw.tokens)}</b> / {money(raw.tokenBudget)}</span>
-          <span>{raw.startedAt ? `已运行 ${elapsed}${raw.hours ? ` / ${raw.hours} 小时` : ""}` : ""}</span>
+          <span><b><TickText value={money(raw.tokens)} /></b> / {money(raw.tokenBudget)}</span>
+          <span>{raw.startedAt ? <TickText value={`已运行 ${elapsed}${raw.hours ? ` / ${raw.hours} 小时` : ""}`} /> : ""}</span>
         </div>
         <div className="m-goal-bar" aria-hidden="true"><span style={{ transform: `scaleX(${Math.max(share, 0.004)})` }} /></div>
       </div>

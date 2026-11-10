@@ -1,5 +1,6 @@
 import { BuildBranchDetails } from "./BuildBranchDetails";
 import { AgentRecord, ConversationAgents } from "./ConversationAgents";
+import { TickText } from "../components/TickText";
 import { AnimatedFold } from "../motion/AnimatedFold";
 import { MotionValue } from "./MotionRows";
 import { GoalBudgetControl } from "../components/GoalBudgetControl";
@@ -969,7 +970,7 @@ export function MobileBuildPanel({
                           </h3>
                           <p>{agent.activity}</p>
                           <p className="m-note">
-                            第 {agent.step} 步 · {agent.elapsed}
+                            第 <TickText value={String(agent.step)} /> 步 · <TickText value={agent.elapsed} />
                           </p>
                         </div>
                         <button

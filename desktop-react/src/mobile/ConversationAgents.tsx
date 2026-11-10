@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDown } from "../components/icons";
 import { AgentHistory, AgentRunBox, useAgentPeek } from "../components/AgentRunBox";
+import { TickText } from "../components/TickText";
 import type { AgentHistoryPage, AgentPeek } from "../components/agentPeek";
 import type { ProjectOverview, ConversationAgent } from "../components/projectOverview";
 import { MotionRows, MotionValue } from "./MotionRows";
@@ -44,7 +45,7 @@ export function ConversationAgents({ overview, online, onOpen, threadId }: { ove
         <p className="m-agent-state" role="status"><MotionValue value={agentState(agent)}>{agentState(agent)}</MotionValue></p>
         <p>{agent.finished ? (agent.result ? (agent.result.length > 220 ? `${agent.result.slice(0, 218)}…` : agent.result) : "没有留下文字结果，打开执行对话查看") : agent.activity || (agent.executionRunning ? "正在处理任务，等待新的活动记录" : "打开执行对话查看详情")}</p>
         {agent.error ? <p className="m-alert">{agent.error}</p> : null}
-        <p className="m-note">{agent.finished ? `${agent.tokens ? `${Math.round(agent.tokens / 1000)}K · ` : ""}${agent.id.slice(0, 8)}` : `第 ${agent.step} 步 · ${agent.id.slice(0, 8)}`}</p>
+        <p className="m-note">{agent.finished ? `${agent.tokens ? `${Math.round(agent.tokens / 1000)}K · ` : ""}${agent.id.slice(0, 8)}` : <>第 <TickText value={String(agent.step)} /> 步 · {agent.id.slice(0, 8)}</>}</p>
       </div>
       <span className="m-agent-chevron" aria-hidden="true"><ChevronDown size={18} strokeWidth={1.75} /></span>
     </article>

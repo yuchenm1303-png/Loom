@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { DUR, EASE, RETAIN, RETAIN_MARGIN_MS } from "../motion/tokens";
 import { playEntrance } from "./motion";
+import { Crossfade } from "../components/Crossfade";
 
 type Row<T> = { id: string; item: T; until: number | null };
 /** Keep only disappearing rows for their fold. Live records come directly from props, so polling never replays
@@ -79,8 +80,10 @@ export function MotionRows<T>({ items, itemKey, children, as = "div" }: {
   </Tag>)}</>;
 }
 
+/** A status that changes its words: the old and the new blur across on the same spot (opacity and blur, nothing moves).
+ *  The wrapper stays, so a poll that changes nothing replays nothing. */
 export function MotionValue({ value, children }: { value: string; children: ReactNode }) {
-  return <span className="m-motion-value" key={value}>{children}</span>;
+  return <span className="m-motion-value"><Crossfade soft identity={value}>{children}</Crossfade></span>;
 }
 
 type Face = { id: string; node: ReactNode; fresh: boolean };
@@ -103,7 +106,7 @@ export function Swap({ id, children }: { id: string; children: ReactNode }) {
   }
   useEffect(() => {
     if (!leaving.length) return;
-    const timer = window.setTimeout(() => setLeaving([]), RETAIN.fast);
+    const timer = window.setTimeout(() => setLeaving([]), RETAIN.flow);
     return () => window.clearTimeout(timer);
   }, [leaving]);
   return <span className="m-swap">

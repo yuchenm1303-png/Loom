@@ -18,6 +18,7 @@ import {
 } from "../components/icons";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { runCapsule, type CapsuleRun } from "./motion";
+import { TickText } from "../components/TickText";
 
 /** Five branches, all on the rail at once. Everything a build can show has one home among them:
  *  run = state, budget, model and quota; tasks = tasks, guidance, scope; project = folder and references;
@@ -160,7 +161,7 @@ export function BuildBranches({
       {dock
         ? createPortal(
             <div className="m-branches">
-              <p className="m-build-summary">{summary}</p>
+              <p className="m-build-summary"><TickText value={summary} /></p>
               <div className="m-branch-track">
                 <nav
                   ref={rail}

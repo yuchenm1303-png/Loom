@@ -47,9 +47,10 @@ html[data-loom-surface="mobile"] {
 .m-body > :nth-child(2) { animation-delay: var(--loom-stagger); }
 .m-body > :nth-child(n + 3) { animation-delay: calc(var(--loom-stagger) * 2); }
 .m-project-view { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
-.m-swap-face.is-fresh { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) calc(var(--loom-dur-fast-out) * .4) backwards; }
-.m-swap-face.is-leaving { animation: m-fade-away var(--loom-dur-fast-out) var(--loom-ease-exit) forwards; }
-.m-motion-value { animation: m-value-change var(--loom-dur-base) var(--loom-ease-out) backwards; }
+/* Words that change in place blur across: the old go while the new come up over them (keyframes in crossfade.css). */
+.m-swap-face.is-fresh { animation: crossfade-soft-in var(--loom-dur-flow-out) var(--loom-ease-inout) backwards; }
+.m-swap-face.is-leaving { animation: crossfade-soft-out var(--loom-dur-flow-out) var(--loom-ease-inout) forwards; }
+.m-motion-value { display: inline-block; min-width: 0; max-width: 100%; }
 .m-empty, .m-offline, .m-note, .m-pair { animation: m-fade var(--loom-dur-base) var(--loom-ease-out) backwards; }
 .m-sheet .m-note { animation: none; }
 /* What was loading gives way to what loaded; the same fade answers a pane coming back from `hidden`. */
@@ -170,7 +171,6 @@ html[data-loom-surface="mobile"] .m-stage .inline-thinking .thinking-shimmer {
 
 @keyframes m-fade { from { opacity: 0; } }
 @keyframes m-fade-away { to { opacity: 0; } }
-@keyframes m-value-change { from { opacity: .35; } }
 @keyframes m-pill-lift { from { opacity: 0; transform: translate(-50%, 10px); } }
 @keyframes m-pill-drop { to { opacity: 0; transform: translate(-50%, 10px); } }
 @keyframes m-glyph-land { from { transform: scale(.78); } }
