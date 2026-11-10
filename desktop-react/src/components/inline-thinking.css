@@ -177,7 +177,7 @@
   animation-play-state: paused;
 }
 
-/* Both labels share one grid cell, so the swap is a cross-fade in place. */
+/* One label whose words roll when the state changes ("thinking…" to "thought process", RollText). */
 .live-reasoning-labels {
   display: inline-grid;
   align-items: center;
@@ -187,7 +187,6 @@
 .live-reasoning-label {
   grid-area: 1 / 1;
   white-space: nowrap;
-  transition: opacity var(--loom-dur-base) ease;
 }
 
 .live-reasoning-label.is-rest {
@@ -196,21 +195,6 @@
   font-weight: 600;
   line-height: 1.45;
   letter-spacing: .005em;
-  opacity: 0;
-}
-
-.live-reasoning.is-done .live-reasoning-label.is-live {
-  opacity: 0;
-  animation: none;
-}
-
-.live-reasoning.is-done .live-reasoning-label.is-rest {
-  opacity: 1;
-  transition-delay: 60ms;
-}
-
-.live-reasoning.is-thinking .live-reasoning-label.is-rest {
-  visibility: hidden;
 }
 
 .live-reasoning.is-done .live-reasoning-trigger:not(:disabled):hover .live-reasoning-label.is-rest,

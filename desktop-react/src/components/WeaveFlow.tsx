@@ -8,6 +8,7 @@
  * with the older ones folded into the same kind of line. Every appearance, fold and unfold below is the
  * same motion (weave.css owns all of it), so nothing competes.
  */
+import { RollText } from "./RollText";
 import { ChevronRight, CircleSlash, CircleX, Eye, FileDiff, Ban, Hourglass, Terminal, TriangleAlert, Wrench } from "lucide-react";
 import {
   Fragment,
@@ -447,7 +448,7 @@ const WeaveRow = memo(function WeaveRow({ row, open, workspace, copy, delta, ret
           <span className="wv-main">
             {/* The node says how the step is going to the eye; this says it to everything else. */}
             <span className="sr-only">{copy.statusLabel(status)}</span>
-            <span className="wv-verb" title={description.verb}>{description.label}</span>
+            <span className="wv-verb" title={description.verb}><RollText identity={description.label} text={description.label} /></span>
             <span
               className={`wv-target ${description.code ? "is-code" : ""} ${description.path ? "is-path" : ""} ${reviewable ? "wv-path" : ""}`.replace(/\s+/g, " ").trim()}
               title={description.title}

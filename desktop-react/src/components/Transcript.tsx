@@ -294,8 +294,9 @@ function ReasoningBlock({
       >
         <span className="live-reasoning-bead" aria-hidden="true"><ThinkingGlyph /></span>
         <span className="live-reasoning-labels">
-          <span className="live-reasoning-label is-live thinking-shimmer" aria-hidden={!thinking}>{copy.thinking}</span>
-          <span className="live-reasoning-label is-rest" aria-hidden={thinking}>{copy.thoughtProcess}</span>
+          <span className={`live-reasoning-label ${thinking ? "is-live thinking-shimmer" : "is-rest"}`}>
+            <RollText identity={thinking ? "live" : "rest"} text={thinking ? copy.thinking : copy.thoughtProcess} />
+          </span>
         </span>
         {hasReasoning ? <ChevronRight size={13} className="live-reasoning-chevron" aria-hidden="true" /> : null}
       </button>

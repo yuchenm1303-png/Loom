@@ -16,6 +16,7 @@
  *   a card arrives / leaves    the cards around it glide out of its way, cables in tow (projectArrange.ts)
  * Text only fades; marks and cables move (motion-tokens.css). Styles: project-flow.css.
  * The data comes from projectOverview.ts (projectRun/overview); this file only draws it. */
+import { RollText } from "./RollText";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { GoalBudgetControl, type GoalBudgetState, type GoalBudgetUpdate } from "./GoalBudgetControl";
 import {
@@ -1304,7 +1305,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
             // The chat's thinking row: the bead and a lit label (the agent's commentary is read in the stage above it).
             <div className="inline-thinking pf-thinking" role="status" aria-live="polite">
               <ThinkingGlyph />
-              <span className="thinking-shimmer" key={data.activity || ""} title={data.activity || undefined}>{data.activity || text.replying}</span>
+              <span className="thinking-shimmer" title={data.activity || undefined}><RollText identity={data.activity || ""} text={data.activity || text.replying} /></span>
             </div>
           ) : null}
           {behind ? (

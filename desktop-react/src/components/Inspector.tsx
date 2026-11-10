@@ -11,6 +11,7 @@ import {
   Terminal,
   Wrench,
 } from "./icons";
+import { RollText } from "./RollText";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { useI18n } from "../i18n";
@@ -282,7 +283,7 @@ const RuntimeEvent = memo(function RuntimeEvent({
           <span className="runtime-event-title" title={titleOf(item)}>{titleOf(item)}</span>
           <span className="runtime-event-subtitle">
             <span className={`runtime-status-dot status-${status}`} />
-            <span>{statusLabel(status, zh)}</span>
+            <span><RollText identity={status} text={statusLabel(status, zh)} /></span>
             {timestamp ? <><span className="runtime-meta-separator" /> <span>{timestamp}</span></> : null}
           </span>
         </span>
