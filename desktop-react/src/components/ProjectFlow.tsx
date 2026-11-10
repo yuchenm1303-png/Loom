@@ -275,8 +275,21 @@ const enText: typeof zhText = {
 type Side = "left" | "right" | "below";
 /** A cable's corner radius, the most its lanes stand apart (a cable's 9px plus a gap), and its plugs apart on the hub. */
 const CABLE_R = 12, LANE_STEP = 18, PLUG_APART = 22;
-/** How far each branch card steps out from the hub, in thirds of the stage's spread (a wave, so a crowd reads as a fan, not one line). */
-const AGENT_FAN = [0, 1, 2, 3, 2, 1];
+/** How far each branch card steps out from the hub, in thirds of the stage's spread (0..3). Scattered, not a pattern:
+ *  dealt from a hash of the card's id, so a card keeps its place across renders, and never close to the one above it. */
+function agentFan(ids: string[]): number[] {
+  const out: number[] = [];
+  for (const id of ids) {
+    let h = 2166136261;
+    for (let i = 0; i < id.length; i += 1) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+    let step = ((h >>> 0) % 1000) / 1000 * 3;
+    const prev = out[out.length - 1];
+    // Too near the one above: jump to the far side of it, by the hash's own remainder so it stays stable.
+    if (prev !== undefined && Math.abs(step - prev) < 0.9) step = prev < 1.5 ? Math.min(3, prev + 0.9 + step * 0.7) : Math.max(0, prev - 0.9 - step * 0.7);
+    out.push(Math.round(step * 100) / 100);
+  }
+  return out;
+}
 interface Cable { id: string; side: Side; d: string; socket: { x: number; y: number }; reveal?: number }
 
 // The branches the person folded away, by id. Storage may be missing or refuse; then nothing is folded.
@@ -911,6 +924,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
   const usageZh = lang !== "en";
   const toggleUsage = () => setUsageOpen(!usageOpen);
   const agents = useDeparting(open("agents") ? data.agents : []);
+  const fan = agentFan(agents.map((agent) => agent.id));
   const branches = useDeparting([...(data.goal && open("goal") ? [{ id: "goal" }] : []),
                                  ...(data.taskList?.length && open("tasks") ? [{ id: "tasks" }] : []),
                                  ...BUILD_BRANCHES.filter(branch => observationBranches.includes(branch)).map(branch => ({ id: `observe-${branch}` })),
@@ -1903,7 +1917,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
           const peeked = peekable && peekId === agent.id;
           return (
             <div key={agent.id} className={`pf-slot pf-agent-slot${index % 2 ? " pf-offset-3" : ""}`} data-glide={`agent:${agent.id}`} {...hover(`agent:${agent.id}`)} {...slot(`agent:${agent.id}`)}
-                 style={{ "--pf-step": AGENT_FAN[index % AGENT_FAN.length] } as React.CSSProperties}
+                 style={{ "--pf-step": fan[index] } as React.CSSProperties}
                  data-hot={hot === `task:${agent.id}` || undefined}>
               <Card id={`agent:${agent.id}`} side="right" className="pf-agent" icon={<Bot size={12} />} label={agent.name} register={register}>
                 <div className="pf-well pf-agent-well" data-done={agent.done || undefined} data-peekable={peekable || undefined}
