@@ -140,6 +140,16 @@ def test_a_research_goal_holds_changing_work_until_directions_are_named_then_let
         runtime.close()
 
 
+def test_naming_and_choosing_in_one_call_records_the_candidates_and_says_the_choice_waits(tmp_path):
+    service, runtime, _, source, _, _ = research(tmp_path, [START, answer("先这样")])
+    try:
+        result = goal_depth.set_directions(service, source, {"candidates": [candidate(i) for i in (1, 2, 3)], "choose": 1})
+        assert "choose once the referee's ranking" in result.content
+        assert service.weave_goals.get(source)["directions"]["state"] == "declared"
+    finally:
+        runtime.close()
+
+
 @pytest.mark.parametrize("change,expected", [
     ({"candidates": [candidate(1), candidate(2)]}, "3 to 5"),
     ({"candidates": [candidate(1), candidate(2), {**candidate(3), "closest_work": []}]}, "closest_work"),

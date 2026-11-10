@@ -207,7 +207,7 @@ def set_directions(service, thread_id, arguments):
             state.update(state="skipped", reason=reason, at=time.time())
             decide(record, "directions_skipped")
             text = "Direction stage skipped; the reason is shown to the person and to the final check."
-        elif arguments.get("choose") is not None:
+        elif arguments.get("choose") is not None and not arguments.get("candidates"):
             chosen, candidates = arguments.get("choose"), state.get("candidates") or []
             if type(chosen) is not int or not 1 <= chosen <= len(candidates):
                 raise ValueError("choose is the number of one of your candidates" + (f" (1 to {len(candidates)})." if candidates
@@ -231,6 +231,8 @@ def set_directions(service, thread_id, arguments):
                          state="ranking" if piloted else "declared", ranking=None, refereeId="", tries=0)
             decide(record, "directions_named", count=len(candidates), piloted=piloted)
             text = RANKING if piloted else PILOT
+            if arguments.get("choose") is not None:  # a real lead named and chose in one call
+                text += " Your choose was not taken: choose once the referee's ranking has reached you."
         record["directions"] = state
         service.weave_goals.put(thread_id, record)
     return ToolResult(ok=True, content=text, data={"state": state["state"]})
