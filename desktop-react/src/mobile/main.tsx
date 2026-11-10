@@ -7,9 +7,11 @@ import "./mobile.css";
 import { MobileApp } from "./MobileApp";
 import { installMobileBridge } from "./mobileBridge";
 import { installTouchPress } from "./motion";
+import { installRubberBand } from "./rubberBand";
 
 installMobileBridge();
 installTouchPress();
+installRubberBand();
 // The shared transcript takes its language from here; the phone's own screens are Chinese.
 try { if (!window.localStorage.getItem("loom.settings.language")) window.localStorage.setItem("loom.settings.language", "zh-CN"); } catch {}
 bootstrapDocumentLanguage();
