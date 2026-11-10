@@ -1,4 +1,5 @@
 import { BuildBranchDetails } from "./BuildBranchDetails";
+import { Roll } from "../components/RollText";
 import { AgentRecord, ConversationAgents } from "./ConversationAgents";
 import { TickText } from "../components/TickText";
 import { AnimatedFold } from "../motion/AnimatedFold";
@@ -701,7 +702,7 @@ export function MobileBuildPanel({
                         )
                       }
                     >
-                      {goal.action === "pause" ? "暂停目标" : "继续目标"}
+                      <Roll text={goal.action === "pause" ? "暂停目标" : "继续目标"} />
                     </button>
                   ) : null}
                   {goal.dismiss ? (

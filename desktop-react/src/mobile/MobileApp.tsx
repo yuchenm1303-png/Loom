@@ -1,4 +1,5 @@
 import type { BuildBranch } from "./BuildBranches";
+import { Roll } from "../components/RollText";
 import { NavCapsule } from "./NavCapsule";
 import { ThreadHandoffPanel } from "../components/ThreadHandoffPanel";
 import { useHandoffNavigation } from "../state/useHandoffNavigation";
@@ -656,7 +657,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, swapped, 
   const heading = isAgent && thread ? `${agentRoleName(thread.agentRole || "worker")} · ${thread.id.slice(0, 8)}` : thread?.title || (space === "build" ? "新建造" : "新任务");
   return (
     <div className={`m-thread${swapped ? " is-swapped" : ""}`}>
-      <Fold open={offlineNotice}><p className="m-banner" role="status">{connecting ? "正在重新连接…" : "电脑离线，暂时不能操作"}</p></Fold>
+      <Fold open={offlineNotice}><p className="m-banner" role="status"><Roll text={connecting ? "正在重新连接…" : "电脑离线，暂时不能操作"} /></p></Fold>
       <header className="m-thread-head">
         <button type="button" className="m-icon-button" aria-label={isAgent ? "返回父对话" : "返回"} onClick={onBack}><ChevronLeft size={24} strokeWidth={1.75} /></button>
         <div>
@@ -799,7 +800,7 @@ function More({ shell, active }: { shell: ShellState; active: boolean }) {
         {computers.length ? computers.map((device) => (
           <button type="button" className="m-row" key={device.id} disabled={device.id === shell.deviceId || !device.online} onClick={() => selectDevice(device.id)}>
             <span className={`m-tile${device.id === shell.deviceId ? " is-accent" : device.online ? "" : " is-dim"}`} aria-hidden="true">{deviceIcon(device)}</span>
-            <span className="m-row-text"><strong>{device.name || "Loom 电脑"}</strong><small>{device.id === shell.deviceId ? "正在使用" : device.online ? "在线 · 点按切换" : `离线 · 最近在线 ${ago(device.seen)}`}</small></span>
+            <span className="m-row-text"><strong><Roll text={device.name || "Loom 电脑"} /></strong><small><Roll text={device.id === shell.deviceId ? "正在使用" : device.online ? "在线 · 点按切换" : `离线 · 最近在线 ${ago(device.seen)}`} /></small></span>
             {device.id === shell.deviceId ? <Check size={18} strokeWidth={2} /> : device.online ? <ChevronRight className="m-chevron" size={18} strokeWidth={1.75} /> : null}
           </button>
         )) : <p className="m-rows-note">没有在线的电脑。</p>}
@@ -813,7 +814,7 @@ function More({ shell, active }: { shell: ShellState; active: boolean }) {
           {devices.phones.map((phone) => (
             <div className="m-row is-static" key={phone.id}>
               <span className={`m-dot is-${phone.current || phone.online ? "on" : "idle"}`} aria-hidden="true" />
-              <span className="m-row-text"><strong>{phone.name || "手机"}</strong><small>{phone.online || phone.current ? "在线" : `最近使用 ${ago(phone.last_used_at)}`}</small></span>
+              <span className="m-row-text"><strong><Roll text={phone.name || "手机"} /></strong><small><Roll text={phone.online || phone.current ? "在线" : `最近使用 ${ago(phone.last_used_at)}`} /></small></span>
               {phone.current ? <span className="m-badge is-run">这部手机</span> : null}
             </div>
           ))}
@@ -1038,7 +1039,7 @@ function Session({ shell, onRestart }: { shell: ShellState; onRestart(): void })
             {tab === "now" ? null : <span>{shell.deviceName || "电脑"} · </span>}<MotionValue value={online ? "on" : shell.socket}>{online ? "在线" : shell.socket === "connecting" ? "连接中" : "离线"}</MotionValue>
           </p>
         </header>
-        <Fold open={offlineNotice && threads.length > 0}><p className="m-banner" role="status">{shell.socket === "connecting" ? "正在重新连接…" : "电脑离线，下面是离线前的内容"}</p></Fold>
+        <Fold open={offlineNotice && threads.length > 0}><p className="m-banner" role="status"><Roll text={shell.socket === "connecting" ? "正在重新连接…" : "电脑离线，下面是离线前的内容"} /></p></Fold>
         <Fold open={Boolean(navigationError)}><p className="m-alert m-page-alert" role="alert">{navigationError}</p></Fold>
         <main className="m-pages">
           {TABS.map(({ key, label }, index) => {

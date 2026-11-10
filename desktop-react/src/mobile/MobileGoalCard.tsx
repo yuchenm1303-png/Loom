@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
+import { Roll } from "../components/RollText";
 import { flushSync } from "react-dom";
 import { DUR, EASE } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
@@ -35,7 +36,7 @@ function Clamp({ lines, children, className = "" }: { lines: number; children: R
   return (
     <div ref={box} className={`m-goal-clamp ${className}`} data-open={open || undefined} style={{ ["--m-lines" as string]: lines }}>
       <p>{children}</p>
-      <button type="button" className="m-goal-more" aria-expanded={open} onClick={toggle}>{open ? "收起" : "展开"}</button>
+      <button type="button" className="m-goal-more" aria-expanded={open} onClick={toggle}><Roll text={open ? "收起" : "展开"} /></button>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Roll } from "../components/RollText";
 import { MorphText } from "./MotionRows";
 import { AnimatedFold } from "../motion/AnimatedFold";
 import {
@@ -444,7 +445,7 @@ export function MobileProjects({
             className="m-button is-primary"
             disabled={busy || !online || !root.trim()}
           >
-            {busy ? "正在添加…" : "添加项目"}
+            <Roll text={busy ? "正在添加…" : "添加项目"} />
           </button>
         </form>
       </AnimatedFold>
