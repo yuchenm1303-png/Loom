@@ -8,12 +8,11 @@ MAX_HOLDS refusals so it can never cost the turn.
 """
 from __future__ import annotations
 
-from app.agent_runtime.contracts import ToolEffect
 from app.agent_runtime.durable_state import GoalStatus
 from app.agent_runtime.tools import ToolResult
 
 from . import goal_charter
-from .goal_common import LOOKUPS  # answering a question changes nothing here
+from .goal_common import changes
 
 FAILURE_KIND = "goal_scope_required"
 MAX_HOLDS = 2  # refusals per request before the gate gives way
@@ -68,13 +67,7 @@ def hold(service, session, step, calls):
     if not turn or _goal_running(service, session.session_id):
         return None
 
-    def free(call):
-        if call.name in goal_charter._FREE or call.name in LOOKUPS or call.name.startswith(goal_charter.WEAVE_PREFIX):
-            return True
-        tool = step.tool_router.get(call.name) if step is not None else None
-        return tool is not None and tool.effect is ToolEffect.READ_ONLY and call.name != "spawn_agent"
-
-    waiting = tuple(call for call in calls if not free(call))
+    waiting = tuple(call for call in calls if changes(step, call))
     if not waiting:
         return None
     with service.project_runner.guard:

@@ -153,6 +153,13 @@ def snap_budget(value):
 CHARTER_KEYS = ("deliverable", "criteria", "phases", "kind")
 
 
+def _language(service, context):
+    try:
+        return getattr(service.store.load(context.session_id), "communication_language", "auto")
+    except (OSError, ValueError, KeyError):
+        return "auto"
+
+
 def charter_text(charter, changed):
     """What the lead is told about the charter it wrote: every criterion the check will hold it to."""
     listed = "\n".join(f"- {item['id']}{' (standard)' if item.get('origin') == 'standard' else ''}: {item['text']}"
@@ -341,7 +348,7 @@ def tools(service):
         # Sizing the request and writing its charter were two refused steps in a row on every new goal; one call does both.
         chartered = {key: arguments[key] for key in CHARTER_KEYS if key in arguments}
         if chartered:
-            goal_charter.set_charter({}, chartered)  # what is wrong with it is said before anything starts
+            goal_charter.set_charter({}, chartered, language=_language(service, context))  # what is wrong is said before anything starts
         budget = budget_for(service, context.session_id, arguments.get("token_budget"))
         try:
             hours = max(0.0, min(float(arguments.get("hours") or 0), goal.MAX_HOURS))
@@ -352,7 +359,7 @@ def tools(service):
         if chartered:
             with service.project_runner.guard:
                 record = service.weave_goals.get(context.session_id)
-                goal_charter.set_charter(record, chartered)
+                goal_charter.set_charter(record, chartered, language=_language(service, context))
                 service.weave_goals.put(context.session_id, record)
             written = charter_text(record["charter"], {"new": True, "dropped": []}) + "\n"
         given = f" and {hours:g} h of the person's time" if hours else ""
@@ -369,7 +376,7 @@ def tools(service):
             record = service.weave_goals.get(context.session_id)
             if record is None or record.get("phase") == "done":
                 raise ValueError("weave_charter belongs to a running long goal; start one with weave_goal first.")
-            changed = goal_charter.set_charter(record, arguments)
+            changed = goal_charter.set_charter(record, arguments, language=_language(service, context))
             service.weave_goals.put(context.session_id, record)
         charter = record["charter"]
         return ToolResult(ok=True, content=charter_text(charter, changed),
@@ -451,14 +458,18 @@ def tools(service):
                     "title": {"type": "string", "description": "A few words, in the person's language; the person sees it."},
                     "brief": {"type": "string", "description": "Self-contained: the objective, the files to read and where "
                               "to write, what to hand back, and the boundaries. The line sees none of this conversation."},
-                    "check": {"type": "string", "description": "Required when writes is not empty: one command line, "
-                              "exactly as the line will run it (not a description), that proves its part works, such as "
-                              "its tests or a script that checks its results. The line must pass it before it reports."},
+                    "check": {"type": "array", "items": {"type": "string"}, "minItems": 1, "description": "Required "
+                              "when writes is not empty: the command that proves this line's part works, as its list of "
+                              "arguments starting with a program on this computer, such as [\"python\", "
+                              "\"scripts/check_results.py\"] (its tests, or a script that asserts its results). The line "
+                              "runs exactly this and must pass it before it reports."},
+                    "cpus": {"type": "integer", "minimum": 1, "description": "For heavy computation (training, "
+                             "simulation): how many logical processors this line keeps busy (its threads or worker "
+                             "processes). Lines run together only while their cpus fit this machine; omit for light work."},
                     "writes": {"type": "array", "items": {"type": "string"}, "description": "Files or folders only this "
                                "line changes, relative to the workspace; [] when it only reads."},
-                    "resource": {"type": "string", "description": "A shared resource this line leans on: gpu or a "
-                                 "device (one line at a time), or cpu for heavy computation (as many lines as this "
-                                 "machine has processors for, about 8 logical processors each)."},
+                    "resource": {"type": "string", "description": "Something only one line can use at a time, such "
+                                 "as gpu or a device. For the CPU give cpus instead."},
                 }, "required": ["title", "brief", "writes"], "additionalProperties": False}},
                 "solo_reason": {"type": "string", "description": "Why you do this yourself, when lines is empty."},
             }, "additionalProperties": False},

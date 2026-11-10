@@ -30,12 +30,9 @@ from __future__ import annotations
 import re
 import time
 
-from app.agent_runtime.contracts import ToolEffect
 from app.agent_runtime.tools import ToolResult
-from app.agent_runtime.turn_plan import PLAN_TOOLS
-from app.agent_runtime.tool_selection import WEAVE_PREFIX
 
-from .goal_common import LOOKUPS
+from .goal_common import changes
 
 MIN_CRITERIA, MAX_CRITERIA = 3, 24
 MIN_PHASES, MAX_PHASES = 2, 10
@@ -45,7 +42,6 @@ MAX_NOTES, NOTES_SHOWN, MAX_NOTE = 60, 6, 2000
 MAX_HOLDS = 2
 KINDS = ("research", "software", "analysis", "writing", "other")
 FAILURE_KIND = "goal_charter_required"
-_FREE = PLAN_TOOLS | LOOKUPS | {"tool_search", "get_thread_state", "mark_thread_goal", "investigate"}
 
 HELD = ("Not executed: this long goal has no charter yet. Before work that changes anything, call weave_charter: "
         "the deliverable a top expert in this field would hand in for this request, concrete acceptance criteria "
@@ -123,9 +119,11 @@ def _chinese(text):
     return bool(re.search(r"[一-鿿]", text or ""))
 
 
-def standard_texts(kind, deliverable, inherited=False):
+def standard_texts(kind, deliverable, inherited=False, language="auto"):
     """The Host's criteria for a charter of this kind, in the deliverable's language."""
-    pick = 1 if _chinese(deliverable) else 0
+    # The conversation's language (the session's communication_language) when it is known; only "auto" falls
+    # back to the deliverable's own script. Standard criteria exist in Chinese and English.
+    pick = 1 if (language == "zh" or (language in (None, "", "auto") and _chinese(deliverable))) else 0
     items = [pair[pick] for pair in STANDARD.get(kind, ())]
     if inherited:
         items.append(INHERITED[pick])
@@ -140,7 +138,7 @@ def charter_of(record):
     return (record or {}).get("charter")
 
 
-def set_charter(record, arguments, now=None):
+def set_charter(record, arguments, now=None, language="auto"):
     """Write or revise the charter in the record; returns what changed. Raises with what to fix."""
     now = now or time.time()
     previous = charter_of(record)
@@ -176,7 +174,7 @@ def set_charter(record, arguments, now=None):
                for text, item in old.items() if text not in raw and item.get("status") != "dropped"]
     kept_dropped = [item for item in old.values() if item.get("status") == "dropped" and item["text"] not in raw]
     had = {item["text"] for item in standard} | set(raw)
-    for text in standard_texts(kind, deliverable, inherited=_inherits_unchecked(record)):
+    for text in standard_texts(kind, deliverable, inherited=_inherits_unchecked(record), language=language):
         if text not in had:
             number += 1
             standard.append({"id": f"C{number}", "text": text, "status": "open", "origin": "standard", "note": ""})
@@ -334,13 +332,7 @@ def hold(service, session, step, calls):
     if record.get("charterGaveWay"):
         return None
 
-    def free(call):
-        if call.name in _FREE or call.name.startswith(WEAVE_PREFIX):
-            return True
-        tool = step.tool_router.get(call.name) if step is not None else None
-        return tool is not None and tool.effect is ToolEffect.READ_ONLY and call.name != "spawn_agent"
-
-    waiting = tuple(call for call in calls if not free(call))
+    waiting = tuple(call for call in calls if changes(step, call))
     if not waiting:
         return None
     with service.project_runner.guard:
@@ -364,18 +356,11 @@ NOTE_KIND = "goal_note_required"
 NOTE_HOLDS = 1  # 0 turns the hold off (the note is still asked for in the turn's context)
 
 
-def _free(step, call):
-    if call.name in _FREE or call.name.startswith(WEAVE_PREFIX):
-        return True
-    tool = step.tool_router.get(call.name) if step is not None else None
-    return tool is not None and tool.effect is ToolEffect.READ_ONLY and call.name != "spawn_agent"
-
-
 def _note_hold(service, session, step, calls, record):
     """A note owed from the last goal turn holds the next changing batch, once: it guards nothing, it asks."""
     if not NOTE_HOLDS or not record.get("noteDue") or record.get("noteHeld"):
         return None
-    waiting = tuple(call for call in calls if not _free(step, call))
+    waiting = tuple(call for call in calls if changes(step, call))
     if not waiting:
         return None
     with service.project_runner.guard:

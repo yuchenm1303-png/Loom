@@ -3,13 +3,50 @@ from __future__ import annotations
 
 import time
 
+from app.agent_runtime.development_verification import read_only_command
+from app.agent_runtime.tool_selection import WEAVE_PREFIX
+from app.agent_runtime.turn_plan import PLAN_TOOLS
+
 from .budget import CACHED_WEIGHT
 
 RETRY_BASE, RETRY_MAX = 60, 1800
-# Looking things up changes nothing here. web_search is SENSITIVE (queries leave the machine), not READ_ONLY, and two
-# of the three goal gates held it: a real research goal had four literature searches refused before its charter,
-# the opposite of "survey first, then decide".
-LOOKUPS = frozenset({"web_search", "web_search_status", "web_fetch"})
+# The goal's own controls: writing the list, finding a tool, reading or marking the goal.
+CONTROL_TOOLS = PLAN_TOOLS | {"tool_search", "get_thread_state", "mark_thread_goal"}
+
+
+def changes(step, call):
+    """Whether a call can change files, processes or outside state: the one question every build-mode gate asks.
+
+    Each gate used to keep its own copy with its own exceptions, and all read the permission effect: web_search and
+    the browser's page reads are SENSITIVE (they need permission, the request leaves the machine), so a real research
+    goal had four literature searches refused before its charter. A tool says what it does with read_only (MCP's
+    readOnlyHint); exec reads when its command provably cannot write."""
+    if call.name in CONTROL_TOOLS or call.name.startswith(WEAVE_PREFIX):
+        return False
+    tool = step.tool_router.get(call.name) if step is not None else None
+    if tool is None or call.name == "spawn_agent":
+        return True
+    if tool.reads_only:
+        return False
+    if call.name == "exec":
+        return not read_only_command((call.arguments or {}).get("argv"))
+    return True
+
+
+def looks_up(tool):
+    """A call that reads from outside this computer: the web, a remote service, an investigator that searches."""
+    return tool is not None and tool.reads_only and tool.open_world
+
+
+MAX_DECISIONS = 60
+
+
+def decide(record, what, **values):
+    """Record a threshold decision with the numbers it was made on: the thresholds (when to deepen, to hold a claim,
+    to ask for a note or a split) were set without data, and are tuned from these (scripts/gate_audit.py)."""
+    entry = {"at": round(time.time(), 1), "what": what,
+             "tokens": record.get("tokens"), "budget": record.get("tokenBudget"), **values}
+    record["decisions"] = [*(record.get("decisions") or ()), entry][-MAX_DECISIONS:]
 
 
 def charged(usage):

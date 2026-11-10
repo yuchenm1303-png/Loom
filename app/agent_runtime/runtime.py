@@ -1348,6 +1348,7 @@ class AgentRuntime:
             "effect": prepared.tool.effect.value,
             "call_fingerprint": call_fingerprint,
             "repeat_count": repeat_count,
+            **prepared.tool.started_marks(),
         }
         if parallel_batch_id:
             data.update({

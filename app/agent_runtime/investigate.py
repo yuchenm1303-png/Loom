@@ -103,6 +103,7 @@ def investigate_tool(control) -> AgentTool:
         }, "required": ["question"], "additionalProperties": False},
         handler=handler,
         effect=ToolEffect.READ_ONLY,
+        open_world=True,  # its investigator can search the web: a literature survey counts
         supports_parallel_tool_calls=True,
     )
 

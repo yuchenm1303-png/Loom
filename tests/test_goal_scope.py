@@ -77,8 +77,32 @@ def test_reading_and_answering_are_never_held(tmp_path):
         runtime.close()
 
 
-def test_looking_something_up_is_not_a_change():
-    assert {"web_search", "web_search_status"} <= goal_scope.LOOKUPS
+def test_what_a_call_changes_comes_from_the_tool_not_from_a_list_of_names():
+    # Real goal: web_search is SENSITIVE (it needs permission) and the gates held four literature searches.
+    from types import SimpleNamespace
+    from app.agent_runtime.contracts import ToolEffect
+    from app.agent_runtime.tools import AgentTool, ToolResult
+    from app.project_runner.goal_common import changes, looks_up
+
+    def tool(name, effect, **flags):
+        return AgentTool(name=name, description="x", input_schema={"type": "object"}, effect=effect,
+                         handler=lambda _context, _arguments: ToolResult(True, ""), **flags)
+    tools = {item.name: item for item in (
+        tool("page_read", ToolEffect.SENSITIVE, read_only=True, open_world=True),
+        tool("page_click", ToolEffect.SENSITIVE, open_world=True),
+        tool("read_file", ToolEffect.READ_ONLY), tool("write_file", ToolEffect.MUTATING),
+        tool("exec", ToolEffect.SENSITIVE), tool("spawn_agent", ToolEffect.READ_ONLY))}
+    step = SimpleNamespace(tool_router=SimpleNamespace(get=tools.get))
+
+    def call(name, **arguments):
+        return SimpleNamespace(name=name, arguments=arguments)
+    assert not changes(step, call("page_read")) and changes(step, call("page_click"))
+    assert not changes(step, call("read_file")) and changes(step, call("write_file"))
+    assert not changes(step, call("exec", argv=["git", "log", "--oneline"])), "a provable read through the shell"
+    assert changes(step, call("exec", argv=["python", "train.py"])), "an interpreter may write"
+    assert changes(step, call("spawn_agent")) and changes(step, call("unknown_tool"))
+    assert not changes(step, call("weave_note")) and not changes(step, call("update_plan"))
+    assert looks_up(tools["page_read"]) and not looks_up(tools["read_file"]) and not looks_up(tools["page_click"])
 
 
 def test_a_chat_turn_is_not_sized(tmp_path):
@@ -158,3 +182,20 @@ def test_one_turn_needs_a_reason():
         goal_scope.choose_one_turn(service, "s", "t", "小事")
     assert goal_scope.choose_one_turn(service, "s", "t", "只改一行配置，这一轮能改完并验证") == goal_scope.CHOSEN
     assert service.weave_scopes["s"]["choice"] == "turn"
+
+
+def test_mcp_tools_say_what_they_do_with_their_own_annotations():
+    # Loom read no MCP annotation: every MCP tool counted as a change, a search server's included.
+    from types import SimpleNamespace
+    from app.agent_runtime.mcp_runtime import _annotated
+    hints = lambda **values: SimpleNamespace(annotations=SimpleNamespace(**values))  # noqa: E731
+    assert _annotated(SimpleNamespace()) == (None, True), "no annotations: the configured effect decides"
+    assert _annotated(hints(readOnlyHint=True, openWorldHint=True)) == (True, True)
+    assert _annotated(hints(readOnlyHint=True, destructiveHint=True)) == (None, True), "destructive wins"
+    assert _annotated(hints(readOnlyHint=True, openWorldHint=False)) == (True, False)
+
+
+def test_page_reads_are_marked_and_page_actions_are_not():
+    from app.agent_runtime.browser_tools import PAGE_READS
+    assert {"browser_open", "browser_state", "browser_find", "browser_screenshot"} <= PAGE_READS
+    assert not {"browser_click", "browser_type", "browser_upload", "browser_eval", "browser_cookies"} & PAGE_READS

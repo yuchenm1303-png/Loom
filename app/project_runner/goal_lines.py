@@ -25,15 +25,16 @@ sent back once. What the lead reads says whether each check passed.
 from __future__ import annotations
 
 import os
-import re
+import shlex
+import shutil
+import subprocess
 import time
+from pathlib import Path
 
-from app.agent_runtime.contracts import AgentEventKind, AgentStatus, ToolEffect
-from app.agent_runtime.tool_selection import WEAVE_PREFIX
+from app.agent_runtime.contracts import AgentEventKind, AgentStatus
 from app.agent_runtime.tools import ToolResult
-from app.agent_runtime.turn_plan import PLAN_TOOLS
 
-from .goal_common import LOOKUPS, charged, delay, span, time_left, transient
+from .goal_common import CONTROL_TOOLS, decide, changes, charged, delay, span, time_left, transient
 
 MODE_ENV = "LOOM_GOAL_LINES"
 MODES = ("lines", "prompt", "off")
@@ -52,12 +53,8 @@ MAX_LOST = 2  # restarts of the Host a line is carried through
 REPORT_CHARS = 6000
 OBJECTIVE_CHARS = 2000
 LIVE = {"running", "waiting", "reporting"}
-_FREE = PLAN_TOOLS | LOOKUPS | {"tool_search", "get_thread_state", "mark_thread_goal"}
 MAX_WAIT_HOLDS = 2
-CPU_PER_LINE = 8  # logical processors one heavy line (a training, a simulation) is taken to use
-SHARED_ALIASES = {"cores": "cpu", "compute": "cpu", "processor": "cpu", "cpus": "cpu"}
-PROSE_WORDS = frozenset({"run", "running", "runs", "check", "checks", "ensure", "verify", "confirm", "the", "a",
-                         "an", "all", "each", "every", "file", "files", "exit", "should", "must", "that", "test", "tests"})
+CPU_RESERVED = 2  # logical processors kept for the lead, the Host and the person's own use
 FAILURE_KIND = "goal_lines_required"
 
 GUIDE_LINES = (
@@ -67,7 +64,8 @@ GUIDE_LINES = (
     "to four lines that do not depend on each other's results, each worth many steps of its own (a survey, an "
     "experiment, a module, a data set). A line sees none of this conversation, so its brief says the objective, "
     "the files to read and where to write, what to hand back, and its boundaries; a line that writes gives check, "
-    "a command that proves its part works (its tests, or a script that checks its results). After weave_lines you "
+    "the argument list of a command that proves its part works (its tests, or a script that checks its results), "
+    "and a line of heavy computation gives cpus. After weave_lines you "
     "end the turn: no waiting, no checking on them, no work of your own meanwhile, and that time costs you "
     "nothing. Work that feeds each other in order, and runs that compete for one GPU or one set of files, go "
     "before the lines or in a later round; integrating and the final result are yours. Do not read what a line "
@@ -136,7 +134,7 @@ def _overlap(left, right):
     return a == b or not a or not b or a.startswith(b + "/") or b.startswith(a + "/")
 
 
-def _validated(raw):
+def _validated(raw, workspace=None):
     """The batch as the Host will run it; raises with what the lead has to change."""
     if len(raw) > MAX_LINES:
         raise ValueError(f"At most {MAX_LINES} lines at once; merge the smallest ones, or keep some for a later round.")
@@ -148,64 +146,82 @@ def _validated(raw):
                              "so say the objective, the files to read and where to write, what to hand back, and its "
                              "boundaries.")
         writes = [str(path).strip() for path in item.get("writes") or () if str(path).strip()]
-        check = " ".join(str(item.get("check") or "").split())
-        if writes and not check:
+        argv = _check_argv(title, item.get("check"), workspace)
+        if writes and not argv:
             raise ValueError(f"\"{title}\" writes files but has no check: give a command that proves its part works, "
                              "such as its tests or a script that checks its results.")
-        if len(check) > CHECK_CHARS:
-            raise ValueError(f"The check of \"{title}\" is too long: give one command, at most {CHECK_CHARS} characters.")
-        if check and not _command_like(check):
-            raise ValueError(f"The check of \"{title}\" reads as a description, not a command. The Host finds it in the "
-                             "line's own runs by its exact text, so give the one command line the line must run, such "
-                             "as `python -m unittest discover tests` or `python scripts/check_results.py`; put what it "
-                             "asserts inside that script.")
         resource = str(item.get("resource") or "").strip().lower()
-        lines.append({"title": title[:120], "brief": brief, "writes": writes, "check": check,
-                      "resource": SHARED_ALIASES.get(resource, resource)})
+        cpus = item.get("cpus")
+        if cpus is not None and (type(cpus) is not int or cpus < 1):
+            raise ValueError(f"cpus of \"{title}\" is the number of logical processors it keeps busy, a whole number.")
+        if resource == "cpu":  # an older way of saying heavy computation, with no size: ask for the size
+            if cpus is None:
+                raise ValueError(f"\"{title}\" needs the CPU: give cpus, how many logical processors it keeps busy "
+                                 "(its threads or worker processes), instead of resource.")
+            resource = ""
+        lines.append({"title": title[:120], "brief": brief, "writes": writes, "check": _display(argv),
+                      "checkArgv": argv, "resource": resource, "cpus": cpus or 0})
     for at, left in enumerate(lines):
         for right in lines[at + 1:]:
             shared = [a for a in left["writes"] for b in right["writes"] if _overlap(a, b)]
             if shared:
                 raise ValueError(f"\"{left['title']}\" and \"{right['title']}\" both write {shared[0]}. Lines run at the "
                                  "same time in one folder: give them separate paths, or do that part yourself.")
-    for resource, users in _by_resource(lines).items():
-        room = _room(resource)
-        if len(users) > room:
-            names = " and ".join(f"\"{line['title']}\"" for line in users[:3])
-            why = (f"this machine has {os.cpu_count() or 1} logical processors, room for {room} line(s) of about "
-                   f"{CPU_PER_LINE} threads each" if resource == "cpu" else "only one can use it at a time")
-            raise ValueError(f"{names} {'both' if len(users) == 2 else 'all'} need {resource}: {why}. Start {room} now and the rest in a later round, or "
-                             "run them yourself.")
+            if left["resource"] and left["resource"] == right["resource"]:
+                raise ValueError(f"\"{left['title']}\" and \"{right['title']}\" both need {left['resource']}. Only one "
+                                 "can use it at a time: start one now and the other in a later round, or run them yourself.")
+    # Each line says what it uses (Ray's num_cpus, Slurm's cpus-per-task); the Host packs them into the machine.
+    # A fixed "one CPU-bound line at a time" refused a real goal two 8-thread trainings on 20 logical processors.
+    room = max(1, (os.cpu_count() or 1) - CPU_RESERVED)
+    wanted = sum(line["cpus"] for line in lines)
+    if wanted > room:
+        raise ValueError(f"These lines want {wanted} logical processors and this machine has {room} to give "
+                         f"({os.cpu_count() or 1} in all, {CPU_RESERVED} kept for the lead and the Host). Give fewer "
+                         "threads to some, or start the rest in a later round.")
     return lines
 
 
-def _by_resource(lines):
-    users = {}
-    for line in lines:
-        if line["resource"]:
-            users.setdefault(line["resource"], []).append(line)
-    return users
+def _check_argv(title, check, workspace):
+    """A line's check as the argument list it must run, its program one that exists here.
+
+    It was a string, and a real lead wrote a description ("运行 `python experiments/analyze.py` 退出码 0，且断言 ...")
+    that the Host, which finds the check among the line's own runs, recorded as never run for both lines. An
+    argument list whose first item is a program on this computer cannot be a description; a string is split as a
+    command line, for leads that still send one."""
+    if not check:
+        return []
+    if isinstance(check, str):
+        try:
+            argv = shlex.split(check, posix=os.name != "nt")
+        except ValueError:
+            argv = check.split()
+        argv = [part[1:-1] if len(part) > 1 and part[0] == part[-1] == '"' else part for part in argv]
+    elif isinstance(check, (list, tuple)) and all(isinstance(part, str) for part in check):
+        argv = [part for part in check if part != ""]
+    else:
+        raise ValueError(f"The check of \"{title}\" is a list of arguments, such as [\"python\", \"check.py\"].")
+    if len(" ".join(argv)) > CHECK_CHARS:
+        raise ValueError(f"The check of \"{title}\" is too long: give one command, at most {CHECK_CHARS} characters.")
+    if argv and not _program(argv[0], workspace):
+        raise ValueError(f"The check of \"{title}\" starts with {argv[0]!r}, which is not a program on this computer "
+                         "(not on PATH, not a file in the workspace). Give the exact command the line will run, as a "
+                         "list of arguments starting with the program (the full path of the interpreter when it is not "
+                         "on PATH), such as [\"python\", \"scripts/check_results.py\"]; put what it asserts inside that script.")
+    return argv
 
 
-def _room(resource):
-    """How many lines may use a resource at once. A GPU or a device is one at a time; the CPU is divided: a real
-    research goal was refused two trainings of 8 threads each on a machine with 20 logical processors."""
-    if resource != "cpu":
-        return 1
-    return max(1, (os.cpu_count() or 1) // CPU_PER_LINE)
+def _program(name, workspace):
+    if shutil.which(name):
+        return True
+    path = Path(name)
+    if not path.is_absolute() and workspace:
+        path = Path(workspace) / path
+    return path.is_file()
 
 
-def _command_like(check):
-    """A command line, not prose: a real lead wrote "运行 `python experiments/analyze.py` 退出码 0，且断言 ...", and the
-    Host, which looks for the check's exact text among the line's runs, recorded both lines' checks as never run."""
-    # Chinese arguments are fine (a path under C:\Users\邹羽宸 is one); backticks, full-width punctuation and a first
-    # word that is Chinese or an instruction ("run", "ensure") are prose.
-    if re.search(r"[`\u3000-\u303f\uff01-\uff0f\uff1a-\uff20]", check):
-        return False
-    first = check.split()[0].lower().strip("\"'")
-    if re.match(r"[\u4e00-\u9fff]", first):
-        return False
-    return first not in PROSE_WORDS and not first.endswith((":", ","))
+def _display(argv):
+    """The check as one command line the line can type exactly (paths with spaces quoted)."""
+    return subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
 
 
 def start(service, thread_id, arguments):
@@ -226,7 +242,7 @@ def start(service, thread_id, arguments):
             record.setdefault("soloReasons", []).append(reason[:300])
             service.weave_goals.put(thread_id, record)
             return ToolResult(ok=True, content="Noted: you work on this yourself. You can still call weave_lines later.", data={"lines": 0})
-        lines = _validated(raw)
+        lines = _validated(raw, getattr(service.store.load(thread_id), "workspace_dir", None))
         left = record["tokenBudget"] - record["tokens"]
         if left < MIN_BUDGET_LEFT * record["tokenBudget"]:
             raise ValueError("Too little of the budget is left to start lines; finish this yourself.")
@@ -269,7 +285,7 @@ def start(service, thread_id, arguments):
 def _hold_while_running(service, session, calls):
     """The turn that started a round stops there. A prompt asking for that was not enough: one lead did, and spent 0.03M
     while its lines ran; another stayed, polled and re-checked, and spent 0.64M. A turn the person started is theirs."""
-    waiting = tuple(call for call in calls if not (call.name in _FREE or call.name == "weave_status"))
+    waiting = tuple(call for call in calls if not (call.name in CONTROL_TOOLS or call.name == "weave_status"))
     if not waiting:
         return None
     with service.project_runner.guard:
@@ -299,17 +315,12 @@ def hold(service, session, step, calls):
             if record is None or record.get("linesDecision") != "later":
                 return None
             record.update(linesDecision="pending", linesHolds=0, linesGrown=True)
+            decide(record, "split_asked", after=SPLIT_AFTER)
             service.weave_goals.put(session.session_id, record)
     if record.get("linesDecision") != "pending":
         return None
 
-    def free(call):
-        if call.name in _FREE or call.name.startswith(WEAVE_PREFIX):
-            return True
-        tool = step.tool_router.get(call.name)
-        return tool is not None and tool.effect is ToolEffect.READ_ONLY and call.name != "spawn_agent"
-
-    waiting = tuple(call for call in calls if not free(call))
+    waiting = tuple(call for call in calls if changes(step, call))
     if not waiting:
         return None
     with service.project_runner.guard:
@@ -356,15 +367,35 @@ def _command(data):
     return str(data.get("command") or data.get("cmd") or "")
 
 
+def _program_name(value):
+    name = Path(str(value)).name.lower()
+    return name[:-4] if name.endswith(".exe") else name
+
+
+def _ran(check, data):
+    """Whether a run is the check: the same program (wherever it lives: a line put the runtime's Python first when
+    `python` was not on PATH) with the same arguments, or the check inside a wrapper such as cmd /c or bash -lc."""
+    run = data.get("argv")
+    if isinstance(run, (list, tuple)) and run and _program_name(run[0]) == _program_name(check[0]) and \
+            [str(part) for part in run[1:]] == check[1:]:
+        return True
+    text = " ".join(_command(data).split()).lower()
+    rest = " ".join(" ".join(check[1:]).split()).lower()
+    return _program_name(check[0]) in text and (not rest or rest in text)
+
+
 def _check_result(service, session_id, check):
     """"passed", "failed" or "not_run", from the last run of the check in the line's own commands."""
-    wanted = " ".join(check.split()).lower()
+    if isinstance(check, str):
+        check = check.split()
+    if not check:
+        return "not_run"
     result = "not_run"
     for event in service.store.events(session_id):
         if event.kind not in {AgentEventKind.TOOL_COMPLETED, AgentEventKind.TOOL_FAILED}:
             continue
         data = event.data.get("data") if isinstance(event.data.get("data"), dict) else {}
-        if wanted not in " ".join(_command(data).split()).lower():
+        if not _ran(check, data):
             continue
         code = data.get("returncode")
         if data.get("running") or code is None:
@@ -390,7 +421,7 @@ def _settle(service, thread_id, record, line, state, why=""):
         line["tokens"] = int(charged(service.store.load(line["agentId"]).usage))
         line["changed"] = _changed(service, line["agentId"])
         if line.get("check"):
-            line["checkResult"] = _check_result(service, line["agentId"], line["check"])
+            line["checkResult"] = _check_result(service, line["agentId"], line.get("checkArgv") or line["check"])
         if not snapshot.node.relation_status.value == "closed":
             control.close_agent(thread_id, line["agentId"])
     except (OSError, ValueError, RuntimeError) as exc:
@@ -435,7 +466,7 @@ def _tick_line(service, thread_id, record, line, now):
         return True
     if status is AgentStatus.COMPLETED:
         if line.get("check"):
-            line["checkResult"] = _check_result(service, line["agentId"], line["check"])
+            line["checkResult"] = _check_result(service, line["agentId"], line.get("checkArgv") or line["check"])
             if line["checkResult"] != "passed" and not line.get("sentBack") and line["state"] == "running" and not over:
                 line["sentBack"] = True
                 control.send(thread_id, line["agentId"], CHECK_AGAIN.format(what=_CHECK_WORDS[line["checkResult"]],

@@ -350,6 +350,7 @@ class CodeModeRuntime(SkillRuntime):
                 "effect": prepared.tool.effect.value,
                 "call_fingerprint": call_fingerprint,
                 "repeat_count": repeat_count,
+                **prepared.tool.started_marks(),
             },
         )
         context, tracker, diff_revision_before = self._tool_context(

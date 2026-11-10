@@ -39,7 +39,8 @@ def web_search():
     from app.agent_runtime.tools import AgentTool, ToolResult
     return AgentTool(name="web_search", description="Search the web.", input_schema={
         "type": "object", "properties": {}, "additionalProperties": True},
-        handler=lambda _context, _arguments: ToolResult(ok=True, content="五篇相关论文", data={}), effect=ToolEffect.READ_ONLY)
+        handler=lambda _context, _arguments: ToolResult(ok=True, content="五篇相关论文", data={}),
+        effect=ToolEffect.READ_ONLY, open_world=True)  # reads from outside; READ_ONLY so the test thread needs no approval
 
 
 def start_with_charter(*after):
@@ -413,5 +414,29 @@ def test_a_goal_turn_that_wrote_no_note_owes_one_at_the_next_start(tmp_path):
         assert any(goal.NOTE_DUE[:40] in text for text in said), "the next goal turn is told"
         assert any(goal_charter.NOTE_HELD[:40] in text for text in said), "its first changing call waits, once"
         assert len(runs) == 2 and service.weave_goals.get(source)["noteDue"] is False
+    finally:
+        runtime.close()
+
+
+def test_the_standard_criteria_speak_the_conversations_language():
+    english = {**CHARTER, "deliverable": "A referee-ready study of Bloom filter error with code that reproduces every number."}
+    record = {}
+    goal_charter.set_charter(record, english, language="zh")
+    assert any(item["text"].startswith("相关工作与新意") for item in record["charter"]["criteria"])
+    other = {}
+    goal_charter.set_charter(other, CHARTER, language="latin")
+    assert any(item["text"].startswith("Related work and novelty") for item in other["charter"]["criteria"])
+    auto = {}
+    goal_charter.set_charter(auto, CHARTER, language="auto")
+    assert any(item["text"].startswith("相关工作与新意") for item in auto["charter"]["criteria"]), "auto reads the script"
+
+
+def test_threshold_decisions_are_recorded_with_their_numbers(tmp_path):
+    held = [calling("weave_goal", {"objective": "研究一晚", "hours": 8}, "call-goal"),
+            calling("weave_charter", CHARTER, "call-charter"), base.DONE, answer("做完了")]
+    service, runtime, platform, source = conversation(tmp_path, held)
+    try:
+        decisions = service.weave_goals.get(source)["decisions"]
+        assert decisions[-1]["what"] == "claim_held" and decisions[-1]["missing"] == 2 and "tokens" in decisions[-1]
     finally:
         runtime.close()

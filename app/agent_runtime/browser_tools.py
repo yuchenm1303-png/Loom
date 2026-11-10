@@ -2174,7 +2174,18 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
     from .browser_iterate import browser_look_tool, browser_measure_motion_tool
     tools.append(browser_look_tool(runtime))
     tools.append(browser_measure_motion_tool(runtime))
-    return tuple(replace(tool, handler=lifecycle_handler(tool.handler)) for tool in tools)
+    return tuple(replace(tool, handler=lifecycle_handler(tool.handler), open_world=True,
+                         read_only=True if tool.name in PAGE_READS else tool.read_only) for tool in tools)
 
 
-__all__ = ["browser_tools"]
+# Browser calls that look at pages and move between them without acting on them (MCP's readOnlyHint): they keep
+# SENSITIVE for permission, the browser reaches the web, but a build-mode goal gate must not hold a literature read.
+# Clicks, typing, uploads, scripts, cookies and storage can change a site or an account and are not here.
+PAGE_READS = frozenset({
+    "browser_open", "browser_navigate", "browser_state", "browser_find", "browser_screenshot", "browser_scroll",
+    "browser_wait", "browser_tabs", "browser_status", "browser_back", "browser_forward", "browser_switch_tab",
+    "browser_refresh", "browser_dropdown_options", "browser_session_state", "browser_backends", "browser_look",
+})
+
+
+__all__ = ["browser_tools", "PAGE_READS"]

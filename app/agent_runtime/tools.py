@@ -285,6 +285,12 @@ class AgentTool:
     # default: tools must explicitly promise that independent invocations may
     # overlap inside one model response.
     supports_parallel_tool_calls: bool = False
+    # What the call does to the world, apart from what it needs permission for (effect). MCP's readOnlyHint and
+    # openWorldHint, the axes Codex decides MCP approvals by: web_search needs permission (SENSITIVE: the query leaves
+    # the machine) yet changes nothing. None means "as effect says": READ_ONLY reads, everything else may change.
+    read_only: bool | None = None
+    # Reaches outside this computer (the web, a remote service).
+    open_world: bool = False
 
     def __post_init__(self) -> None:
         name = str(self.name or "").strip()
@@ -302,6 +308,17 @@ class AgentTool:
         object.__setattr__(self, "effect", ToolEffect(self.effect))
         object.__setattr__(self, "exposure", ToolExposure(self.exposure))
         object.__setattr__(self, "supports_parallel_tool_calls", bool(self.supports_parallel_tool_calls))
+        object.__setattr__(self, "open_world", bool(self.open_world))
+
+    @property
+    def reads_only(self) -> bool:
+        """Whether the call leaves files, processes and outside state as they were."""
+        return self.effect is ToolEffect.READ_ONLY if self.read_only is None else bool(self.read_only)
+
+    def started_marks(self) -> dict[str, bool]:
+        """What every tool_started event records about the tool beyond its effect: a read from outside this
+        computer is marked, so a long goal can tell a literature search by what the tool is, not by its name."""
+        return {"lookup": True} if self.reads_only and self.open_world else {}
 
     def definition(self) -> ToolDefinition:
         return ToolDefinition(

@@ -275,6 +275,18 @@ class MCPToolDescriptor:
     input_schema: dict[str, Any]
     effect: ToolEffect
     exposure: ToolExposure
+    # The server's own MCP annotations: readOnlyHint (unless destructiveHint) and openWorldHint (true when unsaid,
+    # as the spec reads it). None leaves "does it change anything" to the configured effect.
+    read_only: bool | None = None
+    open_world: bool = True
+
+
+def _annotated(remote: Any) -> tuple[bool | None, bool]:
+    annotations = getattr(remote, "annotations", None)
+    if annotations is None:
+        return None, True
+    read_only = getattr(annotations, "readOnlyHint", None) is True and getattr(annotations, "destructiveHint", None) is not True
+    return (True if read_only else None), getattr(annotations, "openWorldHint", None) is not False
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,6 +366,8 @@ def _copy_descriptor(descriptor: MCPToolDescriptor) -> MCPToolDescriptor:
         input_schema=deepcopy(descriptor.input_schema),
         effect=descriptor.effect,
         exposure=descriptor.exposure,
+        read_only=descriptor.read_only,
+        open_world=descriptor.open_world,
     )
 
 
@@ -524,6 +538,8 @@ class McpBinding:
                     "input_schema": item.input_schema,
                     "effect": item.effect.value,
                     "exposure": item.exposure.value,
+                    "read_only": item.read_only,
+                    "open_world": item.open_world,
                 }
                 for item in self._tools_tuple
             ],
@@ -562,6 +578,8 @@ class McpBinding:
                     handler=handler,
                     effect=descriptor.effect,
                     exposure=descriptor.exposure,
+                    read_only=descriptor.read_only,
+                    open_world=descriptor.open_world,
                     # Diagnostic/compatibility projection only.  Execution
                     # authority lives in the captured PreparedMcpCall above.
                     binding_key=self.identity,
@@ -678,6 +696,7 @@ class MCPClientManager:
             schema = _schema_subset(getattr(remote, "input_schema", None))
             if schema.get("type") != "object":
                 schema = {"type": "object", "properties": {}}
+            read_only, open_world = _annotated(remote)
             descriptors.append(
                 MCPToolDescriptor(
                     canonical_name=canonical,
@@ -687,6 +706,8 @@ class MCPClientManager:
                     input_schema=schema,
                     effect=config.effect_for(remote_name),
                     exposure=config.exposure,
+                    read_only=read_only,
+                    open_world=open_world,
                 )
             )
         return tuple(descriptors)

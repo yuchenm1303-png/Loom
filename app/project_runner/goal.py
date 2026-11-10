@@ -26,7 +26,7 @@ from app.ai.contracts import MessageRole
 from app.agent_runtime.durable_state import GoalStatus
 from app.agent_runtime.turn_plan import PLAN_TOOLS
 from . import goal_charter, goal_lines
-from .goal_common import RETRY_BASE, RETRY_MAX, charged, delay as _delay, span as _span, time_left as _left, transient as _transient
+from .goal_common import decide, RETRY_BASE, RETRY_MAX, charged, delay as _delay, span as _span, time_left as _left, transient as _transient
 
 GOALS_FILE = "weave-goals.json"
 RETRIES_FILE = "weave-start-retries.json"
@@ -93,9 +93,9 @@ CHECK_DEEPER = "\nThe person gave this work {hours}; {left} of it remain." + _DE
 # used, and a real "继续吧" goal (no time, three quarters of its budget left) could never be deepened.
 CHECK_DEEPER_BUDGET = "\nNo time was given for this work; {left} of its token budget remains." + _DEEPER
 NO_TIME_DEEPENS = 2
-LITERATURE_TOOLS = frozenset({"web_search", "web_fetch", "investigate"})
 CLAIM_HOLDS = 2  # a claim the Host sends back for what is missing; past this it goes to the checker, gaps named
-NO_LITERATURE = ("This is a research goal and no literature search ran in it (web_search, web_fetch or investigate): "
+NO_LITERATURE = ("This is a research goal and no literature search ran in it (nothing was read from outside this "
+                 "computer: a web search, a page in the browser, an investigator): "
                  "search for the closest prior work, compare with it in the deliverable, then claim again.")
 NO_LEDGER = ("The claims ledger is empty: record each headline number with weave_claims (the claim, the exact command "
              "that reproduces it, the output file), then claim again.")
@@ -358,10 +358,15 @@ def _searched(service, thread_id, record):
     """Whether a literature search ran in this goal: the lead's own, or a sub-agent's working for it."""
     if record.get("literature"):
         return True
+    # Any successful read from outside the machine counts (web search, a browser page, an MCP search, an investigator),
+    # by what the tool declared when it ran (the "lookup" mark on its start), not by a list of tool names.
     for session_id in _sessions(service, thread_id, record):
+        looked = set()
         for event in _since_start(service, session_id, record):
-            if (event.kind is AgentEventKind.TOOL_COMPLETED and event.data.get("ok")
-                    and event.data.get("tool") in LITERATURE_TOOLS):
+            if event.kind is AgentEventKind.TOOL_STARTED and event.data.get("lookup"):
+                looked.add(event.data.get("call_id"))
+            elif (event.kind is AgentEventKind.TOOL_COMPLETED and event.data.get("ok")
+                    and event.data.get("call_id") in looked):
                 return True
     return False
 
@@ -384,9 +389,11 @@ def claim_check(service, thread_id):
             record["literature"] = True
         if missing and record.get("claimHolds", 0) < CLAIM_HOLDS:
             record["claimHolds"] = record.get("claimHolds", 0) + 1
+            decide(record, "claim_held", holds=record["claimHolds"], missing=len(missing))
             service.weave_goals.put(thread_id, record)
             return CLAIM_HELD + " ".join(missing)
         record["claimGaps"] = missing
+        decide(record, "claim_passed_gate", gaps=len(missing), holds=record.get("claimHolds", 0))
         goal_charter.finish_phases(record)
         service.weave_goals.put(thread_id, record)
     return None
@@ -536,6 +543,9 @@ def _collect(service, thread_id, record, objective):
               "major": major[:12], "minor": minor[:12], "deeper": [], "at": time.time()}
     record["reviews"] = [*(record.get("reviews") or []), review][-12:]
     if verdict["verdict"] == "passed":
+        decide(record, "deepen" if _should_deepen(record, deeper) else "finish", asked=len(deeper),
+               deepens=record.get("deepens", 0), hours=record.get("hours") or 0,
+               left=round(_left(record)) if record.get("hours") else None)
         if _should_deepen(record, deeper):
             record["deepens"] += 1
             review["deeper"] = deeper[:8]
@@ -642,6 +652,7 @@ def _continue(service, thread_id, record, session):
     if (goal_charter.charter_of(record) and record.get("turns") and written == record.get("notesAtTurn")
             and rounds == record.get("roundsAtTurn", rounds)):
         record.update(noteDue=True, noteHeld=False)
+        decide(record, "note_due", turns=record.get("turns"))
     record.update(notesAtTurn=written, roundsAtTurn=rounds)
     context = _context(service, thread_id, record)
     record.update(turns=record["turns"] + 1, feedback="", deepen="", reports="", goalTurn=turn_id)

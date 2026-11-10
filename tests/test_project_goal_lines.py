@@ -25,6 +25,8 @@ def runtime_with_sub_agents(monkeypatch):
     monkeypatch.setattr(goal, "LINES_EVERY", 0)
     monkeypatch.setattr(goal_lines, "SPLIT_AFTER", 0)  # the question comes at once unless a test is about when it comes
     monkeypatch.setattr(goal_charter, "MAX_HOLDS", 0)  # the charter is asked for in its own tests; here it gives way
+    real = goal_lines._program  # checks name a program; the test machine need not have one called python on PATH
+    monkeypatch.setattr(goal_lines, "_program", lambda name, workspace: name in {"python", "pytest"} or real(name, workspace))
 
 
 def usage(total=10, cached=0):
@@ -46,7 +48,7 @@ BRIEF = ("目标：在 results/{0} 下跑这条线的实验。先读 README.md �
 def line(name, writes=(), **extra):
     """A read-only line unless it is given paths; one that writes comes with its check."""
     writes = list(writes)
-    check = {"check": f"python check.py {name}"} if writes else {}
+    check = {"check": ["python", "check.py", name]} if writes else {}
     return {"title": name, "brief": BRIEF.format(name), "writes": writes, **check, **extra}
 
 
@@ -1049,18 +1051,31 @@ def test_a_check_must_be_a_command_line_not_a_description():
              line("乙", ["notes"], check="notes/audit_memo.md 存在；包含五个小节"),
              line("丙", ["x"], check="Run the tests and ensure they pass")]
     for item in prose:
-        with pytest.raises(ValueError, match="reads as a description"):
+        with pytest.raises(ValueError, match="not a program on this computer"):
             goal_lines._validated([item])
     assert goal_lines._validated([line("丁", ["y"], check="python check.py 丁 --strict")])[0]["check"].startswith("python")
 
 
-def test_the_cpu_is_shared_by_as_many_heavy_lines_as_the_machine_has_room_for(monkeypatch):
+def test_lines_say_how_many_processors_they_use_and_are_packed_into_the_machine(monkeypatch):
     # Real goal: two 8-thread trainings refused as "both need cpu" on a machine with 20 logical processors.
     monkeypatch.setattr(goal_lines.os, "cpu_count", lambda: 20)
-    two = goal_lines._validated([line("甲", resource="cpu"), line("乙", resource="cores")])
-    assert [item["resource"] for item in two] == ["cpu", "cpu"]
-    with pytest.raises(ValueError, match="20 logical processors, room for 2"):
-        goal_lines._validated([line(name, resource="cpu") for name in "甲乙丙"])
-    monkeypatch.setattr(goal_lines.os, "cpu_count", lambda: 4)
-    with pytest.raises(ValueError, match="both need cpu"):
-        goal_lines._validated([line("甲", resource="cpu"), line("乙", resource="cpu")])
+    two = goal_lines._validated([line("甲", cpus=8), line("乙", cpus=8), line("丙")])
+    assert [item["cpus"] for item in two] == [8, 8, 0], "light work takes no share"
+    with pytest.raises(ValueError, match="want 24 logical processors and this machine has 18"):
+        goal_lines._validated([line(name, cpus=8) for name in "甲乙丙"])
+    with pytest.raises(ValueError, match="give cpus"):
+        goal_lines._validated([line("甲", resource="cpu")])
+    with pytest.raises(ValueError, match="both need gpu"):
+        goal_lines._validated([line("甲", resource="gpu", cpus=2), line("乙", resource="gpu")])
+
+
+def test_a_check_is_an_argument_list_run_by_any_path_to_its_program(tmp_path):
+    lines = goal_lines._validated([line("甲", ["results/甲"], check=["python", "check.py", "--name", "甲 乙"])])
+    assert lines[0]["checkArgv"] == ["python", "check.py", "--name", "甲 乙"]
+    ran = {"argv": [r"E:\ai run\.venv\Scripts\python.exe", "check.py", "--name", "甲 乙"], "returncode": 0}
+    assert goal_lines._ran(lines[0]["checkArgv"], ran), "the line used the runtime's Python, not the one on PATH"
+    assert not goal_lines._ran(lines[0]["checkArgv"], {"argv": ["python", "check.py"], "returncode": 0})
+    wrapped = {"argv": ["cmd", "/c", "python check.py --name 甲 乙"], "returncode": 0}
+    assert goal_lines._ran(["python", "check.py"], wrapped)
+    (tmp_path / "check.sh").write_text("exit 0\n")
+    assert goal_lines._validated([line("乙", ["x"], check=["check.sh"])], workspace=tmp_path)[0]["check"] == "check.sh"

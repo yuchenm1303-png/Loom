@@ -98,7 +98,9 @@ def web_search_tools(provider: WebSearchProvider | None) -> tuple[AgentTool, ...
                     "additionalProperties": False,
                 },
                 handler=search,
-                effect=ToolEffect.SENSITIVE,
+                effect=ToolEffect.SENSITIVE,  # needs permission: the query leaves the machine
+                read_only=True,  # but changes nothing
+                open_world=True,
             supports_parallel_tool_calls=True,
             )
         )
