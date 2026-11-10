@@ -30,7 +30,7 @@ from .responses_protocol import ResponsesToolDecoder, ResponsesTextDecoder, resp
 from .sse import json_sse_events
 from .tool_protocol import parse_tool_call, validate_unique_calls, decode_argument_json
 from .execution_control import ModelCancelled, check_cancelled, current_control, note_progress, note_chunk
-from .openai_streaming import OpenAIStreamingChatBackend
+from .openai_streaming import OpenAIStreamingChatBackend, _normalize_compatible_text_fragment
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
@@ -648,6 +648,8 @@ class _OpenCodeGoMessagesBackend:
         finish_reason = ""
         completed = False
         chunks = 0
+        seen_text = ""
+        seen_thinking = ""
         try:
             def timed_lines():
                 for raw_line in response:
@@ -681,9 +683,13 @@ class _OpenCodeGoMessagesBackend:
                     if kind == "text":
                         text = str(block.get("text") or "")
                         if text:
+                            text, seen_text = _normalize_compatible_text_fragment(seen_text, text)
+                        if text:
                             yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
                     elif kind == "thinking":
                         thinking = str(block.get("thinking") or "")
+                        if thinking:
+                            thinking, seen_thinking = _normalize_compatible_text_fragment(seen_thinking, thinking)
                         if thinking:
                             yield StreamEvent(
                                 kind=StreamEventKind.REASONING_DELTA,
@@ -713,9 +719,13 @@ class _OpenCodeGoMessagesBackend:
                     if kind == "text_delta":
                         text = str(delta.get("text") or "")
                         if text:
+                            text, seen_text = _normalize_compatible_text_fragment(seen_text, text)
+                        if text:
                             yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
                     elif kind == "thinking_delta":
                         thinking = str(delta.get("thinking") or "")
+                        if thinking:
+                            thinking, seen_thinking = _normalize_compatible_text_fragment(seen_thinking, thinking)
                         if thinking:
                             yield StreamEvent(
                                 kind=StreamEventKind.REASONING_DELTA,
