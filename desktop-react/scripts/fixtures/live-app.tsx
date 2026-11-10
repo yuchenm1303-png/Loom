@@ -705,6 +705,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   "thread/list": () => ({ threads, counts: { active: threads.length, archived: 12, all: threads.length + 12 } }),
   "project/list": () => ({ projects, unfiledThreadCount: 0 }),
   "thread/read": (args) => snapshot(String(args.threadId)),
+  "thread/handoff_status": () => ({ incoming: null, outgoing: [] }),
   // ?context=1: the conversation has a measured context window, so the header shows its context meter.
   "thread/context": () => (params.get("context") === "1" ? { context: {
     windowKnown: true, windowTokens: 512000, effectiveWindowTokens: 486400, inputBudgetTokens: 482304, outputReserveTokens: 4096,
