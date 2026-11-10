@@ -107,11 +107,19 @@ class TurnRunner:
     def __init__(self, runtime):
         self.runtime = runtime
 
-    def run(self, session, token):
+    def run(self, session, token, *, prepare=None):
         rt = self.runtime
         tool_fault_batches = 0
         tools_finished_at = None
         try:
+            if rt._cancel_if_requested(session, token):
+                return rt._result(session)
+            if prepare is not None:
+                prepare(session.session_id)
+                # Preparation may refresh the persisted model metadata as well as its live platform.
+                session = rt.store.load(session.session_id)
+                if rt._cancel_if_requested(session, token):
+                    return rt._result(session)
             if not rt.idle_compaction.apply_ready(session):
                 rt.idle_compaction.compact_on_resume(session)
             while True:

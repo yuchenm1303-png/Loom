@@ -517,10 +517,16 @@ def _settle(service, thread_id, record, line, state, why=""):
         line["changed"] = _changed(service, line["agentId"])
         if line.get("check"):
             line["checkResult"] = _check_result(service, line["agentId"], line.get("checkArgv") or line["check"])
-        if not snapshot.node.relation_status.value == "closed":
-            control.close_agent(thread_id, line["agentId"])
     except (OSError, ValueError, RuntimeError) as exc:
+        state = "failed"
         why = why or f"{type(exc).__name__}: {exc}"
+    finally:
+        # A broken journal or report must not leave an agent executing after its line is settled.
+        try:
+            control.close_agent(thread_id, line["agentId"])
+        except (OSError, ValueError, RuntimeError) as exc:
+            state = "failed"
+            why = why or f"{type(exc).__name__}: {exc}"
     line.update(state=state, why=why[:500], prompt="", brief="")
     stats = record.setdefault("lineStats", {"rounds": 0, "started": 0, "done": 0, "failed": 0, "tokens": 0})
     stats["done" if state == "done" else "failed"] += 1
@@ -541,12 +547,15 @@ def _tick_line(service, thread_id, record, line, now):
     changed = used != line["tokens"]
     line["tokens"] = used
     over = used >= line["cap"] or now >= line["deadline"]
+    before_wait = line.get("waitingState") or ("reporting" if line.get("asked") else "running")
+    reporting = line["state"] == "reporting" or (line["state"] == "waiting" and before_wait == "reporting")
+    if reporting and (snapshot.execution_running or snapshot.session_status is not AgentStatus.COMPLETED) and (
+            used >= line["cap"] * OVERRUN or now - line["pressedAt"] > REPORT_GRACE):
+        _settle(service, thread_id, record, line, "failed", "it was stopped at its limit before it could report")
+        return True
     if snapshot.execution_running:
         if line["state"] == "running" and over:
             _press(service, thread_id, line)
-            return True
-        if line["state"] == "reporting" and (used >= line["cap"] * OVERRUN or now - line["pressedAt"] > REPORT_GRACE):
-            _settle(service, thread_id, record, line, "failed", "it was stopped at its limit before it could report")
             return True
         return changed
     status = snapshot.session_status
@@ -556,8 +565,12 @@ def _tick_line(service, thread_id, record, line, now):
             return True
         if now < line["retryAt"]:
             return changed
-        line["state"] = "running"
-        control.send(thread_id, line["agentId"], RESUME_LINE)
+        line["state"] = line.pop("waitingState", "reporting" if line.get("asked") else "running")
+        if over or line["state"] == "reporting":
+            line.update(state="reporting", asked=True, pressedAt=line["pressedAt"] or now)
+            control.send(thread_id, line["agentId"], REPORT_NOW)
+        else:
+            control.send(thread_id, line["agentId"], RESUME_LINE)
         return True
     if status is AgentStatus.COMPLETED:
         if line.get("check"):
@@ -576,7 +589,7 @@ def _tick_line(service, thread_id, record, line, now):
     if status is AgentStatus.FAILED:
         if transient(_failure(service, line["agentId"]), quota=True) and now < line["deadline"]:
             line["attempts"] += 1
-            line.update(state="waiting", retryAt=now + delay(line["attempts"]),
+            line.update(waitingState=line["state"], state="waiting", retryAt=now + delay(line["attempts"]),
                         waitKind=retry_kind(_failure(service, line["agentId"])))
             return True
         _settle(service, thread_id, record, line, "failed", str(snapshot.error or "the line failed"))

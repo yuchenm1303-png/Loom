@@ -115,6 +115,9 @@ REVIEW_BACK = ("An independent referee did not accept the work yet. {summary}\nU
                "Minor:\n{minor}\nAddress each point and answer it in a note (what you changed, or why not), then claim again.")
 CHECK_RESUME = ("Your last request failed because the model provider was unavailable, not because of the work. Carry on "
                 "with the check from where it stopped.")
+CHECK_AFTER_STOP = ("The goal has resumed after a pause or budget stop. Continue this check using your existing "
+                    "observations. Re-observe current state where needed; do not repeat an action with unknown "
+                    "outcome without first checking whether it already happened.")
 CHECK_NOW = ("Your limit stopped you. Do not start anything new: give your verdict now from what you have already "
              "seen, as that JSON only, and say in the summary what you did not get to check.")
 
@@ -129,9 +132,11 @@ class Goals:
     def _read(self):
         try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except FileNotFoundError:
             return {}
-        return value if isinstance(value, dict) else {}
+        if not isinstance(value, dict) or any(not isinstance(record, dict) for record in value.values()):
+            raise ValueError(f"Invalid goal store at {self.path}: expected an object")
+        return value
 
     def _write(self, value):
         temporary = self.path.with_suffix(".tmp")
@@ -265,6 +270,12 @@ def start(service, thread_id, objective, token_budget, hours=0):
 
 def _stop(service, thread_id, record, status, reason):
     record["reason"] = reason[:1000]
+    checker = record.get("checkerId")
+    if checker:
+        # Keep its observations for resume, but never its execution: a paused or exhausted goal
+        # must not keep spending in the independent checker after its lead has stopped.
+        service.runtime.cancel(checker)
+        record["checkerSuspended"] = True
     goal_lines.stop_all(service, thread_id, record, reason[:300], keep=record.get("checkerId"))
     service.weave_goals.put(thread_id, record)
     service.runtime.set_goal_status(thread_id, status)
@@ -476,7 +487,7 @@ def _spawn_checker(service, thread_id, record, objective):
     snapshot = service.runtime.agent_control.spawn(thread_id, task, role="goal-check", history_mode="none", background=True,
                                                    model=_checker_model(service, record))
     record.update(phase="checking", checkerId=snapshot.node.session_id, checkerPressed=False, checkerFailingSince=0,
-                  checkerAttempts=0, checkerRetryAt=0)
+                  checkerAttempts=0, checkerRetryAt=0, checkerRetryKind="", checkerSuspended=False)
     service.weave_goals.put(thread_id, record)
 
 
@@ -565,6 +576,15 @@ def _collect(service, thread_id, record, objective):
     snapshot = control.snapshot(thread_id, record["checkerId"])
     if snapshot.execution_running:
         return False
+    if record.pop("checkerSuspended", False):
+        record.update(checkerFailingSince=0, checkerAttempts=0, checkerRetryAt=0, checkerRetryKind="")
+        if snapshot.session_status is not AgentStatus.COMPLETED:
+            # The explicit resume authorizes another turn, with the checker's existing history.
+            if snapshot.session_status in _BUSY:
+                service.runtime.recover_interrupted(record["checkerId"])
+            control.send(thread_id, record["checkerId"], CHECK_AFTER_STOP)
+            service.weave_goals.put(thread_id, record)
+            return True
     if _wait_out_provider(service, thread_id, record, snapshot):
         return False
     # Still "running" on disk with nothing running it: the app was killed. Waiting for an approval: no one
@@ -863,7 +883,14 @@ def advance(service):
             moved = _retry_start(service, thread_id, record) or moved
         except (OSError, ValueError, RuntimeError) as exc:
             service.__dict__.setdefault("_goal_errors", {})[thread_id] = f"{type(exc).__name__}: {exc}"
-    for thread_id, record in service.weave_goals.all().items():
+    try:
+        records = service.weave_goals.all()
+    except (OSError, ValueError) as exc:
+        # Preserve a damaged store for recovery without stopping unrelated project/program scheduling.
+        service.__dict__.setdefault("_goal_errors", {})["store"] = f"{type(exc).__name__}: {exc}"
+        return moved
+    service.__dict__.get("_goal_errors", {}).pop("store", None)
+    for thread_id, record in records.items():
         try:
             moved = _advance(service, thread_id, record, polled) or moved
         except (OSError, ValueError, RuntimeError) as exc:

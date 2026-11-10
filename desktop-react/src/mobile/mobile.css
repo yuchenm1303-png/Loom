@@ -699,10 +699,10 @@ html[data-loom-surface="mobile"] .m-stage .turn-process-header { min-height: 44p
 html[data-loom-surface="mobile"] .m-composer-box textarea { padding: 10px 14px 2px; }
 .m-composer-tools { padding-bottom: 3px; }
 @media (max-height: 600px) {
-  .m-thread:has(.m-composer textarea:focus) .m-composer-box textarea { max-height: 96px; }
-  .m-thread:has(.m-composer textarea:focus) .m-branch-track { display: none; }
-  .m-thread:has(.m-composer textarea:focus) .m-build-summary { font-size: 12px; }
-  .m-thread:has(.m-composer textarea:focus) .m-attachment-list { max-height: 90px; }
+  .m-thread:has(.m-composer-input:focus) .m-composer-input { max-height: 96px; }
+  .m-thread:has(.m-composer-input:focus) .m-branch-track { display: none; }
+  .m-thread:has(.m-composer-input:focus) .m-build-summary { font-size: 12px; }
+  .m-thread:has(.m-composer-input:focus) .m-attachment-list { max-height: 90px; }
 }
 
 /* Conversation pass 2026-11-08 (filmed on the ?live= fixture turn).

@@ -707,7 +707,7 @@ function ThreadView({ loom, space, online, connecting, draftWorkspace, swapped, 
         {attachments.length > 0 ? <p className="m-attachment-hint">图片和文件 · 单个最大 10 MB</p> : null}
         {attachments.some((item) => item.status === "error") ? <p className="m-attachment-hint" role="status">请重试或移除失败的附件后再发送</p> : null}
         <div className="m-composer-box">
-          <textarea ref={field} rows={1} disabled={sending || buildBusy || thread?.archived} aria-label={running ? "插话" : "发消息"} placeholder={running ? "插话，下个安全点生效" : space === "build" ? "描述建造目标，或向电脑提问" : "发消息"} value={text} onChange={(event) => setText(event.target.value)} onPaste={(event) => {
+          <textarea className="m-composer-input" ref={field} rows={1} disabled={sending || buildBusy || thread?.archived} aria-label={running ? "插话" : "发消息"} placeholder={running ? "插话，下个安全点生效" : space === "build" ? "描述建造目标，或向电脑提问" : "发消息"} value={text} onChange={(event) => setText(event.target.value)} onPaste={(event) => {
             const files = Array.from(event.clipboardData.files);
             if (files.length && online && !sending && !buildBusy) { event.preventDefault(); setError(queue.add(files).join("\n")); }
           }} />

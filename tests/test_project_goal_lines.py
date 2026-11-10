@@ -1141,17 +1141,11 @@ def test_a_sub_agent_woken_by_a_message_runs_on_the_model_it_was_started_on(tmp_
     # After a Host restart three lines resumed on the Host's default model (MiniMax-M3) instead of their own.
     from app.agent_runtime.agent_control import AgentControl
     calls = []
-    runtime = type("R", (), {"prepare_session_turn": staticmethod(lambda sid: calls.append(("prepare", sid))),
-                             "run_queued": staticmethod(lambda sid, max_turns: calls.append(("run", sid)) or "ran")})()
+    runtime = type("R", (), {"run_queued": staticmethod(lambda sid, max_turns: calls.append(("run", sid)) or "ran")})()
     control = AgentControl.__new__(AgentControl)
     control.runtime = runtime
     assert control._run_queued("line-1") == "ran"
-    assert calls == [("prepare", "line-1"), ("run", "line-1")], "the model is restored before the turn"
-
-    def broken(_sid):
-        raise RuntimeError("model cannot be rebuilt")
-    runtime.prepare_session_turn = staticmethod(broken)
-    assert control._run_queued("line-2") == "ran", "a model that cannot be restored does not strand the sub-agent"
+    assert calls == [("run", "line-1")], "restoration belongs to the queue turn's durable failure boundary"
 
 
 def test_a_resumed_line_is_prepared_by_the_host_like_a_conversation_turn(tmp_path):

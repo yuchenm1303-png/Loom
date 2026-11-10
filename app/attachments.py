@@ -24,6 +24,7 @@ import re
 import shutil
 import zipfile
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,6 +43,11 @@ MAX_ATTACHMENTS = 10
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
 EXTRACTABLE_SUFFIXES = frozenset({".pdf", ".docx", ".pptx", ".xlsx", ".ods"})
 MAX_EXTRACTED_TEXT_CHARS = 2_000_000
+# The upload size is compressed for Office documents. Limit expansion before reading XML;
+# oversized documents remain attachable, but do not get an automatic text companion.
+MAX_DOCUMENT_XML_BYTES = 16 * 1024 * 1024
+MAX_DOCUMENT_EXPANDED_BYTES = 32 * 1024 * 1024
+MAX_DOCUMENT_ENTRIES = 4096
 _IMAGE_MIME = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -118,9 +124,21 @@ def _bounded_text(parts: list[str]) -> str:
     return text
 
 
+@contextmanager
+def _document_archive(path: Path):
+    with zipfile.ZipFile(path) as archive:
+        entries = archive.infolist()
+        xml = [info for info in entries if info.filename.lower().endswith(".xml")]
+        if len(entries) > MAX_DOCUMENT_ENTRIES or sum(info.file_size for info in xml) > MAX_DOCUMENT_EXPANDED_BYTES:
+            raise AttachmentError("Document is too large to extract automatically")
+        if any(info.file_size > MAX_DOCUMENT_XML_BYTES for info in xml):
+            raise AttachmentError("Document member is too large to extract automatically")
+        yield archive
+
+
 def _extract_docx(path: Path) -> str:
     ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-    with zipfile.ZipFile(path) as archive:
+    with _document_archive(path) as archive:
         root = ET.fromstring(archive.read("word/document.xml"))
     paragraphs = []
     for paragraph in root.iter(f"{ns}p"):
@@ -133,7 +151,7 @@ def _extract_docx(path: Path) -> str:
 def _extract_pptx(path: Path) -> str:
     ns = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
     parts: list[str] = []
-    with zipfile.ZipFile(path) as archive:
+    with _document_archive(path) as archive:
         names = sorted(
             (name for name in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)),
             key=lambda name: int(re.search(r"(\d+)\.xml$", name).group(1)),  # type: ignore[union-attr]
@@ -149,7 +167,8 @@ def _extract_pptx(path: Path) -> str:
 def _extract_xlsx(path: Path) -> str:
     ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
     parts: list[str] = []
-    with zipfile.ZipFile(path) as archive:
+    remaining = MAX_EXTRACTED_TEXT_CHARS
+    with _document_archive(path) as archive:
         shared: list[str] = []
         if "xl/sharedStrings.xml" in archive.namelist():
             root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
@@ -179,17 +198,24 @@ def _extract_xlsx(path: Path) -> str:
                             value = shared[int(raw)]
                         else:
                             value = raw
-                    values.append(value)
+                    values.append(value[:max(0, remaining)])
+                    remaining -= len(values[-1]) + 1  # include the cell separator
+                    if remaining <= 0:
+                        break
                 if values:
                     rows.append("\t".join(values).rstrip())
+                if remaining <= 0:
+                    break
             if rows:
                 parts.append(f"Sheet {sheet_index}\n" + "\n".join(rows))
+            if remaining <= 0:
+                break
     return _bounded_text(parts)
 
 
 def _extract_ods(path: Path) -> str:
     namespace = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
-    with zipfile.ZipFile(path) as archive:
+    with _document_archive(path) as archive:
         root = ET.fromstring(archive.read("content.xml"))
     return _bounded_text([
         "".join(node.itertext())
@@ -271,7 +297,12 @@ def stage_attachments(
         raise AttachmentError(f"at most {MAX_ATTACHMENTS} attachments per message")
 
     root = Path(workspace).expanduser().resolve()
-    folder = root.joinpath(*ATTACHMENT_DIRNAME.split("/")) / (str(turn_id or "turn")[:8] or "turn")
+    turn_folder = str(turn_id or "turn")[:8] or "turn"
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", turn_folder):
+        raise AttachmentError("attachment turn identifier contains unsafe path characters")
+    folder = root.joinpath(*ATTACHMENT_DIRNAME.split("/")) / turn_folder
+    if not folder.resolve().is_relative_to(root):
+        raise AttachmentError("attachment destination must stay inside the workspace")
 
     staged: list[StagedAttachment] = []
     for entry in sources:

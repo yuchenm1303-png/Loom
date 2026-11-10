@@ -218,12 +218,8 @@ class AgentControl:
         Only a conversation's own turn restored its model (the Host's turn preparation); a sub-agent resumed by a
         message after a Host restart ran on the Host's default model instead: three long-goal lines moved from
         MiniMax-M3.1-Flash to MiniMax-M3 mid-run, with another window and another price."""
-        prepare = getattr(self.runtime, "prepare_session_turn", None)
-        if callable(prepare):
-            try:
-                prepare(session_id)
-            except Exception:  # noqa: BLE001 - a model that cannot be restored must not strand the sub-agent
-                pass
+        # Queue turn preparation runs inside TurnRunner's failure/cancellation boundary.
+        # Swallowing errors here would sample the Host's default model after failed restoration.
         return self.runtime.run_queued(session_id, max_turns=1)
 
     def send(

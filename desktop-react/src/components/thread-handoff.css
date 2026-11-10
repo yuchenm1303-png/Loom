@@ -12,7 +12,7 @@
 .thread-handoff-record[data-state="failed"] > summary > small, .thread-handoff-record[data-state="interrupted"] > summary > small { color: var(--semantic-warning-strong, #c19238); }
 .thread-handoff-body { padding: 0 12px 12px; overflow-wrap: anywhere; }
 .thread-handoff-body p { margin: 6px 0; white-space: pre-wrap; }
-.thread-handoff-body strong { font-weight: 550; color: var(--pl-ink); }
+.thread-handoff-body strong { font-weight: 600; color: var(--pl-ink); }
 .thread-handoff-body > small { display: block; color: var(--pl-faint); }
 .thread-handoff-body ul { margin: 4px 0 9px; padding-left: 18px; }
 .thread-handoff-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }

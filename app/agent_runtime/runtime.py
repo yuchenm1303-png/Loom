@@ -654,9 +654,9 @@ class AgentRuntime:
                 self._emit_event(session, AgentEventKind.TURN_INTERRUPTED, data={"error": session.error})
             return self._result(session)
 
-    def _drive(self, session: AgentSession, token: CancellationToken) -> AgentRunResult:
+    def _drive(self, session: AgentSession, token: CancellationToken, *, prepare=None) -> AgentRunResult:
         from .turn_runner import TurnRunner
-        return TurnRunner(self).run(session, token)
+        return TurnRunner(self).run(session, token, prepare=prepare)
 
     def _request_stable_contracts(self):
         from .verification import DEVELOPMENT_FEEDBACK_CONTRACT

@@ -395,6 +395,9 @@ class DurableAgentRuntime(CoreAgentRuntime):
 
             token = self._activate(session.session_id)
             try:
+                prepare = getattr(self, "prepare_session_turn", None) if source == "queue" else None
+                if callable(prepare):
+                    return self._drive(session, token, prepare=prepare)
                 return self._drive(session, token)
             finally:
                 self._deactivate(session.session_id, token)

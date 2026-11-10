@@ -17,7 +17,7 @@
 .bo-freshness button { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border: 0; border-radius: 6px; background: var(--pf-well); color: inherit; cursor: pointer; }
 .bo-freshness button:disabled { opacity: .45; cursor: default; }
 .bo-entry { margin-top: 8px; border-radius: 8px; padding: 9px; background: var(--pf-well); }
-.bo-entry strong { color: var(--pl-ink); font-weight: 550; }
+.bo-entry strong { color: var(--pl-ink); font-weight: 600; }
 .bo-entry > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; cursor: pointer; list-style: none; }
 .bo-entry > summary::before { content: "›"; flex: none; color: var(--pl-faint); }
 .bo-entry[open] > summary::before { content: "⌄"; }
@@ -26,7 +26,7 @@
 .bo-log { margin-top: 8px; color: var(--pl-secondary); }
 .bo-log > summary { cursor: pointer; font-size: 10px; }
 .bo-entry > small { display: block; color: var(--pl-faint); margin-top: 5px; }
-.bo-badge { display: inline-block; padding: 1px 5px; border-radius: 4px; background: var(--pf-raise); color: var(--pl-secondary); font-size: 10px; font-weight: 450; }
+.bo-badge { display: inline-block; padding: 1px 5px; border-radius: 4px; background: var(--pf-raise); color: var(--pl-secondary); font-size: 10px; font-weight: 500; }
 .bo-badge[data-status="passed"], .bo-badge[data-status="integrated"], .bo-badge[data-status="current"] { color: var(--pf-ok); }
 .bo-badge[data-status="recorded_pass"], .bo-badge[data-status="stale"], .bo-badge[data-status="failed"], .bo-badge[data-status="needs_changes"], .bo-badge[data-status="blocked"] { color: var(--pf-warn); }
 .bo-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 5px 0; }

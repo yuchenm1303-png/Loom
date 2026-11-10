@@ -49,20 +49,25 @@ class IdempotencyStore:
                 raise entry.error
             return copy.deepcopy(entry.result), True
 
+        action_completed = False
         try:
             result = action()
+            action_completed = True
+            entry.result = copy.deepcopy(result)
         except BaseException as exc:
             entry.error = exc
             entry.ready.set()
-            with self._guard:
-                current = self._entries.get(resolved_key)
-                if current is entry:
-                    self._entries.pop(resolved_key, None)
+            if not action_completed:
+                with self._guard:
+                    current = self._entries.get(resolved_key)
+                    if current is entry:
+                        self._entries.pop(resolved_key, None)
+            # If the action finished but its result could not be copied, retain the failure:
+            # another request must not repeat a write merely to reconstruct its response.
             raise
 
-        entry.result = copy.deepcopy(result)
         entry.ready.set()
-        return copy.deepcopy(result), False
+        return copy.deepcopy(entry.result), False
 
 
 __all__ = ["IdempotencyStore"]
