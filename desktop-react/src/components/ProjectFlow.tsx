@@ -274,7 +274,9 @@ const enText: typeof zhText = {
 };
 type Side = "left" | "right" | "below";
 /** A cable's corner radius, the most its lanes stand apart (a cable's 9px plus a gap), and its plugs apart on the hub. */
-const CABLE_R = 12, LANE_STEP = 15, PLUG_APART = 22;
+const CABLE_R = 12, LANE_STEP = 18, PLUG_APART = 22;
+/** How far each branch card steps out from the hub, in thirds of the stage's spread (a wave, so a crowd reads as a fan, not one line). */
+const AGENT_FAN = [0, 1, 2, 3, 2, 1];
 interface Cable { id: string; side: Side; d: string; socket: { x: number; y: number }; reveal?: number }
 
 // The branches the person folded away, by id. Storage may be missing or refuse; then nothing is folded.
@@ -1158,7 +1160,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
 
   return (
     <WorkspaceBranchContext.Provider value={{ target: workspaceBranch, setOpen: setWorkspaceExpanded }}>
-    <div className="pf-stage" data-workspace-expanded={workspaceExpanded || undefined} ref={stage} data-state={data.state} data-phase={data.phase} data-renewing={renewing || wordsHeld || undefined}>
+    <div className="pf-stage" data-agents={agents.length >= 3 || undefined} data-workspace-expanded={workspaceExpanded || undefined} ref={stage} data-state={data.state} data-phase={data.phase} data-renewing={renewing || wordsHeld || undefined}>
       <svg className="pf-cables" aria-hidden="true" ref={svg}>
         {cables.map((cable) => (
           <g key={cable.id} className="pf-cable" data-cable={cable.id} data-side={cable.side} data-hot={hot === cable.id || hot === cable.id.replace("agent:", "task:") || hot === cable.id.replace("-draft", "") || undefined}
@@ -1901,6 +1903,7 @@ export function ProjectFlow({ data, actions = {}, lang = "zh", conversationId, r
           const peeked = peekable && peekId === agent.id;
           return (
             <div key={agent.id} className={`pf-slot pf-agent-slot${index % 2 ? " pf-offset-3" : ""}`} data-glide={`agent:${agent.id}`} {...hover(`agent:${agent.id}`)} {...slot(`agent:${agent.id}`)}
+                 style={{ "--pf-step": AGENT_FAN[index % AGENT_FAN.length] } as React.CSSProperties}
                  data-hot={hot === `task:${agent.id}` || undefined}>
               <Card id={`agent:${agent.id}`} side="right" className="pf-agent" icon={<Bot size={12} />} label={agent.name} register={register}>
                 <div className="pf-well pf-agent-well" data-done={agent.done || undefined} data-peekable={peekable || undefined}

@@ -214,8 +214,24 @@ html[data-loom-theme="light"] .pf-stage {
    stops short of the edge, what is observed sits indented and narrow, the task list steps back in between and runs
    to the edge, history leans in. By branch, not by position, so a card never slides sideways when a neighbour
    comes or goes. */
-.pf-right > .pf-slot[data-glide="goal"] { margin-right: 9%; }
-.pf-right > .pf-slot[data-glide^="observe-"] { margin-left: 15%; margin-right: 3%; }
+.pf-right > .pf-slot:not(.pf-agent-slot) { margin-right: var(--pf-spread, 0px); }
+.pf-right > .pf-slot[data-glide="goal"] { margin-right: calc(9% + var(--pf-spread, 0px)); }
+.pf-right > .pf-slot[data-glide^="observe-"] { margin-left: 15%; margin-right: calc(3% + var(--pf-spread, 0px)); }
+
+/* A crowd of branch cards (three or more) is a fan, not a line: the right column grows into the room a wide stage has,
+   each card steps out from the hub by its place in a wave (--pf-step, thirds of the spread), and the gap the cables
+   turn in widens by --pf-fan so their lanes stand apart instead of reading as one band. Narrow stages keep the plain zigzag. */
+@container pf-stage (min-width: 1100px) {
+  .pf-stage[data-agents] {
+    --pf-fan: 24px; --pf-spread: 48px;
+    grid-template-columns: minmax(172px, 228px) minmax(340px, 460px) minmax(192px, calc(252px + var(--pf-fan) + var(--pf-spread)));
+  }
+}
+@container pf-stage (min-width: 1400px) {
+  .pf-stage[data-agents] { --pf-fan: 48px; --pf-spread: 108px; }
+}
+.pf-stage[data-agents] .pf-right { padding-left: calc(var(--pf-side-shade) + var(--pf-fan, 0px)); }
+.pf-stage[data-agents] .pf-agent-slot { margin-left: calc(var(--pf-step, 0) * var(--pf-spread, 0px) / 3); }
 .pf-right > .pf-slot[data-glide="tasks"] { margin-left: 6%; }
 .pf-right > .pf-slot[data-glide="history"] { margin-left: 11%; }
 
