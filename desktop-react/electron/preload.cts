@@ -30,8 +30,10 @@ function mergeDeltaParams(
 ): Record<string, unknown> {
   const next = { ...(previous ?? {}) };
   for (const [key, value] of Object.entries(incoming ?? {})) {
-    if (["text", "stdout", "stderr"].includes(key) && typeof value === "string") {
+    if (["text", "reasoning", "stdout", "stderr"].includes(key) && typeof value === "string") {
       next[key] = `${String(next[key] ?? "")}${value}`;
+    } else if (key === "arguments" && incoming?.kind === "tool_call_argument" && typeof value === "string") {
+      next.arguments = `${typeof next.arguments === "string" ? next.arguments : ""}${value}`;
     } else {
       next[key] = value;
     }
@@ -191,13 +193,18 @@ const api = {
           last?.method === "item/delta"
           && String(last.params?.itemId ?? "") === itemId
         ) {
-          last.params = {
-            ...(last.params ?? {}),
-            ...(payload.params ?? {}),
-            delta: mergeDeltaParams(
-              last.params?.delta as Record<string, unknown> | undefined,
-              payload.params?.delta as Record<string, unknown> | undefined,
-            ),
+          // IPC delivers the same payload object to every subscription. Never
+          // mutate it: another subscriber may have queued that object too.
+          queue[queue.length - 1] = {
+            ...last,
+            params: {
+              ...(last.params ?? {}),
+              ...(payload.params ?? {}),
+              delta: mergeDeltaParams(
+                last.params?.delta as Record<string, unknown> | undefined,
+                payload.params?.delta as Record<string, unknown> | undefined,
+              ),
+            },
           };
           schedule();
           return;
