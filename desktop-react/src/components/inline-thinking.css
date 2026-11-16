@@ -79,7 +79,7 @@
   white-space: nowrap;
   color: var(--shimmer-base);
   contain: paint;
-  background-image: linear-gradient(
+  --thinking-gradient: linear-gradient(
     100deg,
     var(--shimmer-base) 0%,
     var(--shimmer-base) 35%,
@@ -93,6 +93,7 @@
     var(--shimmer-base) 65%,
     var(--shimmer-base) 100%
   );
+  background-image: var(--thinking-gradient);
   background-size: 300% 100%;
   background-repeat: no-repeat;
   background-position: 98% 0;
@@ -107,9 +108,32 @@
    passes over it as before. */
 .thinking-shimmer .roll-ch { -webkit-text-fill-color: var(--shimmer-base); }
 
+/* Chromium includes transparent retiring characters in an ancestor's text
+   background mask. Keep that mask on the settled visible line so the old
+   animated layers cannot leave a pile of glyphs at its edge. */
+.thinking-shimmer:has(> .roll) {
+  background-image: none;
+  -webkit-text-fill-color: var(--shimmer-base);
+}
+.thinking-shimmer > .roll > .roll-line:not(.roll-out):not(.is-rising) {
+  background-image: var(--thinking-gradient);
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 98% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: var(--thinking-sweep);
+}
+
 /* Forced colours drop backgrounds: show the plain label. */
 @media (forced-colors: active) {
   .thinking-shimmer {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    animation: none;
+  }
+  .thinking-shimmer > .roll > .roll-line:not(.roll-out):not(.is-rising) {
     background: none;
     -webkit-text-fill-color: currentColor;
     animation: none;
@@ -421,6 +445,7 @@ html[data-loom-theme="light"] .live-reasoning.is-thinking .live-reasoning-copy::
   .thinking-shimmer {
     background-position: 98% 0;
   }
+  .thinking-shimmer > .roll > .roll-line { animation: none !important; }
 }
 
 :root[data-loom-reduced-motion="true"] .live-reasoning-copy::before,
@@ -447,6 +472,7 @@ html[data-loom-theme="light"] .live-reasoning.is-thinking .live-reasoning-copy::
 :root[data-loom-reduced-motion="true"] .thinking-shimmer {
   background-position: 98% 0;
 }
+:root[data-loom-reduced-motion="true"] .thinking-shimmer > .roll > .roll-line { animation: none !important; }
 
 /* The words of the live capsule change by blurring across (Crossfade soft). Each face carries its own light band;
    the label's birth fade belongs to the first appearance only, the crossing supplies the fade after that. */
