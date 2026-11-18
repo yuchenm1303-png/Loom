@@ -1,0 +1,128 @@
+name: Windows x86 Local Host Compatibility Probe
+
+# Diagnostic workflow only. Does not publish or replace any Loom runtime.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/win32-local-host-probe.yml"
+      - "pyproject.toml"
+      - "win32-client/host-probe/**"
+
+permissions:
+  contents: read
+
+jobs:
+  python-x86:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: x86
+
+      - name: Verify actual 32-bit Python environment
+        shell: pwsh
+        run: |
+          python --version
+          python -c "import struct, sys, platform; print('pointer bits:', struct.calcsize('P') * 8); print('executable:', sys.executable); assert struct.calcsize('P') == 4; assert platform.system() == 'Windows'"
+          if ($LASTEXITCODE -ne 0) { throw "The runner did not initialize 32-bit Python." }
+          python -m pip install --upgrade pip wheel
+
+      - name: Resolve and install Loom core dependencies
+        id: core
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pip install -e .
+          if ($LASTEXITCODE -ne 0) { throw "Core dependency installation failed on Windows x86." }
+          python -c "import app, mcp, httpx, keyring; print('loom-x86-core-import-ok')"
+          if ($LASTEXITCODE -ne 0) { throw "Core imports failed on Windows x86." }
+
+      - name: Resolve and install Windows Computer Use dependencies
+        id: computer
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pip install -e ".[computer]"
+          if ($LASTEXITCODE -ne 0) { throw "Computer Use dependencies are not installable on Windows x86." }
+          python -c "import pyautogui, pywinauto, psutil, win32api; print('loom-x86-computer-import-ok')"
+          if ($LASTEXITCODE -ne 0) { throw "Computer Use imports failed on Windows x86." }
+
+      - name: Resolve browser and desktop-agent dependencies for x86
+        id: browser
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pip install --dry-run ".[desktop-agent]"
+          if ($LASTEXITCODE -ne 0) { throw "Browser/desktop dependencies cannot be fully resolved for x86." }
+
+      - name: Probe experimental x86 slim Agent without unsupported PTY
+        id: slim
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pip install --only-binary=:all: "cryptography==48.0.1"
+          if ($LASTEXITCODE -ne 0) { throw "No available Windows x86 wheel for cryptography 48.0.1." }
+          python -m pip install -r win32-client/host-probe/requirements-x86-slim.txt
+          if ($LASTEXITCODE -ne 0) { throw "x86 slim dependencies could not be installed." }
+          # Avoid the pyproject's unconditional Windows-only pywinpty requirement
+          # in this experiment. This is NOT a deployable full Host profile.
+          python -m pip install --no-deps -e .
+          if ($LASTEXITCODE -ne 0) { throw "x86 slim editable app install failed." }
+          python -c "import struct, app, mcp, httpx, keyring, pyautogui, pywinauto, psutil, win32api, cryptography; assert struct.calcsize('P') == 4; print('loom-x86-slim-python-import-ok', cryptography.__version__)"
+          if ($LASTEXITCODE -ne 0) { throw "x86 slim application imports failed." }
+
+      - name: Probe PyInstaller x86 runtime bootstrap
+        id: freeze
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m pip install "pyinstaller>=6.10,<7"
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller cannot be installed for Windows x86." }
+          Set-Content -Path win32-bootstrap-probe.py -Value "import struct; assert struct.calcsize('P') == 4; print('win32-frozen-runtime-ok')" -Encoding utf8
+          python -m PyInstaller --noconfirm --clean --onedir --name loom-win32-bootstrap-probe win32-bootstrap-probe.py
+          if ($LASTEXITCODE -ne 0) { throw "x86 PyInstaller bootstrap packaging failed." }
+          & .\dist\loom-win32-bootstrap-probe\loom-win32-bootstrap-probe.exe
+          if ($LASTEXITCODE -ne 0) { throw "x86 PyInstaller runtime bootstrap failed." }
+
+      - name: Explain compatibility blockers without altering the x64 product
+        if: always()
+        shell: pwsh
+        env:
+          CORE: ${{ steps.core.outcome }}
+          COMPUTER: ${{ steps.computer.outcome }}
+          BROWSER: ${{ steps.browser.outcome }}
+          FREEZE: ${{ steps.freeze.outcome }}
+          SLIM: ${{ steps.slim.outcome }}
+        run: |
+          @"
+          ## Loom Win32 local Host compatibility probe
+          This is a 32-bit Python x86 dependency and bootstrap check, **not a full Win32 Agent release**.
+
+          | Check | Outcome |
+          | --- | --- |
+          | Full Loom core dependency install | $env:CORE |
+          | Full Windows Computer Use dependency install | $env:COMPUTER |
+          | Desktop and browser dependency resolution (dry-run only) | $env:BROWSER |
+          | Experimental x86 slim imports (no terminal PTY) | $env:SLIM |
+          | Frozen 32-bit Python bootstrap | $env:FREEZE |
+
+          Full core and Computer Use installs currently hit pywinpty x86 native linking and cryptography wheel blockers. They are intentionally recorded as failures, not silently passed.
+          The slim profile (if green) is a dependency experiment only. It pins an older cryptography wheel and excludes Windows PTY; never ship it without a security and capability review.
+          Existing Electron 44, Microsoft MXC x64, bundled Chrome x64, and Node/Electron Host integration remain separate blockers.
+          The x64 release pipeline is not changed by this diagnostic workflow.
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Require isolated x86 slim experiment and native bootstrap
+        if: always()
+        shell: pwsh
+        env:
+          SLIM: ${{ steps.slim.outcome }}
+          FREEZE: ${{ steps.freeze.outcome }}
+        run: |
+          if ($env:SLIM -ne "success" -or $env:FREEZE -ne "success") {
+            throw "No viable experimental x86 slim Python foundation yet; inspect the workflow report."
+          }
